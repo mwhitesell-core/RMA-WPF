@@ -1,0 +1,84 @@
+;#> program-id.     u085.qts
+;
+;	((C)) Dyad Technologies
+;
+;    program purpose : update pat-date-last-elig-mailing to sysdate
+;                       add 1 to pat-no-letter-sent in f010-pat-mstr
+;
+;    	MODIFICATION HISTORY
+;    	93/04/28  	AGK        	- ORIGINAL SMS141
+;   	93/05/21	M. CHAN		- ADD MESS CODE CHECK IN THE
+;					  SELECTION CRITERIA SAME AS
+;					  R085.QZS
+;					- UPDATE PAT RECORD BY PATIENT
+;	                                - ONLY NOT BY EACH CLAIM
+;	93/06/04        YASEMIN		- ADD = <> FOR ELIG-MAILING
+;                                         160100
+;	94/03/02	M. CHAN		- CHECK IF LAST MAILING IS 21
+;					  DAYS OLD INSTEAD OF 10 DAYS
+;       95/06/13	B.M.L.		- COMMENT OUT BRIANU085 SUBFILE
+;       98/12/10        B.E.      - changed to access *r085 subfile rather than
+;                                   selecting records directly from the
+;                                   rejected-claims file.
+;  1999/jan/13 B.E.		- y2k
+; 00/jun/29 B.E. - changed to access *u085b rather than *r085. This ensures
+;		   the claims processed are the same ones printed in the
+;		   letters and have been filtered so that no 'confidential'
+;		   claims are processed
+; 03/dec/15 A.A. - alpha doc nbr
+; 04/jan/15 M.C. - change sorted to sort
+; 07/jul/04 M.C. - add 'set lock record update'
+; 10/jul/15 MC1  -  do the same as r085e.qzs
+;		    add rejected-claims in the access statement and add the section criteria for records 
+;                   that are NOT 'logically' deleted  and the clmhdr-submit-date = sel-date 
+
+can clear
+set default
+set process nolimit
+; 2007/07/04 - MC
+set lock record update
+; 2007/07/04 - end
+
+run u085
+
+request pat_date_update on calculation errors report
+
+access *u085b							&
+  link ("B"), 							&
+;!	nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+;!	nconvert(ascii(claim-nbr,10)[9:2]),  			&
+	claim-nbr[1:8],                                     	&
+	nconvert(claim-nbr[9:2]),  				&
+	"00000", "0" 						&
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr   &
+  link clmhdr-pat-ohip-id-or-chart   		           	&
+   viaindex key-pat-mstr					&
+   to f010-pat-mstr						&
+; 2010/07/15 - MC1    
+  link claim-nbr of u085b                     			&
+  to   claim-nbr of rejected-claims
+; 2010/07/15 - end
+
+; 2004/01/15 - MC
+;sorted on clmhdr-pat-ohip-id-or-chart
+sort on clmhdr-pat-ohip-id-or-chart
+; 2004/01/15 - end
+
+; 2010/07/15 - MC1
+def sel-date date = parm prompt 'Enter submit date (yyyymmdd): '
+
+sel if logically-deleted-flag <> 'Y'			&
+   and clmhdr-submit-date of rejected-claims = sel-date
+; 2010/07/15 - end
+
+
+
+;;SUBFILE  BRIANU085     KEEP INCLUDE REJECTED-CLAIMS, D-TEST-DATE, PAT-DATE-LAST-ELIG-MAILING
+
+output f010-pat-mstr update at clmhdr-pat-ohip-id-or-chart
+   item pat-date-last-elig-mailing final sysdate
+   item pat-no-of-letter-sent final (pat-no-of-letter-sent + 1)
+
+build $pb_obj/u085
+  

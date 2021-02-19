@@ -1,0 +1,184 @@
+;program: fixf002_hdr.qks
+;purpose: used to correct key fields and other fields not normally changeable 
+;	  on claims master
+;
+; 1998/Jul/13 B.E.      - original
+; 1999/feb/16 B.E.	- addess f010, update p-key fields in pre-update
+; 1999/mar/10 B.E.	- added $ fields
+; 1999/dev/08 B.E. 	- y2k update of key-p-clm... fields
+; 2000/Feb/10 M.C.	- add dtl designer procedure
+;			- update p key correctly
+; 2000/Jul/05 M.C. 	- include f001 file as well
+;			- sum amount into f001, display the fields
+; 2000/dec/20 B.E.	- added update of f086pat if ikey field 
+;			  (clmhdr-pat-ohip-id-or-chart) is changed
+; 2001/jan/09 B.E.	- if ikey of patient changed, then verify that
+;			  ikey is valid and use found patient's acronym
+;			  to update f002 acronym fields, redisplay acronym
+;                         of patient pointed to by new ikey
+; 2001/jan/24 BE/MC	- major rearrangement of code to ensure that f086
+;			  is updated with the new patient when the
+;			  i-key of the claim (field clmhdr-pat-ohip-id-or-chart)
+;			  is changed to point to a new patient. 
+; 2001/feb/02 B.E.	- added updated of f086a- to allow transfer of all
+;			  claims of patient
+
+screen $pb_obj/fixf002_hdr activities find, change
+
+
+file f002-claims-mstr
+  access via       key-clm-type,                                   &
+                   key-clm-batch-nbr,                              &
+                   key-clm-claim-nbr,                              &
+                   key-clm-serv-code,                              &
+                   key-clm-adj-nbr                                 &
+        using      'B',                                            &
+                   key-clm-batch-nbr,                              &
+                   key-clm-claim-nbr,                              &
+                   "00000",					   &
+                   "0"						   &
+        request    key-clm-batch-nbr,                              &
+                   key-clm-claim-nbr
+
+
+;2000/07/05 - MC begin
+
+file f001-batch-control-file secondary
+  access  via batctrl-batch-nbr using key-clm-batch-nbr of f002-claims-mstr
+   
+
+   item clmhdr-tot-claim-ar-ohip sum into batctrl-calc-ar-due, &
+	batctrl-calc-tot-rev, batctrl-amt-act, batctrl-amt-est
+   item clmhdr-manual-and-tape-payments sum into batctrl-manual-pay-tot
+
+;2000/07/15 -MC end
+
+
+file f010-pat-mstr reference
+        access viaindex KEY-PAT-MSTR using clmhdr-pat-ohip-id-or-chart
+
+file f086-pat-id designer
+file f086a-orig-new-pat-ids designer
+
+use $use/f086_temp_fields.use nol
+
+
+skip to 2
+align (1, 4, 27) 
+;FIELD KEY-CLM-TYPE OF F002-CLAIMS-MSTR      display
+field key-clm-batch-nbr of f002-claims-mstr required nochange pic "^^-^-^^^-^^^" auto
+field key-clm-claim-nbr of f002-claims-mstr required nochange
+
+skip to 2
+align            (41, 44, 63)
+field key-clm-serv-code of f002-claims-mstr display
+field key-clm-adj-nbr of f002-claims-mstr   display
+
+field key-p-clm-type of f002-claims-mstr required nochange
+field key-p-clm-data     of f002-claims-mstr required nochange
+
+align (1, 4, 27) 
+;skip 1
+title "          oma /       ohip /    payments /   currpay /  techbill /   techpaid"
+align (1,,4) (,,17) (,,30) (,,43) (,,56) (,,69)
+field clmhdr-tot-claim-ar-oma refresh
+field clmhdr-tot-claim-ar-ohip refresh
+field clmhdr-manual-and-tape-payments
+field clmhdr-curr-payment
+field clmhdr-amt-tech-billed refresh
+field clmhdr-amt-tech-paid
+
+skip to 9
+;align (1 ,4 , 27 ) (41 ,44 , 68 )
+align (1 ,4 , 27 )
+field clmhdr-batch-type  of f002-claims-mstr    display
+field clmhdr-i-o-pat-ind of f002-claims-mstr    display
+field clmhdr-submit-date of f002-claims-mstr	display
+field clmhdr-date-sys	 of f002-claims-mstr	display
+field clmhdr-date-period-end of f002-claims-mstr display
+field clmhdr-cycle-nbr   of f002-claims-mstr     display
+field clmhdr-batch-nbr 		of f002-claims-mstr pic "^^-^-^^^-^^^"
+field clmhdr-claim-nbr		of f002-claims-mstr
+skip to 9
+align              (41 ,44 , 68 )
+field clmhdr-orig-batch-nbr	of f002-claims-mstr pic "^^-^-^^^-^^^"
+field clmhdr-orig-claim-nbr	of f002-claims-mstr
+field clmhdr-adj-oma-cd		of f002-claims-mstr
+field clmhdr-adj-oma-suff	of f002-claims-mstr
+field clmhdr-adj-adj-nbr	of f002-claims-mstr
+field clmhdr-tape-submit-ind	of f002-claims-mstr
+field clmhdr-reference		of f002-claims-mstr
+field clmhdr-status-ohip        of f002-claims-mstr
+skip to 18
+align (1 ,4 , 27 ) (41,44,65)
+;field clmhdr-pat-acronym6 of f002-claims-mstr
+;field clmhdr-pat-acronym3 of f002-claims-mstr
+field pat-acronym	  of f010-pat-mstr display
+;2000/07/15 - MC begin
+;field clmhdr-pat-key-type of f002-claims-mstr
+;field clmhdr-pat-key-data of f002-claims-mstr
+field clmhdr-pat-ohip-id-or-chart of f002-claims-mstr label 'Clmhdr Pat Key '
+align              (41,44,65)
+field f086-a-2b-updated display label "Transfer all claims?"	&
+		required					&
+		upshift						&
+		values "Y", "N"					&
+		default "N"
+;2000/07/05 - MC end  
+
+;2000/07/05 - MC - begin
+align (1,4,27) (41,44,67)
+field batctrl-amt-act of f001-batch-control-file display refresh
+field batctrl-amt-est of f001-batch-control-file display refresh
+field batctrl-calc-ar-due of f001-batch-control-file display refresh
+field batctrl-calc-tot-rev of f001-batch-control-file display refresh
+field batctrl-svc-act of f001-batch-control-file display refresh
+field batctrl-svc-est of f001-batch-control-file display refresh
+field batctrl-manual-pay-tot of f001-batch-control-file display refresh
+;2000/07/05 - MC end
+
+
+use $use/f086_set_old_pat_values.use 
+
+;2001/01/23 - MC - add the edit procedure
+procedure edit  clmhdr-pat-ohip-id-or-chart
+begin
+  use $use/f086_edit_clmhdr_pat_ohip_id_or_chart.use
+end
+
+
+procedure process clmhdr-pat-ohip-id-or-chart
+begin
+  use $use/f086_process_clmhdr_pat_ohip_id_or_chart.use 
+end
+
+
+procedure postfind
+begin
+  use $use/f086_postfind.use
+end
+
+
+procedure preupdate
+begin
+  use $use/f086_preupdate.use
+end
+
+procedure designer dtl help ' Go to Claim Detail Screen'
+begin
+;2000/07/05 - MC begin - passing f001 file as well
+; run screen $pb_obj/fixf002_dtl passing f002-claims-mstr mode f
+  run screen $pb_obj/fixf002_dtl passing f002-claims-mstr,	&
+					 f001-batch-control-file  mode f
+;2000/07/05 - MC end
+
+  end
+
+
+procedure update
+begin
+  put f001-batch-control-file
+  use $use/f086_update.use
+end
+
+build 

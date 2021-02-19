@@ -1,0 +1,53 @@
+;#> PROGRAM-ID.     r128a.qts 
+;
+;       ((C)) Dyad Infosys LTD 
+;
+;    PURPOSE: first pass for inactive doctors that do not have earnings for 3 most recent months
+;
+;             STAGE 1 - create subfile of values from f119-doctor-ytd-history
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;   2014/Jul/16  ____   M.C.     - original 
+;				 - Doctor terminated and do not notify RMA.  This is especially a problem
+;				   with the non-GFT physicians
+;   2015/Jun/18		MC1	 - change the selection criteria as requested by Brad
+;				 - select on "no activity" - if BILL and AFPIN and AFPOUT <= 0 for the
+;				   current EP and 2 previous EP's for all dept and pay code
+;				 - only doctors with claims balance due <> 0
+;				 - this program will be run as part of $cmd/teb3 instead of $cmd/teb2
+;				   because current-ep-nbr has increased by 1 from u126.qts
+cancel clear
+
+run u128_inactive_doctors
+
+set default
+set process nolimit
+set lock record update
+
+;-------------------------------------------------------------------------------
+request check_claim_balance				&
+                on edit        errors report 		&
+                on calculation errors report
+
+access f002-outstanding				&
+	link key-clm-type, key-clm-batch-nbr,	&
+	     key-clm-claim-nbr, '00000', '0'    &
+	 to  key-clm-type, key-clm-batch-nbr,	&
+	     key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+def doc-nbr char*3 = key-clm-batch-nbr[3:3]
+
+sort on doc-nbr
+
+temp x-claim-bal zoned*10 numeric
+item x-claim-bal = x-claim-bal + clmhdr-tot-claim-ar-ohip reset at doc-nbr
+
+output tmp-counters-alpha add update at doc-nbr 	&
+	via tmp-counter-key-alpha using doc-nbr	on errors report
+   item tmp-counter-key-alpha   initial doc-nbr
+   item tmp-counter-1   	final   x-claim-bal
+
+subfile r128a_claim_doc keep at doc-nbr	&
+	include doc-nbr, x-claim-bal
+

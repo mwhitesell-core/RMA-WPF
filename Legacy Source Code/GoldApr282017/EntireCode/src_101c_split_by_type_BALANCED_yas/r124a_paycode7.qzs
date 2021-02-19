@@ -1,0 +1,385 @@
+;#> program-id.     r124a_paycode7.qzs
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Print the SERVICE CHARGES  for the physician
+;		for those like JCC in paycode 7 
+;             - PHASE I: create subfile of MTD column 1 and 2 values
+;			using MTD and YTD columns of regular file/reports
+
+;    MODIFICATION HISTORY
+;   DATE      SAF#  WHO        DESCRIPTION
+; 2014/apr/12 1301  be	- clone from r124a.qzs
+; 2014/apr/12       be1	- print blanks instead of zeros
+
+cancel clear
+set default
+set report nolimit
+
+access f119-doctor-ytd                                          &
+        link comp-code of f119-doctor-ytd                       &
+        to   comp-code of f190-comp-codes             opt       &
+        link doc-nbr to doc-nbr of f020-doctor-mstr   opt       &
+        link doc-nbr to doc-nbr of f020-doctor-extra  opt       &
+        link doc-dept of f020-doctor-mstr                       &
+        to   dept-nbr of f070-dept-mstr opt                     &
+        link (  ascii(doc-bank-nbr    of f020-doctor-mstr,4)	&
+              + ascii(doc-bank-branch of f020-doctor-mstr,5) )  &
+        to   bank-cd of f080-bank-mstr opt                      &
+        link (6) to const-rec-nbr of constants-mstr-rec-6       &
+        link   current-ep-nbr,                                  &
+               doc-nbr of f119-doctor-ytd                       &
+        to   ep-nbr ,                                           &
+             doc-nbr of f112-pycdceilings
+
+use $pb_src/f119_doctor_ytd.def ;  nol
+
+select if   doc-pay-code of f112-pycdceilings =  "7"			
+	     
+
+use $pb_src/printer_codes.def ; nol
+
+def x-deposit int*10 signed        = doc-payeft
+
+def x-deposit-date date = doc-ep-date-deposit
+def x-ped int*8 signed size 4 = doc-ep-ped
+def x-bank-account cha*12 = lj(doc-bank-acct)
+def x-bank-account-privacy-masked cha*12 				      	&
+       = "************"                         if x-bank-account[01:1] = " " 	&
+  else   "************"                         if x-bank-account[02:1] = " "	& 
+  else   "************"                         if x-bank-account[03:1] = " "	&
+  else   "************"                         if x-bank-account[04:1] = " "	& 
+  else   "************"                         if x-bank-account[05:1] = " "	& 
+  else   "********"      +(x-bank-account[2:4]) if x-bank-account[06:1] = " "	&	
+  else   "********"      +(x-bank-account[3:4]) if x-bank-account[07:1] = " "	&	
+  else   "********"      +(x-bank-account[4:4]) if x-bank-account[08:1] = " "	&	
+  else   "********"      +(x-bank-account[5:4]) if x-bank-account[09:1] = " "	&	
+  else   "********"      +(x-bank-account[6:4]) if x-bank-account[10:1] = " "	&	
+  else   "********"      +(x-bank-account[7:4]) if x-bank-account[11:1] = " "	&	
+  else   "********"      +(x-bank-account[8:4]) if x-bank-account[12:1] = " "	&	
+  else   "********"      +(x-bank-account[9:4]) 
+
+def x-bank char*30 = bank-name		
+def x-branch char*30 = bank-address1	 
+
+def x-ytdcea-pos-prt cha*3  = ytdcea-prt-format[1:3]
+def x-ytdcea-val-prt cha*10 = ytdcea-prt-format[4:10]
+
+def x-ceicea-pos-prt cha*3  = ceicea-prt-format[1:3]
+def x-ceicea-val-prt cha*10 = ceicea-prt-format[4:10]
+
+def x-ytdcex-pos-prt cha*3  = ytdcex-prt-format[1:3]
+def x-ytdcex-val-prt cha*10 = ytdcex-prt-format[4:10]
+
+def x-ceicex-pos-prt cha*3  = ceicex-prt-format[1:3]
+def x-ceicex-val-prt cha*10 = ceicex-prt-format[4:10]
+
+
+def x-dept-name char*30 = dept-name if record f070-dept-mstr exists &
+                     else "UNKNOWN DEPARTMENT"
+
+define x-full-part-ind char*25				&
+     = "GFT"        if doc-full-part-ind = "F" &
+  else "CLINICAL SCHOLAR" if doc-full-part-ind = "C" &
+  else "PLASTIC SURGERY"  if doc-full-part-ind = "S" &
+  else "Non-GFT"        if doc-full-part-ind = "P" &
+  else "CLASSIFICATION UNKNOWN"
+
+define x-doc-id-info char*50 =  "Dr. "                              &
+                              + truncate(doc-inits) + " "           &
+                              + truncate(doc-name) + "    "         &
+                              + ascii(doc-dept,2) + "-"             &
+                              + doc-nbr + "  "            
+
+def x-ytdreq-pos-prt cha*3  = ytdreq-prt-format[1:3]
+def x-ytdreq-val-prt cha*10 = ytdreq-prt-format[4:10]
+
+def x-ceireq-pos-prt cha*3  = ceireq-prt-format[1:3]
+def x-ceireq-val-prt cha*10 = ceireq-prt-format[4:10]
+
+def x-ytdtar-pos-prt cha*3  = ytdtar-prt-format[1:3]
+def x-ytdtar-val-prt cha*10 = ytdtar-prt-format[4:10]
+
+def x-ceitar-pos-prt cha*3  = ceitar-prt-format[1:3]
+def x-ceitar-val-prt cha*10 = ceitar-prt-format[4:10]
+
+;be1 moved to later in code and split into two periods - one for each column
+;def x-period char*1 = "."
+
+def x-column-to-print-in 				&
+	= 1 if 	(   comp-code = "DEPINC" 		&
+		 or comp-code = "SVCRTE"		&
+		 or comp-code = "KEYHRS"		&
+		 or comp-code = "KEYRTE"		&
+		)					&
+     else 2
+
+def x-mtd-dollars                                               &
+      = amt-mtd of f119-doctor-ytd / 100                        &
+                        if    rec-type = "A"                    &
+                          and x-column-to-print-in = 1		&
+   else 0
+def x-mtd-cents                                                 &
+      = mod(abs(amt-mtd of f119-doctor-ytd),100)                &
+                        if    rec-type = "A"                    &
+                          and x-column-to-print-in = 1		&
+   else 0
+
+def x-ytd-dollars                                               &
+      = amt-mtd of f119-doctor-ytd / 100                        &
+                        if    rec-type  = "A"                   &
+                          and x-column-to-print-in = 2		&
+   else 0
+
+def x-ytd-cents                                                 &
+      = mod(abs(amt-mtd of f119-doctor-ytd),100)                &
+                        if    rec-type  = "A"                   &
+                          and x-column-to-print-in = 2		&
+   else 0
+
+; (DETERMINE HOW MANY NUMBERS TO BE PRINTED, OFFSET BY WIDTH OF 1 NUMBER. IE 21)
+def x-mtd-dollars-abs int*10 = abs(x-mtd-dollars)
+def x-ytd-dollars-abs int*10 = abs(x-ytd-dollars)
+def x-mtd-ctr1        num*2 =  21 if x-mtd-dollars-abs < 10      &
+                        else   42 if x-mtd-dollars-abs < 100     &
+                        else   63 if x-mtd-dollars-abs < 1000    &
+                        else   84 if x-mtd-dollars-abs < 10000   &
+                        else  105 if x-mtd-dollars-abs < 100000  &
+                        else  126 if x-mtd-dollars-abs < 1000000 &
+                        else  147 ;  X-MTD-DOLLARS-ABS < 10000000
+
+def x-ytd-ctr1        num*2 =  21 if x-ytd-dollars-abs < 10      &
+                        else   42 if x-ytd-dollars-abs < 100     &
+                        else   63 if x-ytd-dollars-abs < 1000    &
+                        else   84 if x-ytd-dollars-abs < 10000   &
+                        else  105 if x-ytd-dollars-abs < 100000  &
+                        else  126 if x-ytd-dollars-abs < 1000000 &
+                        else  147 ;  X-YTD-DOLLARS-ABS < 10000000
+
+; (CHECK IF NEGATIVE SIGN WILL BE PRINTED)
+def x-mtd-ctr2 num*1 = x-mtd-ctr1 + 14 if x-mtd-dollars < 0      &
+                  else x-mtd-ctr1
+def x-mtd-sign char*1 = "-"            if x-mtd-dollars < 0      &
+                   else " "
+def x-ytd-ctr2 num*1 = x-ytd-ctr1 + 14 if x-ytd-dollars < 0      &
+                  else x-ytd-ctr1
+def x-ytd-sign char*1 = "-"            if x-ytd-dollars < 0      &
+                   else " "
+
+; (CHECK IF COMMA REQUIRED FOR VALUE)
+def x-mtd-ctr3 num*1 = x-mtd-ctr2 if x-mtd-dollars-abs < 1000   &
+                  else x-mtd-ctr2 + 14
+def x-ytd-ctr3 num*1 = x-ytd-ctr2 if x-ytd-dollars-abs < 1000   &
+                  else x-ytd-ctr2 + 14
+
+; (If printing any "CHARGE" line then underlines the previously printed line - 1st column)
+def x-mtd-lit1 char*88              &
+     = hpiii-column-100             & ; position to column for decimal alignment
+         if    comp-code      <>  "SVCCHG" &
+           and comp-code      <>  "KEYCHG" &
+  else hpiii-column-100             & ; position to column
+     + hpiii-up-a-row               & ; up a row
+     + hpiii-backward-dot-135       & ; back up dots
+     + hpiii-underline-on           & ; underline on
+     + hpiii-forward-dot-195        & ; forward dots (underlining)
+     + hpiii-underline-off          & ; underline off
+     + hpiii-down-a-row             & ; down a row
+     + hpiii-column-100               ; re-position to column for decimal alignment
+
+; (If printing any "CHARGE" line then underlines the previously printed line - 2nd column)
+def x-ytd-lit1 char*88              &
+     = hpiii-column-153             & ; position to column for decimal alignment
+         if   comp-code     <> "DOCCHG" &
+           and comp-code    <>  "FINCHG" &
+  else hpiii-column-153             & ; position to column
+     + hpiii-up-a-row               & ; up a row
+     + hpiii-backward-dot-135       & ; back up dots
+     + hpiii-underline-on           & ; underline on
+     + hpiii-forward-dot-195        & ; forward dots (underlining)
+     + hpiii-underline-off          & ; underline off
+     + hpiii-down-a-row             & ; down a row
+     + hpiii-column-153               ; re-position to column for decimal alignment
+
+
+def x-mtd-lit2 char*10 = x-esc + '*p-' + truncate(ascii(x-mtd-ctr3,3)) + 'X'
+def x-ytd-lit2 char*10 = x-esc + '*p-' + truncate(ascii(x-ytd-ctr3,3)) + 'X'
+
+; (REMOVE LEADING ZEROS FROM DOLLAR VALUE AND REPLACE WITH SPACES)
+def x-mtd-dollars-abs-a char*7 = ascii(x-mtd-dollars-abs,7)
+def x-ytd-dollars-abs-a char*7 = ascii(x-ytd-dollars-abs,7)
+def x-mtd-dollars-abs-b char*8                                               &
+      =  x-mtd-sign + x-mtd-dollars-abs-a      if x-mtd-dollars-abs >999999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[2:6] if x-mtd-dollars-abs > 99999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[3:5] if x-mtd-dollars-abs >  9999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[4:4] if x-mtd-dollars-abs >   999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[5:3] if x-mtd-dollars-abs >    99  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[6:2] if x-mtd-dollars-abs >     9  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[7:1]
+def x-ytd-dollars-abs-b char*8                                               &
+      =  x-ytd-sign + x-ytd-dollars-abs-a      if x-ytd-dollars-abs >999999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[2:6] if x-ytd-dollars-abs > 99999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[3:5] if x-ytd-dollars-abs >  9999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[4:4] if x-ytd-dollars-abs >   999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[5:3] if x-ytd-dollars-abs >    99  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[6:2] if x-ytd-dollars-abs >     9  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[7:1]
+def x-mtd-dollars-abs-char char*8 = rj(x-mtd-dollars-abs-b)
+def x-ytd-dollars-abs-char char*8 = rj(x-ytd-dollars-abs-b)
+
+;be1
+def x-period-col-1 char*1 					&
+ 	 = "." if x-mtd-dollars <> 0 or x-mtd-cents <> 0	&
+      else " " 
+def x-period-col-2 char*1 					&
+  	 = "." if x-ytd-dollars <> 0 or x-ytd-cents <> 0	&
+      else " " 
+
+; (build print format of amount with comma in number if number $1000 or more)
+;be1
+;define x-mtd-prt-dollars char*9                                                &
+;    =" " + x-mtd-dollars-abs-char                 if x-mtd-dollars-abs < 1000 &
+;else      x-mtd-dollars-abs-char[1:5] + "," + x-mtd-dollars-abs-char[6:3]
+define x-mtd-prt-dollars char*9                                                	 &
+      = " "   if x-mtd-dollars = 0 and x-mtd-cents = 0                           &
+  else  " " + x-mtd-dollars-abs-char                 if x-mtd-dollars-abs < 1000 &
+  else      x-mtd-dollars-abs-char[1:5] + "," + x-mtd-dollars-abs-char[6:3]
+
+;be1
+;define x-ytd-prt-dollars char*10                                               &
+;     = "  " + x-ytd-dollars-abs-char                if x-ytd-dollars-abs < 1000 &
+;  else       x-ytd-dollars-abs-char[1:2] + "," + x-ytd-dollars-abs-char[3:3]  + "," + x-ytd-dollars-abs-char[6:3] &
+;		if x-ytd-dollars-abs >= 1000000					   &
+;  else " " + x-ytd-dollars-abs-char[1:5] + "," + x-ytd-dollars-abs-char[6:3]
+define x-ytd-prt-dollars char*10                                               					  &
+      =  " "                                            if x-ytd-dollars =0  and x-ytd-cents = 0 		  &  
+  else   "  " + x-ytd-dollars-abs-char                	if x-ytd-dollars-abs < 1000 				  &
+  else       x-ytd-dollars-abs-char[1:2] + "," + x-ytd-dollars-abs-char[3:3]  + "," + x-ytd-dollars-abs-char[6:3] &
+							if x-ytd-dollars-abs >= 100000				  & 
+  else " " + x-ytd-dollars-abs-char[1:5] + "," + x-ytd-dollars-abs-char[6:3]
+
+;be1
+;define x-mtd-prt-cents   char*2 = ascii(x-mtd-cents,2)
+;define x-ytd-prt-cents   char*2 = ascii(x-ytd-cents,2)
+define x-mtd-prt-cents   char*2 = ascii(x-mtd-cents,2) 				&
+				if x-mtd-dollars <> 0 or x-mtd-cents <>	0	&
+			    else  " "  if x-mtd-dollars = 0 and x-mtd-cents = 0
+define x-ytd-prt-cents   char*2 = ascii(x-ytd-cents,2)                          & 
+				if x-ytd-dollars <> 0 or x-ytd-cents <>	0	&
+			    else  " "  if x-ytd-dollars = 0 and x-ytd-cents = 0
+
+
+
+; (COUNT THE NUMBER OF COMP-CODE LINES PRINTED SO THAT SHADING
+;  AREA CAN BE DETERMINED FOR LASER PRINTER.  THE TWO COUNTERS SHOW
+;  THE NUMBER OF LINES PRINTED WHEN SHADING SHOULD START (INCREQ) AND
+;  WHEN IS SHOULD END (STATUS)
+
+def x-count-increq = 1 if comp-code-group <= "J"                &
+                else 0
+def x-count-status = 1 if comp-code-group <= "L"                &
+                else 0
+def x-count-increq-status = 1 if comp-code-group >= "J" 	&
+			and      comp-code-group <= "L"
+def x-increq = 1 if comp-code-group = 'J'
+def x-inctar = 1 if comp-code-group = 'K'
+def x-status = 1 if comp-code-group = 'L'
+
+
+; override the default comp-code description 
+@if dg and hsc
+
+define x-msg-text char*50                                                  &
+     = "Your YTD Ceiling Payments are underpaid by "                   &
+              if comp-code of f119-doctor-ytd="STATUS" and amt-ytd > 0 &
+  else "Your YTD Ceiling Payments are overpaid by "                    &
+              if comp-code of f119-doctor-ytd="STATUS" and amt-ytd < 0 &
+  else "Current Earnings Payable"                                      &
+              if    comp-code of f119-doctor-ytd = "PAYPOT"            &
+  else text of f119-doctor-ytd                                         &
+;             IF COMP-CODE-GROUP OF F190-COMP-CODES = "K"              &
+              if rec-type = f119-rec-msg                               &
+  else desc-long of f190-comp-codes
+
+@elseif dg and rma
+define x-msg-text char*50                                              &
+    =  "Your YTD Ceiling Payments are overpaid by "                    &
+              if comp-code of f119-doctor-ytd="STATUS" and amt-ytd < 0 &
+  else "Current Ceiling Payable"                                       &
+              if    comp-code of f119-doctor-ytd = "PAYPOT"            &
+                and dept-company  = 1				       &
+  else "Current Earnings Payable"                                      &
+              if    comp-code of f119-doctor-ytd = "PAYPOT"            &
+                and dept-company <> 1				       &
+  else "YTD Ceiling Paid"                                      	       &
+              if    comp-code of f119-doctor-ytd = "YTDEAR"            &
+                and dept-company =  1				       &
+  else "YTD Earnings Paid"                                     	       &
+              if    comp-code of f119-doctor-ytd = "YTDEAR"            &
+                and dept-company <> 1				       &
+  else text of f119-doctor-ytd                                         &
+              if rec-type = f119-rec-msg                               &
+  else desc-long of f190-comp-codes
+@else
+ERROR - REQUIRES CONDITIONAL COMPILE - use bqzs macro!!!
+@endif
+
+define x-line-text char*190                                     &
+    =  x-msg-text                                               &
+     + truncate(x-mtd-lit1)                                     &
+     + truncate(x-mtd-lit2)                                     &
+     + truncate(lj(x-mtd-prt-dollars))                     	&
+     + x-period-col-1                                           &
+     + x-mtd-prt-cents                                          &
+     + truncate(x-ytd-lit1)                                     &
+     + truncate(x-ytd-lit2)                                     &
+     + truncate(lj(x-ytd-prt-dollars))                          &
+     + x-period-col-2                                           &
+     + x-ytd-prt-cents  if rec-type of f119-doctor-ytd = "A"    &
+ else text of f119-doctor-ytd
+
+sorted on doc-nbr of f119-doctor-ytd
+
+set subfile name r124a_paycode7 keep
+
+report summary                                                  &
+  doc-nbr               of f119-doctor-ytd                      &
+  comp-code             of f119-doctor-ytd                      &
+  comp-code-group       of f190-comp-codes                      &
+  process-seq           of f119-doctor-ytd                      &
+  x-count-increq subtotal reset at doc-nbr                      &
+  x-count-status  subtotal reset at doc-nbr                     &
+  x-line-text                                                   &
+  x-deposit                                                     &
+  x-deposit-date                                                &
+  x-ped                                                         &
+  x-bank-account-privacy-masked					&
+  x-bank                                                        &
+  x-branch                                                      &
+  x-dept-name                                                   &
+  x-full-part-ind                                               &
+  x-doc-id-info                                                 &
+  first-ep-nbr-of-cal-yr					&
+  last-ep-nbr-of-cal-yr						&
+  x-ytdcea-pos-prt                                              &
+  x-ytdcea-val-prt                                              &
+  x-ceicea-pos-prt                                              &
+  x-ceicea-val-prt                                              &
+  x-ytdcex-pos-prt                                              &
+  x-ytdcex-val-prt                                              &
+  x-ceicex-pos-prt                                              &
+  x-ceicex-val-prt						&
+  x-ytdreq-pos-prt                                              &
+  x-ytdreq-val-prt                                              &
+  x-ceireq-pos-prt                                              &
+  x-ceireq-val-prt                                              &
+  x-ytdtar-pos-prt                                              &
+  x-ytdtar-val-prt                                              &
+  x-ceitar-pos-prt                                              &
+  x-ceitar-val-prt						&
+  doc-dept							&
+  x-count-increq-status subt reset at doc-nbr			&
+  x-increq       subt  reset at doc-nbr				&
+  x-inctar       subt  reset at doc-nbr				&
+  x-status       subt  reset at doc-nbr		
+
+build $pb_obj/r124a_paycode7

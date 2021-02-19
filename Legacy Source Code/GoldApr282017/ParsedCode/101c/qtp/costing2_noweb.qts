@@ -1,0 +1,158 @@
+; Program: costing2_noweb.qts
+; Purpose: - creates files for costing the RAT REJECTION Charges
+;	    Note that MANUAL rejections are processed in costing3.qts
+;
+;  DATE     BY WHOM     DESCRIPTION
+;99/mar/28  YASEMIN     ORIGINAL
+;00/feb/03  B.E.	- rat error '40' now charged against doctor
+;00/aug/08  B.E.	- select now based upon being within current costing period and
+;			  having the 'charge flag' field set to "Y"es
+;
+; **   CHANGE COSTING.COM MACRO AND run this program FOR DOCTORS WHO DOES BOTH
+;      WEB AND MANUAL BILLING this will report only the manual billing so Leena
+;      can charge them differently
+;03/dec/19  A.A.	- alpha doctor nbr
+;15/Jul/16  MC1	        - correct select if with select file if
+; 			- change from select  on  clmhdr-date-period-end to select on ped
+;                         as clmhdr-date-period-end = clmhdr-date-period-end of the claim,
+;                         ped = clmhdr-date-period-end of the current run
+;                         costing is selected for the current  fiscal period  range
+;16/Nov/28  MC2		- use set lock record update
+
+cancel clear
+
+run costing2
+
+set default
+set process nolimit
+; MC2
+;set lock file update
+set lock record update
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+request costing2_1     &
+        on calculation errors report    &
+        on edit errors report
+
+access f088-rat-rejected-claims-hist-hdr                                &
+        link clmhdr-doc-nbr                                             &
+        to   doc-nbr 							&
+		of   f020-doctor-mstr                         		&
+        link "B",							&
+	     clmhdr-batch-nbr,                                          &
+             clmhdr-claim-nbr,                                          &
+             "00000",                                                   &
+             "0"                                                        &
+        to   key-clm-type ,                                             &
+             key-clm-batch-nbr,                                         &
+             key-clm-claim-nbr,                                         &
+             key-clm-serv-code,                                         &
+             key-clm-adj-nbr                                            &
+	        of   f002-claims-mstr					&
+	link ohip-err-code 						&
+	to   rat-code 							&
+		of f096-ohip-pay-code opt
+
+
+;yasemin
+;select physician non web/diskette rejects
+
+;MC1
+;select 						  			  &
+;  if     clmhdr-date-period-end >= w-current-fiscal-start-yymmdd	  &
+;    and  clmhdr-date-period-end <= w-current-costing-cutoff-yymmdd	  &
+;    and  charge-status = "Y"                                             &
+;    and  clmhdr-adj-cd-sub-type <> "W"                                   &
+;    and  clmhdr-adj-cd-sub-type <> "D"                                   &
+;    and  clmhdr-adj-cd-sub-type <> "C"
+
+select f088-rat-rejected-claims-hist-hdr                  &				  
+   if     ped   >= w-current-fiscal-start-yymmdd          &
+     and  ped   <= w-current-costing-cutoff-yymmdd        &
+     and  charge-status = "Y"                                     
+
+select f002-claims-mstr							  &
+   if     clmhdr-adj-cd-sub-type <> "W"                                   &
+     and  clmhdr-adj-cd-sub-type <> "D"                                   &
+     and  clmhdr-adj-cd-sub-type <> "C"
+; MC1 - end
+
+; (select doctor who  was 'active' anytime within the costing
+;  analysis period - ie. start of fiscal year to current costing
+;  analysis ped's yymm)
+use $use/select_f020_active_for_costing_analysis_period.use
+
+;def x-claim-id char*11 = clmhdr-claim-id[1:11] 
+;!def x-claim-id char*11				&
+;!     =  ascii(clmhdr-batch-nbr)			&
+;!     + ascii(clmhdr-claim-nbr)			&
+;!		if clmhdr-claim-nbr > 9		&
+;!else   ascii(clmhdr-batch-nbr)			&
+;!   + "0"					&
+;!   + ascii(clmhdr-claim-nbr)	
+
+def x-claim-id char*10=clmhdr-batch-nbr + ascii(clmhdr-claim-nbr)
+
+subfile costing2a keep & ;append at doc-nbr 	 		&
+include                                     			&
+	 clmhdr-batch-nbr of f088-rat-rejected-claims-hist-hdr,	& 
+	 clmhdr-claim-nbr of f088-rat-rejected-claims-hist-hdr, &
+	 ped , 				      			&
+	 clmhdr-date-period-end of f088-rat-rejected-claims-hist-hdr , &
+	 w-current-fiscal-start-yymmdd         ,&
+	 w-current-costing-cutoff-yymmdd ,  &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+	 doc-clinic-nbr,		    &
+         x-claim-id ,                       &
+	 ohip-err-code
+
+
+request costing2_2     &
+        on calculation errors report    &
+        on edit errors report
+
+access *costing2a
+
+def nbr-svc zoned*6 unsigned = 0
+def nbr-clm zoned*6 unsigned = 0
+def nbr-dtl zoned*6 unsigned = 0
+
+sort   on doc-nbr	&
+       on x-claim-id
+
+temp nbr-reject zoned*4 unsigned
+item nbr-reject = nbr-reject + 1  reset at doc-nbr
+
+def amt-ytd      zoned*8 signed = 0 
+def misc-amt-ytd zoned*8 signed = 0 
+def mohr-amt-ytd zoned*8 signed = 0 
+def total-amt-ytd zoned*8 signed = 0
+
+def man-reject   zoned*6 unsigned = 0
+
+subfile costing2 keep append at doc-nbr  	&
+include                                         &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+	 doc-clinic-nbr,		    &
+         nbr-svc,                         & 
+         nbr-clm,                         &
+         nbr-dtl,                         &   
+         nbr-reject,			  &
+         amt-ytd,			  &
+	 misc-amt-ytd,			  & 
+	 mohr-amt-ytd,			  & 
+	 total-amt-ytd,			  &
+	 man-reject
+
+build $obj/costing2_noweb

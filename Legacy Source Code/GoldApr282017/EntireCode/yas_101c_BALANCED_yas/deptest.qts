@@ -1,0 +1,47 @@
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one
+
+
+access *dept1                                                            &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+
+select f002-claims-mstr if                   &
+            clmdtl-date-period-end >= '20010701' &
+       and  clmdtl-date-period-end <= '20020630' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"
+;      and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+sort on x-doc-nbr
+
+temp x-amount    num*7
+item x-amount     = x-amount    + clmdtl-fee-ohip   &
+                  reset at x-doc-nbr
+
+subfile dept12  keep at x-doc-nbr include          &
+x-doc-nbr                                          ,&
+x-amount   ,&
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr

@@ -1,0 +1,75 @@
+cancel clear
+; Program: r140_b1.qzs
+; Purpose: Generate grand total report (for Kevin S.) and individual
+;	   department reports for the payments to doctors from the 
+;	   MOH EFT file for Conversion payments
+;	This is the 1st phase that gathers the data. It is run in both payment
+;	areas and generates a single subfile from which r140_b2 generates
+;	the final report
+;
+; 2004/jul/01 b.e.	- original
+; 2004/aug/12 b.e.	- access f075 and use calcualted amounts rather than the base amounts in the a2s file
+; 2004/sep/14 b.e.	- changed length of report from 60 to 50 so that when
+;			  report is imported into Word to be emailed that pages
+;			  fit within Word's default page length
+; 2004/oct/16 b.e.	- added afp-submit-amt to printout
+; 2004/dec/02 b.e.	- changed from report program to just gather data
+;			  in subfile
+
+
+set rep nolimit
+;set report dev disc name r140_b
+set page width 132 length 50
+set rep nohead
+
+;access afp-a2s-file						&
+access f075-afp-doc-mstr 					&
+  	link doc-afp-paym-group                       		&
+	to   doc-afp-paym-group  of f074-afp-group-mstr		&
+;	link (nconvert(doc-afp-paym-solo))			&
+	link doc-nbr						&
+	to   doc-nbr    	 of f020-doctor-mstr		&
+	link doc-dept						&
+	to   dept-nbr		 of f070-dept-mstr
+
+
+select if afp-payment-amt <> 0
+
+sort	on afp-reporting-mth	&
+	on doc-afp-paym-group 	&
+	on doc-dept		&
+	on doc-name
+
+def x-doc-count = 1
+
+def x-doc-name char*35 				&
+	=   pack(  doc-name 			&
+	         + ", "				&
+	         + doc-inits			&
+	         + " ["				&
+	  	 + doc-nbr			&
+		 + "]"				&
+	        )
+
+def x-total-group-payment    = afp-payment-amt
+def x-total-group-submission = afp-submission-amt
+def x-total-dept-payment     = afp-payment-amt
+def x-total-dept-submission  = afp-submission-amt
+
+set subfile name r140_b1 keep append
+
+report summary			&
+	afp-reporting-mth 		&
+	afp-reporting-mth 		&
+	doc-afp-paym-group 		&
+	afp-group-name 		&
+dept-nbr		&
+dept-name		&
+doc-dept		&
+x-doc-name 		&
+doc-ohip-nbr	&
+afp-payment-percentage	&
+afp-payment-amt    of f075-afp-doc-mstr	&
+afp-submission-amt of f075-afp-doc-mstr	
+
+build $obj/r140_b1

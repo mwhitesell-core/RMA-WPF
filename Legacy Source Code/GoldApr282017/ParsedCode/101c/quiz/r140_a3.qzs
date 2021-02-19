@@ -1,0 +1,180 @@
+;  2008/aug/13 M.C.	- Yasemin requests to have a total page by category/group/company
+;  2008/dec/01 MC1	- spelling and spacing correction
+;  2009/jul/07 MC2      - include f074-afp-group-sequence-mstr in the access
+;			- select based on the flag instead of hard code the group
+; 			- cosmetic change on the final footing for alignment and spacing
+;			- display '10/60' if incoming percentage is 0
+
+cancel clear
+set rep nolimit
+set report dev disc name r140_a
+set page width 132 length 45	;60
+set rep nohead
+; 2007/apr/11 b.e. - removed link to tmp-counters
+
+access *r140_a1                                                 &
+        link doc-afp-paym-group                                 &
+        to   doc-afp-paym-group  of f074-afp-group-mstr opt	&
+; 2009/07/07 - MC2
+        link doc-afp-paym-group                                 &
+        to   doc-afp-paym-group  of f074-afp-group-sequence-mstr opt &
+; 2009/07/07 - end
+	link (1)						&
+	to   tmp-counters
+
+sort    on afp-reporting-mth    &
+        on doc-afp-paym-group
+
+use $pb_src/printer_codes.def nol
+
+page heading                                    &
+    tab   1 x-ff				&	
+    tab   2 "r140_a"                            &
+    tab  30 "Governance SUMMARY Report(s)"      &
+    tab 106 "Page: "                            &
+    tab 112 syspage                             &
+  skip 1
+heading at afp-reporting-mth                            &
+    tab 38 "for "                                       &
+    tab 43 afp-reporting-mth pic "^^^^/^^"              &
+  skip 2                                                &
+; 2008/12/01 - MC1 - spelling correction
+;    tab  01 "Goverance Group: HAMILTON ACADEMIC HEALTH SCIENCES ORGANIZATION" &
+    tab  01 "Governance Group: HAMILTON ACADEMIC HEALTH SCIENCES ORGANIZATION" &
+; 2008/12/01 - end
+    tab  79 "Fixed Monthly Payment:"                    &
+    tab 103 afp-payment-amt-total                       &
+  skip 2                                                &
+    tab   1 "Group"                                     &
+    tab  68 "Billing"                                   &
+    tab  79 "Conversion"                                &
+    tab  92 "Conversion"                                &
+    tab 120 "Submission"                                &
+  skip 1                                                &
+    tab   1 "Name"                                      &
+    tab  67 " Number"                                   &
+    tab  81 "Rate (%)"                                  &
+    tab  92 "Amount ($)"                                &
+    tab 121 "Amount ($)"                                &
+  skip 2
+
+; 2009/07/08 - MC
+;def x-percentage  = afp-payment-percentage 
+def x-percentage char*5   = '   ' + ascii(afp-payment-percentage,2)  &
+		if afp-payment-percentage <> 0		       &
+	else '10/60'
+; 2009/07/08 - end
+
+def x-count = 1
+
+def x-conversion-payment-running-total  &
+        =   x-payment-amt-subtotal      
+def x-conversion-payment-final-total            &
+        =   x-conversion-payment-running-total  & 
+          + afp-payment-amt-total
+
+def x-afp-group-name-shortened char*70 = afp-group-name[1:70]
+
+def x-payment-grand-total = x-payment-amt-subtotal + afp-payment-amt-total   
+
+
+;2008/08/13 - MC
+def rma-total     zoned*10 numeric = x-payment-amt	&
+; 2009/07/07 - MC2
+;       if      doc-afp-paym-group = 'H061'             &
+;          or  (doc-afp-paym-group >= 'H103'  and       &
+;               doc-afp-paym-group <= 'H107')
+        if     total-flag = 'R'
+; 2009/07/07 - end
+
+def rma-inc-total     zoned*10 numeric = x-payment-amt	&
+; 2009/07/07 - MC2 
+;       if      doc-afp-paym-group = 'H055'             &
+;          or  (doc-afp-paym-group >= 'H108'  and       &
+;               doc-afp-paym-group <= 'H112')           &
+;          or   doc-afp-paym-group = 'H147'
+        if     total-flag = 'I'
+; 2009/07/07 - end
+
+def solo-total    zoned*10 numeric = x-payment-amt	&
+; 2009/07/07 - MC2
+;       if     (doc-afp-paym-group >= 'H129'  and       &
+;               doc-afp-paym-group <= 'H135')
+        if     total-flag = 'S'
+; 2009/07/07 - end
+
+def other-total     zoned*10 numeric = x-payment-amt	&
+; 2009/07/07 - MC2
+;       if      doc-afp-paym-group = 'H262'             &
+;          or  (doc-afp-paym-group >= 'H513'  and       &
+;               doc-afp-paym-group <= 'H524')           &
+;          or  (doc-afp-paym-group >= 'H526'  and       &
+;               doc-afp-paym-group <= 'H529')
+        if     total-flag = 'O'
+; 2009/07/07 - end
+
+def rma-inc-sub-total  zoned*10 numeric = 		&
+	rma-inc-total + solo-total + other-total
+
+def grand-total  zoned*10 numeric = 			&
+	rma-total + rma-inc-total + solo-total + other-total
+;  2008/08/13 - end
+
+
+rep                                             	&
+  tab   1 x-afp-group-name-shortened            	&
+  tab  71 doc-afp-paym-group                    	&
+; 2009/07/08 - MC
+;  tab  83 x-percentage  pic "^^^^"              	&
+  tab  81 x-percentage                          	&
+; 2009/07/08 - end
+  tab  87 x-payment-amt    pic " ^^^,^^^,^^^.^^ " 	&
+  tab 116 x-submission-amt pic " ^^^,^^^,^^^.^^ "                       
+
+final footing                                           &
+  skip                                                  &
+  tab  89 "-------------"                                &
+  tab 118 "-------------"                                &
+  skip 2                                                &
+; 2008/12/01 - MC1 - spacing correction
+;  tab  58 "Total Group Conversion Payments:"             &
+  tab  55 "Total Group Conversion Payments:"             &
+; 2008/12/01 - end
+  tab  87 x-payment-amt subt pic " ^^^,^^^,^^^.^^ "      &
+;  tab 104 x-payment-amt subt pic "^^^,^^^,^^^.^^ "      &
+  tab 116 x-submission-amt subt pic " ^^^,^^^,^^^.^^"	&
+  skip 2                                                &
+;  tab 106 "------------"                                &
+;  tab 121 "------------"                                &
+;  skip							&
+;  tab  76 "Total Payment/Submission:" 			&	
+  tab  62 "Total Payment/Submission:" 			&	
+  tab  87 x-payment-grand-total pic " ^^^,^^^,^^^.^^"	&
+  tab 116 x-submission-amt subt pic " ^^^,^^^,^^^.^^"	&
+;2008/08/13 - MC
+  skip 4						&
+  tab  02 'Solo          : '				&
+  tab  25  solo-total subt pic '^^,^^^,^^^.^^'		&
+  skip 1						&
+  tab  02 'RMA Inc.      : '				&
+  tab  25  rma-inc-total subt pic '^^,^^^,^^^.^^'	&
+  skip 1						&
+  tab  02 'Other         : '				&
+  tab  25  other-total subt pic '^^,^^^,^^^.^^'		&
+  skip 1						&
+  tab  25 '-------------'				&
+  skip 1						&
+  tab  02 'Inc.   Total  : '				&
+  tab  25  rma-inc-sub-total subt pic '^^,^^^,^^^.^^'	&
+  skip 2						&
+  tab  02 'RMA    Total  : '				&
+  tab  25  rma-total subt pic '^^,^^^,^^^.^^'		&
+  skip 1						&
+  tab  25 '-------------'				&
+  skip 1						&
+  tab  02 'Total Payment : '			        &
+  tab  25  grand-total       subt pic '^^,^^^,^^^.^^'	&
+  skip 1						&
+  tab  25 '============='
+
+build $obj/r140_a3

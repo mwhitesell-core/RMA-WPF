@@ -1,0 +1,80 @@
+;#V PROGRAM-ID.     U105.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             - Before monthend earnings starts, zero out previous MTD
+;		values that are stored in F119-DOCTOR-YTD file.
+;
+;    MODIFICATION HISTORY
+;        DATE    WHO      DESCRIPTION
+;     93/OCT/15  B.E.     - original
+;     94/FEB/06  B.E.     - zero only "A" type records
+;     94/MAY/24  M.C.	  - UPDATE THE 'YTDEAR' TO BE DOC-YTDEAR
+;   1999/JAN/15  S.B.	  - Checked for Y2K.
+;   2003/dec/24  A.A.	  - alpha doctor nbr
+;   2008/may/10  brad2    - include "C" type record in this pgm so 
+;		   	    that mtd values are deleted
+;   2008/jun/16  M.C.     - include "D"  type record in this pgm so 
+;		   	    that mtd values are reset to  zero
+;   2008/nov/05  brad3    - include "D"  type record in this pgm so 
+;		   	    that mtd values are reset to  zero (line was commented out)
+;   2009/sep/30  MC1	  - add the new request at the end to update doc-ohip-nbr if different
+;   2009/Oct/08  MC2	  - update amt-ytd of ytdear instead of amt-mtd
+
+cancel clear
+set default
+set process limit 100000
+run u105
+
+;------------------------------------------------------------------------
+request u105_run_0_update_f119		&
+ 	on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd
+
+;brad2
+;select if rec-type = "A"
+select 	if    rec-type = "A"	&	; payroll 94 records (r124a display records)
+	   or rec-type = "C"    &	; governance records
+	   or rec-type = "D"		; tithe calculations
+
+output f119-doctor-ytd update
+  item amt-mtd = 0
+
+;------------------------------------------------------------------------
+request u105_run_1_update_f119		&
+ 	on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd link doc-nbr to doc-nbr of f020-doctor-mstr
+
+select if comp-code of f119-doctor-ytd = 'YTDEAR'
+
+output f119-doctor-ytd update
+; 2009/10/07 - MC2
+;  item amt-mtd final doc-ytdear of f020-doctor-mstr
+  item amt-ytd final doc-ytdear of f020-doctor-mstr
+; 2009/10/07 - end
+
+
+;------------------------------------------------------------------------
+request u105_run_2_update_f119		&
+ 	on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd link doc-nbr to doc-nbr of f020-doctor-mstr
+
+sel if doc-ohip-nbr of f119-doctor-ytd <> doc-ohip-nbr of f020-doctor-mstr
+
+def rundate date = sysdate
+def runtime zoned*8 unsigned = systime / 10000
+
+subfile savef119 keep append include f119-doctor-ytd, rundate, runtime
+
+output f119-doctor-ytd update on errors report
+   item doc-ohip-nbr final doc-ohip-nbr of f020-doctor-mstr
+
+
+build $pb_obj/u105

@@ -1,0 +1,211 @@
+;doc     : collen_codes_dept7_diag_f050hist.qts  
+;purpose : report totals for cardiology division - procedures ECG and ECHO's
+;          clinic 60's professional fees will be picked up in 22 agent T995
+;who     : Ken McFarlen
+
+
+;Date           Who             Description
+;2009/mar/12    Moira                      
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f050-doc-revenue-mstr-history
+
+;exclude clinic 60's & 70's & 98
+choose  ep-yr 2007, iconst-date-period-end 20080601, docrev-key '22@' to '59@', '80@' to '97@'      
+
+             
+select if     (    docrev-oma-code      =  "E450"    &  
+                or docrev-oma-code      =  "E451"    &  
+                or docrev-oma-code      =  "G148"    &  
+                or docrev-oma-code      =  "G310"    &  
+                or docrev-oma-code      =  "G313"    &  
+                or docrev-oma-code      =  "G414"    &  
+                or docrev-oma-code      =  "G415"    &  
+                or docrev-oma-code      =  "G416"    &  
+                or docrev-oma-code      =  "G418"    &  
+                or docrev-oma-code      =  "G457"    &  
+                or docrev-oma-code      =  "G544"    &  
+                or docrev-oma-code      =  "G545"    &  
+                or docrev-oma-code      =  "G554"    &  
+                or docrev-oma-code      =  "G555"    &  
+                or docrev-oma-code      =  "G566"    &  
+                or docrev-oma-code      =  "G567"    &  
+                or docrev-oma-code      =  "G570"    &  
+                or docrev-oma-code      =  "G571"    &  
+                or docrev-oma-code      =  "G577"    &  
+                or docrev-oma-code      =  "G578"    &  
+                or docrev-oma-code      =  "G579"    &  
+                or docrev-oma-code      =  "G581"    &  
+                or docrev-oma-code      =  "G650"    &  
+                or docrev-oma-code      =  "G651"    &  
+                or docrev-oma-code      =  "G652"    &  
+                or docrev-oma-code      =  "G658"    &  
+                or docrev-oma-code      =  "J301"    &  
+                or docrev-oma-code      =  "J303"    &  
+                or docrev-oma-code      =  "J304"    &  
+                or docrev-oma-code      =  "J310"    &  
+                or docrev-oma-code      =  "J311"    &  
+                or docrev-oma-code      =  "J315"    &  
+                or docrev-oma-code      =  "J316"    &  
+                or docrev-oma-code      =  "J322"    &  
+                or docrev-oma-code      =  "J330"    &  
+                or docrev-oma-code      =  "J340"    &  
+                or docrev-oma-code      =  "AGEP"    &  
+                or docrev-oma-code      =  "T995")   &
+        and  (     docrev-dept = 07 	           &	
+                or docrev-dept = 70                &
+                or docrev-dept = 71                &
+                or docrev-dept = 72                &
+                or docrev-dept = 73                &
+                or docrev-dept = 74)               
+
+
+sort on docrev-doc-nbr 
+
+def doc-amt zoned*9 signed  = docrev-ytd-in-rec + docrev-ytd-out-rec
+
+def x-clinic char*2 = docrev-clinic-1-2
+
+
+temp x-clms-shadow zoned*9 signed
+item x-clms-shadow  = x-clms-shadow + doc-amt                  &
+            	if   docrev-oma-code <> "AGEP"             &
+		and ((x-clinic >= '91' and x-clinic <= '95') or x-clinic = '82')  &
+              reset at docrev-doc-nbr
+
+temp x-agep-shadow zoned*9 signed
+item x-agep-shadow  = x-agep-shadow + doc-amt                  &
+                 if  docrev-oma-code = "AGEP"              &
+		and ((x-clinic >= '91' and x-clinic <= '95') or x-clinic = '82')  &
+              reset at docrev-doc-nbr
+
+temp x-clms-non-shadow zoned*9 signed
+item x-clms-non-shadow  = x-clms-non-shadow + doc-amt                  &
+            	if   docrev-oma-code <> "AGEP"             			&
+		and ((x-clinic < '91' or  x-clinic >  '95') and x-clinic <> '82')  &
+              reset at docrev-doc-nbr
+
+temp x-agep-non-shadow zoned*9 signed
+item x-agep-non-shadow  = x-agep-non-shadow + doc-amt                  &
+                 if  docrev-oma-code = "AGEP"              			&
+		and ((x-clinic < '91' or  x-clinic >  '95') and x-clinic <> '82')  &
+              reset at docrev-doc-nbr
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + doc-amt                  &
+              reset at docrev-doc-nbr
+
+
+subfile colleen_1 keep at docrev-doc-nbr include      &
+  docrev-doc-nbr,                      &
+  x-clms-shadow,                &
+  x-agep-shadow,                &
+  x-clms-non-shadow,            &
+  x-agep-non-shadow,            &
+  x-tot
+
+;pick clinic 70's with prof fee only with all oma code
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f050tp-doc-revenue-mstr-history
+
+choose  ep-yr 2007, iconst-date-period-end 20080601, docrevtp-key '7@'  
+
+sort on docrevtp-doc-nbr
+
+define x-bill-amt zoned*9 signed = docrevtp-in-prof-amt-billed(2) + docrevtp-out-prof-amt-billed(2)
+define x-adj-amt zoned*9 signed = docrevtp-in-prof-amt-adjusts(2) + docrevtp-out-prof-amt-adjusts(2)
+define x-prof-amt zoned*9 signed = x-bill-amt + x-adj-amt
+
+temp x-clms-non-shadow zoned*9 signed
+item x-clms-non-shadow  = x-clms-non-shadow + x-prof-amt                 &
+                 if  docrevtp-oma-code <> "AGEP"             &
+              reset at docrevtp-doc-nbr
+
+temp x-agep-non-shadow zoned*9 signed
+item x-agep-non-shadow  = x-agep-non-shadow + x-prof-amt                &
+                 if  docrevtp-oma-code = "AGEP"              &
+              reset at docrevtp-doc-nbr
+
+define x-clms-shadow zoned*9 signed = 0
+define x-agep-shadow zoned*9 signed = 0
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + x-prof-amt    		 & 
+              reset at docrevtp-doc-nbr
+
+
+subfile colleen_1 keep append  at docrevtp-doc-nbr include      &
+  docrevtp-doc-nbr,             &
+  x-clms-shadow,                &
+  x-agep-shadow,                &
+  x-clms-non-shadow,            &
+  x-agep-non-shadow,            &
+  x-tot
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *colleen_1 			&
+	link docrev-doc-nbr 		&
+	 to  doc-nbr of f020-doctor-mstr opt
+
+def x-comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+sort on docrev-doc-nbr
+
+
+temp x-clms-amt-shdw zoned*9 signed
+item x-clms-amt-shdw  = x-clms-amt-shdw + x-clms-shadow                  &
+              reset at docrev-doc-nbr
+
+temp x-agep-amt-shdw zoned*9 signed
+item x-agep-amt-shdw  = x-agep-amt-shdw + x-agep-shadow                    &
+              reset at docrev-doc-nbr
+
+temp x-clms-amt-non-shdw zoned*9 signed
+item x-clms-amt-non-shdw  = x-clms-amt-non-shdw + x-clms-non-shadow                  &
+              reset at docrev-doc-nbr
+
+temp x-agep-amt-non-shdw zoned*9 signed
+item x-agep-amt-non-shdw  = x-agep-amt-non-shdw + x-agep-non-shadow                    &
+              reset at docrev-doc-nbr
+
+temp x-tot-amt  zoned*9 signed
+item x-tot-amt   = x-tot-amt  + x-tot 			  & 
+              reset at docrev-doc-nbr
+
+subfile colleen_2 portable keep at docrev-doc-nbr include      &
+  doc-dept,                     &
+  x-comma,                      &
+  doc-nbr,                      &
+  x-comma,                      &
+  doc-name,                     &
+  x-comma,                      &
+  doc-inits,                    &
+  x-comma,                      &
+  x-clms-amt-shdw,              &
+  x-comma,                      &
+  x-agep-amt-shdw,              &
+  x-comma,                      &
+  x-clms-amt-non-shdw,          &
+  x-comma,                      &
+  x-agep-amt-non-shdw,          &
+  x-comma,                      &
+  x-tot-amt,                    &
+  x-cr
+
+

@@ -1,0 +1,891 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   1
+*                      u993.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. u993.
+author. dyad technologies inc.
+installation. rma.
+date-written. 86/02/19.
+date-compiled. 18-May-06 15:42.
+security.
+*
+*    files      : f010 - patient master
+*               : f090 - constants master
+*               : "ru993" - audit report file
+*
+*    program purpose : this program is run to fix "DUPLICATE IKEY"
+*                      problem from m010, patient master maintenance.
+*                      it reads the patient master for each console
+*                      number to determine the last ikey number used.
+*                      the constants master is then updated with the
+*                      next available number for each console.
+*
+*    revision may/87 (s.b.) - coversion from aos to aos/vs.
+*                             change field size for
+*                             status clause to 2 and
+*                             feedback clause to 4.
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*   rev.  91/03/06 (b.m.l.) - sms 138.
+*                           - remove key-pat-mstr from working storage.
+*
+*   rev.  91/04/21 (m.c.)   - sms 138
+*                           - modify in ab1 subroutine for key-pat-mstr
+*                             related fields.
+*
+*   rev.  94/05/31 (m.c.)   - since no ikey with console 1, start with
+*                             console 2
+*
+*   rev.  98/02/03 (j.c.)   - s149 unix conversion
+*
+*         98/09/21 (b.e.)   - reversed change from 940531 - when moving to MF co
+*                             there is now a console 1.
+*
+*       1999/May/20 S.B.    - Y2K checked.
+*       2002/apr/29 B.E.    - removed extra display statements so that when
+*                             begin/end messages don't appear
+*
+environment division.
+input-output section.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   2
+*                      u993.cbl
+file-control.
+*
+*   place your file select statements here
+*
+    copy "f010_new_patient_mstr.slr".
+*   (2002/jun/26 B.E. added chart nbrs 2-5)
+
+    select pat-mstr
+        assign to disk "$pb_data/f010_pat_mstr"
+        organization is indexed
+        access mode  is dynamic
+        lock mode is manual
+
+        record    key is key-pat-mstr    of pat-mstr
+        alternate key is pat-health-nbr  of pat-mstr with duplicates
+        alternate key is pat-acronym     of pat-mstr with duplicates
+        alternate key is pat-ohip-mmyy   of pat-mstr with duplicates
+        alternate key is pat-chart-nbr   of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-2 of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-3 of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-4 of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-5 of pat-mstr with duplicates
+        alternate key is pat-full-name   of pat-mstr with duplicates
+
+        status       is status-cobol-pat-mstr.
+*
+*
+    copy "f090_constants_mstr.slr".
+select iconst-mstr
+assign to disk "$pb_data/f090_constants_mstr"
+organization is indexed
+access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+lock mode is manual
+record key   is iconst-clinic-nbr-1-2
+*       eof-flag     is eof-iconst-mstr
+status is status-cobol-iconst-mstr.
+*
+    select audit-file
+          assign to printer print-file-name
+          file status is status-audit-rpt.
+*
+data division.
+file section.
+*
+    copy "f010_patient_mstr.fd".
+* file:  f010_patient_mstr.fd
+* modification history
+* --------------------
+* 98/dec/01 D.B.        -y2k
+* 99/jan/01 B.E.        - switch expiry date from mmyy to yymm
+* 99/Jan/21 M.C.        - change pat-reserve-for-future from 21 to 1, andd
+*                         pat-last-mod-by, change size from 330 to 315
+* 99/mar/16 B.E.        - added pat-health-nbr-unvalidated,
+*                         pat-version-cd-unvalidated, and
+*                         pat-ohip-validiation-status for additional 13 bytes
+*                         plus increase given name from 12 to 17 and surname
+*                         from 15 to 25 characters for an addition 15 bytes for
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   3
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+*                         a total increase in sisze 13+15 = 28 bytes.
+* 2000/mar/24 B.E.      - redefined pat-version-cd into 1 and 2 characters.
+* 2002/may/10 B.E.      - phone-nbr from 7 to 20
+*                       - added 4 addition hospital chart nbrs:
+*                               pat-chart-nbr   = MUMC
+*                               pat-chart-nbr-2 = CHEDOKE
+*                               pat-chart-nbr-3 = HENDERSON
+*                               pat-chart-nbr-4 = GENERAL
+*                               pat-chart-nbr-5 = ST JOES
+*                       - changed subscr-addr, subscr-addr-unvalidated and
+*                         pat-old-addr elements to:
+*                               addr1/2/3 from 21 to 30
+*                        - change country from x(20) to x(1)
+*                        - added an 'address' prov-cd x(2) as compared to the
+*                          health insurance card prov-cd
+* 2002/sep/13 B.E.      - postal code from 6 to 10
+* 2003/apr/09 M.C.      - substitute pat-reserve-for-future with pat-obec-status
+* 2003/nov/24 M.C.      - change pat-last-doc-nbr-seen from 9(6) to x(3)
+*
+* Note: The following files must be kept in sync:
+*               f010_patient_mstr.fd
+*               f010_patient_mstr_new.fd
+*               f010_patient_mstr.ws
+
+
+fd  pat-mstr
+*          record      contains 343 characters .
+*       record      contains 379 characters [+10(addr3) +4(pc) -19(country)]
+*       record      contains 394 characters .  [ - 3(last doc seen)]
+        record      contains 391 characters .
+*       feedback is feedback-pat-mstr.
+
+01 pat-mstr-rec.
+
+    05  pat-acronym.
+        10  pat-acronym-first6          pic x(6).
+        10  pat-acronym-last3           pic xxx.
+
+    05  pat-ohip-mmyy.
+        10  pat-ohip-out-prov.
+            15  pat-ohip-nbr            pic 9(8).
+            15  pat-mm                  pic 99.
+            15  pat-yy                  pic 99.
+        10  filler                      pic x(3).
+    05  pat-ohip-mmyy-r  redefines pat-ohip-mmyy.
+        10  pat-direct-alpha.
+            15  pat-alpha1              pic x.
+            15  pat-alpha2-3            pic xx.
+        10  pat-direct-yy               pic xx.
+        10  pat-direct-mm               pic xx.
+        10  pat-direct-dd               pic xx.
+        10  pat-direct-filler           pic x(6).
+
+*       (MUMC)
+    05  pat-chart-nbr.
+*        10  pat-chart-m                        pic x.
+*        10  pat-chart-yy               pic xx.
+*        10  pat-chart-mm               pic xx.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   4
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+*        10  pat-chart-4-5              pic x(5).
+*        10  filler                     pic x(5).
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+
+*       (CHEDOKE)
+    05  pat-chart-nbr-2.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+
+*       (HENDERSON)
+    05  pat-chart-nbr-3.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+*       (GENERAL)
+    05  pat-chart-nbr-4.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+*       (ST JOES)
+    05  pat-chart-nbr-5.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(10).
+
+    05  pat-full-name.
+*          05  pat-surname                              pic x(15).
+        10  pat-surname                 pic x(25).
+        10  pat-surname-r  redefines  pat-surname.
+            15  pat-surname-first6      pic x(6).
+* MC        15  pat-surname-last14      pic x(14).
+            15  pat-surname-last19      pic x(19).
+        10  pat-surname-rr  redefines  pat-surname.
+            15  pat-surname-first3      pic x(3).
+            15  pat-surname-last22      pic x(22).
+
+*           05  pat-given-name                  pic x(12).
+        10  pat-given-name              pic x(17).
+        10  pat-given-name-r  redefines  pat-given-name.
+            15  pat-given-name-first3   pic xxx.
+            15  pat-given-name-last14   pic x(14).
+        10  pat-given-name-rr redefines pat-given-name-r.
+            15  pat-given-name-first1   pic x.
+            15  filler                  pic x(16).
+
+    05  pat-init.
+        10  pat-init1                   pic x.
+        10  pat-init2                   pic x.
+        10  pat-init3                   pic x.
+    05  pat-location-field.
+        10  pat-location-field-1-3      pic x(3).
+        10  filler                      pic x(1).
+* 2003/11/24 - MC
+*    05  pat-last-doc-nbr-seen          pic 9(6).
+    05  pat-last-doc-nbr-seen           pic x(3).
+* 2003/11/24 - end
+
+    05  pat-birth-date                  pic 9(8).
+    05  pat-birth-date-r  redefines  pat-birth-date.
+        10  pat-birth-date-yy           pic 9999.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   5
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+        10  pat-birth-date-mm           pic 99.
+        10  pat-birth-date-dd           pic 99.
+    05  pat-date-last-maint             pic 9(8).
+    05  pat-date-last-maint-r redefines pat-date-last-maint.
+        10  pat-date-last-maint-yy      pic 9999.
+        10  pat-date-last-maint-mm      pic 99.
+        10  pat-date-last-maint-dd      pic 99.
+    05  pat-date-last-visit             pic 9(8).
+    05  pat-date-last-visit-r redefines pat-date-last-visit.
+        10  pat-date-last-visit-yy      pic 9999.
+        10  pat-date-last-visit-mm      pic 99.
+        10  pat-date-last-visit-dd      pic 99.
+    05  pat-date-last-admit             pic 9(8).
+    05  pat-date-last-admit-r redefines pat-date-last-admit.
+        10  pat-date-last-admit-yy      pic 9999.
+        10  pat-date-last-admit-mm      pic 99.
+        10  pat-date-last-admit-dd      pic 99.
+     05  pat-phone-nbr.
+        10  pat-phone-nbr-first3        pic 999.
+        10  pat-phone-nbr-last4         pic 9(4).
+        10  pat-phone-nbr-remainder     pic x(13).
+
+    05  pat-total-nbr-visits            pic 9(5).
+    05  pat-total-nbr-claims            pic 9(5).
+    05  pat-sex                         pic x.
+    05  pat-in-out                      pic x.
+    05  pat-nbr-outstanding-claims      pic 9(4).
+    05  key-pat-mstr.
+        10  pat-i-key                   pic x.
+        10  pat-con-nbr                 pic 99.
+        10  pat-i-nbr                   pic 9(12).
+        10  filler                      pic x.
+    05  pat-health-nbr                  pic 9(10).
+    05  pat-version-cd.
+        10  pat-version-cd-1            pic x.
+        10  pat-version-cd-2            pic x.
+    05  pat-health-65-ind               pic x.
+    05  pat-expiry-date.
+        10  pat-expiry-yy               pic 99.
+        10  pat-expiry-mm               pic 99.
+    05  pat-prov-cd                     pic xx.
+
+*          05  subscr-addr1                     pic x(21).
+    05  subscr-addr1                    pic x(30).
+*          05  subscr-addr2                     pic x(21).
+    05  subscr-addr2                    pic x(30).
+*          05  subscr-addr3                     pic x(21).
+    05  subscr-addr3                    pic x(30).
+
+    05  subscr-prov-cd                  pic xx.
+
+* 2002/sep/13 B.E.
+*    05  subscr-postal-cd               pic x(6).
+    05  subscr-postal-cd                pic x(10).
+    05  subscr-postal-cd-r  redefines  subscr-postal-cd.
+        10  subscr-post-code1.
+            15  subscr-post-cd1         pic x.
+            15  subscr-post-cd2         pic 9.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   6
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+            15  subscr-post-cd3         pic x.
+        10  subscr-post-code2.
+            15  subscr-post-cd4         pic 9.
+            15  subscr-post-cd5         pic x.
+            15  subscr-post-cd6         pic 9.
+        10  filler                      pic x(4).
+
+    05  subscr-msg-data.
+        10  subscr-msg-nbr              pic xx.
+        10  subscr-date-msg-nbr-eff-to          pic 9(8).
+        10  subscr-date-msg-nbr-eff-to-r
+              redefines subscr-date-msg-nbr-eff-to.
+            15  subscr-date-msg-nbr-eff-to-yy   pic 9999.
+            15  subscr-date-msg-nbr-eff-to-mm   pic 99.
+            15  subscr-date-msg-nbr-eff-to-dd   pic 99.
+        10  subscr-date-msg-nbr-eff-to-r1
+              redefines subscr-date-msg-nbr-eff-to-r
+                                                pic x(8).
+        10  subscr-date-last-statement          pic 9(8).
+        10  subscr-date-last-statement-r
+              redefines subscr-date-last-statement.
+            15  subscr-date-last-statement-yy           pic 9999.
+            15  subscr-date-last-statement-mm           pic 99.
+            15  subscr-date-last-statement-dd           pic 99.
+    05  subscr-auto-update                              pic x.
+    05  pat-last-mod-by                                 pic x(5).
+    05  pat-date-last-elig-mailing                      pic 9(8).
+    05  pat-date-last-elig-maint                        pic 9(8).
+    05  pat-last-birth-date                             pic 9(8).
+    05  pat-last-version-cd                             pic x(2).
+    05  pat-mess-code                                   pic x(3).
+***    05  pat-country                                     pic x(20).
+    05  pat-country                                     pic x(1).
+    05  pat-no-of-letter-sent                           pic 99.
+    05  pat-dialysis                                    pic x(1).
+
+***    05  pat-health-nbr-unvalidated                      pic 9(10).
+***    05  pat-version-cd-unvalidated                      pic xx.
+    05  pat-ohip-validiation-status                     pic x.
+
+* 2003/04/09 - MC
+*    05  pat-reserve-for-future                         pic x(1).
+    05  pat-obec-status                                 pic x(1).
+* 2004/04/09 - end
+*
+    copy "f090_constants_mstr.fd".
+* 99/Jan/29     MC      - change iconst-clinic-nbr from numeric to character
+* 03/nov/05 b.e. - alpha doctor nbr
+
+fd  iconst-mstr
+*       index block contains   2 characters
+              block contains 384 characters
+        record      contains 384 characters  .
+*       feedback is feedback-iconst-mstr.
+
+01 iconst-mstr-rec.
+    05  iconst-clinic-nbr-1-2                   pic   99.
+*    05  iconst-clinic-nbr                      pic  9(4).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   7
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/f090_)
+    05  iconst-clinic-nbr                       pic  x(4).
+    05  iconst-clinic-name                      pic x(20).
+    05  iconst-clinic-cycle-nbr                 pic   99.
+    05  iconst-date-period-end.
+* y2k   10  iconst-date-period-end-yy           pic   99.
+        10  iconst-date-period-end-yy           pic   9999.
+        10  iconst-date-period-end-mm           pic   99.
+        10  iconst-date-period-end-dd           pic   99.
+    05  iconst-clinic-addr.
+        10  iconst-clinic-addr-l1               pic  x(25).
+        10  iconst-clinic-addr-l2               pic  x(25).
+        10  iconst-clinic-addr-l3               pic  x(25).
+    05  iconst-clinic-addr-r redefines iconst-clinic-addr.
+        10  iconst-clinic-addr                  pic x(25)   occurs  3  times.
+    05  iconst-clinic-card-colour               pic    x.
+    05  iconst-clinic-over-lim1                 pic 99v99.
+    05  iconst-clinic-under-lim2                pic 99v99.
+    05  iconst-clinic-under-lim3                pic 99v99.
+    05  iconst-clinic-over-lim4                 pic 99v99.
+
+*!    05  iconst-clinic-batch-nbr                 pic 9(6).
+    05  iconst-clinic-batch-nbr                 pic x(6).
+
+    05  iconst-reduction-factor                 pic 99v99.
+    05  iconst-overpay-factor                   pic 99v99.
+    05  filler                                  pic x(242).
+*
+    copy "f090_const_mstr_rec_5.ws".
+01  constants-mstr-rec-5.
+    05  const-rec-5-rec-nbr                             pic 99.
+    05  const-i-key-value.
+        10  const-invisible-key  occurs  25 times.
+            15  const-con-nbr                           pic 99.
+            15  const-nx-avail-pat                      pic 9(12).
+    05  const-invisible-key-r  redefines const-i-key-value.
+        10  const-con-nbr-1                             pic 99.
+        10  const-nx-avail-pat-1                        pic 9(12).
+        10  const-con-nbr-2                             pic 99.
+        10  const-nx-avail-pat-2                        pic 9(12).
+        10  const-con-nbr-3                             pic 99.
+        10  const-nx-avail-pat-3                        pic 9(12).
+        10  const-con-nbr-4                             pic 99.
+        10  const-nx-avail-pat-4                        pic 9(12).
+        10  const-con-nbr-5                             pic 99.
+        10  const-nx-avail-pat-5                        pic 9(12).
+        10  const-con-nbr-6                             pic 99.
+        10  const-nx-avail-pat-6                        pic 9(12).
+        10  const-con-nbr-7                             pic 99.
+        10  const-nx-avail-pat-7                        pic 9(12).
+        10  const-con-nbr-8                             pic 99.
+        10  const-nx-avail-pat-8                        pic 9(12).
+        10  const-con-nbr-9                             pic 99.
+        10  const-nx-avail-pat-9                        pic 9(12).
+        10  const-con-nbr-10                            pic 99.
+        10  const-nx-avail-pat-10                       pic 9(12).
+        10  const-con-nbr-11                            pic 99.
+        10  const-nx-avail-pat-11                       pic 9(12).
+        10  const-con-nbr-12                            pic 99.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   8
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/f090_)
+        10  const-nx-avail-pat-12                       pic 9(12).
+        10  const-con-nbr-13                            pic 99.
+        10  const-nx-avail-pat-13                       pic 9(12).
+        10  const-con-nbr-14                            pic 99.
+        10  const-nx-avail-pat-14                       pic 9(12).
+        10  const-con-nbr-15                            pic 99.
+        10  const-nx-avail-pat-15                       pic 9(12).
+        10  const-con-nbr-16                            pic 99.
+        10  const-nx-avail-pat-16                       pic 9(12).
+        10  const-con-nbr-17                            pic 99.
+        10  const-nx-avail-pat-17                       pic 9(12).
+        10  const-con-nbr-18                            pic 99.
+        10  const-nx-avail-pat-18                       pic 9(12).
+        10  const-con-nbr-19                            pic 99.
+        10  const-nx-avail-pat-19                       pic 9(12).
+        10  const-con-nbr-20                            pic 99.
+        10  const-nx-avail-pat-20                       pic 9(12).
+        10  const-con-nbr-21                            pic 99.
+        10  const-nx-avail-pat-21                       pic 9(12).
+        10  const-con-nbr-22                            pic 99.
+        10  const-nx-avail-pat-22                       pic 9(12).
+        10  const-con-nbr-23                            pic 99.
+        10  const-nx-avail-pat-23                       pic 9(12).
+        10  const-con-nbr-24                            pic 99.
+        10  const-nx-avail-pat-24                       pic 9(12).
+        10  const-con-nbr-25                            pic 99.
+        10  const-nx-avail-pat-25                       pic 9(12).
+
+
+
+fd  audit-file
+    record contains 132 characters.
+
+01  audit-record                                pic x(132).
+
+
+working-storage section.
+
+77  err-ind                                     pic 99  value zero.
+77  print-file-name                             pic x(5) value "ru993".
+
+77  pat-occur                                   pic 9(12).
+77  feedback-pat-mstr                           pic x(4).
+77  feedback-iconst-mstr                        pic x(4).
+77  con-num                                     pic 99.
+77  next-con-num                                pic 99.
+*
+*  status file indicators
+*
+01  status-indicators.
+*mf    05  status-file                          pic x(11).
+*mf    05  status-pat-mstr                      pic x(11) value zero.
+*mf    05  status-iconst-mstr                   pic x(11) value zero.
+
+    05  status-file                             pic xx.
+    05  status-cobol-pat-mstr                   pic xx    value zero.
+    05  status-cobol-iconst-mstr                pic xx    value zero.
+    05  status-audit-rpt                        pic xx    value zero.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   9
+*                      u993.cbl                                      )
+
+**01  key-pat-mstr.
+
+**  05  pat-key-type                            pic a.
+**  05  pat-key-o-c-a.
+**      10  pat-key-con-nbr                     pic 99.
+**      10  pat-key-i-nbr                       pic 9(12).
+**      10  filler                              pic x.
+
+
+
+*   counters for records read/written for all input/output files
+
+01  counters.
+    05  ctr-iconst-ikey-rewrites                pic 9(7).
+    05  ctr-pat-approx-reads                    pic 9(7).
+    05  ctr-pat-backward-reads                  pic 9(7).
+    05  ctr-audit-rpt-writes                    pic 9(7).
+
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                        "FATAL - NO SUCH CONSTANTS MSTR REC 5".
+        10  filler                              pic x(60)   value
+                        "FATAL - RE-WRITING CONSTANTS MSTR".
+        10  filler                              pic x(60)   value
+                        "NO OHIP KEYS ON FILE".
+        10  filler                              pic x(60)   value
+                        "NO KEYS BELOW I KEYS".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs  4 times.
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  10
+*                      u993.cbl (/alpha/rmabill/rmabill101c/use/sysda)
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+
+
+
+01  l1-print-line.
+    05  l1-desc                                 pic x(60).
+    05  l1-value                                pic z(6)9.
+    05  filler                                  pic x(65).
+
+
+screen section.
+
+01  scr-title.
+
+    05  blank screen.
+    05  line 12 col 16 value "PROGRAM U993 NOW BEING PROCESSED".
+*
+01  file-status-display.
+    05  line 24 col 56  "FILE STATUS = ".
+*mf    05  line 24 col 70       pic x(11) from status-file      bell blink.
+    05  line 24 col 70  pic x(2) from status-file       bell blink.
+
+*
+01  file-pat-status-display.
+    05  line 24 col 01 "ERROR IN ACCESSING PAT MSTR - KEY = ".
+    05  line 24 col 38  pic x(16) from key-pat-mstr.
+    05  line 24 col 56  "FILE STATUS = ".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  11
+*                      u993.cbl                                      )
+*mf    05  line 24 col 70       pic x(11) from status-file      bell blink.
+    05  line 24 col 70  pic x(2) from status-file       bell blink.
+
+01  scr-closing-screen.
+    05  blank screen.
+    05  line 21 col 01  value "PROGRAM U993 ENDING".
+* (y2k - auto fix)
+*   05  line 21 col 40  pic 99  from sys-yy.
+    05  line 21 col 40  pic 9(4)        from sys-yy.
+    05  line 21 col 44  value "/".
+    05  line 21 col 45  pic 99  from sys-mm.
+    05  line 21 col 47  value "/".
+    05  line 21 col 48  pic 99  from sys-dd.
+    05  line 21 col 52  pic 99  from sys-hrs.
+    05  line 21 col 54  value ":".
+    05  line 21 col 55  pic 99  from sys-min.
+    05  line 23 col 20  value "AUDIT REPORT IS IN FILE - ".
+    05  line 23 col 51  pic x(5) from print-file-name.
+
+procedure division.
+declaratives.
+
+err-iconst-mstr-file section.
+    use after standard error procedure on iconst-mstr.
+err-iconst-mstr.
+    stop "ERROR IN ACCESSING CONSTANTS MASTER".
+*mf    move status-iconst-mstr          to status-file.
+    move status-cobol-iconst-mstr       to status-file.
+    display file-status-display.
+    stop run.
+
+err-pat-mstr-file section.
+    use after standard error procedure on pat-mstr.
+err-pat-mstr.
+*mf    move status-pat-mstr             to status-file.
+    move status-cobol-pat-mstr          to status-file.
+    display file-pat-status-display.
+    stop run.
+
+err-audit-rpt-file section.
+    use after standard error procedure on audit-file.
+err-audit-rpt.
+    stop "ERROR IN WRITING TO AUDIT REPORT FILE".
+    move status-audit-rpt               to status-file.
+    display file-status-display.
+
+end declaratives.
+
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+    perform ab0-processing              thru ab0-99-exit.
+    perform az0-end-of-job              thru az0-99-exit.
+aa0-initialization.
+
+    accept sys-date                     from date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  12
+*                      u993.cbl                                      )
+    move sys-mm                         to run-mm.
+    move sys-dd                         to run-dd.
+    move sys-yy                         to run-yy.
+
+    accept sys-time                     from time.
+    move sys-hrs                        to run-hrs.
+    move sys-min                        to run-min.
+    move sys-sec                        to run-sec.
+
+
+
+*       delete audit-file
+*    expunge audit-file.
+
+    open input  pat-mstr.
+    open i-o    iconst-mstr.
+    open output audit-file.
+
+    move 0                              to   counters.
+
+*           display scr-title.
+
+    move 5                              to      iconst-clinic-nbr-1-2.
+
+    read iconst-mstr
+        invalid key
+                move 1                  to      err-ind
+                perform za0-common-error thru   za0-99-exit
+                go to az0-10-end-of-job.
+
+
+aa0-99-exit.
+    exit.
+az0-end-of-job.
+
+    rewrite iconst-mstr-rec
+        invalid key
+                move 2                  to      err-ind
+                perform za0-common-error thru   za0-99-exit.
+
+    add 1                               to ctr-iconst-ikey-rewrites.
+
+    perform az1-totals                  thru az1-99-exit.
+
+
+
+az0-10-end-of-job.
+
+*           display scr-closing-screen.
+
+
+    close pat-mstr
+          iconst-mstr
+          audit-file.
+
+    stop run.
+
+az0-99-exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  13
+*                      u993.cbl                                      )
+    exit.
+
+
+
+az1-totals.
+
+    move spaces                         to l1-print-line.
+    move "NUMBER OF PAT MSTR APPROX READS = "
+                                        to l1-desc.
+    move ctr-pat-approx-reads           to l1-value.
+    write audit-record                  from l1-print-line after advancing page.
+
+    move spaces                         to l1-print-line.
+    move "NUMBER OF PAT MSTR BACKWARDS READS = "
+                                        to l1-desc.
+    move ctr-pat-backward-reads         to l1-value.
+    write audit-record                  from l1-print-line after advancing 2 lin
+
+    move spaces                         to l1-print-line.
+    move "NUMBER OF ICONST IKEY REWRITE = "
+                                        to l1-desc.
+    move ctr-iconst-ikey-rewrites       to l1-value.
+    write audit-record                  from l1-print-line after advancing 2 lin
+
+    move spaces                         to l1-print-line.
+    move "NUMBER OF AUDIT REPORT WRITES = "
+                                        to l1-desc.
+    move ctr-audit-rpt-writes           to l1-value.
+    write audit-record                  from l1-print-line after advancing 2 lin
+
+az1-99-exit.
+    exit.
+ab0-processing.
+
+    perform ab1-update-con-ikey         thru ab1-99-exit
+*       varying con-num from 1 by 1
+        varying con-num from 2 by 1
+                until con-num > 25.
+*mf (special read for 25th position)
+    perform ab2-update-lastcon-ikey     thru ab2-99-exit.
+
+
+ab0-99-exit.
+    exit.
+
+ab1-update-con-ikey.
+    move spaces                         to pat-mstr-rec.
+
+*   move "I"                            to pat-key-type.
+    move "I"                            to pat-i-key.
+*   move zero                           to pat-key-o-c-a.
+
+    compute     next-con-num  =  con-num  +  1.
+*   move next-con-num                   to pat-key-con-nbr.
+    move next-con-num                   to pat-con-nbr.
+    move zero                           to pat-i-nbr.
+
+*    (read patient master file)
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  14
+*                      u993.cbl                                      )
+
+    move zero                           to      pat-occur.
+
+*mf    read pat-mstr  key is key-pat-mstr approximate
+*mf      at end
+*mf     move 3                          to      err-ind
+*mf     perform za0-common-error        thru    za0-99-exit
+*mf     go to az0-end-of-job.
+
+    start pat-mstr  key is greater than or equal to key-pat-mstr.
+    read pat-mstr next
+      at end
+        move 3                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to az0-end-of-job.
+
+    add 1                               to      ctr-pat-approx-reads.
+
+*mf    read pat-mstr backward
+    read pat-mstr previous
+        at end
+        move 4                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to az0-end-of-job.
+
+    add 1                               to      ctr-pat-backward-reads.
+
+*mf    retrieve pat-mstr key fix position
+*mf     into key-pat-mstr.
+
+*   if pat-key-type not = "I"
+*   then
+*       go to ab1-99-exit.
+*   endif
+
+    if    pat-con-nbr not = con-num
+    then
+        go to ab1-99-exit.
+*   endif
+
+    compute const-nx-avail-pat(con-num)  =  pat-i-nbr  +  1.
+
+ab1-99-exit.
+    exit.
+ab2-update-lastcon-ikey.
+
+*mf (for the last console the start command must be different that
+*mf  what was valid for the lower consoles because no record exists
+*mf  to start at. This is a difference in converting from the read
+*mf  approximate)
+
+    move 25                             to con-num.
+    move spaces                         to pat-mstr-rec.
+    move "I"                            to pat-i-key.
+    compute     next-con-num  =  con-num  +  1.
+    move next-con-num                   to pat-con-nbr.
+    move zero                           to pat-i-nbr.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  15
+*                      u993.cbl                                      )
+*    (read patient master file)
+    move zero                           to      pat-occur.
+    start pat-mstr  key is LESS than or equal to key-pat-mstr.
+    read pat-mstr next
+      at end
+        move 3                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to az0-end-of-job.
+    add 1                               to      ctr-pat-approx-reads.
+
+    if    pat-con-nbr not = con-num
+    then
+        go to ab2-99-exit.
+*   endif
+
+    compute const-nx-avail-pat(con-num)  =  pat-i-nbr  +  1.
+
+ab2-99-exit.
+    exit.
+za0-common-error.
+
+    move err-msg (err-ind)              to      audit-record.
+    write audit-record                  after advancing 2 lines.
+    add 1                               to ctr-audit-rpt-writes.
+
+za0-99-exit.
+    exit.
+
+
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        3284     Code:        2410

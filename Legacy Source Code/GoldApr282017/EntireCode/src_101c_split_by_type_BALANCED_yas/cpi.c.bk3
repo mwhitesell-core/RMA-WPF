@@ -1,0 +1,314 @@
+/* cpi.c
+ Purpose: provides socket connection to Web and interface to Cobol program
+	  to provide CPI (central patient Index) lookup against RMA unix 
+	  database
+ Modifcation History:
+ 2002/apr/01 B.E. - original
+
+
+TODO: 'send' uses 3040 hard coded - should use CONST
+
+
+
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <netdb.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <time.h>
+
+#define MAX_PATIENT_RECORD_SIZE		343		/* TODO: to short? */
+#define MAX_PATIENT_RECS_BUFFER_SIZE	3438 
+#define MAX_SOCKET_BUFFER_SIZE		2056		/* TODO: to long? */
+
+#define DEFAULT_PORT 54321	/* port for service */
+
+extern int validate();          /* Cobol program - */
+extern void cobexit();		/* close down Cobol system and exit */
+extern int cobprintf();         /* COBOL display from C */
+extern int cobgetch();          /* COBOL character get */
+
+main( argc, argv )
+	int argc;
+	char *argv[];
+{
+
+  char socketBuffer[MAX_SOCKET_BUFFER_SIZE];
+  int s, newSocket, retcode, addrlen;
+  long bufferCount;
+  struct sockaddr_in addr;
+  struct servent *sp;
+  int brad;
+  int strlen();
+  int strncmp();
+  int keepAcceptingConnections;
+  int CobolStatus;
+  long requestLength;
+  char patientRecsBuffer[MAX_PATIENT_RECS_BUFFER_SIZE];
+  int strlen();
+  int pid;
+  char *shutdownString="~RMAshutDOWNcommand!~";
+  time_t currentDateTime;
+  int runWithForkON;
+  int debugON;
+  int auditON;
+  FILE *auditFile;
+  FILE *debugFile;
+  FILE *requestsFiles;
+
+  runWithForkON = 1; /* allows disabling of fork when debuging cobol */
+  debugON = 1 ;/* ON ONLY for TESTING */
+  auditON = 1 ;	/* should ALWAYS BE ON */
+
+  if (auditON) auditFile = fopen("/dyad/web/audit.log", "a");
+  if (debugON) debugFile = fopen("/dyad/web/debug.log", "a");
+
+  s = socket( AF_INET, SOCK_STREAM, 0 );
+
+  time(&currentDateTime);
+
+  if(s ==-1 ){
+        if (auditON)  {
+	    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+	    fprintf(auditFile, ": FATAL Error - Server can't create socket\n");
+	}
+	exit(1);
+  }
+
+  memset(&addr, 0, sizeof(addr));
+  sp = getservbyname( "webstar", "tcp" );
+
+  if( sp != NULL ) {
+	addr.sin_port = sp->s_port;
+  } else {
+	addr.sin_port = htons(DEFAULT_PORT);
+  }
+
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = INADDR_ANY;
+
+  if( bind( s, (struct sockaddr *) &addr, sizeof(addr) ) == -1){
+	perror("bind");
+	exit(1);
+  }
+
+  keepAcceptingConnections = 1;
+  do 
+  {
+        /*
+        ** The listen call sets the number of pending connections
+        ** and changes the socket state to LISTEN - indicating a
+        ** willingness to accept new connections.
+        */
+	if( listen( s,3 )==-1 ){
+	    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+	    fprintf(auditFile, ": FATAL Error - on LISTEN\n");
+  	   perror("listen");
+	   exit(1);
+	}
+
+	addrlen = sizeof( addr );
+	if (debugON) {
+	    fprintf(debugFile, "BEFORE Accept\n");
+	}
+	newSocket = accept( s, (struct sockaddr *) &addr, &addrlen );
+
+	if (debugON) {
+	    fprintf(debugFile, "AFTER  Accept:s/sock=%d/%d\n",s,newSocket);
+	}
+	if ( newSocket == -1 ) {
+	    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+	    fprintf(auditFile, ": FATAL Error - on ACCEPT\n");
+	    perror("accept");
+	    exit(1);
+	}
+
+        if (auditON)  {
+	    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+	    fprintf(auditFile, 
+	    		": Connection accepted from IP address:%s port:%d\n",
+	    		inet_ntoa(addr.sin_addr),addr.sin_port);
+	}
+        if (debugON)  {
+	    fprintf(debugFile,"%s\n",ctime(&currentDateTime));
+	    fprintf(debugFile, 
+	    		": Connection accepted from IP address:%s port:%d\n",
+	    		inet_ntoa(addr.sin_addr),addr.sin_port);
+	}
+
+        brad=0;
+        /*
+        ** Server Main Loop:
+	** Program will read the message from the client. 
+	**
+	** If the "RMA SHUTDOWN" signal is received the program breaks out 
+	** of loop and terminates processing. It must be manually started
+	** again before any more client requests will be processed.
+	**
+	** If the message is (NOT "shutdown" the program) AND (the forking
+	** option is turned OFF), then the loop is continued indefinitely
+	** until the client "disconnects" sending a Return Code of 0. This
+	** non-forking option is used only when debuging the code and all
+	** requests must be handled by a single process.
+	**
+	** On the other hand, if the forking option is turned ON, then the
+	** process forks and:
+	**	- the CHILD Process loops indefinitely in the 'for' loop
+	**	  processing requests until a disconnect is received, It
+	**	  then terminates the process after having fulfilled the
+	**	  client requests.
+	**      - the PARENT Process falls out of the 'for' loop and returns
+	**	  to the 'keepAcceptingConnections' loop so that the next client
+	**	  request can be quickly accepted and processed. 
+        */
+	for(;;) {
+            brad=1;
+	    retcode=recv( newSocket, &socketBuffer, MAX_SOCKET_BUFFER_SIZE, 0 );
+	    if ( retcode < 0) {
+                if (auditON)  {
+		    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+                    fprintf(auditFile, ": RECEIVE Error - Return Code= %s, Performing Shutdown\n",retcode);
+		}
+                close(newSocket);
+                newSocket=NULL;
+		perror("recv");
+		perror("retcode");
+		exit(1);
+	    }
+	    else if ( retcode ==0 )  {  /* EOF */
+                    if (debugON)  {
+                        fprintf(debugFile, 
+			    "Return Code = 0 -- Client Requested DISCONNECT\n");
+		    }
+                    close(newSocket);
+                    newSocket=NULL;
+		    break;
+	    } /* retcode < 0 ? */
+
+	    if ( strlen(socketBuffer) > 0 ) {
+
+		requestsFiles = fopen("/dyad/web/requests.log", "a");
+		fprintf(requestsFiles,"RECEIVED=%s\n", socketBuffer);
+		fclose(requestsFiles);
+
+                if (debugON)  {
+                        fprintf(debugFile,"RECEIVED=%s\n", socketBuffer);
+ 		}
+                if (!strncmp(shutdownString,socketBuffer,10)) {
+                    if (auditON) {
+			fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+ 			fprintf(auditFile,": RMA Operater requested SHUTDOWN!\n");
+		    }
+                    close(newSocket);
+                    newSocket=NULL;
+                    keepAcceptingConnections = 1;
+                    break;
+                } else if (runWithForkON) {
+		         /* fork to create process to handle the request)*/
+			if (auditON) fclose(auditFile);
+			if (debugON) fclose(debugFile);
+			pid = fork();
+			if (auditON) auditFile = fopen("/dyad/web/audit.log", "a");
+			if (debugON) debugFile = fopen("/dyad/web/debug.log", "a");
+
+			if ( pid < 0 ) { 
+			    if (auditON)  {
+				fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+				fprintf(auditFile, ": FATAL Error - Can't fork\n");
+			    }
+			    exit(1);
+			}
+		        /* if not running Child(ie. Parent) loop to get next connection)*/
+		        if ( !pid == 0 ) {
+			    if (debugON)  {
+			        fprintf(debugFile, "PARENT - breaking...\n");
+			    }
+                    	    close(newSocket);
+                    	    newSocket=NULL;
+                   	    keepAcceptingConnections = 1;
+                    	    break;
+		        } else {
+			    if (debugON)  {
+			        fprintf(debugFile, "Running CHILD\n");
+			    }	
+                   	    keepAcceptingConnections = 0;
+		        } /* child or parent process ? /*
+		    } else {
+		        if (debugON)  {
+			    fprintf(debugFile, "forking NOT activated ...\n");
+		        }
+		    } /* forking option ON ? */
+                } /* shutdown request? */
+
+		/* process client's request */
+	        if (CobolStatus = cpirma()) {	/* Call COBOL to initialize */
+                    if (auditON)  {
+			fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+			fprintf(auditFile,": 'cpirma' Fatal Error: %s - shutting down CPI\n",CobolStatus);
+		    }
+                    close(newSocket);
+                    newSocket=NULL;
+		    cobexit(CobolStatus);
+   		}
+	        requestLength= strlen(socketBuffer);
+	        if (CobolStatus = validate(&requestLength, socketBuffer)) {
+		    if (auditON)  {
+			fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+			fprintf(auditFile,": 'validate' Fatal Error: %s - shutting down CPI\n",CobolStatus);
+		    }
+                    close(newSocket);
+                    newSocket=NULL;
+		    cobexit(CobolStatus);
+		}
+
+	        bufferCount = 0;
+	        do	
+	        {   bufferCount = 1;
+	    	    if (CobolStatus =	cpi_rma(socketBuffer,
+						patientRecsBuffer)) {
+                        if (auditON)  {
+			    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+			    fprintf(auditFile,": 'cpi_rma' Fatal Error: %s - shutting down CPI\n",CobolStatus);
+			}
+                        close(newSocket);
+                        newSocket=NULL;
+	    		cobexit(CobolStatus);
+		    }
+
+                    if (debugON > 99 )  {
+			fprintf(debugFile,"RETURNED BUFFER=\n%s~\n", patientRecsBuffer);
+		    }
+                    /* if ( send(newSocket, &patientRecsBuffer,MAX_PATIENT_RECORD_SIZE,0 )<0 ){*/
+
+		    if ( send(newSocket, &patientRecsBuffer, 3430, 0 )<0 ) {
+                        if (auditON)  {
+			    fprintf(auditFile,"%s\n",ctime(&currentDateTime));
+			    fprintf(auditFile,": 'send' Fatal Error\n");
+			}
+                        close(newSocket);
+                        newSocket=NULL;
+			perror("send");
+			exit(1);
+		    }
+	        } while (bufferCount == 0);
+	    } /* if socket buffer len > 0 */
+	} /* for (;;;) */
+  } while (keepAcceptingConnections == 1);
+
+close(newSocket);
+newSocket=NULL;
+if (debugON)  {
+    fprintf(debugFile,"%s\n",ctime(&currentDateTime));
+    fprintf(debugFile,": Shutting Down CPI Program\n");
+}
+if (auditON) fclose(auditFile);
+if (debugON) fclose(debugFile);
+exit(0);
+}

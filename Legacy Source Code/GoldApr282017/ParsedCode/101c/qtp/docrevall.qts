@@ -1,0 +1,54 @@
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+access f050-doc-revenue-mstr-history
+
+;select if ep-yr = 2014 and ICONST-DATE-PERIOD-END = 20150630
+select if ep-yr = 2015 and ICONST-DATE-PERIOD-END = 20160630
+
+sort  on DOCREV-CLINIC-1-2 
+
+def in-amt-ytd zoned*10 signed =   docrev-ytd-in-rec       &
+                               if docrev-location ne "MISC"
+
+def out-amt-ytd zoned*10 signed =  docrev-ytd-out-rec      &
+                               if docrev-location ne "MISC"
+
+temp tot-amt-ytd zoned*10  signed 
+item tot-amt-ytd =   tot-amt-ytd 	&
+		   + in-amt-ytd         &
+                   + out-amt-ytd  reset at DOCREV-CLINIC-1-2 
+
+def in-misc    zoned*10 signed =   docrev-ytd-in-rec       &
+                               if docrev-location = "MISC"
+
+def out-misc    zoned*10 signed =  docrev-ytd-out-rec      &
+                               if docrev-location = "MISC"
+
+temp tot-misc    zoned*10  signed
+item tot-misc    =   tot-misc           &
+                   + in-misc            &
+                   + out-misc     reset at DOCREV-CLINIC-1-2
+
+temp totals      zoned*10  signed
+item totals      =   totals                                       &
+                   + docrev-ytd-out-rec + docrev-ytd-in-rec       &
+                    reset at DOCREV-CLINIC-1-2
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile docrevall keep at DOCREV-CLINIC-1-2 portable include &
+DOCREV-CLINIC-1-2        ,&
+comma                    ,&
+tot-amt-ytd              ,&
+comma                    ,&
+tot-misc                 ,&
+comma                    ,&
+totals                   ,&
+x-cr
+
+build $pb_obj/docrevall

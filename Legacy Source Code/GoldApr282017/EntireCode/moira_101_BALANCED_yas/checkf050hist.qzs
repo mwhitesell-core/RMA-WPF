@@ -1,0 +1,72 @@
+cancel clear
+set rep nolimit
+;access f050-doc-revenue-mstr-history		&
+access f050-doc-revenue-mstr           &
+   link docrev-doc-nbr                  &
+     to doc-nbr of f020-doctor-mstr     &
+   link (nconvert(docrev-clinic-1-2))     &
+     to iconst-clinic-nbr-1-2           &
+     of iconst-mstr-rec
+
+;choose ep-yr 2014, iconst-date-period-end 20150301, docrev-key '22@' to '26@', '30@' to '36@', '41@' to '48@'
+choose docrev-key '22@' to '26@', '30@' to '36@', '41@' to '48@'
+
+def amt zoned*9  numeric  =  &
+              docrev-mtd-in-rec  + docrev-mtd-out-rec 
+
+def comp-code char*6  = "AFPIN"                                                  &
+                           if    iconst-clinic-card-colour = "Y"               &
+                             and doc-afp-paym-group of f020-doctor-mstr <> " " &
+                else  "AFPOUT"                                                 &
+                           if    doc-afp-paym-group of f020-doctor-mstr <> " " &
+                else  "BILL"
+
+def x-afpin zoned*9 numeric = amt if comp-code = 'AFPIN'
+
+def x-afpout zoned*9 numeric = amt if comp-code = 'AFPOUT'
+
+def x-bill   zoned*9 numeric = amt if comp-code = 'BILL'
+
+;sel if docrev-location = 'MISC' and docrev-oma-code = 'MOHR'
+;sel if docrev-location = 'MISC' ; and docrev-oma-code = 'AGEP'
+;sel if docrev-location = 'MISC' ; and amt <> 0 
+;sel if docrev-location <> 'MISC' and amt  <>  0
+
+sel if amt <> 0
+
+;and sel if docrev-doc-nbr = '430' or docrev-doc-nbr = '945'
+;sel if docrev-doc-nbr = '15C' and amt <> 0
+
+sort on docrev-doc-nbr
+
+final footing x-bill subt  pic '^^^,^^^,^^^.^^'  &
+           x-afpin   subt  pic '^^^,^^^,^^^.^^'  &
+           x-afpout  subt  pic '^^^,^^^,^^^.^^'  &
+     	    amt subt  pic '^^^,^^^,^^^.^^'
+;final footing amt  subt pic '^^^,^^^,^^^.^^' 
+go
+;footing at docrev-doc-nbr docrev-doc-nbr  amt   subt pic '^^^,^^^,^^^.^^' 
+;set rep dev disc name checkf050hist
+;set rep page length 0 noformfeed
+;set nohead
+
+;set subfile name checkf050hist_all_doc keep  at docrev-doc-nbr
+;set subfile name checkf050hist_bill    keep  at docrev-doc-nbr
+;set subfile name checkf050hist_bill_sel    keep  
+;set subfile name checkf050hist_R07  keep  
+;rep sum docrev-key amt
+;rep sum docrev-doc-nbr amt subt x-afpin subt x-afpout sub x-bill subt
+;set subfile name checkf050hist_agep  keep  at docrev-doc-nbr
+;set subfile name checkf050hist_misc keep  at docrev-doc-nbr
+;set subfile name checkf050hist_mohr keep  at docrev-doc-nbr
+;rep summ docrev-doc-nbr amt subt reset at docrev-doc-nbr  &
+;x-bill subt  reset at docrev-doc-nbr x-afpin subt reset at docrev-doc-nbr x-afpout subt reset at docrev-doc-nbr docrev-key
+;go    
+;access *checkf050hist_misc
+;access *checkf050hist_all_doc 
+
+;final footing x-bill subt pic '^^^,^^^.^^^.^^' &
+;x-afpin subt pic '^^^,^^^,^^^.^^' &
+;x-afpout subt pic '^^^,^^^,^^^.^^'
+;go
+

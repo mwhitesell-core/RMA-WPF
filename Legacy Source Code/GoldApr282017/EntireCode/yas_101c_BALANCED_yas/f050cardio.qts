@@ -1,0 +1,155 @@
+;2008/08/27
+;Report code amount and services for the dept4 cardiologists
+;Created for Dwayne Martins (medicine manager)
+
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-cd  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+select if 			      &
+   (    docrev-doc-nbr = "431"	      &
+     or docrev-doc-nbr = "K87"	      &
+     or docrev-doc-nbr = "F13"	      &
+     or docrev-doc-nbr = "413"	      &
+     or docrev-doc-nbr = "415"	      &
+     or docrev-doc-nbr = "C25"	      &
+     or docrev-doc-nbr = "F14"	      &
+     or docrev-doc-nbr = "442"	      &
+     or docrev-doc-nbr = "873"	      &
+     or docrev-doc-nbr = "G74"        &
+     or docrev-doc-nbr = "660"        &
+     or docrev-doc-nbr = "F73"        &
+     or docrev-doc-nbr = "M19"        &
+     or docrev-doc-nbr = "E66"        &
+     or docrev-doc-nbr = "G25"        &
+     or docrev-doc-nbr = "015"        &
+     or docrev-doc-nbr = "G70"        &
+     or docrev-doc-nbr = "976"        &
+     or docrev-doc-nbr = "181"        &
+     or docrev-doc-nbr = "F52"        &
+     or docrev-doc-nbr = "809"        &
+     or docrev-doc-nbr = "C53"        &
+     or docrev-doc-nbr = "F80"        &
+     or docrev-doc-nbr = "891"        &
+     or docrev-doc-nbr = "J84"        &
+     or docrev-doc-nbr = "D98"        &
+     or docrev-doc-nbr = "F99"        &
+     or docrev-doc-nbr = "907"        &
+     or docrev-doc-nbr = "D50"        &
+     or docrev-doc-nbr = "K07"        &
+     or docrev-doc-nbr = "F94"        &
+     or docrev-doc-nbr = "K10"        &
+     or docrev-doc-nbr = "441"        &
+     or docrev-doc-nbr = "476"        &
+     or docrev-doc-nbr = "004"        &
+     or docrev-doc-nbr = "115"        &
+     or docrev-doc-nbr = "158"        &
+     or docrev-doc-nbr = "366")       &
+and ICONST-DATE-PERIOD-END >= 20050701 &
+and (   docrev-clinic-1-2 = '22'       &
+     or docrev-clinic-1-2 = '34'       &
+     or docrev-clinic-1-2 = '98')
+
+def fixed-docrev-oma-cd char*5                  &
+    =    docrev-oma-cd[1:4]                     &
+      + "A"                                     &
+         if docrev-oma-cd[5:1] = "M"            &
+ else            docrev-oma-cd
+
+def oma-cd-desc char*55 				&
+    = pack(fixed-docrev-oma-cd + " - " + fee-desc)	&
+	 if record f040-oma-fee-mstr exists		&
+ else pack(fixed-docrev-oma-cd + " - UNKNOWN FEE CODE")
+
+def x-code cha*4 = docrev-oma-cd[1:4]
+
+subfile f050cardio keep include    &
+  x-code                          ,&
+  oma-cd-desc	                  ,& 
+  docrev-doc-nbr                  ,& 
+  doc-name                        ,& 
+  doc-inits                       ,& 
+  DOCREV-MTD-IN-REC               ,&
+  DOCREV-MTD-OUT-REC              ,&
+  DOCREV-MTD-IN-SVC               ,&
+  DOCREV-MTD-OUT-SVC              ,&
+  iconst-date-period-end 
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *f050cardio
+
+sort on docrev-doc-nbr 
+
+;select if x-code ne "MISC" and x-code ne "MOHR"
+
+;;;;;;;Revenue
+temp x-2006     zoned*9 numeric
+item x-2006 =   x-2006 + DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC  &
+             if (    iconst-date-period-end >= 20050701          &
+                 and iconst-date-period-end <= 20060701)         &
+              reset at docrev-doc-nbr
+
+temp x-2007     zoned*9 numeric
+item x-2007 =   x-2007 + DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC  &
+             if (    iconst-date-period-end >= 20060701          &
+                 and iconst-date-period-end <= 20070701)         &
+              reset at docrev-doc-nbr
+
+temp x-2008     zoned*9 numeric
+item x-2008 =   x-2008 + DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC  &
+             if (    iconst-date-period-end >= 20070701          &
+                 and iconst-date-period-end <= 20080701)         &
+              reset at docrev-doc-nbr
+
+;;;;;;;; Services
+temp x-2006s    zoned*9 numeric
+item x-2006s=   x-2006s+ DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC  &
+             if (    iconst-date-period-end >= 20050701          &
+                 and iconst-date-period-end <= 20060701)         &
+              reset at docrev-doc-nbr
+
+temp x-2007s    zoned*9 numeric
+item x-2007s=   x-2007s+ DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC  &
+             if (    iconst-date-period-end >= 20060701          &
+                 and iconst-date-period-end <= 20070701)         &
+              reset at docrev-doc-nbr
+
+temp x-2008s    zoned*9 numeric
+item x-2008s=   x-2008s+ DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC  &
+             if (    iconst-date-period-end >= 20070701          &
+                 and iconst-date-period-end <= 20080701)         &
+              reset at docrev-doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f050cardio1 keep at docrev-doc-nbr portable include  &    
+docrev-doc-nbr                                       ,&
+comma                                                ,&
+doc-name                                             ,&
+comma                                                ,&
+doc-inits                                            ,&
+comma                                                ,&
+x-2006                                               ,&
+comma                                                ,&
+x-2007                                               ,&
+comma                                                ,&
+x-2008                                               ,&
+comma                                                ,&
+x-2006s                                              ,&
+comma                                                ,&
+x-2007s                                              ,&
+comma                                                ,&
+x-2008s                                              ,&
+x-cr
+
+build $pb_obj/f050cardio
+

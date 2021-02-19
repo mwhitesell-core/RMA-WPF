@@ -1,0 +1,62 @@
+;doc     : dept1_agent.qts
+;purpose : ohip billings from July 1,2003                              
+;          total billing amount by doctor include "B" adjustments
+;          then write dept1_misc.qts and misc amount by doctor
+;          report misc oma code then clmhdr-reference for each code
+;who     : Leena      
+;
+; *************************************************************
+
+;Date		Who		Description
+;2004/04150	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+access *dept1                                                            &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+
+select f002-claims-mstr if                   &
+            clmdtl-date-period-end >= '20030701' & 
+;       and  clmdtl-date-period-end <= '20040324' & 
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+select if x-doc-nbr = "157"
+
+sort on clmdtl-id    
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile dept11_test  portable keep at clmdtl-id include  &
+x-doc-nbr                                          ,&
+comma                                              ,&
+clmdtl-id                                          ,&
+comma                                              ,&
+clmdtl-fee-ohip                                    ,&
+comma                                              ,&
+clmhdr-agent-cd of dept1                           ,&
+x-cr
+
+build $obj/dept1_agent

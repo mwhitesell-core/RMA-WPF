@@ -1,0 +1,138 @@
+; filename: create_claims_sub.qzs
+; purpose:  select data for claims_subfile history file for each clinic
+;
+; Modification History
+;	91/02/14   D.B.	MOD - ADD NEW FIELDS (HEALTH NBR, VERSION CD)
+;	91/03/05   D.B. MOD - ACCORDING TO NEW CLAIMS AND PATIENT FILES
+;	91/04/22   M.C. SMS 138 - MODIFY THE ACCESS STATEMENT
+;       91/08/30   M.C. MOD - TAKE OUT THE SORTED STMT AND CONTROL BREAK
+;			      FROM SUBFILE STMT OF PART C
+;       92/02/03   Y.B. MOD - REPLACE SEL_F002_DTL_CLAIMS.DEF WITH
+;			      SEL_PED_F002_DTL_CLAIMS.DEF
+;     1999/06/04   S.B. MOD - ALTERED THE CALL TO 'SEL_PED_F002_DTL_CLAIMS.DEF'
+;			      TO USE '$USE' INSTEAD OF 'SRC'.
+;       03/09/17   M.C. MOD - in the third pass (C), add the additional fields
+;			      in the subfile
+
+can clear
+
+set default
+set rep nolimit
+
+access f002-claims-mstr
+
+use $use/sel_ped_f002_dtl_claims.def
+
+set subfile name detail_claimsa
+
+report summary							&
+  key-clm-batch-nbr 						&
+  key-clm-claim-nbr						&
+  clmdtl-id        						&
+  clmdtl-nbr-serv    						&
+  clmdtl-sv-date						&
+  clmdtl-consec-dates                 				&
+  clmdtl-amt-tech-billed					&
+  clmdtl-fee-oma   						&
+  clmdtl-fee-ohip    						&
+  clmdtl-date-period-end					&
+  clmdtl-diag-cd
+
+build $pb_obj/create_claims_suba
+
+access *detail_claimsa	&
+  link ("B", 							&
+	key-clm-batch-nbr, key-clm-claim-nbr,                	&
+       "00000", 						&
+	"0") 							&
+    to	key-clm-type, 						&
+	key-clm-batch-nbr,					&
+	key-clm-claim-nbr, 					&
+	key-clm-serv-code, 					&
+	key-clm-adj-nbr 					&
+ 		of f002-claims-mstr
+
+select if clmhdr-batch-type = "C"
+
+set subfile name detail_claimsb
+report summary							&
+  clmdtl-id        						&
+  clmdtl-nbr-serv    						&
+  clmdtl-sv-date						&
+  clmdtl-consec-dates                 				&
+  clmdtl-amt-tech-billed					&
+  clmdtl-fee-oma   						&
+  clmdtl-fee-ohip    						&
+  clmdtl-date-period-end					&
+  clmhdr-hosp							&
+  clmhdr-doc-dept  						&
+  clmhdr-agent-cd    						&
+  clmhdr-pat-ohip-id-or-chart 					&
+  clmhdr-loc       						&
+  clmhdr-refer-doc-nbr 						&
+  clmdtl-diag-cd						&
+  clmhdr-doc-spec-cd 						&
+  clmhdr-i-o-pat-ind 						&
+  clmhdr-date-admit       					&
+  clmhdr-doc-nbr-ohip						
+
+build $pb_obj/create_claims_subb
+
+access *detail_claimsb						&
+  link		clmhdr-pat-ohip-id-or-chart 			&
+  viaindex 	key-pat-mstr 					&
+			to f010-pat-mstr optional
+
+; 2003/09/17 - MC - not required 
+;def pat-postal-code char*10 = subscr-postal-cd
+;def pat-health-nbr-prov-cd char*2 =  pat-prov-cd
+; 2003/09/17 - end
+
+set subfile name claims_subfile keep
+
+report summary							&
+; (CLAIM HEADER / DETAIL)
+  clmdtl-id        						&
+  clmdtl-nbr-serv    						&
+  clmdtl-sv-date						&
+  clmdtl-consec-dates                 				&
+  clmdtl-amt-tech-billed					&
+  clmdtl-fee-oma   						&
+  clmdtl-fee-ohip    						&
+  clmdtl-date-period-end					&
+  clmhdr-hosp							&
+  clmhdr-doc-dept  						&
+  clmhdr-agent-cd    						&
+  clmhdr-pat-ohip-id-or-chart 					&
+  clmhdr-loc       						&
+  clmhdr-refer-doc-nbr 						&
+  clmdtl-diag-cd						&
+  clmhdr-doc-spec-cd 						&
+  clmhdr-i-o-pat-ind 						&
+  clmhdr-date-admit						&
+  clmhdr-doc-nbr-ohip						&
+; PATIENT
+  pat-ohip-mmyy    						&
+  pat-chart-nbr      						&
+  pat-chart-nbr-2    						&
+  pat-chart-nbr-3    						&
+  pat-chart-nbr-4    						&
+  pat-chart-nbr-5    						&
+
+  pat-health-nbr						&
+  pat-version-cd   						&
+  pat-prov-cd                  					&
+
+  pat-birth-date   						&
+  pat-sex            						&
+  pat-surname							&
+  pat-given-name   						&
+  pat-init							&
+  pat-phone-nbr      						&
+  subscr-addr1							&
+  subscr-addr2  						&
+  subscr-addr3							&
+  subscr-prov-cd 						&
+  subscr-postal-cd
+
+build $pb_obj/create_claims_subc

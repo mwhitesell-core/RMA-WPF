@@ -1,0 +1,75 @@
+;  R150A.QTS 
+;  2000/Feb/15     M. CHAN - clone from update_f060a.qts    
+;  2002/Sep/26     M. Chan - include f190-comp-codes in the access statement
+;			     in order to have clean compile because of the
+;			     changes in $use/r150a.use
+
+cancel clear
+set process nolimit
+set lock file update
+
+request  extract-f110
+
+; 2002/09/26 - MC
+;access f110-compensation
+access f110-compensation link to f190-comp-codes opt
+; 2002/09/26 - end
+
+choose ep-nbr parm prompt 'Enter From Ep Nbr(YYYYMM): ' 1 time  &
+	   range toprompt 'Enter  To  Ep Nbr(YYYYMM): ' 
+
+sort on doc-nbr
+
+use $use/r150a.use
+
+subfile r150temp         at doc-nbr include     &
+        doc-nbr,                        	&
+        w-net-pay,                              &
+        w-net-deduc,                            &
+        w-net-tax
+
+
+request  extract-f110-history
+
+; 2002/09/26 - MC
+;access f110-compensation-history
+access f110-compensation-history link to f190-comp-codes opt
+; 2002/09/26 - end
+
+
+choose ep-nbr parm prompt 'Enter From Ep Nbr(YYYYMM): ' 1 time  &
+         range	 toprompt 'Enter  To  Ep Nbr(YYYYMM): ' 
+
+sort on doc-nbr
+
+use $use/r150a.use
+
+subfile r150temp append at doc-nbr include      &
+        doc-nbr,                        	&
+        w-net-pay,                              &
+        w-net-deduc,                            &
+        w-net-tax
+
+
+request summarize-doc-total
+
+access  *r150temp
+
+sort on doc-nbr
+
+temp t-net-pay integer signed size 8
+item t-net-pay = t-net-pay + w-net-pay reset at doc-nbr
+
+temp t-net-deduc integer signed size 8
+item t-net-deduc = t-net-deduc + w-net-deduc reset at doc-nbr
+
+temp t-net-tax integer signed size 8
+item t-net-tax = t-net-tax + w-net-tax reset at doc-nbr
+
+subfile r150a keep at doc-nbr include  &
+       doc-nbr,                        &
+       t-net-pay,                      &
+       t-net-deduc,                    &
+       t-net-tax
+
+build $pb_obj/r150a

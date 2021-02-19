@@ -1,0 +1,917 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U115B.QTS
+COMMENT "#> PROGRAM-ID.     u115b.qts"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: sub-process witHIN  EARNINGS GENERATION  PROCESS."
+COMMENT "CALCULATE REQUIRED 'TOT'AL / 'YTD' TRANSACTIONS AS OF CURRENT EP"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "92/JAN/01  ____   B.E.     - original"
+COMMENT "92/MAY/01  ____   B.E.     - Added YTDGUC logic"
+COMMENT "92/MAY/11  ____   B.E.     - YTDGUC logic changed from 1C to 1B (YTDGUC)"
+COMMENT "92/AUG/11  ____   B.E.     - MOVED YTD LOGIC INTO 2ND REQUEST"
+COMMENT "92/SEP/14  ----   B.E.     - COMMENT OUT OUTPUT OF YTDGUx TRANSACTION"
+COMMENT "SINCE GTYPEx IS NOW CALCULATED AS YTD NOT"
+COMMENT "CURRENT EP.  IF GTYPEx CHANGED RE-ACTIVATE"
+COMMENT "THE TYDGUx code."
+COMMENT "92/OCT/26  ----   B.E.     - Updated F020 with YTDINC value"
+COMMENT "92/NOV/10         B.E.     - updated F020 within this run with OUTPUT stmt"
+COMMENT "rather than using U115 SUBFILE."
+COMMENT "93/APR/10         B.E.     - YTDCEA/CEX use values in DOCTOR-MSTR rather"
+COMMENT "than calculated ones."
+COMMENT "93/MAY/06         B.E.     - Added SUBFILE F119"
+COMMENT "93/MAY/11         B.E.     - Added ACCESS of F119-DOCTOR-YTD to preset"
+COMMENT "93/MAY/18         B.E.     - INTEGER*4 for zoned*8, F119/F119 SUBFILE changes"
+COMMENT "YTD values"
+COMMENT "93/MAY/27         B.E.     - *F119 exclude records added to F119"
+COMMENT "- add/subtract F110  M anual type recs to F020's YTDEAR (ytd earnings)"
+COMMENT "- changed YTDxxx to use = not < current-ep-nbr"
+COMMENT "?????? WITH ABOVE = VS < CHANGE IS THIS CODE NOW NOT REQUIRED ????????????????"
+COMMENT "93/JUN/01         B.E.     - removed ADD of recs to F119-DOCTOR-YTD, all records"
+COMMENT "now added to *F119 and then U122 adds them to F119-YTD"
+COMMENT "93/JUN/22         B.E.     - added Part timer Expense logic"
+COMMENT "93/AUG/09         B.E.     - GST/AMT EXPENSE now calculated by"
+COMMENT "separating these two amounts from the"
+COMMENT "the amount of the difference between"
+COMMENT "GROSS and NET amounts."
+COMMENT "93/SEP/14         B.E.     - added RMA+GST and DEPT MISC/REG Expense Logic"
+COMMENT "and rounding of result"
+COMMENT "93/SEP/20         B.E.     - added separate expenses for RMA MISC/REG."
+COMMENT "now using RMAEXR(RMA  Regular expense),"
+COMMENT "RMAEXM(RMA  Misc.   expense),"
+COMMENT "DEPEXR(DEPT Regular expense),"
+COMMENT "DEPEXM(DEPT Misc.   expense)"
+COMMENT "OUTPUT RMA and DEPT expense only if > 0"
+COMMENT "93/SEP/24         B.E.     - added DOCTOR'S CEIEXP to TOTEXP amount"
+COMMENT "93/SEP/28         B.E.     - changed update of *F119 from GROSS to NET values"
+COMMENT "93/OCT/02         B.E.     - OUTPUT TOTxxx records to *F119 only if > 0"
+COMMENT "93/OCT/05         B.E.     - RMA-EXPENSE calc. as diff between GROSS and NET"
+COMMENT "minus DEPT-EXPENSE even if doctor's RMA"
+COMMENT "EXPENSE PERCENTAGES are zero."
+COMMENT "93/OCT/26         B.E.     - changed IF > 0  to IF <> 0 on all OUTPUT stmnts"
+COMMENT "93/OCT/30         B.E.     - AMT-INCOME-MINUS-EXPENSES-G now allowed  to go"
+COMMENT "negative (otherwise negative income"
+COMMENT "wasn't reported correctly)"
+COMMENT "93/NOV/26         B.E.     - Reversed GROSS/NET fields on CEIEXP output to *F119"
+COMMENT "93/DEC/03         B.E.     - for CEIEXP used AMT-NET not 0 in calc."
+COMMENT "93/DEC/24         B.E.     - put YTDEAR into *F119 for update into F119-DOCTOR-YTD"
+COMMENT "94/MAR/07         M.C.     - ADD THE CONDITIONAL COMPILE FOR 'INCEXP'"
+COMMENT "LOGIC"
+COMMENT "94/MAR/16         M.C.     - INCLUDE COMP-TYPE 'P' IN THE SUBFILE,"
+COMMENT "- CHANGE THE FORMULA FOR CALCULATING"
+COMMENT "DEPT AND RMA EXPENSE"
+COMMENT "95/MAY/02  M.C.  - ADD THE BACKHOLD AS PART OF THE"
+COMMENT "EXPENSE"
+COMMENT "95/MAY/08         M.C.     - COMMENT OUT THE SUBFILE DEBUGU115A,"
+COMMENT "MESSAGE 'VIRTUAL MEMORY HAS EXCEEDED'"
+COMMENT "OCCURRED WHEN EXECUTING PROGRAM EVEN"
+COMMENT "THE STACKSIZE HAS INCREASED FROM 1500"
+COMMENT "TO 10000. NOTE:  KEEP IN MIND THAT"
+COMMENT "SIMILIAR PROBLEM MAY OCCUR IF THERE"
+COMMENT "ARE MORE ITEMS, SUBFILES OR RECORDS"
+COMMENT "TO BE ADDED IN THE REQUESTS"
+COMMENT "95/MAY/09  M.C.  - CALCULATE THE RMA EXPENSE BY THE"
+COMMENT "DOCTOR RMA EXPENSE PERCENTAGE RATHER"
+COMMENT "THAN THE REMAINING VALUE BETWEEN"
+COMMENT "GROSS - NET - DEPT"
+COMMENT "95/JUL/05         M.C.     - IF HOLDBACK < 10 CENTS, ADD TO RMA"
+COMMENT "EXPENSE IF RMA-EXPENSE IS NON-ZERO;"
+COMMENT "OTHERWISE, ADD TO DEPT EXPENSE"
+COMMENT "95/JUL/14  M.C.  - DUE TO VIRTUAL MEMORY HAS EXCEEDED"
+COMMENT "SPLIT THE LAST REQUEST INTO A NEW"
+COMMENT "PROGRAM(U115B.QTS).  IF CHANGES ARE"
+COMMENT "REQUIRED IN THE LAST REQUEST, ALSO"
+COMMENT "MAKE THE SAME CHANGE IN U115B.QTS"
+COMMENT "95/SEP/15  M.C.  - INCLUDE 'E'XPENSE RECORDS AS PART OF"
+COMMENT "FINAL-ALL-EXPENSES"
+COMMENT "95/OCT/23  M.C.  - INCLUDE TOT-REVHBK IN DOC-YTDINC"
+COMMENT "SINCE TOT-REVHBK IS A NEGATIVE VALUE"
+COMMENT "SUBTRACT TOT-REVHBK TO GET THE POSITIVE"
+COMMENT "VALUE"
+COMMENT "95/NOV/07  M.C.  - PDR 634 - INCLUDE NEW CONDITION TO"
+COMMENT "TOT-REVHBK DEFINITION"
+COMMENT "95/NOV/22  M.C.  - OPTIMIZE PROGRAM BY DELETING ALL THE"
+COMMENT "UNUSED TEMP & DEFINE ITEMS"
+COMMENT "96/APR/19  M.C.  - INCLUDE 'REVCLA' IN TOT-REVHBK"
+COMMENT "1999/Feb/18         S.B.     - Checked for Y2K."
+COMMENT "1999/Jun/07  S.B.  - Altered the call to gst.use to be "
+COMMENT "called from $use instead of src."
+COMMENT "00/nov/23.B.E.        - HOLDBK calculation has some rounding problems whereby"
+COMMENT "hold backs in the amount of a few cents occur. The"
+COMMENT "original logic ignored values less than 10 cents."
+COMMENT "Changed to ignore anything less than $1.00"
+COMMENT "01/feb/21 B.E. - for PAYCOD 6 ONLY - add TOTEXP into doctor's f020 field"
+COMMENT "doc-yrly-expense-computed to keep ytd expenses totaled"
+COMMENT "01/feb/22 B.E. - added rounding of ICU GST calculation"
+COMMENT "03/jan/21 B.E. - added file debugu115b_at_doc_nbr for debugging purposes"
+COMMENT "04/mar/01 b.e.        - added 'O'ther 'I'ncome processing in addition to"
+COMMENT "current logic that handles 'R'egular and 'M'isc"
+COMMENT "types of Income."
+COMMENT "04/mar/25 b.e.       - changed sequence of factor divide by 100000 to try"
+COMMENT "to avoid rounding errors (approx 5cents on 10,500)"
+COMMENT "06/mar/20 b.e.        - generate of HOLDBK transaction eliminated in "
+COMMENT "u115_common.qts used by this program"
+COMMENT "2006/may/10 b.e.      - $1M payroll changes to size of calculated fields"
+COMMENT "2008/oct/01 brad1     - added new tot-dept-expense-other calulation to handle TITHE /DEPMEM (as per u115a)"
+COMMENT "2008/oct/22 M.C.     - add set lock record update"
+COMMENT "2008/oct/23 M.C.     - change to use $src/u115b_debug.qts at the end for debug purpose"
+COMMENT "- change final-all-expenses from temp to define item"
+COMMENT "2008/oct/24 brad4     - use net not gross in calculation for INCEXP"
+COMMENT "2008/oct/24 brad5     - reduce ytdear by this months incexp amount for paycode 2 doctors"
+COMMENT "ie. reduce (ie add) doc-ytdear-plus-amt-manpay by final-all-expenses-plus-dept-expense-ather"
+COMMENT "2008/oct/25 brad6     - brad5 change above applied only to paycode 2 doctors - link to f112 added to access stmnt"
+COMMENT "2008/oct/25 brad7     - brad5 change to reduce ONLY by TITHE expenses - ie the 'other' - the final-all-expenses taken"
+COMMENT "care in by noting the difference between gross/net and using that amount as expenses"
+COMMENT "2008/oct/25 brad8 - undo brad4"
+COMMENT "2008/oct/25 brad9     - THIS COMMENT LIKELY WRONG - paypot is low by amount of non-tithe expenses and so non-tithe expenses"
+COMMENT "not added into ytdear i.e. only add titheable expenses into ytdear"
+COMMENT "ABOVE COMMENT LIKELY WRONG .. brad9 ignored ytdear and correctly adjusted INCEXP (income - expenses)"
+COMMENT "calculation (variable amt-income-minus-expenses-g) by all expenses (titheable and non-titheable) and"
+COMMENT "thus affected the eventual ytdinc - ytdear pay calculation but making"
+COMMENT "it an (ytd-income(ytd-expenses) - ytd-earnings calcuations."
+COMMENT "2008/oct/25 brad10 - correct update of doc-ytdear in f020 to use variable (doc-ytdear-plus-amt-manpay) not calculation"
+COMMENT "2008/oct/25 brad11 - update of f110 changed to use summary variable instead of indivudual variables"
+COMMENT "2008/oct/26 brad12    - don't touch ytdear with expenses - it affects ytdinc (but may not include titheable expenses)"
+COMMENT "2008/oct/26 brad13    - include titheable expenses in ytdinc - adjust both net and gross amounts"
+COMMENT "2008/oct/27 brad14    - modify above brad13 change to just adjust the  net amount"
+COMMENT "2008/nov/06 moira1 - add new defined items  'x-doc-ytdinc-g/n' for updating YTDINC in f110 & f020 "
+COMMENT "2008/nov/18 brad15  - access f119  A  record to get previous YTD amount for TOTEXP"
+COMMENT "2008/nov/19 brad16  - include all expenses in ytdinc - not just titheable - slight change to brad13/brad14"
+COMMENT "2008/nov/19 brad17  - alternative method of calculating ytdinc using previous ytdinc from f119"
+COMMENT "2008/nov/19 brad18  - line that updated f020 with new ytdear got lost in editting - added back"
+COMMENT "2010/mar/02 moira2 - change the sequence when updating doc-YTDINC-g/n in f020"
+CANCEL CLEAR
+SET STACKSIZE 10000
+RUN U115
+SET DEFAULT
+SET PROCESS 50000
+SET LOCK RECORD UPDATE
+GLOBAL TEMP YTDCEA-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDCEA-TYPE CHAR*1
+GLOBAL TEMP YTDCEX-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDCEX-TYPE CHAR*1
+GLOBAL TEMP YTDEAR-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDEAR-TYPE CHAR*1
+GLOBAL TEMP RMAEXR-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP RMAEXR-TYPE CHAR*1
+GLOBAL TEMP RMAEXM-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP RMAEXM-TYPE CHAR*1
+GLOBAL TEMP INCEXP-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP INCEXP-TYPE CHAR*1
+GLOBAL TEMP YTDINC-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDINC-TYPE CHAR*1
+GLOBAL TEMP TOTINC-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP TOTINC-TYPE CHAR*1
+GLOBAL TEMP TOTEXP-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP TOTEXP-TYPE CHAR*1
+GLOBAL TEMP YTDGUA-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDGUA-TYPE CHAR*1
+GLOBAL TEMP YTDGUB-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDGUB-TYPE CHAR*1
+GLOBAL TEMP YTDGUC-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP YTDGUC-TYPE CHAR*1
+GLOBAL TEMP DEPEXR-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP DEPEXR-TYPE CHAR*1
+GLOBAL TEMP DEPEXM-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP DEPEXM-TYPE CHAR*1
+GLOBAL TEMP GST-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP GST-TYPE CHAR*1
+GLOBAL TEMP HOLDBACK-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP HOLDBACK-TYPE CHAR*1
+COMMENT "--------------------------------------------------------------------"
+COMMENT "DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'"
+COMMENT "FOR THE TRANSACTIONS BEING CREATED IN THIS RUN"
+REQUEST U115_A_GET_YTDCEA ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDCEA"
+ITEM YTDCEA-SEQ = PROCESS-SEQ
+ITEM YTDCEA-TYPE = COMP-TYPE
+REQUEST U115_A_GET_YTDCEX ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDCEX"
+ITEM YTDCEX-SEQ = PROCESS-SEQ
+ITEM YTDCEX-TYPE = COMP-TYPE
+REQUEST U115_A_GET_YTDEAR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDEAR"
+ITEM YTDEAR-SEQ = PROCESS-SEQ
+ITEM YTDEAR-TYPE = COMP-TYPE
+REQUEST U115_A_GET_RMAEXR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "RMAEXR"
+ITEM RMAEXR-SEQ = PROCESS-SEQ
+ITEM RMAEXR-TYPE = COMP-TYPE
+REQUEST U115_A_GET_RMAEXM ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "RMAEXM"
+ITEM RMAEXM-SEQ = PROCESS-SEQ
+ITEM RMAEXM-TYPE = COMP-TYPE
+REQUEST U115_A_GET_YTDINC ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDINC"
+ITEM YTDINC-SEQ = PROCESS-SEQ
+ITEM YTDINC-TYPE = COMP-TYPE
+REQUEST U115_A_GET_INCEXP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "INCEXP"
+ITEM INCEXP-SEQ = PROCESS-SEQ
+ITEM INCEXP-TYPE = COMP-TYPE
+REQUEST U115_A_GET_TOTINC ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "TOTINC"
+ITEM TOTINC-SEQ = PROCESS-SEQ
+ITEM TOTINC-TYPE = COMP-TYPE
+REQUEST U115_A_GET_TOTEXP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "TOTEXP"
+ITEM TOTEXP-SEQ = PROCESS-SEQ
+ITEM TOTEXP-TYPE = COMP-TYPE
+REQUEST U115_A_GET_YTDGUA ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDGUA"
+ITEM YTDGUA-SEQ = PROCESS-SEQ
+ITEM YTDGUA-TYPE = COMP-TYPE
+REQUEST U115_A_GET_YTDGUB ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDGUB"
+ITEM YTDGUB-SEQ = PROCESS-SEQ
+ITEM YTDGUB-TYPE = COMP-TYPE
+REQUEST U115_A_GET_YTDGUC ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "YTDGUC"
+ITEM YTDGUC-SEQ = PROCESS-SEQ
+ITEM YTDGUC-TYPE = COMP-TYPE
+REQUEST U115_A_GET_DEPEXR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "DEPEXR"
+ITEM DEPEXR-SEQ = PROCESS-SEQ
+ITEM DEPEXR-TYPE = COMP-TYPE
+REQUEST U115_A_GET_DEPEXM ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "DEPEXM"
+ITEM DEPEXM-SEQ = PROCESS-SEQ
+ITEM DEPEXM-TYPE = COMP-TYPE
+REQUEST U115_A_GET_GST ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "GST"
+ITEM GST-SEQ = PROCESS-SEQ
+ITEM GST-TYPE = COMP-TYPE
+REQUEST U115_A_GET_HOLDBACK ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "HOLDBK"
+ITEM HOLDBACK-SEQ = PROCESS-SEQ
+ITEM HOLDBACK-TYPE = COMP-TYPE
+COMMENT "-------------------------------------------------------------------------------"
+REQUEST U115_RUN_1 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "main"
+COMMENT "brad6        (get paycode of doctor)   &"
+COMMENT "brad15       &"
+ACCESS CONSTANTS-MSTR-REC-6 LINK CURRENT-EP-NBR VIAINDEX COMPENSATION-KEY2 TO EP-NBR OF F110-COMPENSATION LINK DOC-NBR OF F110-COMPENSATION TO DOC-NBR OF F020-DOCTOR-MSTR LINK CURRENT-EP-NBR, DOC-NBR OF F110-COMPENSATION VIAINDEX F112-EP-DOC-NBR TO EP-NBR , DOC-NBR OF F112-PYCDCEILINGS LINK ("FLAT+3_TITHE_LEVELS"), DOC-DEPT, DOC-AFP-PAYM-GROUP, '000', COMP-CODE TO DEPT-EXPENSE-CALC-CODE, DEPT-NBR, DOC-AFP-PAYM-GROUP, DOC-NBR, COMP-CODE OF F116-DEPT-EXPENSE-RULES-DTL ALIAS F116-GROUP OPT LINK COMP-CODE OF F110-COMPENSATION TO COMP-CODE OF F190-COMP-CODES LINK DOC-NBR OF F110-COMPENSATION, "TOTEXP", "A", DOC-OHIP-NBR TO DOC-NBR, COMP-CODE, REC-TYPE, DOC-OHIP-NBR OF F119-DOCTOR-YTD ALIAS F119-TOTEXP OPT
+CHOOSE CONST-REC-NBR 6
+COMMENT "CHANGED TO SORTED WHEN CHOOSE ADDED !!!!"
+SORTED ON DOC-NBR OF F110-COMPENSATION ON EP-NBR OF F110-COMPENSATION ON COMP-CODE OF F110-COMPENSATION
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GST.USE
+COMMENT "use $pb_src/gst.use"
+COMMENT "this source is called by:"
+COMMENT "u115a.qts, u115b.qts"
+COMMENT "define gst-percent int*8 unsigned size 4 = 7"
+COMMENT "2010/07/08 - MC - change from 5% to 13% for HST"
+COMMENT "define gst-percent int*8 unsigned        = 5"
+DEFINE GST-PERCENT INT*8 UNSIGNED = 13
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GST.USE
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\U115_COMMON.QTS
+COMMENT "DATE    WHO  WHY"
+COMMENT "2004/mar/25 b.e. made common to u115a/b.qts   "
+COMMENT "2006/mar/20 b.e. while testing a comp code with a factor of 0 (shows amount"
+COMMENT "in gross but pays nothing by turning net to zero) it was"
+COMMENT "discovered that the old 'hold back' feature used in mid-90's"
+COMMENT "was kicking in and generating a HOLDBK comp code for the "
+COMMENT "gross amount. The calculation of this hold back amount"
+COMMENT "changed to always be zero so that it won't intefere with"
+COMMENT "using a factor of 0.00"
+COMMENT "- set to zero by adding a condition 1 = 2 to logic"
+COMMENT "2006/jun/09 b.e. - UNDID THE ABOVE CHANGE SO THAT HOLDBK AGAIN CALCULATED"
+COMMENT "2006/jun/22 b.e. after change in size of field there occcured rounding"
+COMMENT "problem giving .01 difference .. changed from > to = in calc of x-amt-gst-only"
+COMMENT "2008/jun/05 M.C. - modify criteria for tot-income-gross-reg, tot-income-gross-misc &"
+COMMENT "tot-income-gross-other, create tot-tithe-gross-reg,"
+COMMENT "tot-tithe-gross-misc & tot-tithe-gross-other"
+COMMENT "- apply the same to tot-income-net-reg/misc/other, and"
+COMMENT "tot-tithe-net-reg/misc/other"
+COMMENT "2008/jul/02 brad1 - add  code to catch TITHE expenese - above not working"
+COMMENT "2008/jul/02 brad2 - added check that comp-type is I'ncome type when incuding"
+COMMENT "in calculation of:"
+COMMENT "tot-income-gross-reg/misc/other"
+COMMENT "and tot-income-net-reg/misc/other"
+COMMENT "and tot-tithe-gross-reg/misc/other"
+COMMENT "and tot-tithe-net-reg/misc/other"
+COMMENT "2008/oct/22 MC -  take out tithe related if conditions for "
+COMMENT "tot-income-gross-reg/misc/other"
+COMMENT "and tot-income-net-reg/misc/other"
+COMMENT "2008/oct/25 brad3 - link to f112 added u115a/b.qts and so the following fields"
+COMMENT "found both in f020 and f112 have to be clarified as coming from f020 "
+COMMENT "doc-dept-expense-percent-reg ,"
+COMMENT "doc-dept-expense-percent-misc"
+COMMENT "doc-rma-expense-percent-reg"
+COMMENT "doc-rma-expense-percent-misc"
+COMMENT "2008/nov/18 MC -  To calculate TOTEXP/INCEXP properly, use amt-net instead of amt-gross for x-dept-expense-other"
+COMMENT "titheable expense should use amt-net which represents the mtd amt, amt-gross represents the ytd-amt "
+COMMENT "- delete the new definition of  tot-tithe-gross-reg, tot-tithe-gross-misc & tot-tithe-gross-other"
+COMMENT "and  tot-tithe-net-reg/misc/other"
+COMMENT "2012/oct/16 MC1 - modify x-amt-gst-only definition"
+COMMENT "2013/Sep/10 MC2 - undo   x-amt-gst-only definition, the purpose of changing definition in Oct 2012 because Leena was"
+COMMENT "complaining the hst was not calculated properly, there might be +/- few cents of what it should be"
+COMMENT "Now in test, we encounter dr F42 has -.01 in incexp where income is one cent less than expense."
+COMMENT "This doctor has .05% for RMAEXR and 94.35% for DEPEXR where as some other doctors have 0 percentage"
+COMMENT "such as dr 83A & 968"
+COMMENT "I think originally Brad wanted to put into GST/HST if +/- 5 cents from incexp so that incexp can be zero"
+COMMENT "----------- CALCULATIONS PERFORMED AT COMP-CODE LEVEL ------------"
+COMMENT "(Determine Expenses charged (difference between GROSS and NET) using"
+COMMENT "FACTOR or non-zero Expense Percentages as indicators as to type of charges"
+COMMENT "applied)"
+COMMENT "def x-income-gross-minus-net       int*8 signed size 4           &"
+COMMENT "def x-income-gross-minus-net       int*10 signed                 &"
+DEF X-INCOME-GROSS-MINUS-NET INT*8 SIGNED = AMT-GROSS OF F110-COMPENSATION - AMT-NET OF F110-COMPENSATION
+COMMENT "def x-amt-dept-expense-pot-g   int*8 signed size 4                    &"
+COMMENT "= round ( (  amt-gross of f110-compensation                     &"
+COMMENT "* doc-dept-expense-percent-reg   ) / 1000000,0,near) &"
+COMMENT "if    comp-type     of f190-comp-codes =  I                &"
+COMMENT "and comp-sub-type of f190-comp-codes =  R                &"
+COMMENT "else round ( (  amt-gross of f110-compensation                     &"
+COMMENT "* doc-dept-expense-percent-misc  ) / 1000000,0,near) &"
+COMMENT "if    comp-type     of f190-comp-codes =  I                &"
+COMMENT "and comp-sub-type of f190-comp-codes =  M                &"
+COMMENT "else 0"
+COMMENT "brad1"
+COMMENT "2008/11/18 - MC - use amt-net instead"
+COMMENT "= round (  (  amt-gross of f110-compensation                    &"
+COMMENT "2008/11/28 - end"
+COMMENT ";;;;;;;                  / 1000000          &"
+COMMENT ";;;;;;;               * factor                   ,0,near       &"
+DEF X-DEPT-EXPENSE-OTHER INT*10 SIGNED = ROUND ( ( AMT-NET OF F110-COMPENSATION ) ) IF COMP-TYPE OF F190-COMP-CODES = "E" AND COMP-SUB-TYPE OF F190-COMP-CODES = "O"
+TEMP TOT-DEPT-EXPENSE-OTHER INT*10 SIGNED
+ITEM TOT-DEPT-EXPENSE-OTHER = TOT-DEPT-EXPENSE-OTHER + X-DEPT-EXPENSE-OTHER IF COMP-TYPE OF F190-COMP-CODES = "E" AND COMP-SUB-TYPE OF F190-COMP-CODES = "O" RESET AT DOC-NBR
+COMMENT "def x-amt-dept-expense-pot-g   int*8 signed size 4                    &"
+COMMENT "brad3            &"
+COMMENT "* doc-dept-expense-percent-reg  ,0,near)        &"
+COMMENT "brad3           &"
+COMMENT "* doc-dept-expense-percent-misc ,0,near)        &"
+DEF X-AMT-DEPT-EXPENSE-POT-G INT*10 SIGNED = ROUND ( ( AMT-GROSS OF F110-COMPENSATION / 1000000 ) * DOC-DEPT-EXPENSE-PERCENT-REG OF F020-DOCTOR-MSTR ,0,NEAR) IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "R" ELSE ROUND ( ( AMT-GROSS OF F110-COMPENSATION / 1000000 ) * DOC-DEPT-EXPENSE-PERCENT-MISC OF F020-DOCTOR-MSTR,0,NEAR) IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "M" ELSE 0
+COMMENT "(check for inconsistent data where calc'd expense greater than"
+COMMENT "difference between gross and net)"
+COMMENT "def x-amt-dept-expense-g   int*8 signed size 4                         &"
+COMMENT "def x-amt-dept-expense-g   int*10 signed                               &"
+DEF X-AMT-DEPT-EXPENSE-G INT*8 SIGNED = X-AMT-DEPT-EXPENSE-POT-G IF (X-AMT-DEPT-EXPENSE-POT-G < X-INCOME-GROSS-MINUS-NET AND AMT-GROSS OF F110-COMPENSATION > 0) OR (X-AMT-DEPT-EXPENSE-POT-G > X-INCOME-GROSS-MINUS-NET AND AMT-GROSS OF F110-COMPENSATION < 0) ELSE X-INCOME-GROSS-MINUS-NET
+COMMENT "def x-amt-rma-expense-pot-g   int*8 signed size 4                     &"
+COMMENT "brad3                   &"
+COMMENT "* doc-rma-expense-percent-reg  ,0,near)        &"
+COMMENT "brad3           &"
+COMMENT "* doc-rma-expense-percent-misc ,0,near)        &"
+DEF X-AMT-RMA-EXPENSE-POT-G INT*10 SIGNED = ROUND ( ( AMT-GROSS OF F110-COMPENSATION / 1000000 ) * DOC-RMA-EXPENSE-PERCENT-REG OF F020-DOCTOR-MSTR ,0,NEAR) IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "R" ELSE ROUND ( ( AMT-GROSS OF F110-COMPENSATION / 1000000 ) * DOC-RMA-EXPENSE-PERCENT-MISC OF F020-DOCTOR-MSTR,0,NEAR) IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "M" ELSE 0
+COMMENT "def x-amt-rma-expense-only       int*8 signed size 4     &"
+COMMENT "def x-amt-rma-expense-only       int*10 signed            &"
+DEF X-AMT-RMA-EXPENSE-ONLY INT*8 SIGNED = X-AMT-RMA-EXPENSE-POT-G IF ( X-INCOME-GROSS-MINUS-NET > ( X-AMT-DEPT-EXPENSE-G + X-AMT-RMA-EXPENSE-POT-G) AND AMT-GROSS OF F110-COMPENSATION > 0 ) OR ( X-INCOME-GROSS-MINUS-NET < ( X-AMT-DEPT-EXPENSE-G + X-AMT-RMA-EXPENSE-POT-G) AND AMT-GROSS OF F110-COMPENSATION < 0 ) ELSE X-INCOME-GROSS-MINUS-NET - X-AMT-DEPT-EXPENSE-G
+COMMENT "def x-amt-gst-pot-g     int*8 signed size 4      &"
+COMMENT "def x-amt-gst-pot-g     int*10 signed           & "
+DEF X-AMT-GST-POT-G INT*8 SIGNED = ROUND ( ( X-AMT-RMA-EXPENSE-ONLY * GST-PERCENT ) / 100 ,0,NEAR ) IF DOC-IND-PAYS-GST = "Y" ELSE 0
+COMMENT "2006/jun/22 b.e. after change in size of field there occcured rounding"
+COMMENT "problem giving .01 difference .. changed from > to ="
+DEF X-AMT-ROUND-OFF INT*8 = ABSOLUTE(X-INCOME-GROSS-MINUS-NET) - ABSOLUTE(X-AMT-DEPT-EXPENSE-G) - ABSOLUTE(X-AMT-RMA-EXPENSE-ONLY) - ABSOLUTE(X-AMT-GST-POT-G)
+COMMENT "def x-amt-gst-only      int*8 signed size 4          &"
+COMMENT "def x-amt-gst-only      int*10 signed                &"
+COMMENT "2013/09/10 - MC2 - undo the definition"
+COMMENT ";;def x-amt-gst-only      int*8 signed                &"
+COMMENT ";;     =  x-amt-gst-pot-g  "
+COMMENT "2012/10/16 - MC - comment out the if conditions as suggested by Brad to see what will happen"
+COMMENT "=  x-amt-gst-pot-g                             &"
+COMMENT "if     (     (     (   x-income-gross-minus-net  &"
+COMMENT ">  (  x-amt-dept-expense-g   &"
+COMMENT "+ x-amt-rma-expense-only  &"
+COMMENT "+ x-amt-gst-pot-g  &"
+COMMENT ")         &"
+COMMENT ")    &"
+COMMENT "and amt-gross of f110-compensation > 0 &"
+COMMENT ")      &"
+COMMENT "or (      (   x-income-gross-minus-net  &"
+COMMENT "<  (  x-amt-dept-expense-g   &"
+COMMENT "+ x-amt-rma-expense-only  &"
+COMMENT "+  x-amt-gst-pot-g &"
+COMMENT ")         &"
+COMMENT ")    &"
+COMMENT "and amt-gross of f110-compensation < 0) &"
+COMMENT ")             &"
+COMMENT "(account for rounding where diff may be +- .05 cents)"
+COMMENT "and (  x-amt-round-off > 5   &"
+COMMENT ")      &"
+COMMENT "else (  x-income-gross-minus-net                             &"
+COMMENT "- x-amt-dept-expense-g                                 &"
+COMMENT "- x-amt-rma-expense-only                               &"
+COMMENT ")"
+COMMENT "2012/10/16 - end"
+COMMENT "(account for rounding where diff may be +- .05 cents)"
+DEF X-AMT-GST-ONLY INT*8 SIGNED = X-AMT-GST-POT-G IF ( ( ( X-INCOME-GROSS-MINUS-NET > ( X-AMT-DEPT-EXPENSE-G + X-AMT-RMA-EXPENSE-ONLY + X-AMT-GST-POT-G ) ) AND AMT-GROSS OF F110-COMPENSATION > 0 ) OR ( ( X-INCOME-GROSS-MINUS-NET < ( X-AMT-DEPT-EXPENSE-G + X-AMT-RMA-EXPENSE-ONLY + X-AMT-GST-POT-G ) ) AND AMT-GROSS OF F110-COMPENSATION < 0) ) AND ( X-AMT-ROUND-OFF > 5 ) ELSE ( X-INCOME-GROSS-MINUS-NET - X-AMT-DEPT-EXPENSE-G - X-AMT-RMA-EXPENSE-ONLY )
+COMMENT "2013/09/10 - end"
+COMMENT "def x-amt-rma-expense-plus-gst-g    int*8 signed size 4          &"
+DEF X-AMT-RMA-EXPENSE-PLUS-GST-G INT*10 SIGNED = X-AMT-RMA-EXPENSE-ONLY + X-AMT-GST-ONLY
+COMMENT "(RMA 'Holdback ' calculated as difference between 'GROSS and NET'"
+COMMENT "minus 'DEPT Expense + RMA Expense + GST')"
+COMMENT "def x-amt-holdback-g             int*8 signed size 4    &"
+COMMENT "=  x-income-gross-minus-net                         &"
+COMMENT "- x-amt-dept-expense-g                             &"
+COMMENT "- x-amt-rma-expense-plus-gst-g                     &"
+COMMENT "if         (x-income-gross-minus-net > (x-amt-dept-expense-g &"
+COMMENT "+  x-amt-rma-expense-plus-gst-g) &"
+COMMENT "and  amt-gross of f110-compensation > 0)      &"
+COMMENT "or      (x-income-gross-minus-net < (x-amt-dept-expense-g &"
+COMMENT "+  x-amt-rma-expense-plus-gst-g) &"
+COMMENT "and  amt-gross of f110-compensation < 0)      &"
+COMMENT "else 0"
+COMMENT "def x-amt-holdback-g             int*8 signed size 4    &"
+COMMENT ";;;;;;;;;;;;;;;;;;;       and 1 = 2 & ; set condition always false so that holdback not generated regardless of previous logic"
+DEF X-AMT-HOLDBACK-G INT*10 SIGNED = ROUND( X-INCOME-GROSS-MINUS-NET - X-AMT-DEPT-EXPENSE-G - X-AMT-RMA-EXPENSE-PLUS-GST-G ) IF ( ( X-INCOME-GROSS-MINUS-NET > ( X-AMT-DEPT-EXPENSE-G + X-AMT-RMA-EXPENSE-PLUS-GST-G ) AND AMT-GROSS OF F110-COMPENSATION > 0 ) OR ( X-INCOME-GROSS-MINUS-NET < ( X-AMT-DEPT-EXPENSE-G + X-AMT-RMA-EXPENSE-PLUS-GST-G ) AND AMT-GROSS OF F110-COMPENSATION < 0 ) ) ELSE 0
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "(IF HOLDBACK IS LESS THAN OR = 10 CENTS AND THERE WAS PREVIOUS"
+COMMENT "NON-ZERO EXPENSE CALCULATIONS, THEN IGNORE THE CALCULATED HOLDBACK"
+COMMENT "AND ADD THE AMOUNT OF THE LEFT OVER  HOLDBACK  BACK INTO THE"
+COMMENT "LAST NON-ZERO EXPENSE CALCUATION)"
+COMMENT "2000/nov/23 B.E. changed limit from 10 cents to a dollar"
+COMMENT "if   x-amt-holdback-g > 10    &"
+DEF X-AMT-HOLDBACK-FINAL = X-AMT-HOLDBACK-G IF X-AMT-HOLDBACK-G > 100 OR ( X-AMT-RMA-EXPENSE-ONLY = 0 AND X-AMT-DEPT-EXPENSE-G = 0 ) ELSE 0
+DEF X-AMT-RMA-EXPENSE-FINAL = X-AMT-RMA-EXPENSE-ONLY + X-AMT-HOLDBACK-G IF X-AMT-HOLDBACK-G < 10 AND X-AMT-RMA-EXPENSE-ONLY <> 0 ELSE X-AMT-RMA-EXPENSE-ONLY
+DEF X-AMT-DEPT-EXPENSE-FINAL = X-AMT-DEPT-EXPENSE-G + X-AMT-HOLDBACK-G IF X-AMT-HOLDBACK-G < 10 AND X-AMT-DEPT-EXPENSE-G <> 0 ELSE X-AMT-DEPT-EXPENSE-G
+COMMENT "def x-amt-rma-expense-plusgst-final int*8 signed size 4            &"
+DEF X-AMT-RMA-EXPENSE-PLUSGST-FINAL INT*10 SIGNED = X-AMT-RMA-EXPENSE-FINAL + X-AMT-GST-ONLY
+COMMENT "----------- CALCULATIONS SUMMED TO DOC-NBR LEVEL ------------"
+COMMENT "temp    tot-income-gross-reg  int*8 signed size 4"
+TEMP TOT-INCOME-GROSS-REG INT*10 SIGNED
+COMMENT "brad2    &"
+ITEM TOT-INCOME-GROSS-REG = TOT-INCOME-GROSS-REG + AMT-GROSS OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "R" ELSE TOT-INCOME-GROSS-REG RESET AT DOC-NBR
+COMMENT "temp    tot-income-gross-misc int*8 signed size 4"
+TEMP TOT-INCOME-GROSS-MISC INT*10 SIGNED
+COMMENT "brad2    &"
+ITEM TOT-INCOME-GROSS-MISC = TOT-INCOME-GROSS-MISC + AMT-GROSS OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "M" ELSE TOT-INCOME-GROSS-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-income-gross-other int*8 signed size 4"
+TEMP TOT-INCOME-GROSS-OTHER INT*10 SIGNED
+COMMENT "brad2    &"
+ITEM TOT-INCOME-GROSS-OTHER = TOT-INCOME-GROSS-OTHER + AMT-GROSS OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "O" ELSE TOT-INCOME-GROSS-OTHER RESET AT DOC-NBR
+COMMENT "temp    tot-income-net-reg  int*8 signed size 4"
+TEMP TOT-INCOME-NET-REG INT*10 SIGNED
+COMMENT "brad2    &"
+ITEM TOT-INCOME-NET-REG = TOT-INCOME-NET-REG + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "R" ELSE TOT-INCOME-NET-REG RESET AT DOC-NBR
+COMMENT "temp    tot-income-net-misc int*8 signed size 4"
+TEMP TOT-INCOME-NET-MISC INT*10 SIGNED
+COMMENT "brad2    &"
+ITEM TOT-INCOME-NET-MISC = TOT-INCOME-NET-MISC + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "M" ELSE TOT-INCOME-NET-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-income-net-other int*8 signed size 4"
+TEMP TOT-INCOME-NET-OTHER INT*10 SIGNED
+COMMENT "brad2    &"
+ITEM TOT-INCOME-NET-OTHER = TOT-INCOME-NET-OTHER + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "I" AND COMP-SUB-TYPE OF F190-COMP-CODES = "O" ELSE TOT-INCOME-NET-OTHER RESET AT DOC-NBR
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "temp    tot-dept-expense-reg         int*8 signed size 4"
+TEMP TOT-DEPT-EXPENSE-REG INT*10 SIGNED
+ITEM TOT-DEPT-EXPENSE-REG = TOT-DEPT-EXPENSE-REG + X-AMT-DEPT-EXPENSE-FINAL IF COMP-SUB-TYPE = "R" ELSE TOT-DEPT-EXPENSE-REG RESET AT DOC-NBR
+COMMENT "temp    tot-dept-expense-misc        int*8 signed size 4"
+TEMP TOT-DEPT-EXPENSE-MISC INT*10 SIGNED
+ITEM TOT-DEPT-EXPENSE-MISC = TOT-DEPT-EXPENSE-MISC + X-AMT-DEPT-EXPENSE-FINAL IF COMP-SUB-TYPE = "M" ELSE TOT-DEPT-EXPENSE-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-rma-expense-plus-gst-reg        int*8 signed size 4"
+TEMP TOT-RMA-EXPENSE-PLUS-GST-REG INT*10 SIGNED
+ITEM TOT-RMA-EXPENSE-PLUS-GST-REG = TOT-RMA-EXPENSE-PLUS-GST-REG + X-AMT-RMA-EXPENSE-PLUSGST-FINAL IF COMP-SUB-TYPE = "R" ELSE TOT-RMA-EXPENSE-PLUS-GST-REG RESET AT DOC-NBR
+COMMENT "temp    tot-rma-expense-plus-gst-misc       int*8 signed size 4"
+TEMP TOT-RMA-EXPENSE-PLUS-GST-MISC INT*10 SIGNED
+ITEM TOT-RMA-EXPENSE-PLUS-GST-MISC = TOT-RMA-EXPENSE-PLUS-GST-MISC + X-AMT-RMA-EXPENSE-PLUSGST-FINAL IF COMP-SUB-TYPE = "M" ELSE TOT-RMA-EXPENSE-PLUS-GST-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-rma-expense-only-reg        int*8 signed size 4"
+TEMP TOT-RMA-EXPENSE-ONLY-REG INT*10 SIGNED
+ITEM TOT-RMA-EXPENSE-ONLY-REG = TOT-RMA-EXPENSE-ONLY-REG + X-AMT-RMA-EXPENSE-FINAL IF COMP-SUB-TYPE = "R" ELSE TOT-RMA-EXPENSE-ONLY-REG RESET AT DOC-NBR
+COMMENT "temp    tot-rma-expense-only-misc       int*8 signed size 4"
+TEMP TOT-RMA-EXPENSE-ONLY-MISC INT*10 SIGNED
+ITEM TOT-RMA-EXPENSE-ONLY-MISC = TOT-RMA-EXPENSE-ONLY-MISC + X-AMT-RMA-EXPENSE-FINAL IF COMP-SUB-TYPE = "M" ELSE TOT-RMA-EXPENSE-ONLY-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-gst-only-reg        int*8 signed size 4"
+TEMP TOT-GST-ONLY-REG INT*10 SIGNED
+ITEM TOT-GST-ONLY-REG = TOT-GST-ONLY-REG + X-AMT-GST-ONLY IF COMP-SUB-TYPE = "R" ELSE TOT-GST-ONLY-REG RESET AT DOC-NBR
+COMMENT "temp    tot-gst-only-misc       int*8 signed size 4"
+TEMP TOT-GST-ONLY-MISC INT*10 SIGNED
+ITEM TOT-GST-ONLY-MISC = TOT-GST-ONLY-MISC + X-AMT-GST-ONLY IF COMP-SUB-TYPE = "M" ELSE TOT-GST-ONLY-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-holdback-only-reg   int*8 signed size 4"
+TEMP TOT-HOLDBACK-ONLY-REG INT*10 SIGNED
+ITEM TOT-HOLDBACK-ONLY-REG = TOT-HOLDBACK-ONLY-REG + X-AMT-HOLDBACK-FINAL IF COMP-SUB-TYPE = "R" ELSE TOT-HOLDBACK-ONLY-REG RESET AT DOC-NBR
+COMMENT "temp    tot-holdback-only-misc  int*8 signed size 4"
+TEMP TOT-HOLDBACK-ONLY-MISC INT*10 SIGNED
+ITEM TOT-HOLDBACK-ONLY-MISC = TOT-HOLDBACK-ONLY-MISC + X-AMT-HOLDBACK-FINAL IF COMP-SUB-TYPE = "M" ELSE TOT-HOLDBACK-ONLY-MISC RESET AT DOC-NBR
+COMMENT "temp    tot-revhbk int*8 signed size 4"
+TEMP TOT-REVHBK INT*10 SIGNED
+ITEM TOT-REVHBK = TOT-REVHBK + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F110-COMPENSATION = 'E' AND (COMP-CODE OF F110-COMPENSATION = 'REVHBK' OR COMP-CODE OF F110-COMPENSATION = 'REVCLA') ELSE TOT-REVHBK RESET AT DOC-NBR
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "current EP Manual Payments affect the YTD Earnings (YTDEAR)"
+COMMENT "temp amt-manpay   integer*8 signed size 4"
+TEMP AMT-MANPAY INTEGER*10 SIGNED
+ITEM AMT-MANPAY = AMT-MANPAY + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F110-COMPENSATION="M" ELSE AMT-MANPAY RESET AT DOC-NBR
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\U115_COMMON.QTS
+COMMENT "temp amt-ytdgua   integer*8 signed size 4"
+TEMP AMT-YTDGUA INTEGER*10 SIGNED
+ITEM AMT-YTDGUA = AMT-YTDGUA + AMT-NET OF F110-COMPENSATION IF COMP-CODE OF F110-COMPENSATION="GTYPEA" ELSE AMT-YTDGUA RESET AT DOC-NBR
+COMMENT "temp amt-ytdgub   integer*8 signed size 4"
+TEMP AMT-YTDGUB INTEGER*10 SIGNED
+ITEM AMT-YTDGUB = AMT-YTDGUB + AMT-NET OF F110-COMPENSATION IF COMP-CODE OF F110-COMPENSATION="GTYPEB" ELSE AMT-YTDGUB RESET AT DOC-NBR
+COMMENT "temp amt-ytdguc   integer*8 signed size 4"
+TEMP AMT-YTDGUC INTEGER*10 SIGNED
+ITEM AMT-YTDGUC = AMT-YTDGUC + AMT-NET OF F110-COMPENSATION IF COMP-CODE OF F110-COMPENSATION="GTYPEC" ELSE AMT-YTDGUC RESET AT DOC-NBR
+COMMENT "if new record, initial YTD record in F119.  (required only for"
+COMMENT " I ncome, AND  E xpense records - .ie calc rec types like CEICEA are"
+COMMENT "needed AND the  D eduction records are handled in the tax/eft processing)"
+DEFINE X-REC-TYPE CHAR*1 = "A"
+COMMENT "def x-not-needed integer*8 signed size 4 = 0"
+DEF X-NOT-NEEDED INTEGER*10 SIGNED = 0
+COMMENT "(GROSS VALUES ARE USUALLY PUT INTO F119 HOWEVER FOR CEIEXP THE NET VALUE IS REQUIRED)"
+COMMENT "def x-amt-net int*8 signed size 4                                           &"
+DEF X-AMT-NET INT*10 SIGNED = AMT-GROSS OF F110-COMPENSATION IF COMP-CODE OF F110-COMPENSATION = "CEIEXP" ELSE AMT-NET OF F110-COMPENSATION
+COMMENT "def x-amt-gross int*8 signed size 4                                         &"
+DEF X-AMT-GROSS INT*10 SIGNED = AMT-NET OF F110-COMPENSATION IF COMP-CODE OF F110-COMPENSATION = "CEIEXP" ELSE AMT-GROSS OF F110-COMPENSATION
+COMMENT "def tot-gst-only integer*8 signed size 4    &"
+DEF TOT-GST-ONLY INTEGER*10 SIGNED = TOT-GST-ONLY-REG + TOT-GST-ONLY-MISC
+COMMENT "def tot-holdback-only integer*8 signed size 4    &"
+DEF TOT-HOLDBACK-ONLY INTEGER*10 SIGNED = TOT-HOLDBACK-ONLY-REG + TOT-HOLDBACK-ONLY-MISC
+COMMENT "def tot-income-gross integer*8 signed size 4    &"
+DEF TOT-INCOME-GROSS INTEGER*10 SIGNED = TOT-INCOME-GROSS-REG + TOT-INCOME-GROSS-MISC + TOT-INCOME-GROSS-OTHER
+COMMENT "def tot-income-net integer*8 signed size 4    &"
+DEF TOT-INCOME-NET INTEGER*10 SIGNED = TOT-INCOME-NET-REG + TOT-INCOME-NET-MISC + TOT-INCOME-NET-OTHER
+COMMENT "temp final-all-expenses integer*8 size 4"
+COMMENT "2008/10/23 - MC - chnage to define instead"
+COMMENT "temp final-all-expenses integer*10"
+COMMENT "item final-all-expenses                                    &"
+COMMENT "2008/10/23 - end"
+COMMENT "93/SEP/24"
+DEF FINAL-ALL-EXPENSES INTEGER*10 = TOT-DEPT-EXPENSE-REG + TOT-DEPT-EXPENSE-MISC + TOT-RMA-EXPENSE-ONLY-REG + TOT-RMA-EXPENSE-ONLY-MISC + TOT-GST-ONLY + TOT-HOLDBACK-ONLY + TOT-REVHBK + DOC-CEICEX
+COMMENT "brad1"
+COMMENT "don't include the new dept-expense-other in final-all-expenses otherwise"
+COMMENT "it will mess up totalling that generates 'holdBK' calculation"
+COMMENT "2008/10/23 - MC - comment out and change to use define instead"
+COMMENT ";temp final-all-expenses-plus-dept-expense-other integer*10"
+COMMENT ";item final-all-expenses-plus-dept-expense-other                 &"
+COMMENT "=  final-all-expenses                                     &"
+COMMENT "+ tot-dept-expense-other"
+COMMENT "brad3 fix temp statement"
+COMMENT ";     =  final-all-expenses-plus-dept-expense-other              &"
+COMMENT ";      + final-all-expenses                                      &"
+COMMENT ";      + tot-dept-expense-other          reset at doc-nbr"
+DEF FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER INTEGER*10 = FINAL-ALL-EXPENSES + TOT-DEPT-EXPENSE-OTHER
+COMMENT "2008/10/23 - end"
+COMMENT "WARNING - BELOW MUST BE THE SAME IN U115A!!!!"
+COMMENT "brad4 / brad8 undo this change"
+TEMP AMT-INCOME-MINUS-EXPENSES-G INTEGER*10 SIGNED
+COMMENT "temp amt-income-minus-expenses-n integer*10 signed"
+COMMENT "brad8       &"
+COMMENT "item amt-income-minus-expenses-n                       &"
+COMMENT "brad8       &"
+COMMENT "=  tot-income-net                               &"
+COMMENT "brad1       &"
+COMMENT "- final-all-expenses    "
+ITEM AMT-INCOME-MINUS-EXPENSES-G = TOT-INCOME-GROSS - FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER
+COMMENT "brad9        &"
+COMMENT "- final-all-expenses"
+COMMENT "- final-all-expenses-plus-dept-expense-other"
+COMMENT "- tot-dept-expense-other"
+COMMENT "temp doc-ytdear-plus-amt-manpay  integer*8 signed size 4"
+TEMP DOC-YTDEAR-PLUS-AMT-MANPAY INTEGER*10 SIGNED
+COMMENT "&"
+ITEM DOC-YTDEAR-PLUS-AMT-MANPAY = DOC-YTDEAR OF F020-DOCTOR-MSTR + AMT-MANPAY
+COMMENT "brad5 / brad6                                         &"
+COMMENT "- final-all-expenses-plus-dept-expense-other        &"
+COMMENT "brad7"
+COMMENT "+ final-all-expenses-plus-dept-expense-other         if doc-pay-code =  2    &"
+COMMENT "brad12 - no expenses"
+COMMENT "+ tot-dept-expense-other                             if doc-pay-code =  2    &"
+COMMENT "else                                                   &"
+COMMENT "doc-ytdear of f020-doctor-mstr                     &"
+COMMENT "+ amt-manpay"
+COMMENT "2008/11/06 - moira1 - below two defined items are used when update YTDINC in f110 & f020"
+DEF X-DOC-YTDINC-G INTEGER*10 SIGNED = DOC-YTDINC-G OF F020-DOCTOR-MSTR + TOT-INCOME-GROSS
+COMMENT "brad17 - comment below"
+COMMENT "def x-doc-ytdinc-n integer*10 signed =  &"
+COMMENT "doc-ytdinc   of f020-doctor-mstr &"
+COMMENT "+ tot-income-net   &"
+COMMENT "- tot-revhbk    &"
+COMMENT "; - tot-dept-expense-other  &"
+COMMENT ";brad16"
+COMMENT "- final-all-expenses-plus-dept-expense-other"
+COMMENT "brad17 new calcuations for ytdinc-n"
+DEF X-DOC-YTDINC-N INTEGER*10 SIGNED = DOC-YTDINC-G OF F020-DOCTOR-MSTR + TOT-INCOME-GROSS - FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER - AMT-YTD OF F119-TOTEXP
+SUBFILE BRADU115B KEEP AT COMP-CODE INCLUDE X-DOC-YTDINC-G, DOC-YTDINC-G OF F020-DOCTOR-MSTR, TOT-INCOME-GROSS, X-DOC-YTDINC-N , DOC-YTDINC OF F020-DOCTOR-MSTR , TOT-INCOME-NET , TOT-REVHBK , TOT-DEPT-EXPENSE-OTHER
+COMMENT "2008/11/06 - end   "
+COMMENT "-------------- F 1 1 0 --------------------------------------------------------"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-INCOME AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "YTDINC"
+ITEM COMP-TYPE = YTDINC-TYPE
+ITEM PROCESS-SEQ = YTDINC-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+COMMENT "brad13 include 'tot-dept-expense-other' (titheable expenses in calcuations)"
+COMMENT "; 2008/11/06 - moira1 - use the defined item to replace the formula "
+COMMENT ";        item amt-gross       =  doc-ytdinc-g of f020-doctor-mstr &"
+COMMENT ";                              + tot-income-gross   ;&"
+COMMENT "brad14"
+COMMENT "- tot-dept-expense-other"
+COMMENT ";        item amt-net         =  doc-ytdinc   of f020-doctor-mstr &"
+COMMENT ";                              + tot-income-net     &"
+COMMENT ";         - tot-revhbk    &"
+COMMENT "brad14"
+COMMENT ";         - tot-dept-expense-other"
+ITEM AMT-GROSS = X-DOC-YTDINC-G
+ITEM AMT-NET = X-DOC-YTDINC-N
+COMMENT "2008/11/06 - end"
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-EP-TOT-INCOME AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "TOTINC"
+ITEM COMP-TYPE = TOTINC-TYPE
+ITEM PROCESS-SEQ = TOTINC-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+COMMENT "brad11"
+COMMENT "item amt-gross       =   tot-income-gross-reg   &"
+COMMENT "+ tot-income-gross-misc  &"
+COMMENT "+ tot-income-gross-other"
+ITEM AMT-GROSS = TOT-INCOME-GROSS
+COMMENT "brad11"
+COMMENT "item amt-net         =   tot-income-net-reg     &"
+COMMENT "+ tot-income-net-misc  &"
+COMMENT "+ tot-income-net-other"
+ITEM AMT-NET = TOT-INCOME-NET
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-RMAEXR AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "RMAEXR"
+ITEM COMP-TYPE = RMAEXR-TYPE
+ITEM PROCESS-SEQ = RMAEXR-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = TOT-RMA-EXPENSE-ONLY-REG
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-RMAEXM AT DOC-NBR IF TOT-RMA-EXPENSE-ONLY-MISC <> 0
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "RMAEXM"
+ITEM COMP-TYPE = RMAEXM-TYPE
+ITEM PROCESS-SEQ = RMAEXM-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = TOT-RMA-EXPENSE-ONLY-MISC
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-GST AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "GST"
+ITEM COMP-TYPE = GST-TYPE
+ITEM PROCESS-SEQ = GST-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = TOT-GST-ONLY
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-HOLDBACK AT DOC-NBR IF TOT-HOLDBACK-ONLY <> 0
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "HOLDBK"
+ITEM COMP-TYPE = HOLDBACK-TYPE
+ITEM PROCESS-SEQ = HOLDBACK-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = TOT-HOLDBACK-ONLY
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-DEPEXR AT DOC-NBR IF TOT-DEPT-EXPENSE-REG <> 0
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "DEPEXR"
+ITEM COMP-TYPE = DEPEXR-TYPE
+ITEM PROCESS-SEQ = DEPEXR-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = TOT-DEPT-EXPENSE-REG
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-DEPEXM AT DOC-NBR IF TOT-DEPT-EXPENSE-MISC <> 0
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "DEPEXM"
+ITEM COMP-TYPE = DEPEXM-TYPE
+ITEM PROCESS-SEQ = DEPEXM-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = TOT-DEPT-EXPENSE-MISC
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-EP-TOT-EXPENSE AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "TOTEXP"
+ITEM COMP-TYPE = TOTEXP-TYPE
+ITEM PROCESS-SEQ = TOTEXP-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+COMMENT "brad1"
+COMMENT "item amt-net         = final-all-expenses"
+ITEM AMT-NET = FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-EP-INCEXP AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "INCEXP"
+ITEM COMP-TYPE = INCEXP-TYPE
+ITEM PROCESS-SEQ = INCEXP-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+COMMENT "brad4 / brad8"
+ITEM AMT-NET = AMT-INCOME-MINUS-EXPENSES-G
+COMMENT "item amt-net         = amt-income-minus-expenses-n"
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-CEIEAR AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "YTDCEA"
+ITEM COMP-TYPE = YTDCEA-TYPE
+ITEM PROCESS-SEQ = YTDCEA-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = DOC-YTDCEA OF F020-DOCTOR-MSTR
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+COMMENT "SHOULD OUTPUT THIS RECORD ONLY IF DOC IS PAYCODE 4 !"
+COMMENT "&"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-CEIEXP AT DOC-NBR
+COMMENT "IF DOC-PAY-CODE OF F112-PYCDCEILINGS =  4 "
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "YTDCEX"
+ITEM COMP-TYPE = YTDCEX-TYPE
+ITEM PROCESS-SEQ = YTDCEX-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = DOC-YTDCEX OF F020-DOCTOR-MSTR
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-YTDEAR AT DOC-NBR
+ITEM EP-NBR = CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = CURRENT-EP-NBR
+ITEM COMP-CODE = "YTDEAR"
+ITEM COMP-TYPE = YTDEAR-TYPE
+ITEM PROCESS-SEQ = YTDEAR-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = 0
+ITEM AMT-NET = DOC-YTDEAR-PLUS-AMT-MANPAY
+ITEM COMPENSATION-STATUS = " "
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U115B gen'd"
+COMMENT "-------------- F 0 2 0 --------------------------------------------------------"
+OUTPUT F020-DOCTOR-MSTR UPDATE IF RECORD F020-DOCTOR-MSTR EXISTS AT DOC-NBR
+ITEM DOC-TOTINC-G FINAL TOT-INCOME-GROSS
+ITEM DOC-TOTINC FINAL TOT-INCOME-NET
+COMMENT "brad13"
+COMMENT "; 2008/11/06 - moira1 - use the defined item to replace the formula "
+COMMENT ";    item doc-ytdinc-g final   doc-ytdinc-g   & "
+COMMENT ";    + tot-income-gross"
+COMMENT ";    item doc-ytdinc   final    doc-ytdinc  &"
+COMMENT ";       + tot-income-net &"
+COMMENT ";    - tot-revhbk"
+COMMENT "2010/03/02 - moira2 - update doc-ytdinc before doc-ytdinc-g because"
+COMMENT "the definition of x-doc-ytdinc-n is depending on doc-ytdinc-g of f020"
+COMMENT "item doc-ytdinc-g final x-doc-ytdinc-g   "
+COMMENT "item doc-ytdinc   final  x-doc-ytdinc-n"
+ITEM DOC-YTDINC FINAL X-DOC-YTDINC-N
+ITEM DOC-YTDINC-G FINAL X-DOC-YTDINC-G
+COMMENT "2010/03/02 - end"
+COMMENT "; 2008/11/06 - end"
+ITEM DOC-YTDGUA FINAL DOC-YTDGUA + AMT-YTDGUA
+ITEM DOC-YTDGUB FINAL DOC-YTDGUB + AMT-YTDGUB
+ITEM DOC-YTDGUC FINAL DOC-YTDGUC + AMT-YTDGUC
+COMMENT "(for paycode 6 doctors keep ytd expenses totaled) - 01/feb/21"
+COMMENT "brad1"
+COMMENT "doc-yrly-expense-computed + final-all-expenses   &"
+ITEM DOC-YRLY-EXPENSE-COMPUTED FINAL DOC-YRLY-EXPENSE-COMPUTED + FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER IF DOC-EP-PAY-CODE = "6"
+COMMENT "brad18"
+ITEM DOC-YTDEAR FINAL DOC-YTDEAR + AMT-MANPAY
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\U115B_DEBUG.QTS
+COMMENT "subfile debugu115b_at_doc_nbr keep include &"
+COMMENT "doc-nbr of f020-doctor-mstr,                    &"
+COMMENT "amt-income-minus-expenses-g,   &"
+COMMENT "amt-ytdgub,     &"
+COMMENT "amt-ytdguc,     &"
+COMMENT "amt-manpay,     &"
+COMMENT "amt-ytdgua,     &"
+COMMENT "doc-ytdinc   of f020-doctor-mstr,               &"
+COMMENT "doc-ytdcea of f020-doctor-mstr,   &"
+COMMENT "doc-ytdcex of f020-doctor-mstr,   &"
+COMMENT "doc-ytdear-plus-amt-manpay,   &"
+COMMENT "doc-ytdinc-g,     &"
+COMMENT "doc-ytdgua,     &"
+COMMENT "doc-ytdgub,     &"
+COMMENT "doc-ytdguc,     &"
+COMMENT "tot-gst-only,     &"
+COMMENT "tot-income-gross,    &"
+COMMENT "tot-income-gross-reg ,                          &"
+COMMENT "tot-income-gross-misc,                          &"
+COMMENT "tot-income-gross-other,                         &"
+COMMENT "tot-income-net,     &"
+COMMENT "tot-income-net-reg,                             &"
+COMMENT "tot-income-net-misc,                            &"
+COMMENT "tot-income-net-other,                           &"
+COMMENT "tot-revhbk,                                     &"
+COMMENT "tot-rma-expense-only-reg,                       &"
+COMMENT "tot-rma-expense-only-misc,                      &"
+COMMENT "tot-holdback-only,    &"
+COMMENT "tot-dept-expense-reg,    &"
+COMMENT "tot-dept-expense-misc,    &"
+COMMENT "final-all-expenses"
+COMMENT "2008/10/23 - MC"
+COMMENT "use $src/u115_debug.qts"
+COMMENT "changes"
+COMMENT "2008/oct/23 brad1 - added to addition fields to debug file: final-all-expenses-plus-dept-expense-other / tot-dept-expense-other"
+COMMENT "2008/oct/24 brad3 - due to change in u115a/b had to clarify doc-dept/rma-epxense-percent-reg/misc"
+COMMENT "2008/oct/24 brad4 - use net not gross variable name"
+COMMENT "2008/oct/25 brad8 - undo above brad4 change"
+COMMENT "u115b_debug.qts"
+COMMENT "brad3       &"
+COMMENT "doc-dept-expense-percent-reg,    &"
+COMMENT "doc-dept-expense-percent-misc,    &"
+COMMENT "brad3       &"
+COMMENT "doc-rma-expense-percent-misc,    &"
+COMMENT "doc-rma-expense-percent-reg,    &"
+COMMENT "brad1 added 2008/oct/23  &"
+COMMENT "brad4 / brad8    &"
+COMMENT "amt-income-minus-expenses-n,  & ; not reset"
+COMMENT "brad13"
+SUBFILE DEBUGU115B_AT_COMP_CODE KEEP INCLUDE DOC-NBR OF F110-COMPENSATION , COMP-CODE OF F110-COMPENSATION, AMT-GROSS OF F110-COMPENSATION, AMT-NET OF F110-COMPENSATION, COMP-TYPE OF F190-COMP-CODES, COMP-SUB-TYPE OF F190-COMP-CODES, CURRENT-EP-NBR , DOC-DEPT-EXPENSE-PERCENT-REG OF F020-DOCTOR-MSTR, DOC-DEPT-EXPENSE-PERCENT-MISC OF F020-DOCTOR-MSTR, DOC-IND-PAYS-GST, DOC-RMA-EXPENSE-PERCENT-MISC OF F020-DOCTOR-MSTR, DOC-RMA-EXPENSE-PERCENT-REG OF F020-DOCTOR-MSTR, EP-NBR OF F110-COMPENSATION, X-INCOME-GROSS-MINUS-NET, X-AMT-DEPT-EXPENSE-POT-G, X-AMT-DEPT-EXPENSE-G, GST-PERCENT, X-AMT-GST-POT-G, X-AMT-GST-ONLY, X-AMT-RMA-EXPENSE-ONLY, X-AMT-RMA-EXPENSE-POT-G, X-AMT-RMA-EXPENSE-PLUS-GST-G, X-AMT-HOLDBACK-G, X-AMT-HOLDBACK-FINAL, X-AMT-RMA-EXPENSE-FINAL, X-AMT-RMA-EXPENSE-PLUSGST-FINAL , TOT-INCOME-GROSS-REG, TOT-INCOME-GROSS-MISC, TOT-INCOME-GROSS-OTHER, TOT-INCOME-NET-REG, TOT-INCOME-NET-MISC, TOT-INCOME-NET-OTHER, TOT-DEPT-EXPENSE-REG, TOT-DEPT-EXPENSE-MISC, TOT-RMA-EXPENSE-PLUS-GST-REG, TOT-RMA-EXPENSE-PLUS-GST-MISC, TOT-RMA-EXPENSE-ONLY-REG, TOT-RMA-EXPENSE-ONLY-MISC, TOT-GST-ONLY-REG, TOT-GST-ONLY-MISC, TOT-HOLDBACK-ONLY-REG, TOT-HOLDBACK-ONLY-MISC, TOT-REVHBK, AMT-MANPAY, FINAL-ALL-EXPENSES, FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER, TOT-DEPT-EXPENSE-OTHER, AMT-INCOME-MINUS-EXPENSES-G, DOC-YTDEAR-PLUS-AMT-MANPAY, DOC-YTDEAR OF F020-DOCTOR-MSTR, DOC-YTDINC OF F020-DOCTOR-MSTR , TOT-INCOME-GROSS , TOT-INCOME-NET, DOC-YTDINC-G OF F020-DOCTOR-MSTR
+COMMENT "brad1 added 2008/oct/23                &"
+COMMENT "& "
+COMMENT "brad4 / brad8    &"
+COMMENT "amt-income-minus-expenses-n,  & ; not reset"
+COMMENT "brad13"
+SUBFILE DEBUGU115B_AT_DOC_NBR KEEP AT DOC-NBR INCLUDE DOC-NBR OF F110-COMPENSATION, TOT-INCOME-GROSS-REG, TOT-INCOME-GROSS-MISC, TOT-INCOME-GROSS-OTHER, TOT-INCOME-NET-REG, TOT-INCOME-NET-MISC, TOT-INCOME-NET-OTHER, TOT-DEPT-EXPENSE-REG, TOT-DEPT-EXPENSE-MISC, TOT-RMA-EXPENSE-PLUS-GST-REG, TOT-RMA-EXPENSE-PLUS-GST-MISC, TOT-RMA-EXPENSE-ONLY-REG, TOT-RMA-EXPENSE-ONLY-MISC, TOT-GST-ONLY-REG, TOT-GST-ONLY-MISC, TOT-HOLDBACK-ONLY-REG, TOT-HOLDBACK-ONLY-MISC, TOT-REVHBK, AMT-MANPAY, FINAL-ALL-EXPENSES, FINAL-ALL-EXPENSES-PLUS-DEPT-EXPENSE-OTHER, TOT-DEPT-EXPENSE-OTHER, AMT-INCOME-MINUS-EXPENSES-G, DOC-YTDEAR-PLUS-AMT-MANPAY, DOC-YTDEAR OF F020-DOCTOR-MSTR, DOC-YTDINC OF F020-DOCTOR-MSTR , TOT-INCOME-GROSS , TOT-INCOME-NET, DOC-YTDINC-G OF F020-DOCTOR-MSTR
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\U115B_DEBUG.QTS
+COMMENT "2008/10/23 - end"
+BUILD $PB_OBJ/U115B
+ENDMODULE U115B.QTS

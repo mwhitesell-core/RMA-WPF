@@ -1,0 +1,98 @@
+;doc  : leena_juneservices.qts
+;     : report ohip amount for claims with submit date 2008/07/02, 2008/07/04
+;       clinics 31-48 - these are the claims we took 10% afpajd in yearend
+;       payroll - we will take 10% of the total amount of these  2 tapes and   
+;       give doc the 10% AFPCON
+;who  : Leena
+
+
+;Date           Who             Description
+;2008/07/22      Yasemin
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "31@",                  &
+                                              "32@",                  &
+                                              "33@",                  &
+                                              "34@",                  &
+                                              "35@",                  &
+                                              "36@",                  &
+                                              "41@",                  &
+                                              "42@",                  &
+                                              "43@",                  &
+                                              "44@",                  &
+                                              "45@",                  &
+                                              "46@",                  &
+                                              "47@",                  &
+                                              "48@",                  &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if    clmhdr-batch-type   = 'C'          &
+;                          and CLMHDR-SUBMIT-DATE >= 20080702    & 
+;                          and CLMHDR-SUBMIT-DATE <= 20080704    &
+;                          and CLMHDR-DATE-PERIOD-END = 20080630 &
+                           and CLMHDR-DATE-SYS >= "20080624"     &
+                           and CLMHDR-DATE-SYS <= "20080704"     &
+                           and CLMHDR-AGENT-CD = 0  
+
+def x-doc-nbr cha*3 = clmhdr-claim-id[3:3]
+def x-clinic  cha*2 = clmhdr-claim-id[1:2]
+
+subfile juneservices keep include                    &
+clmhdr-claim-id                                     ,&
+x-clinic                                            ,&
+x-doc-nbr                                           ,&
+clmhdr-submit-date                                  ,&
+CLMHDR-DATE-SYS                                     ,&
+CLMHDR-DATE-PERIOD-END                              ,&
+clmhdr-tot-claim-ar-ohip                            ,&
+clmhdr-manual-and-tape-payments
+
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *juneservices                    &
+  link  x-doc-nbr to doc-nbr of f020-doctor-mstr opt             
+
+sort on x-doc-nbr          
+
+temp x-billings num*9
+item x-billings= x-billings + clmhdr-tot-claim-ar-ohip    &
+                    reset at x-doc-nbr
+
+temp x-paid     num*9
+item x-paid    = x-paid    + clmhdr-manual-and-tape-payments &
+                    reset at x-doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile juneservices1 portable keep at x-doc-nbr include              &
+x-clinic                                            ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+x-doc-nbr                                           ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-billings                                          ,&
+comma                                               ,&
+x-paid                                              ,&
+x-cr
+
+
+build $obj/juneservices

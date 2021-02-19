@@ -1,0 +1,957 @@
+;#> program-id.     d020.qks
+;
+;               note: 1) some programming remains to pass ep-minus-1
+;                        to sub-screens. should defaut ep to "E" mode
+;                        and ep-1 to find mode
+;
+;       ((c)) dyad technologies
+;
+;    program purpose : maintenance of doctor - payroll data
+;
+; modification history
+;    date   who         description
+; 92/jan/02 b.e.        - original
+; 92/oct/13 b.e.        - default from-ep-nbr for sub-screens using
+;                         previous ep not current ep.
+; 93/jul/02 y.b.        - change column clinic to class
+;
+; 93/jul/30 m.c.        - changed doc-dept-expense-percent from noid ti
+;			  id same
+; 93/sep/21 b.e.        - added rma/dept reg/misc billing percents
+;
+; 95/jun/29 b.m.l.	- added designer procs. h110,hi12,hi13 & hi19
+;
+; 95/nov/07 m.c.	- for 91 & 98 screens, do not prompt for ep-nbr
+;			- for 94 history screen, prompt for ep nbr
+; 95/nov/15 m.c.	- add f020-doctor-extra as secondary and pass
+;			  it to the tot screen (d020a)
+; 96/jan/22 m.c.	- sms 147 - include new screen option 92 for
+;			  require & target revenue entry
+; 98/jan/06 j.c.	- sms 148 - include for 1,col in last two cluster
+;                         statements otherwise error compilation 
+;
+; 1999/Jan/18 S.B.      - Fixed 'start' and 'term' dates for 
+;			  Y2K compliance.
+; 1999/Jun/07 S.B.	- Altered the call to scrtitle.use and
+;			  stdhilite.use to be called from $use
+;			  instead of src.
+;			- Removed the call to secfile.use because
+;			  it was not doing anything.
+;
+; 99/sep/20 B.E.	- added UPSHIFT to gst flag
+; 2003/nov/10 b.e.      - alpha doctor nbr
+; 2004/jul/20 b.e.	- added field doc-afp-paym-group
+; 2006/may/30 b.e.	- restrict activities on screen so no add/delete
+; 2008/may/07 b.e.	- add call to d119gov.qkc for goverance transactions
+; 2008/may/21 M.C.	- add call to d119tithe.qkc for tithe calculation          
+; 2008/jun/03 M.C.      - show all doctors with the same doc ohip nbr on line 2
+; 2008/oct/06 M.C.	- add call to h119tithe.qkc for history tithe calculation          
+;			  and call to h119gov.qkc for history governance transactions
+; 2012/jan/06 be1 	- new OVERage processing - add new fields and designer routine 'over'
+;			  to allow input/processing of overage amount. If a CURRENT EP record exists, then
+;			  increase the ceiling for that rec - otherwise generate a new record with the
+;			  increased ceiling that includes overpayment for current EP. Then generate
+;			  a new record for NEXT EP setting ceiling back to what it is now.
+;			  Additionally the TOT screen field "Computed EARNINGS ceiling" has to be increased by
+;	                  amount of overage payment so that YTD payments are OK.
+; 2012/jan/28 be2	- don't adjust YTD Ceiling Earnings on TOT screen
+; 2012/Apr/18 MC1	- access f198 to display user-totals, do not know why it has never accessed in postfind procedure
+
+;screen $pb_obj/d020 activities find, change, entry; on 1 for 23
+screen $pb_obj/d020 activities find, change       ; on 1 for 23
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows select of doctors for maintenance of        " &
+"       Earnings related information.                                  " &
+"                                                                      "
+
+;use $pb_src/secfile.use   nol nod
+
+file  f020-doctor-mstr  primary
+
+; 2008/06/03 - MC
+file f020-doctor-mstr alias f020-designer designer  open 1
+   access viaindex doc-ohip-nbr using doc-ohip-nbr of f020-doctor-mstr
+
+temp doc-nbr-1  char*3
+temp doc-flag-1 char*1
+
+temp doc-nbr-2  char*3
+temp doc-flag-2 char*1
+
+temp doc-nbr-3  char*3
+temp doc-flag-3 char*1
+
+temp doc-nbr-4  char*3
+temp doc-flag-4 char*1
+
+temp doc-nbr-5  char*3
+temp doc-flag-5 char*1
+
+temp doc-nbr-6  char*3
+temp doc-flag-6 char*1
+
+temp doc-nbr-7  char*3
+temp doc-flag-7 char*1
+
+temp doc-nbr-8  char*3
+temp doc-flag-8 char*1
+
+temp doc-nbr-9  char*3
+temp doc-flag-9 char*1
+
+temp doc-nbr-10 char*3
+; 2008/06/03 - end
+
+;be1
+temp bolCurrentCeilingRecordExists char*1
+temp doc-overage-amt		integer*10
+temp doc-current-ceiling 	integer*10
+temp w-new-ceil-earn  		integer*10
+temp w-monthly-ceil-earn	integer*10
+temp w-doc-pay-code		char*1
+temp w-doc-pay-sub-code		char*1
+temp w-factor 			zoned*6 unsigned
+temp w-retro-to-ep-nbr		zoned*6	unsigned
+temp w-doc-yrly-ceiling			integer*10
+temp w-doc-yrly-ceiling-adjusted	integer*10
+temp w-doc-yrly-ceiling-computed	integer*10
+temp w-doc-yrly-expense			integer*10
+temp w-doc-yrly-expense-adjusted	integer*10
+temp w-doc-yrly-expense-computed	integer*10
+temp w-doc-yrly-expn-alloc-pers		zoned*2 unsigned
+temp w-doc-yrly-ceil-guar		integer*10
+temp w-doc-yrly-ceiling-guar-perc	zoned*3 unsigned
+temp w-doc-rma-expense-percent-reg	integer*10
+temp w-doc-rma-expense-percent-misc	integer*10
+temp w-doc-dept-expense-percent-reg	integer*10
+temp w-doc-dept-expense-percent-misc	integer*10
+temp w-doc-yrly-reqrev			integer*10
+temp w-doc-yrly-reqrev-adjusted		integer*10
+temp w-doc-yrly-reqrev-computed		integer*10
+temp w-doc-yrly-tarrev			integer*10
+temp w-doc-yrly-tarrev-adjusted		integer*10
+temp w-doc-yrly-tarrev-computed		integer*10
+temp w-retro-to-ep-nbr-req		zoned*6 unsigned
+temp w-retro-to-ep-nbr-tar		zoned*6 unsigned
+
+
+
+file  f020-doctor-extra secondary
+
+file f199-user-defined-fields                    designer
+file f199-user-defined-fields alias f199-2nd-rec designer
+file f198-user-defined-totals                    designer
+file f198-user-defined-totals alias f198-2nd-rec designer
+
+file f070-dept-mstr reference
+        access viaindex dept-nbr using doc-dept
+
+file f112-pycdceilings     			designer
+file f112-pycdceilings alias f112-add-new-rec-1	designer open 1
+file f112-pycdceilings alias f112-add-new-rec-2	designer open 2
+
+file constants-mstr-rec-6 designer
+
+def w-year = nconvert(ascii(sysdate,6)[1:2])
+def w-mth = nconvert(ascii(sysdate,6)[3:2])
+def w-comp-date = nconvert(ascii((w-year - 1),2) + '0701') if w-mth < 7 &
+    else          nconvert(ascii(w-year,2) + '0701')
+def w-note-type char*1 = "A"
+
+temp x-doc-nbr-length
+temp w-current-pycode    char*1
+temp w-current-pysubcode char*1
+temp w-curr-ceil-earn zoned*9 numeric
+temp w-curr-ceil-expn zoned*9 numeric
+temp w-password    char*5
+temp w-delete-flag char*1
+temp w-old-pay-code char*1
+temp w-doc-nbr  char*3
+temp w-ep-nbr-from  num*4 reset at startup
+temp w-ep-nbr-to    num*4 reset at startup
+temp w-ep-nbr-yy
+
+; the following defn to change when proper file accessed to get ccorrect
+; (ep - 1) record!
+define w-current-ep-nbr-minus-1 = current-ep-nbr - 1
+define w-current-ep-nbr-plus-1  = current-ep-nbr + 1
+
+file f080-bank-mstr reference
+        access viaindex bank-cd using   &
+        (ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+
+temp w-date date initial sysdate
+
+define x-screen-name char*55 = "PHYSICIAN EARNINGS Info"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+; 2008/06/03 - MC
+skip to 2
+;align (,,22) (,,25) (,,27) (,,30) (,,32) (,,35) (,,37) (,,40) (,,42) (,,45) (,,47) (,,50) (,,52) (,,55) (,,57) &
+;        (,,60) (,,62) (,,65) (,,68)
+align (,,04) (,,07) (,,09) (,,12) (,,14) (,,17) (,,19) (,,22) (,,24) (,,27) (,,29) (,,32) (,,34) (,,37) (,,39) &
+         (,,42) (,,44) (,,47) (,,49)
+
+field doc-nbr-1  display
+field doc-flag-1 display
+field doc-nbr-2  display
+field doc-flag-2 display
+field doc-nbr-3  display
+field doc-flag-3 display
+field doc-nbr-4  display
+field doc-flag-4 display
+field doc-nbr-5  display
+field doc-flag-5 display
+field doc-nbr-6  display
+field doc-flag-6 display
+field doc-nbr-7  display
+field doc-flag-7 display
+field doc-nbr-8  display
+field doc-flag-8 display
+field doc-nbr-9  display
+field doc-flag-9 display
+field doc-nbr-10 display
+; 2008/06/03 - end
+
+;be1
+align (55,58,66)
+field doc-overage-amt 		label "Overage:"
+;field doc-current-ceiling 
+
+skip to 3
+align (1,4,12) (,16,22) (,47,55) (,65,75)
+field doc-nbr of f020-doctor-mstr      display label "Doctor:" upshift
+field doc-name of f020-doctor-mstr     display label "Name:"      noid
+field doc-inits of f020-doctor-mstr    display label "Inits :"    noid
+field doc-ohip-nbr of f020-doctor-mstr display label "Ohip/Reg#:" noid
+skip
+align (,4,11) (,,16) (,47,55) (,56,67)
+field doc-dept  of f020-doctor-mstr lookup on f070-dept-mstr label "Dept :" display noid
+field dept-name of f070-dept-mstr display noid
+field doc-full-part-ind of f020-doctor-mstr label "Class :" display noid
+title "EARNING/EXPENSE" at ,63
+skip
+
+;be1
+;align (,4,11) (,22,28) (,39,47) (,,48) (,54,60) (,69,70)
+align (,4,11) (,22,28) (,39,47) (,,48) (,53,58) (,,69)
+
+field doc-date-fac-start label 'Start:' noid
+field doc-date-fac-term  label 'Term:'   noid
+field w-current-pycode   label "Pay Cd:" noid
+field w-current-pysubcode                noid
+field w-curr-ceil-earn          label "Curr: " pic "^^^^,^^^" noid
+field w-curr-ceil-expn          label "/"      pic "^^^^,^^^" noid
+skip
+;align (1,4,19) (,54,59) (,70,71)
+align (1,4,18) (,53,58) (,,70)
+
+field doc-bank-nbr of f020-doctor-mstr label "Bank Nbr:" pic "^^^^" display
+field doc-yrly-ceiling-computed label "Comp:"  pic "^^^^,^^^.^^" noid
+field doc-yrly-expense-computed label "/"      pic "^^^,^^^.^^" noid
+;title "REGULAR/MISC" at ,37
+title "REGULAR/MISC    GST F." at ,31
+;align (,4,18) (27,30,35) (,43,45) (54,57,63)
+;;align (,4,18) (27,30,35) (,43,45)
+align (,4,17) (23,26,31) (,38,39) (,,47)
+field doc-bank-branch of f020-doctor-mstr label "Branch  :" pic "^^^^^" display noid
+@if dg and hsc
+field doc-rma-expense-percent-reg  label "HSC :" pic "^^.^^^^"
+@elseif dg and rma
+field doc-rma-expense-percent-reg  label "RMA :" pic "^^.^^^^"
+@endif
+field doc-rma-expense-percent-misc label "/"     pic "^^.^^^^" id same
+field factor-gst-income-reg id same
+;;align (,4,11) (27,30,35) (,43,45)
+align (,4,10) (23,26,31) (,38,39) (,,47)
+field doc-bank-acct of f020-doctor-mstr   label "Acct#:" display noid
+field doc-dept-expense-percent-reg    label "Dept:" pic "^^.^^^^"
+field doc-dept-expense-percent-misc   label "/"     pic "^^.^^^^" id same
+field factor-gst-income-misc id same
+skip to 7
+;align                 (54,57,67)
+align                 (55,58,68)
+field doc-ind-pays-gst             label "Gst?     :" UPSHIFT
+skip to 8
+;align                 (54,57,67)
+align                 (55,58,68) (70,73,77)
+field doc-ind-holdback-active	   label "Holdback?:"
+;align                 (69,72,76)
+field doc-afp-paym-group of f020-doctor-mstr label 'Afp:' display
+
+skip to 9
+;draw from ,1 to 20,80
+title                                                                           &
+" YTD Totals "         &
+at ,36
+skip to 10
+align (,,3)
+cluster occurs with field-desc of f199-user-defined-fields at 10,1 for 1,41
+ field field-desc of f199-user-defined-fields noid display
+skip 1
+cluster ; 1
+skip to 10
+align (,,24)
+cluster occurs with user-total of f198-user-defined-totals at 10,24 for 1,40
+  field user-total of f198-user-defined-totals noid display
+skip 1
+cluster ;2
+
+skip to 10
+align (,,45)
+cluster occurs with field-desc of f199-2nd-rec             at 10,45 for 1,30
+ field field-desc of f199-2nd-rec             noid display
+skip 1
+cluster ; 3
+skip to 10
+align (,,66)
+cluster occurs with user-total of f198-2nd-rec             at 10,66 for 1,15
+  field user-total of f198-2nd-rec             noid display
+skip 1
+cluster ;4
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;             earnings period (e/p): yymm thru yymm
+
+skip to 21
+align (,14,37)(,50,66)
+field w-ep-nbr-from  label "EARNINGS PERIOD (E/P):" pic "^^^^^^" noid
+field w-ep-nbr-yy    label "EARNINGS YEAR:" pic "^^^^" noid
+;skip to 21
+;align (,42,47)
+;field w-ep-nbr-to label "thru"    pic "^^^^" noid
+
+skip to 22
+title "91 Pay Codes/Ceilings         "  at ,1
+title "92 Require/Target Rev "		at ,30
+title "93 Earnings     "        	at ,52
+title "94 YTD Totals"      		at ,68
+skip
+title "95 Messages  " 			at ,1
+title "96 Gov(hidden)  " 		at ,14
+title "97 Tithe Calculations " 		at ,30
+title "98 Default Comp " 		at ,52
+title "99 Notes     "  			at ,68
+;title   &
+;"92 MESSAGES - E/P:                                 99 NOTES               " &
+;    at ,1
+
+;skip to 23
+;align (,,75)
+;field w-password noid display noecho
+
+procedure internal copyF112ToF112Add-1
+begin
+	let doc-nbr                           of f112-add-new-rec-1 = doc-nbr                           of f112-pycdceilings
+	let ep-nbr                            of f112-add-new-rec-1 = ep-nbr                            of f112-pycdceilings
+	let factor                            of f112-add-new-rec-1 = factor                            of f112-pycdceilings
+	let doc-pay-code                      of f112-add-new-rec-1 = doc-pay-code                      of f112-pycdceilings
+	let doc-pay-sub-code                  of f112-add-new-rec-1 = doc-pay-sub-code                  of f112-pycdceilings
+	let retro-to-ep-nbr                   of f112-add-new-rec-1 = retro-to-ep-nbr                   of f112-pycdceilings
+	let doc-yrly-ceiling                  of f112-add-new-rec-1 = doc-yrly-ceiling                  of f112-pycdceilings
+	let doc-yrly-ceiling-adjusted         of f112-add-new-rec-1 = doc-yrly-ceiling-adjusted         of f112-pycdceilings
+	let doc-yrly-ceiling-computed         of f112-add-new-rec-1 = doc-yrly-ceiling-computed         of f112-pycdceilings
+	let doc-yrly-expense                  of f112-add-new-rec-1 = doc-yrly-expense                  of f112-pycdceilings
+	let doc-yrly-expense-adjusted         of f112-add-new-rec-1 = doc-yrly-expense-adjusted         of f112-pycdceilings
+	let doc-yrly-expense-computed         of f112-add-new-rec-1 = doc-yrly-expense-computed         of f112-pycdceilings
+	let doc-yrly-expn-alloc-pers          of f112-add-new-rec-1 = doc-yrly-expn-alloc-pers          of f112-pycdceilings
+	let doc-yrly-ceil-guar                of f112-add-new-rec-1 = doc-yrly-ceil-guar                of f112-pycdceilings
+	let doc-yrly-ceiling-guar-perc        of f112-add-new-rec-1 = doc-yrly-ceiling-guar-perc        of f112-pycdceilings
+	let last-mod-date                     of f112-add-new-rec-1 = last-mod-date                     of f112-pycdceilings
+	let last-mod-time                     of f112-add-new-rec-1 = last-mod-time                     of f112-pycdceilings
+	let last-mod-user-id                  of f112-add-new-rec-1 = last-mod-user-id                  of f112-pycdceilings
+	let doc-rma-expense-percent-reg       of f112-add-new-rec-1 = doc-rma-expense-percent-reg       of f112-pycdceilings
+	let doc-rma-expense-percent-misc      of f112-add-new-rec-1 = doc-rma-expense-percent-misc      of f112-pycdceilings
+	let doc-dept-expense-percent-reg      of f112-add-new-rec-1 = doc-dept-expense-percent-reg      of f112-pycdceilings
+	let doc-dept-expense-percent-misc     of f112-add-new-rec-1 = doc-dept-expense-percent-misc     of f112-pycdceilings
+	let doc-yrly-reqrev                   of f112-add-new-rec-1 = doc-yrly-reqrev                   of f112-pycdceilings
+	let doc-yrly-reqrev-adjusted          of f112-add-new-rec-1 = doc-yrly-reqrev-adjusted          of f112-pycdceilings
+	let doc-yrly-reqrev-computed          of f112-add-new-rec-1 = doc-yrly-reqrev-computed          of f112-pycdceilings
+	let doc-yrly-tarrev                   of f112-add-new-rec-1 = doc-yrly-tarrev                   of f112-pycdceilings
+	let doc-yrly-tarrev-adjusted          of f112-add-new-rec-1 = doc-yrly-tarrev-adjusted          of f112-pycdceilings
+	let doc-yrly-tarrev-computed          of f112-add-new-rec-1 = doc-yrly-tarrev-computed          of f112-pycdceilings
+	let retro-to-ep-nbr-req               of f112-add-new-rec-1 = retro-to-ep-nbr-req               of f112-pycdceilings
+	let retro-to-ep-nbr-tar               of f112-add-new-rec-1 = retro-to-ep-nbr-tar               of f112-pycdceilings
+end
+procedure internal copyF112ToF112Add-2
+begin
+	let doc-nbr                           of f112-add-new-rec-2 = doc-nbr                           of f112-pycdceilings
+	let ep-nbr                            of f112-add-new-rec-2 = ep-nbr                            of f112-pycdceilings
+	let factor                            of f112-add-new-rec-2 = factor                            of f112-pycdceilings
+	let doc-pay-code                      of f112-add-new-rec-2 = doc-pay-code                      of f112-pycdceilings
+	let doc-pay-sub-code                  of f112-add-new-rec-2 = doc-pay-sub-code                  of f112-pycdceilings
+	let retro-to-ep-nbr                   of f112-add-new-rec-2 = retro-to-ep-nbr                   of f112-pycdceilings
+	let doc-yrly-ceiling                  of f112-add-new-rec-2 = doc-yrly-ceiling                  of f112-pycdceilings
+	let doc-yrly-ceiling-adjusted         of f112-add-new-rec-2 = doc-yrly-ceiling-adjusted         of f112-pycdceilings
+	let doc-yrly-ceiling-computed         of f112-add-new-rec-2 = doc-yrly-ceiling-computed         of f112-pycdceilings
+	let doc-yrly-expense                  of f112-add-new-rec-2 = doc-yrly-expense                  of f112-pycdceilings
+	let doc-yrly-expense-adjusted         of f112-add-new-rec-2 = doc-yrly-expense-adjusted         of f112-pycdceilings
+	let doc-yrly-expense-computed         of f112-add-new-rec-2 = doc-yrly-expense-computed         of f112-pycdceilings
+	let doc-yrly-expn-alloc-pers          of f112-add-new-rec-2 = doc-yrly-expn-alloc-pers          of f112-pycdceilings
+	let doc-yrly-ceil-guar                of f112-add-new-rec-2 = doc-yrly-ceil-guar                of f112-pycdceilings
+	let doc-yrly-ceiling-guar-perc        of f112-add-new-rec-2 = doc-yrly-ceiling-guar-perc        of f112-pycdceilings
+	let last-mod-date                     of f112-add-new-rec-2 = last-mod-date                     of f112-pycdceilings
+	let last-mod-time                     of f112-add-new-rec-2 = last-mod-time                     of f112-pycdceilings
+	let last-mod-user-id                  of f112-add-new-rec-2 = last-mod-user-id                  of f112-pycdceilings
+	let doc-rma-expense-percent-reg       of f112-add-new-rec-2 = doc-rma-expense-percent-reg       of f112-pycdceilings
+	let doc-rma-expense-percent-misc      of f112-add-new-rec-2 = doc-rma-expense-percent-misc      of f112-pycdceilings
+	let doc-dept-expense-percent-reg      of f112-add-new-rec-2 = doc-dept-expense-percent-reg      of f112-pycdceilings
+	let doc-dept-expense-percent-misc     of f112-add-new-rec-2 = doc-dept-expense-percent-misc     of f112-pycdceilings
+	let doc-yrly-reqrev                   of f112-add-new-rec-2 = doc-yrly-reqrev                   of f112-pycdceilings
+	let doc-yrly-reqrev-adjusted          of f112-add-new-rec-2 = doc-yrly-reqrev-adjusted          of f112-pycdceilings
+	let doc-yrly-reqrev-computed          of f112-add-new-rec-2 = doc-yrly-reqrev-computed          of f112-pycdceilings
+	let doc-yrly-tarrev                   of f112-add-new-rec-2 = doc-yrly-tarrev                   of f112-pycdceilings
+	let doc-yrly-tarrev-adjusted          of f112-add-new-rec-2 = doc-yrly-tarrev-adjusted          of f112-pycdceilings
+	let doc-yrly-tarrev-computed          of f112-add-new-rec-2 = doc-yrly-tarrev-computed          of f112-pycdceilings
+	let retro-to-ep-nbr-req               of f112-add-new-rec-2 = retro-to-ep-nbr-req               of f112-pycdceilings
+	let retro-to-ep-nbr-tar               of f112-add-new-rec-2 = retro-to-ep-nbr-tar               of f112-pycdceilings
+end
+
+procedure internal f112RecSave
+begin
+      let w-current-pycode          	= doc-pay-code     of f112-pycdceilings
+      let w-current-pysubcode       	= doc-pay-sub-code of f112-pycdceilings
+      let w-curr-ceil-earn          	= doc-yrly-ceiling of f112-pycdceilings
+      let w-curr-ceil-expn          	= doc-yrly-expense of f112-pycdceilings
+      ;be1
+      let w-factor			= factor			of f112-pycdceilings
+      let w-doc-pay-code		= doc-pay-code			of f112-pycdceilings
+      let w-doc-pay-sub-code		= doc-pay-sub-code		of f112-pycdceilings
+      let w-retro-to-ep-nbr		= retro-to-ep-nbr		of f112-pycdceilings
+      let w-doc-yrly-ceiling		= doc-yrly-ceiling		of f112-pycdceilings
+      let w-doc-yrly-ceiling-adjusted	= doc-yrly-ceiling-adjusted	of f112-pycdceilings
+      let w-doc-yrly-ceiling-computed	= doc-yrly-ceiling-computed	of f112-pycdceilings
+      let w-doc-yrly-expense		= doc-yrly-expense		of f112-pycdceilings
+      let w-doc-yrly-expense-adjusted	= doc-yrly-expense-adjusted	of f112-pycdceilings
+      let w-doc-yrly-expense-computed	= doc-yrly-expense-computed	of f112-pycdceilings
+      let w-doc-yrly-expn-alloc-pers	= doc-yrly-expn-alloc-pers	of f112-pycdceilings
+      let w-doc-yrly-ceil-guar		= doc-yrly-ceil-guar		of f112-pycdceilings
+      let w-doc-yrly-ceiling-guar-perc	= doc-yrly-ceiling-guar-perc	of f112-pycdceilings
+      let w-doc-rma-expense-percent-reg	= doc-rma-expense-percent-reg	of f112-pycdceilings
+      let w-doc-rma-expense-percent-misc= doc-rma-expense-percent-misc	of f112-pycdceilings
+      let w-doc-dept-expense-percent-reg= doc-dept-expense-percent-reg	of f112-pycdceilings
+      let w-doc-dept-expense-percent-misc=doc-dept-expense-percent-misc	of f112-pycdceilings
+      let w-doc-yrly-reqrev		= doc-yrly-reqrev		of f112-pycdceilings
+      let w-doc-yrly-reqrev-adjusted	= doc-yrly-reqrev-adjusted	of f112-pycdceilings
+      let w-doc-yrly-reqrev-computed	= doc-yrly-reqrev-computed	of f112-pycdceilings
+      let w-doc-yrly-tarrev		= doc-yrly-tarrev		of f112-pycdceilings
+      let w-doc-yrly-tarrev-adjusted	= doc-yrly-tarrev-adjusted	of f112-pycdceilings
+      let w-doc-yrly-tarrev-computed	= doc-yrly-tarrev-computed	of f112-pycdceilings
+      let w-retro-to-ep-nbr-req		= retro-to-ep-nbr-req		of f112-pycdceilings
+end 
+
+;be1
+procedure internal f112RecRestore
+begin
+  let factor				of f112-pycdceilings= w-factor
+  let doc-pay-code			of f112-pycdceilings= w-doc-pay-code
+  let doc-pay-sub-code			of f112-pycdceilings= w-doc-pay-sub-code
+  let retro-to-ep-nbr			of f112-pycdceilings= w-retro-to-ep-nbr
+  let doc-yrly-ceiling-adjusted		of f112-pycdceilings= w-doc-yrly-ceiling-adjusted
+  let doc-yrly-ceiling-computed		of f112-pycdceilings= w-doc-yrly-ceiling-computed
+  let doc-yrly-expense			of f112-pycdceilings= w-doc-yrly-expense
+  let doc-yrly-expense-adjusted		of f112-pycdceilings= w-doc-yrly-expense-adjusted
+  let doc-yrly-expense-computed		of f112-pycdceilings= w-doc-yrly-expense-computed
+  let doc-yrly-expn-alloc-pers		of f112-pycdceilings= w-doc-yrly-expn-alloc-pers
+  let doc-yrly-ceil-guar		of f112-pycdceilings= w-doc-yrly-ceil-guar
+  let doc-yrly-ceiling-guar-perc 	of f112-pycdceilings= w-doc-yrly-ceiling-guar-perc
+;  let last-mod-date    			of f112-pycdceilings= sysdate
+;  let last-mod-time    			of f112-pycdceilings= systime/10000
+;  let last-mod-user-id 			of f112-pycdceilings= signonuser
+  let doc-rma-expense-percent-reg	of f112-pycdceilings= w-doc-rma-expense-percent-reg
+  let doc-rma-expense-percent-misc	of f112-pycdceilings= w-doc-rma-expense-percent-misc
+  let doc-dept-expense-percent-reg	of f112-pycdceilings= w-doc-dept-expense-percent-reg
+  let doc-dept-expense-percent-misc	of f112-pycdceilings= w-doc-dept-expense-percent-misc
+  let doc-yrly-reqrev			of f112-pycdceilings= w-doc-yrly-reqrev
+  let doc-yrly-reqrev-adjusted		of f112-pycdceilings= w-doc-yrly-reqrev-adjusted
+  let doc-yrly-reqrev-computed		of f112-pycdceilings= w-doc-yrly-reqrev-computed
+  let doc-yrly-tarrev			of f112-pycdceilings= w-doc-yrly-tarrev
+  let doc-yrly-tarrev-adjusted		of f112-pycdceilings= w-doc-yrly-tarrev-adjusted
+  let doc-yrly-tarrev-computed		of f112-pycdceilings= w-doc-yrly-tarrev-computed
+  let retro-to-ep-nbr-req		of f112-pycdceilings= w-retro-to-ep-nbr-req
+  let retro-to-ep-nbr-tar		of f112-pycdceilings= w-retro-to-ep-nbr-tar
+end
+
+procedure initialize
+begin
+  get constants-mstr-rec-6 using 6 optional
+  if not accessok
+  then error "Error - Can't read Constants Master record #6!"
+
+; ??????!!!!!!  this logic should open f??? ep file and do read on current
+;                ep record and then read backwards to pickup most previous
+;                ep record - then do assignment !!!!!
+;
+;  let     w-ep-nbr-from = current-ep-nbr
+   let     w-ep-nbr-from = w-current-ep-nbr-minus-1
+;  let     w-ep-nbr-to   = last-ep-nbr-of-fiscal-yr
+   let     w-ep-nbr-to   = w-current-ep-nbr-minus-1
+end
+
+
+procedure postfind
+begin
+;  be1
+; let w-old-pay-code = doc-pay-code
+
+  display w-ep-nbr-from
+; display w-ep-nbr-to
+
+; (obtain field titles for "PHYSICIAN YTD TOTALS" - value 0/9 
+  get f199-user-defined-fields using "A" optional
+  for field-desc of f199-user-defined-fields
+  begin
+    display field-desc of f199-user-defined-fields
+  end
+
+; (obtain field titles for "PHYSICIAN YTD TOTALS" - value 10/19
+  get f199-2nd-rec             using "B" optional
+  for field-desc of f199-2nd-rec
+  begin
+    display field-desc of f199-2nd-rec
+  end
+
+; 2012/04/18 - MC1
+; (obtain "PHYSICIAN YTD TOTALS" - totals 0/9)
+  get f198-user-defined-totals using "A", doc-nbr optional
+  for user-total of f198-user-defined-totals
+  begin
+    display user-total of f198-user-defined-totals
+ end
+; 2012/04/18 - end
+
+; (obtain "PHYSICIAN YTD TOTALS" - totals 10/19)
+  get f198-2nd-rec             using "B", doc-nbr optional
+  for user-total of f198-2nd-rec
+  begin
+    display user-total of f198-2nd-rec
+ end
+
+;  (re-get const mstr due to bug that clears record in initial proc)
+  get constants-mstr-rec-6 using 6 optional
+
+; (obtain doctor's CURRENT EP paycode/ceiling)
+  let bolCurrentCeilingRecordExists ="Y"
+  get f112-pycdceilings viaindex pycdceilings using doc-nbr, current-ep-nbr optional
+
+;be1 - if ceiling record for CURRENT EP isn't defined, then try the most recent EP rec
+  if not accessok
+  then
+    begin
+        let bolCurrentCeilingRecordExists ="N"
+  	get f112-pycdceilings viaindex pycdceilings using doc-nbr, w-current-ep-nbr-minus-1 optional
+    end
+;be1 this backwards read didn't work - replaced with above logic that read current ep nbr MINUS 1 to get record
+;; (if current ep record not found use most recent for the doctor)
+;  if not accessok
+;  then
+;;   get f112-pycdceilings         using doc-nbr, current-ep-nbr backwards optional
+;    get f112-pycdceilings viaindex pycdceilings                 backwards optional
+
+  if accessok and doc-nbr of f112-pycdceilings = doc-nbr of f020-doctor-mstr
+  then
+    begin
+      ;be1
+      ;let w-current-pycode          	= doc-pay-code     of f112-pycdceilings
+      ;let w-current-pysubcode       	= doc-pay-sub-code of f112-pycdceilings
+      ;let w-curr-ceil-earn          	= doc-yrly-ceiling of f112-pycdceilings
+      ;let w-curr-ceil-expn          	= doc-yrly-expense of f112-pycdceilings
+      do f112RecSave
+    end
+  else
+    begin
+      let bolCurrentCeilingRecordExists =" "
+      let w-current-pycode    = "?"
+      let w-current-pysubcode =" "
+    end
+
+  display w-current-pycode
+  display w-current-pysubcode
+  display doc-yrly-ceiling-computed of f020-doctor-mstr
+  display doc-yrly-expense-computed of f020-doctor-mstr
+
+; 2008/06/03 - MC
+    while retrieving f020-designer via doc-ohip-nbr using doc-ohip-nbr of f020-doctor-mstr
+    begin
+        if doc-nbr-1 = ' '
+        then begin
+	   let doc-nbr-1 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-1 = 'T' 
+           end
+        else if doc-nbr-2 = ' '
+        then begin
+	   let doc-nbr-2 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-2 = 'T'
+           end
+        else if doc-nbr-3 = ' '
+        then begin
+	   let doc-nbr-3 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-3 = 'T' 
+           end
+        else if doc-nbr-4 = ' '
+        then begin
+	   let doc-nbr-4 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-4 = 'T' 
+           end
+        else if doc-nbr-5 = ' '
+        then begin
+	   let doc-nbr-5 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-5 = 'T' 
+           end
+        else if doc-nbr-6 = ' '
+        then begin
+	   let doc-nbr-6 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-6 = 'T'
+           end
+        else if doc-nbr-7 = ' '
+        then begin
+	   let doc-nbr-7 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-7 = 'T' 
+           end
+        else if doc-nbr-8 = ' '
+        then begin
+	   let doc-nbr-8 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-8 = 'T' 
+           end
+        else if doc-nbr-9 = ' '
+        then begin
+	   let doc-nbr-9 = doc-nbr of f020-designer
+	   if doc-date-fac-term of f020-designer <> 0
+	   then let doc-flag-9 = 'T' 
+           end
+        else if doc-nbr-10 = ' '
+        then begin
+	   let doc-nbr-10 = '*'  
+           end
+	end 
+; 2008/06/03 - end
+
+end
+
+;be1
+procedure edit doc-overage-amt
+begin
+  if w-doc-pay-code = "?"
+    then error "Neither Current nor Previous Ceiling record not found - UNABLE to perform AUTO-Calculation of Overage"
+end
+
+;be1 - process 'overage' payment
+procedure designer over help 'Process OVERAGE payment'
+begin
+;  LOGIC of process
+;  calc new ceiling 
+;  if bolCurrentCeilingRecordExists ="N"
+;    write new f112 rec with new ceiling for current Ep 
+;  else
+;    update f112 rec for current Ep with new ceiling amt
+;  endif
+;  write record for next EP with original ceiling
+;  update TOT field with new computer YTD ceiling
+;
+
+  ;dd-new-rec-1new ceiling including overage pay
+  let w-monthly-ceil-earn = w-curr-ceil-earn / 12
+  let w-new-ceil-earn	  = (w-monthly-ceil-earn + doc-overage-amt) * 12
+; TODO - handle pennies so that amount rounded down/up to nearest dollar
+
+  if bolCurrentCeilingRecordExists ="N"
+  then
+    begin
+	;NEW RECORD for Current EP
+	do f112RecRestore
+	; create rec for CURRENT EP with overage included
+        do copyF112ToF112Add-1
+        let doc-nbr 				of f112-add-new-rec-1 = doc-nbr of f020-doctor-mstr
+        let ep-nbr				of f112-add-new-rec-1 = current-ep-nbr
+	let doc-yrly-ceiling			of f112-add-new-rec-1 = w-new-ceil-earn
+	let doc-yrly-ceiling-adjusted		of f112-add-new-rec-1 = w-doc-yrly-ceiling
+	let doc-yrly-expense-adjusted		of f112-add-new-rec-1 = w-doc-yrly-expense
+	put f112-add-new-rec-1
+    end
+  else
+    begin
+	;update CURRENT EP rec with overage now included
+        get f112-pycdceilings viaindex pycdceilings using doc-nbr, current-ep-nbr optional
+	let doc-yrly-ceiling-adjusted		of f112-pycdceilings = doc-yrly-ceiling of f112-pycdceilings
+	let doc-yrly-ceiling			of f112-pycdceilings = w-new-ceil-earn
+	;record needs both adjusted updated even if not expense not changed
+	let doc-yrly-expense-adjusted		of f112-pycdceilings = doc-yrly-expense of f112-pycdceilings
+	put f112-pycdceilings    
+   end
+  ;
+  ; create rec for NEXT EP returning ceiling to original amount
+  ;copy content of f112 to 'new record' layout and add new record to file
+  do copyF112ToF112Add-2
+  let ep-nbr				of f112-add-new-rec-2 = w-current-ep-nbr-plus-1
+  let doc-yrly-ceiling-adjusted		of f112-add-new-rec-2 = w-new-ceil-earn
+  let doc-yrly-ceiling         		of f112-add-new-rec-2 = w-doc-yrly-ceiling
+  ;record needs both adjusted updated even if not expense not changed
+  let doc-yrly-expense-adjusted		of f112-add-new-rec-2 = doc-yrly-expense of f112-pycdceilings
+  put f112-add-new-rec-2
+
+  ;update TOT screen field - note that overage didn't have pennies so the (* 100)
+;be2 don't update this field  let DOC-YTDCEA of f020-doctor-mstr = w-new-ceil-earn * 100
+;be2  let DOC-YRLY-CEILING-COMPUTED of f020-doctor-mstr = w-new-ceil-earn * 100
+  let DOC-YRLY-CEILING-COMPUTED of f020-doctor-mstr = DOC-YRLY-CEILING-COMPUTED of f020-doctor-mstr + (doc-overage-amt * 100)
+  put f020-doctor-mstr
+
+  display doc-yrly-ceiling-computed of f020-doctor-mstr
+
+end
+
+procedure edit doc-nbr
+begin
+use $use/pad_doc_nbr.qks
+end
+
+
+procedure process doc-bank-nbr
+begin
+  if doc-bank-nbr = 0
+    then begin
+      let doc-bank-branch = 0
+      let doc-bank-acct = ' '
+      end
+    end
+
+procedure edit doc-bank-branch
+begin
+  get f080-bank-mstr viaindex bank-cd using     &
+        (ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+  if not accessok
+    then error "Error - Invalid BANK/BRANCH."
+  end
+
+
+procedure process doc-date-fac-term
+begin
+  if    doc-date-fac-start > doc-date-fac-term  &
+    and doc-date-fac-term <> 0
+  then error "INVALID DATE"
+;  else let doc-date-fac-term = ascii(w-doc-date-fac-term,6)
+  end
+
+
+procedure designer 91 help 'PAY CODES / CEILINGS'
+;91 pay codes / ceilings
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d112 mode same clear lines 7 to 23                 &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+  display doc-yrly-ceiling-computed of f020-doctor-mstr
+  display doc-yrly-expense-computed of f020-doctor-mstr
+end
+
+
+procedure designer hi91 help 'PAY CODES / CEILINGS HISTORY'
+;91 pay codes / ceilings history
+begin
+  accept w-ep-nbr-yy
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/h112 mode same clear lines 7 to 23                 &
+                passing w-doc-nbr, w-ep-nbr-yy,                 &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 92 help 'REQUIRE/TARGET REVENUE'
+;92 require/target revenue
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d112a mode same clear lines 7 to 23                 &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi92 help 'REQUIRE/TARGET REVENUE HISTORY'
+;92 require/target revenue history
+begin
+; accept w-ep-nbr-from
+  accept w-ep-nbr-yy
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/h112a mode same clear lines 7 to 23                 &
+;               passing w-doc-nbr, w-ep-nbr-from,               &
+                passing w-doc-nbr, w-ep-nbr-yy,                 &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+
+procedure designer 93 help 'EARNINGS'
+;93 earnings - e/p:
+begin
+;  accept w-password
+   let w-password = "EARN"
+   if w-password = 'EARN'
+   then begin
+     accept w-ep-nbr-from
+     let w-ep-nbr-to = w-ep-nbr-from
+;    accept w-ep-nbr-to
+     let w-doc-nbr = doc-nbr
+;     get constants-mstr-rec-6 using 6 optional
+;     if not accessok
+;     then error "Error - Can't read Constants Master record #6!"
+     run screen $pb_obj/d110 mode same clear lines 6 to 23              &
+                passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+                        constants-mstr-rec-6, f020-doctor-mstr
+   end
+end
+
+procedure designer hi93 help 'EARNINGS HISTORY'
+;93 earnings - history
+begin
+     accept w-ep-nbr-from
+     let w-doc-nbr = doc-nbr
+     run screen $pb_obj/h110 mode same clear lines 6 to 23              &
+                passing w-doc-nbr, w-ep-nbr-from,               &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 94 help 'YTD TOTALS'
+;94 ytd totals
+begin
+  let w-doc-nbr = doc-nbr
+; accept w-ep-nbr-from
+; let w-ep-nbr-to = w-ep-nbr-from
+; accept w-ep-nbr-to
+; get constants-mstr-rec-6 using 6 optional
+; if not accessok
+;   then error "Error - Can't read Constants Master record #6!"
+  run screen $pb_obj/d119 mode same clear lines 6 to 23         &
+;               passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi94 help 'YTD TOTALS HISTORY'
+;94 ytd totals history
+begin
+  let w-doc-nbr = doc-nbr
+; accept w-ep-nbr-yy
+  accept w-ep-nbr-from
+  run screen $pb_obj/h119 mode same clear lines 6 to 23         &
+;               passing w-doc-nbr, w-ep-nbr-yy,                 &
+                passing w-doc-nbr, w-ep-nbr-from,               &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 95 help 'MESSAGES'
+;95 messages - e/p:
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d118 mode same clear lines 6 to 23                 &
+                passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+                                              f020-doctor-mstr
+end
+
+procedure designer 96 help 'Governance Transactions'
+;96 Goverance transactions 
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d119gov mode same clear lines 6 to 23         &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+; 2008/10/06 - add new designer
+procedure designer hi96 help 'YTD TOTALS HISTORY - governance'
+;96 ytd totals history - governance
+begin
+  let w-doc-nbr = doc-nbr
+  accept w-ep-nbr-from
+  run screen $pb_obj/h119gov mode same clear lines 6 to 23         &
+                passing w-doc-nbr, w-ep-nbr-from,               &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi97 help 'YTD TOTALS HISTORY - tithe'      
+;96 ytd totals history - tithe  
+begin
+  let w-doc-nbr = doc-nbr
+  accept w-ep-nbr-from
+  run screen $pb_obj/h119tithe  mode same clear lines 6 to 23         &
+                passing w-doc-nbr, w-ep-nbr-from,               &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+; 2008/10/08 - end
+
+
+; 2008/05/21 - MC
+procedure designer 97 help 'Tithe Calculation'            
+;97 tithe Calculation      
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d119tithe mode same clear lines 6 to 23         &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+; 2008/05/21 - end
+
+procedure designer 98 help 'DEFAULT COMPENSATION'
+;98 default compensation
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d113 mode same clear lines 6 to 23         &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi98 help 'DEFAULT COMPENSATION HISTORY'
+;98 default compensation history
+begin
+  let w-doc-nbr = doc-nbr
+  accept w-ep-nbr-yy
+  run screen $pb_obj/h113 mode same clear lines 6 to 23         &
+                passing w-doc-nbr, w-ep-nbr-yy,                     &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 99 help 'NOTES'
+;99 notes
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d199  mode f  clear lines 6 to 23          &
+                passing w-doc-nbr
+end
+
+procedure designer tot help 'DOCTOR TOT SCREEN'
+;ytd and ep totals stored in f020 to optimize speed by reducing reads to f110
+begin
+  run screen $pb_obj/d020a mode f  clear lines 7 to 23          &
+                passing f020-doctor-mstr, f020-doctor-extra
+end
+
+
+procedure designer htot help 'DOCTOR TOT HISTORY SCREEN'
+begin
+  let w-doc-nbr = doc-nbr
+; accept w-ep-nbr-yy
+  accept w-ep-nbr-from
+  run screen $pb_obj/h020a mode f  clear lines 7 to 23          &
+;               passing w-doc-nbr, w-ep-nbr-yy
+                passing w-doc-nbr, w-ep-nbr-from
+end
+
+procedure designer adj help 'CURRENT OUTSTANDING CEILING ADJUSTMENT VALUES'
+;current outstanding ceiling adjustments values
+begin
+  run screen $pb_obj/d020b mode f  clear lines 6 to 23          &
+                passing f020-doctor-mstr
+end
+
+
+build detail list
+  

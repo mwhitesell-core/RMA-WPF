@@ -1,0 +1,422 @@
+;doc     : drkolesar_yr.qts
+;purpose : report minimum/maximum/average amount for weekday-day, weekday-after-hour, weekend-day, weekend-after-hours
+;	   weekday-day 		= claims with NO E400C or E401C  
+;	   weekday-after-hours  = claims with E400C or E401C  
+;	   weekend-day 		= claims with E400C  
+;	   weekend-after-hours  = claims with E401C  
+;        
+;who     : Dr. Kolesar  - Chief of Anesthesia at HHS
+;
+;  2013/Jun/25	 MC	- original
+;			- choose clinic 22, 23, 25, 32, 42, 98
+;			- select location M461 and department 2/13/21/26 and department 14 with specialty 01 only
+;			  and serv date >= 20110701
+;			- exclude adjustment (clmdtl-adj-nbr = 1) when calculating min/max/avg - separate pass
+;  2013/Jul/08   MC	- they only want ohip billings no bill direct; hence exclude clinic 98 
+;			  since this clinic should only contain agent 6
+;			- add selection in first request for agent <> 6 for other clinics
+; *************************************************************
+;  2013/Jul/23   MC	- instead of using clmdtl-sv-date to determine weekday or weekend, use clmhdr-serv-date
+;			  for the claim, do not require to explode the consecutive date
+;			  write record at claim nbr level
+;   NOTE: Extend the year if needed - now work for 5 years, modify serv-yr define statement in request two below
+;
+;  2013/Jul/30   MC     - Yasemin requested to exclude selected doctors because they can't get a consent from them
+;                         Dr. Forero    ohip# 24614  doc#V63
+;                         Dr. Hakim     ohip# 28527  doc# 37B and 72C
+;                         Dr. Thomas    ohip# 26538  doc# 622, 52A and 318
+;                       - modify two select statements for doctor exclusion in request summarize_claims_yr & create_records
+
+
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request summarize_claims_yr		&
+ 	on edit        errors report    &
+        on calculation errors report
+
+access *kolesar_clm
+
+def x-doc-nbr char*3 = key-clm-batch-nbr[3:3]
+
+;--------------------------------------------------------
+; modify below if statement for any doctor exclusion
+sel if x-doc-nbr <> 'V63'               &
+  and  x-doc-nbr <> '026'               &
+  and  x-doc-nbr <> 'T66'               &
+  and  x-doc-nbr <> 'V56'               &
+  and  x-doc-nbr <> '37B'               &
+  and  x-doc-nbr <> '72C'               &
+  and  x-doc-nbr <> 'F56'               &
+  and  x-doc-nbr <> 'F55'               &
+  and  x-doc-nbr <> '622'               &
+  and  x-doc-nbr <> '52A'               &
+  and  x-doc-nbr <> '318'
+;--------------------------------------------------------
+
+sort on serv-yr
+
+; weekday day amount
+temp weekday-day    zoned*10 signed
+item weekday-day  = weekday-day + clmhdr-tot-claim-ar-ohip 	&
+        if weekday = 1 and e400-count = 0 and e401-count = 0	&
+                    reset at  serv-yr 
+
+temp weekday-day-min  zoned*7 signed
+item weekday-day-min  minimum  clmhdr-tot-claim-ar-ohip         &
+        if weekday = 1 and e400-count = 0 and e401-count = 0	&
+                    reset at  serv-yr 
+
+temp weekday-day-max  zoned*7 signed
+item weekday-day-max  maximum  clmhdr-tot-claim-ar-ohip         &
+        if weekday = 1 and e400-count = 0 and e401-count = 0	&
+                    reset at  serv-yr 
+
+temp weekday-day-average  zoned*7 signed
+item weekday-day-average  average  clmhdr-tot-claim-ar-ohip       	&
+        if weekday = 1 and e400-count = 0 and e401-count = 0	&
+                    reset at  serv-yr 
+
+; weekday after hour amount
+temp weekday-after-hour   zoned*10 signed
+item weekday-after-hour = weekday-after-hour + clmhdr-tot-claim-ar-ohip &
+        if weekday = 1 and (e400-count > 0 or e401-count > 0)		&
+                    reset at serv-yr                
+
+temp weekday-after-hour-min  zoned*7 signed
+item weekday-after-hour-min  minimum   clmhdr-tot-claim-ar-ohip          &
+        if weekday = 1 and (e400-count > 0 or e401-count > 0)		 &
+                    reset at serv-yr                
+
+temp weekday-after-hour-max  zoned*7 signed
+item weekday-after-hour-max  maximum   clmhdr-tot-claim-ar-ohip          &
+        if weekday = 1 and (e400-count > 0 or e401-count > 0)		 &
+                    reset at serv-yr                
+
+temp weekday-after-hour-average  zoned*7 signed
+item weekday-after-hour-average  average   clmhdr-tot-claim-ar-ohip          &
+        if weekday = 1 and (e400-count > 0 or e401-count > 0)		 &
+                    reset at serv-yr                
+
+; weekend day amount
+temp weekend-day    zoned*10 signed
+item weekend-day  = weekend-day + clmhdr-tot-claim-ar-ohip   	   &
+        if weekend = 1 and (    e400-count > 0                     &   
+                            or (e400-count = 0 and e401-count = 0) &
+                           )                                       &
+                    reset at  serv-yr 
+
+temp weekend-day-min  zoned*7 signed
+item weekend-day-min  minimum   clmhdr-tot-claim-ar-ohip           &
+        if weekend = 1 and (    e400-count > 0                     &   
+                            or (e400-count = 0 and e401-count = 0) &
+                           )                                       &
+                    reset at  serv-yr 
+
+temp weekend-day-max  zoned*7 signed
+item weekend-day-max  maximum   clmhdr-tot-claim-ar-ohip           &
+        if weekend = 1 and (    e400-count > 0                     &   
+                            or (e400-count = 0 and e401-count = 0) &
+                           )                                       &
+                    reset at  serv-yr 
+
+temp weekend-day-average  zoned*7 signed
+item weekend-day-average  average   clmhdr-tot-claim-ar-ohip       &
+        if weekend = 1 and (    e400-count > 0                     &   
+                            or (e400-count = 0 and e401-count = 0) &
+                           )                                       &
+                    reset at  serv-yr 
+
+; weekend after hour amount
+temp weekend-after-hour   zoned*10 signed
+item weekend-after-hour = weekend-after-hour + clmhdr-tot-claim-ar-ohip    &
+        if weekend = 1 and e401-count > 0			&
+                    reset at serv-yr                
+
+temp weekend-after-hour-min   zoned*7 signed
+item weekend-after-hour-min   minimum  clmhdr-tot-claim-ar-ohip          &
+        if weekend = 1 and e401-count > 0			&
+                    reset at serv-yr                
+
+temp weekend-after-hour-max   zoned*7 signed
+item weekend-after-hour-max   maximum  clmhdr-tot-claim-ar-ohip          &
+        if weekend = 1 and e401-count > 0			&
+                    reset at serv-yr                
+
+temp weekend-after-hour-average   zoned*7 signed
+item weekend-after-hour-average   average  clmhdr-tot-claim-ar-ohip          &
+        if weekend = 1 and e401-count > 0			&
+                    reset at serv-yr                
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+def weekday-day-minimum zoned*7 signed =		&
+	weekday-day-min if weekday-day <> 0		
+	
+def weekday-day-maximum zoned*7 signed =		&
+	weekday-day-max if weekday-day <> 0		
+	
+def weekday-after-hour-minimum zoned*7 signed =		&
+	weekday-after-hour-min if weekday-after-hour <> 0		
+	
+def weekday-after-hour-maximum zoned*7 signed =		&
+	weekday-after-hour-max if weekday-after-hour <> 0		
+	
+def weekend-day-minimum zoned*7 signed =		&
+	weekend-day-min if weekend-day <> 0		
+	
+def weekend-day-maximum zoned*7 signed =		&
+	weekend-day-max if weekend-day <> 0		
+	
+def weekend-after-hour-minimum zoned*7 signed =		&
+	weekend-after-hour-min if weekend-after-hour <> 0		
+	
+def weekend-after-hour-maximum zoned*7 signed =		&
+	weekend-after-hour-max if weekend-after-hour <> 0		
+
+subfile kolesar_yr  at serv-yr  keep  include          &
+serv-yr                                               ,&
+weekday-day                                           ,&
+weekday-day-minimum                                   ,&
+weekday-day-maximum                                   ,&
+weekday-day-average                                   ,&
+weekday-after-hour                                    ,&
+weekday-after-hour-minimum                            ,&
+weekday-after-hour-maximum                            ,&
+weekday-after-hour-average                            ,&
+weekend-day                                           ,&
+weekend-day-minimum                                   ,&
+weekend-day-maximum                                   ,&
+weekend-day-average                                   ,&
+weekend-after-hour                                    ,&
+weekend-after-hour-minimum                            ,&
+weekend-after-hour-maximum                            ,&
+weekend-after-hour-average                           
+
+;-------------------------------------------------------------------
+;-------------------------------------------------------------------
+
+; below requests are to determine the median for service years
+
+request create_records                  &
+        on edit        errors report    &
+        on calculation errors report
+
+access *kolesar_clm      
+
+def x-doc-nbr char*3 = clmhdr-claim-id[3:3]
+
+;--------------------------------------------------------
+; modify below if statement for any doctor exclusion
+sel if x-doc-nbr <> 'V63'               &
+  and  x-doc-nbr <> '026'               &
+  and  x-doc-nbr <> 'T66'               &
+  and  x-doc-nbr <> 'V56'               &
+  and  x-doc-nbr <> '37B'               &
+  and  x-doc-nbr <> '72C'               &
+  and  x-doc-nbr <> 'F56'               &
+  and  x-doc-nbr <> 'F55'               &
+  and  x-doc-nbr <> '622'               &
+  and  x-doc-nbr <> '52A'               &
+  and  x-doc-nbr <> '318'
+;--------------------------------------------------------
+
+def  day-type char*1 =						   &
+	'1'  if weekday = 1 and e400-count = 0 and e401-count = 0  &   ; weekday-day
+  else	'2'  if weekday = 1 and (e400-count > 0 or e401-count > 0) &   ; weekday-after-hour
+  else	'3'  if weekend = 1 and (    e400-count > 0		   	&   ; weekend-day            
+			         or (e400-count = 0 and e401-count = 0) &
+				)					&
+  else	'4'  if weekend = 1 and e401-count > 0			       ; weekend-after-hour 
+
+; Brad wants to multiply the billing amount by 100 to get even dollars with no cents 
+def  bill-amt   char*10 = ascii(clmhdr-tot-claim-ar-ohip * 100,10)              
+
+output tmp-counters-dup add on errors report
+   item  ep-yr   final serv-yr  
+   item  doc-nbr final ' '  
+   item  rec-type final day-type 
+   item  tmp-alpha-field-1 final bill-amt
+   item  tmp-counter-1 final clmhdr-tot-claim-ar-ohip
+
+;-----------------------------------------------
+
+request update_count                    &
+        on edit        errors report    &
+        on calculation errors report
+
+access tmp-counters-dup
+
+choose ep-yr, doc-nbr ' ', rec-type 
+
+sorted on ep-yr on rec-type
+
+temp x-count zoned*7 unsigned 
+item x-count = x-count + 1 reset at rec-type
+
+output tmp-counters-dup update on errors report
+    item tmp-counter-2 final x-count
+
+;-----------------------------------------------
+
+request sort_amt                        &
+        on edit        errors report    &
+        on calculation errors report
+
+access tmp-counters-dup
+
+choose ep-yr, doc-nbr ' ', rec-type 
+
+sorted on ep-yr  on rec-type
+
+subfile saveyr  keep at rec-type include		&
+        ep-yr,  doc-nbr,  rec-type,  tmp-counter-2
+
+;-----------------------------------------------
+
+request calc_median                     &
+        on edit        errors report    &
+        on calculation errors report
+
+access *saveyr  
+
+def x-mod num = mod(tmp-counter-2,2)
+
+def x-med1 num = ceiling(tmp-counter-2 / 2)
+
+def x-med2 num = x-med1 + 1 if x-mod = 0
+
+subfile savemed1_yr  keep     include       &
+ep-yr   of saveyr,                     &
+doc-nbr of saveyr,                     &
+rec-type of saveyr,                    &
+tmp-counter-2 of saveyr,               &
+x-med1
+
+subfile savemed1_yr  alias savemed2  append  if x-mod = 0 include           &
+ep-yr     of saveyr,                   &
+doc-nbr  of saveyr,                    &
+rec-type of saveyr,                    &
+tmp-counter-2 of saveyr,               &
+x-med2
+
+;-----------------------------------------------
+
+request find_median1			&
+        on edit        errors report    &
+        on calculation errors report
+
+access *savemed1_yr                        &
+        link to tmp-counters-dup
+
+sel if  x-med1  of savemed1_yr =  tmp-counter-2 of tmp-counters-dup
+
+subfile savemed2_yr  keep include savemed1_yr, tmp-counter-1 of tmp-counters-dup
+
+;-----------------------------------------------
+
+request sum_avg_median                  &
+        on edit        errors report    &
+        on calculation errors report
+
+access *savemed2_yr  
+
+sorted on ep-yr on  rec-type
+
+temp avg-med zone*7 unsigned
+item avg-med average tmp-counter-1  reset at rec-type
+
+subfile savemed_yr  keep at rec-type include	&
+ep-yr, doc-nbr, rec-type, avg-med
+
+output tmp-counters-dup add at rec-type on errors report
+  item ep-yr   initial ep-yr of savemed2_yr 
+  item doc-nbr initial doc-nbr of savemed2_yr 
+  item rec-type initial rec-type of savemed2_yr 
+  item tmp-counter-1 final avg-med
+
+;-----------------------------------------------
+;-----------------------------------------------
+
+request year_all                     &
+        on edit        errors report    &
+        on calculation errors report
+
+access *kolesar_yr  			&
+	link serv-yr, ' '      		&
+	 to ep-yr, doc-nbr of tmp-counters-dup      
+
+sel if tmp-alpha-field-1 = ' '
+
+sorted on ep-yr 
+
+temp weekday-day-medium   zoned*7 signed
+item weekday-day-medium   = tmp-counter-1    if rec-type = '1'                &
+                    reset at  ep-yr
+
+temp weekday-after-hour-medium   zoned*7 signed
+item weekday-after-hour-medium   = tmp-counter-1    if rec-type = '2'         &
+                    reset at  ep-yr
+
+temp weekend-day-medium   zoned*7 signed
+item weekend-day-medium   = tmp-counter-1    if rec-type = '3'                &
+                    reset at  ep-yr
+
+temp weekend-after-hour-medium   zoned*7 signed
+item weekend-after-hour-medium   = tmp-counter-1    if rec-type = '4'         &
+                    reset at  ep-yr
+
+def comma cha*1 = "~"
+def x-zoned-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-zoned-cr)
+
+subfile kolesar_yr_all keep portable at  ep-yr   include	&
+serv-yr                                               ,&
+comma                                                 ,&
+weekday-day                                           ,&
+comma                                                 ,&
+weekday-day-minimum                                   ,&
+comma                                                 ,&
+weekday-day-maximum                                   ,&
+comma                                                 ,&
+weekday-day-average                                   ,&
+comma                                                 ,&
+weekday-day-medium                                    ,&
+comma                                                 ,&
+weekday-after-hour                                    ,&
+comma                                                 ,&
+weekday-after-hour-minimum                            ,&
+comma                                                 ,&
+weekday-after-hour-maximum                            ,&
+comma                                                 ,&
+weekday-after-hour-average                            ,&
+comma                                                 ,&
+weekday-after-hour-medium                             ,&
+comma                                                 ,&
+weekend-day                                           ,&
+comma                                                 ,&
+weekend-day-minimum                                   ,&
+comma                                                 ,&
+weekend-day-maximum                                   ,&
+comma                                                 ,&
+weekend-day-average                                   ,&
+comma                                                 ,&
+weekend-day-medium                                    ,&
+comma                                                 ,&
+weekend-after-hour                                    ,&
+comma                                                 ,&
+weekend-after-hour-minimum                            ,&
+comma                                                 ,&
+weekend-after-hour-maximum                            ,&
+comma                                                 ,&
+weekend-after-hour-average                            ,&
+comma                                                 ,&
+weekend-after-hour-medium                             ,&
+comma                                                 ,&
+x-cr
+
+build $obj/drkolesar_yr
+

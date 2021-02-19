@@ -1,0 +1,143 @@
+;program: claims85_a.qts
+;
+
+cancel clear
+
+set default
+set process nolimit
+set lock file update
+
+; As of 2001/oct/01 B.E. MOH claims now stored in clinic 22 but
+; with agent = 5
+; (As of 2001/nov/23 B.E. claims now longer agent 5 only but are 
+;  designated with a clmhdr payroll flag = "B")
+
+
+access claims_history_subfile
+
+
+define sel-from-ped zoned*8 = parm prompt 'Enter From Period End Date: '
+define sel-to-ped   zoned*8 = parm prompt 'Enter  To  Period End Date: '
+
+define clmdtl-doc-nbr zoned*4 = nconvert(clmdtl-id[3:4])
+
+define clmdtl-batch-key char*8 = clmdtl-id[1:2] &
+	                       + clmdtl-id[4:6]
+
+define sel-clinic-nbr char*2 = clmdtl-id[1:2]
+
+define clmdtl-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define clmdtl-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)            &
+                     if    clmdtl-consec-dates-r[2:2] ne 'OP'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'MR'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'BI'    
+
+
+define clmdtl-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)            &
+                     if    clmdtl-consec-dates-r[2:2] ne 'OP'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'MR'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'BI'
+
+define clmdtl-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)            &
+                     if    clmdtl-consec-dates-r[2:2] ne 'OP'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'MR'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'BI'               
+
+define clmdtl-sv-date2 char*8 = clmdtl-sv-date[1:6] + ascii(clmdtl-sv-day(1),2) &
+                     if    clmdtl-consec-dates-r[2:2] ne 'OP'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'MR'    &
+                       and clmdtl-consec-dates-r[2:2] ne 'BI'    &
+                       and clmdtl-consec-dates-r[2:2] ne '  '    &
+                       and clmdtl-consec-dates-r[2:2] ne '00'    
+
+define clmdtl-sv-date3 char*8 = clmdtl-sv-date[1:6] + ascii(clmdtl-sv-day(2),2) &
+                     if    clmdtl-consec-dates-r[5:2] ne 'OP'    &
+                       and clmdtl-consec-dates-r[5:2] ne 'MR'    &
+                       and clmdtl-consec-dates-r[5:2] ne 'BI'    &
+                       and clmdtl-consec-dates-r[5:2] ne '  '    &
+                       and clmdtl-consec-dates-r[5:2] ne '00'    
+
+define clmdtl-sv-date4 char*8 = clmdtl-sv-date[1:6] + ascii(clmdtl-sv-day(3),2) &
+                     if    clmdtl-consec-dates-r[8:2] ne 'OP'    &
+                       and clmdtl-consec-dates-r[8:2] ne 'MR'    &
+                       and clmdtl-consec-dates-r[8:2] ne 'BI'    &
+                       and clmdtl-consec-dates-r[8:2] ne '  '    &
+                       and clmdtl-consec-dates-r[8:2] ne '00'    
+
+
+def x-clmdtl-nbr-serv  		&
+    =   clmdtl-sv-nbr1		&
+      + clmdtl-sv-nbr2		&
+      + clmdtl-sv-nbr3		&
+      + clmdtl-sv-nbr4 
+
+def clmdtl-fee-1 zoned*7 numeric =  (clmdtl-fee-ohip / x-clmdtl-nbr-serv) * clmdtl-sv-nbr1
+
+def clmdtl-fee-2 zoned*7 numeric =  (clmdtl-fee-ohip / x-clmdtl-nbr-serv) * clmdtl-sv-nbr2  
+
+def clmdtl-fee-3 zoned*7 numeric =  (clmdtl-fee-ohip / x-clmdtl-nbr-serv) * clmdtl-sv-nbr3  
+
+def clmdtl-fee-4 zoned*7 numeric =  (clmdtl-fee-ohip / x-clmdtl-nbr-serv) * clmdtl-sv-nbr4  
+
+;
+; select records that meet the selection criteria
+;
+select if     clmdtl-date-period-end >= ascii(sel-from-ped,8)		&
+  	  and clmdtl-date-period-end <= ascii(sel-to-ped  ,8)		&
+	  and clmdtl-id[1:2]= '22'  and clmhdr-hosp = "B"
+
+def clmdtl-batch-nbr zoned*9 = nconvert(clmdtl-id[1:9])
+def clmdtl-claim-nbr zoned*2 = nconvert(clmdtl-id[10:2])
+def clmdtl-oma-cd    char*5  = clmdtl-id[12:5]
+
+subfile claims85_a keep include					&
+	clmdtl-doc-nbr, clmdtl-batch-key, sel-from-ped,     	&
+	sel-to-ped, sel-clinic-nbr,				&
+	clmdtl-batch-nbr, clmdtl-claim-nbr, clmdtl-oma-cd,	&
+	clmdtl-sv-nbr1, clmdtl-fee-1, 				&
+	clmdtl-sv-date of claims_history_subfile,		&
+	clmdtl-date-period-end of claims_history_subfile,	&
+	clmhdr-pat-ohip-id-or-chart of claims_history_subfile,  &
+	clmhdr-loc of claims_history_subfile,			&
+	clmhdr-i-o-pat-ind of claims_history_subfile	
+
+subfile claims85_a alias svc2 append 				&
+	if clmdtl-sv-date2 <> ' '  include			&
+	clmdtl-doc-nbr, clmdtl-batch-key, sel-from-ped,     	&
+	sel-to-ped, sel-clinic-nbr,				&
+	clmdtl-batch-nbr, clmdtl-claim-nbr, clmdtl-oma-cd,	&
+	clmdtl-sv-nbr2, clmdtl-fee-2, 				&
+	clmdtl-sv-date2,                                        &
+	clmdtl-date-period-end of claims_history_subfile,	&
+	clmhdr-pat-ohip-id-or-chart of claims_history_subfile,  &
+	clmhdr-loc of claims_history_subfile,			&
+	clmhdr-i-o-pat-ind of claims_history_subfile	
+
+subfile claims85_a alias svc3 append 				&
+	if clmdtl-sv-date3 <> ' '  include			&
+	clmdtl-doc-nbr, clmdtl-batch-key, sel-from-ped,     	&
+	sel-to-ped, sel-clinic-nbr,				&
+	clmdtl-batch-nbr, clmdtl-claim-nbr, clmdtl-oma-cd,	&
+	clmdtl-sv-nbr3, clmdtl-fee-3, 				&
+	clmdtl-sv-date3,                                        &
+	clmdtl-date-period-end of claims_history_subfile,	&
+	clmhdr-pat-ohip-id-or-chart of claims_history_subfile,  &
+	clmhdr-loc of claims_history_subfile,			&
+	clmhdr-i-o-pat-ind of claims_history_subfile	
+
+subfile claims85_a alias svc4 append 				&
+	if clmdtl-sv-date4 <> ' '  include			&
+	clmdtl-doc-nbr, clmdtl-batch-key, sel-from-ped,     	&
+	sel-to-ped, sel-clinic-nbr,				&
+	clmdtl-batch-nbr, clmdtl-claim-nbr, clmdtl-oma-cd,	&
+	clmdtl-sv-nbr4, clmdtl-fee-4, 				&
+	clmdtl-sv-date4,                                        &
+	clmdtl-date-period-end of claims_history_subfile,	&
+	clmhdr-pat-ohip-id-or-chart of claims_history_subfile,  &
+	clmhdr-loc of claims_history_subfile,			&
+	clmhdr-i-o-pat-ind of claims_history_subfile	
+
+build $pb_obj/claims85_a
+
+  

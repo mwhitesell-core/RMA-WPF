@@ -1,0 +1,44 @@
+; Program: u716a
+; Purpose: The service date may have been updated in the suspend-dtl
+;	   file. For web claims this date is the same on all detail records.
+;	   This pgm creates a subfile with only 1 detail record per claim
+;	   that contains the key info (doc nbr + accounting nbr) and the
+;	   service date. This subfile then becomes the driver file for
+;	   accessing the header file and creating the r716a header file
+;	   for upload to the web. The service date becomes the visit header's
+;	   visit date.
+;
+; Modification History
+; YY/MMM/DD  By whom    Why
+; 00/oct/03  B.E.	- original
+; 00/oct/10  B.E.	- send back deleted claims to web
+
+can clear
+set process nolimit
+
+access f002-suspend-dtl						&
+        link clmdtl-doc-ohip-nbr,                               &
+             clmdtl-accounting-nbr                              &
+          to clmhdr-doc-ohip-nbr,                               &
+             clmhdr-accounting-nbr of f002-suspend-hdr 
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+; (00/sep/22 B.E. - send back deleted web claims as well as updated ones)
+select if   clmdtl-status = updated                     &
+         or clmdtl-status = clmdtl-status-delete	&
+	 or clmhdr-status = updated			&
+	 or clmhdr-status = clmhdr-status-delete
+	
+
+sorted on clmdtl-doc-ohip-nbr	&
+       on clmdtl-accounting-nbr
+
+subfile u716a keep at clmdtl-accounting-nbr include 		 &
+  clmdtl-doc-ohip-nbr						,&
+  clmdtl-accounting-nbr						,&
+  clmdtl-sv-datE
+
+build $pb_obj/u716a
+

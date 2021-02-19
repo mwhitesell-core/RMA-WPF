@@ -1,0 +1,97 @@
+; 2014/Nov/25	MC	utl0119.qts    
+; purpose: download all records from f119-doctor-ytd for rec-type = 'A' only.
+;          This program is to be run monthly for all environments (101, SOLO, MP)
+;	   Brad requested this via Ross.
+; 2014/12/09 MC1	include more requests to download f020
+; 2015/02/05 MC2        exclude if doc-name is blank and doc-dept is zero
+;                       in second request download_f020 as per Brad's request
+
+cancel clear
+set process nolimit
+set lock record update
+
+run utl0119
+
+global temp  environment char*4  parm prompt 'Select environment (101c, Solo, MP): '
+
+
+request download_f119
+
+access f119-doctor-ytd
+
+sel if rec-type = 'A'
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+
+subfile utl0f119_A keep portable include	&
+	environment		,	&
+	x-delimiter		,	&
+	doc-nbr			,	&
+	x-delimiter		,	&
+	comp-code		,	&
+	x-delimiter		,	&
+	amt-mtd			,	&
+	x-delimiter		,	&
+	amt-ytd			,	&
+	x-lf
+
+request download_f020
+
+access f020-doctor-mstr   
+
+choose doc-nbr
+
+;select if active or terminated 6 months prior to start of current fiscal period (20140701)
+
+;MC2
+select if doc-name <> ' ' or doc-dept <> 0
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+
+subfile utl0f020_A keep portable include	&
+	environment		,	&
+	x-delimiter		,	&
+	doc-nbr			,	&
+	x-delimiter		,	&
+	doc-name 		,	&
+	x-delimiter		,	&
+	doc-dept		,	&
+	x-delimiter		,	&
+	doc-ohip-nbr		,	&
+	x-delimiter		,	&
+	doc-sin-nbr		,	&
+	x-delimiter		,	&
+	doc-date-fac-start	,	&
+	x-delimiter		,	&
+	doc-date-fac-term       ,  	&
+	x-lf
+
+subfile utl0f020_B keep portable        	&
+    if    doc-date-fac-term of f020-doctor-mstr = 0 		&
+       or doc-date-fac-term of f020-doctor-mstr > 20131201 include  &
+	environment		,	&
+	x-delimiter		,	&
+	doc-nbr of f020-doctor-mstr	,	&
+	x-delimiter		,	&
+	doc-name of f020-doctor-mstr 	,	&
+	x-delimiter		,	&
+	doc-dept of f020-doctor-mstr    ,	&
+	x-delimiter		,	&
+	doc-ohip-nbr of f020-doctor-mstr 	,	&
+	x-delimiter		,	&
+	doc-sin-nbr of f020-doctor-mstr		,	&
+	x-delimiter		,	&
+	doc-date-fac-start of f020-doctor-mstr	,	&
+	x-delimiter		,	&
+	doc-date-fac-term of f020-doctor-mstr   ,  	&
+	x-lf
+
+
+build $obj/utl0119                 
+

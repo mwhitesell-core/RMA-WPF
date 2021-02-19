@@ -1,0 +1,124 @@
+cancel clear
+set lock record update
+
+request create_b_adjustment on calculation errors report on edit errors report
+                        ; Create a batch control record for every
+                        ; 99 claim. Create a clmhdr and a clmdtl
+                        ; record, and inverted clmdtl key to the
+                        ; each adjusting clmdtl record in the
+                        ; subfile. At the end of the request,
+                        ; update the batch nbr in Constant Mstr
+                        ; Note:  Create adjustment only if the
+                        ;        Rma Billed = Ohip Billed
+                        ; 91/12/16 - Comment out the linkage to
+                        ; F002-CLMDTL, some define statements and
+                        ; selection statement.  Create a new subfile
+                        ; that store all adjusted batches.
+                        ; 93/02/19 - link to doctor master to use
+                        ; the department instead of from claims
+
+
+;access *u030_srt_adj                                 &
+access *u030bradadj                                &
+   link  'B', part-hdr-claim-id[1:8], 	       &
+        nconvert(part-hdr-claim-id[9:2]), '00000', '0' &
+    to   key-clm-type, key-clm-batch-nbr,             &
+        key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr &
+         of f002-claims-mstr alias f002-clmhdr          &
+  link   part-hdr-claim-id[3:3]               &
+   to    doc-nbr of f020-doctor-mstr                   &
+;   and   nconvert(part-hdr-claim-id[1:2]) to iconst-mstr-rec
+  link x-clinic-batch-nbr 			&
+   to  batctrl-batch-nbr of f001-batch-control-file
+
+sorted on x-batch-count on part-hdr-claim-id
+
+select if x-count > 2055
+
+;S.B.
+use $use/def_batctrl_batch_status.def
+use $use/def_clmhdr_status_ohip.def
+
+ 
+output f002-claims-mstr alias f002-adj-hdr add noitems on errors report
+;Preset claim header data from batctrl record
+   item key-clm-type                 initial 'B'
+   item key-clm-batch-nbr            initial x-clinic-batch-nbr
+   item key-clm-claim-nbr            initial x-claim-nbr
+   item key-clm-serv-code            initial '00000'
+   item key-clm-adj-nbr              initial '0'
+   item clmhdr-orig-batch-nbr        initial batctrl-batch-nbr
+   item clmhdr-orig-claim-nbr        initial x-claim-nbr
+   item clmhdr-batch-type            initial batctrl-batch-type
+   item clmhdr-adj-cd-sub-type       initial batctrl-adj-cd-sub-type
+   item clmhdr-date-period-end     initial nconvert(batctrl-date-period-end)
+   item clmhdr-cycle-nbr           initial batctrl-cycle-nbr
+; Preset claim header data with values from claim being adjusted
+   item clmhdr-claim-id            initial clmhdr-claim-id of f002-clmhdr
+   item clmhdr-diag-cd             initial clmhdr-diag-cd of f002-clmhdr
+   item clmhdr-hosp                initial clmhdr-hosp of f002-clmhdr
+   item clmhdr-i-o-pat-ind         initial clmhdr-i-o-pat-ind of f002-clmhdr
+   item clmhdr-agent-cd            initial clmhdr-agent-cd of f002-clmhdr
+   item clmhdr-loc                 initial clmhdr-loc of f002-clmhdr
+   item clmhdr-pat-ohip-id-or-chart initial clmhdr-pat-ohip-id-or-chart of f002-clmhdr
+   item clmhdr-pat-acronym         initial clmhdr-pat-acronym of f002-clmhdr
+   item clmhdr-doc-dept            initial doc-dept of f020-doctor-mstr
+; Assign values to the remaining fields
+   item clmhdr-reference    initial part-dtl-explan-cd of u030bradadj
+   item clmhdr-date-admit          initial '00000000'
+   item clmhdr-date-cash-tape-payment initial ascii(sysdate,8)
+   item clmhdr-date-sys            initial ascii(sysdate,8)
+;S.B.
+   item clmhdr-status-ohip         initial clmhdr-status-ohip-accepted
+   item clmhdr-tape-submit-ind     initial 'N'
+   item clmhdr-doc-nbr-ohip        initial 0
+   item clmhdr-doc-spec-cd         initial 0
+   item clmhdr-refer-doc-nbr       initial 0
+   item clmhdr-curr-payment        initial 0
+   item clmhdr-amt-tech-paid       initial 0
+   item clmhdr-manual-and-tape-payments initial 0
+;
+   item clmhdr-amt-tech-billed     initial x-amt-tech-billed
+   item clmhdr-tot-claim-ar-oma    initial x-tot-claim-ar-oma
+   item clmhdr-tot-claim-ar-ohip   initial x-ohip-bal
+   item key-p-clm-type 		   initial 'Z'
+   item key-p-clm-data   	   initial clmhdr-pat-ohip-id-or-chart of f002-clmhdr[2:14]
+
+output f002-claims-mstr alias f002-adj-dtl add noitems on errors report
+   item key-clm-type               initial 'B'
+   item key-clm-batch-nbr          initial x-clinic-batch-nbr
+   item key-clm-claim-nbr          initial x-claim-nbr
+   item key-clm-serv-code          initial x-adj-serv-code of u030bradadj
+   item key-clm-adj-nbr            initial '0'
+   item clmdtl-batch-nbr           initial clmhdr-batch-nbr of f002-adj-hdr
+   item clmdtl-claim-nbr           initial clmhdr-claim-nbr of f002-adj-hdr
+   item clmdtl-oma-cd              initial x-adj-serv-code  of u030bradadj[1:4]
+   item clmdtl-oma-suff            initial x-adj-serv-code of u030bradadj[5:1]
+   item clmdtl-adj-nbr             initial 1
+   item clmdtl-agent-cd            initial clmhdr-agent-cd of f002-adj-hdr
+   item clmdtl-adj-cd              initial clmhdr-adj-cd of f002-adj-hdr
+   item clmdtl-sv-date             initial clmdtl-sv-date of u030bradadj
+   item clmdtl-nbr-serv            initial 0
+   item clmdtl-consec-dates        initial 0
+
+   item clmdtl-date-period-end     initial ascii(			       &
+				       clmhdr-date-period-end of f002-adj-hdr,8)
+   item clmdtl-cycle-nbr           initial clmhdr-cycle-nbr of f002-adj-hdr
+   item clmdtl-orig-batch-id       initial clmhdr-orig-batch-id of f002-adj-hdr
+   item clmdtl-fee-oma             initial clmhdr-tot-claim-ar-oma of f002-adj-hdr
+   item clmdtl-fee-ohip            initial clmhdr-tot-claim-ar-ohip of f002-adj-hdr
+   item clmdtl-amt-tech-billed     initial clmhdr-amt-tech-billed of f002-adj-hdr
+   item clmdtl-diag-cd             initial clmdtl-diag-cd of u030bradadj
+   item clmdtl-rev-group-cd        initial ' '
+   item clmdtl-line-no             initial clmdtl-line-no of u030bradadj
+   item key-p-clm-type 		   initial 'Z'
+   item key-p-clm-data   	   initial x-clinic-batch-nbr   +           &   
+					   ascii(x-claim-nbr,2) +	    &
+					   x-adj-serv-code of u030bradadj  &
+					   + '0'
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+

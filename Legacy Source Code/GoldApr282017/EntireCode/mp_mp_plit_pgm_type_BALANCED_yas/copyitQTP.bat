@@ -1,0 +1,16 @@
+copy EARNINGS_REVENUE_MP.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy EARNINGS_REVENUE_MP_HISTORY.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy F020_INFO_EXPORT.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U115A.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U115B.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U115C.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U116.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U116.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U116.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U116.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U116.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U116.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U122.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U130.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy U132_SP_MP.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp
+copy YEAREND_1.qts C:\Clients\RMA\GoldApr282017\ParsedCode\mp\qtp

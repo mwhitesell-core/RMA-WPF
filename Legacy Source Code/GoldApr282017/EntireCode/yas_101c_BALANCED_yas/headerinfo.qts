@@ -1,0 +1,68 @@
+;doc     : header.qts
+;purpose : report Number of claims if payment date is blank 
+;          report unpaid claims
+;who     : Thegla for MOH
+
+
+;Date           Who             Description
+;2008/06/26     Yasemin
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22@",               &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if    clmhdr-batch-type = 'C'                    &
+                          and clmhdr-doc-dept = 30                       &
+                          and (     clmhdr-date-cash-tape-payment = " "  &
+                                 or clmhdr-date-cash-tape-payment = "0"  &
+                                 or clmhdr-date-cash-tape-payment = "00000000")
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile header keep include                          &
+clmhdr-claim-id                                     ,&
+comma                                               ,&
+clmhdr-serv-date                                    ,&
+comma                                               ,&
+clmhdr-date-period-end                              ,&
+comma                                               ,&
+clmhdr-tot-claim-ar-ohip                            ,&
+comma                                               ,&
+clmhdr-date-cash-tape-payment                       ,&
+comma                                               ,&
+clmhdr-manual-and-tape-payments                    
+
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *header                   
+
+
+sorted on clmhdr-claim-id  
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+temp x-noclms    num*9
+item x-noclms  = x-noclms  + 1                          
+
+subfile header1 portable keep at final include       &
+x-noclms                                            ,&
+x-cr
+
+

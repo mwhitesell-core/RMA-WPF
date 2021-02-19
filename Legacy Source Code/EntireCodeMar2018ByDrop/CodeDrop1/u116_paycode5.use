@@ -1,0 +1,124 @@
+; NAME: U116_PAYCODE5.USE  (INCLUDED IN PGM U116.QTS)
+; THIS COPYBOOK IS USED BY THE FOLLOWING PROGRAMS:
+;       u116.qts
+;
+;
+;   MODIFICATION HISTORY
+;  DATE        WHO        DESCRIPTION
+; 94/MAR/02    B.E.       ORIGINAL - CLONED FROM U116_PAYCODE2
+; 96/MAR/05    M.C.       UPDATE DOC-EP-PAY-CODE AND SUB CODE IN F020
+; 1999/June/01 S.B.       - Added the use file
+;                           def_compensation_status.def to 
+;                           prevent hard coding of compensation-status.
+; 2006/may/10 b.e.      - $1M payroll changes to size of calculated fields
+
+request u116_run_2_calc_paycd_5                 &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                             &
+        link current-ep-nbr                             &
+        viaindex f112-ep-doc-nbr                        &
+        to   ep-nbr of f112-pycdceilings                &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             totinc-seq,                                              &
+             "TOTINC"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation alias f110-totinc opt  &
+        link doc-nbr of f112-pycdceilings              		     &
+        to   doc-nbr of f020-doctor-mstr opt
+
+choose const-rec-nbr 6
+
+select f112-pycdceilings                                              &
+        if    doc-pay-code of f112-pycdceilings = "5"
+
+
+;def w-doc-yrly-ceiling   integer*8 signed size 4		      &
+def w-doc-yrly-ceiling   integer*10 signed         	&
+ 	= doc-yrly-ceiling   * 100
+
+; (Potential GROSS Pay = Ceiling(fee) + any addition INCOME)
+;def w-paypot-amt-gross integer*8 signed size 4                       &
+def w-paypot-amt-gross integer*10 signed               	&
+     =  doc-ceicea of f020-doctor-mstr			&
+      + amt-net of f110-totinc
+
+; Potential NET payment = 'POTENTIAL PAY' adjusted by "PAYMENT FACTOR"
+;def w-paypot-amt-net integer*8 signed size 4                          &
+def w-paypot-amt-net integer*10 signed                   &
+        =  (  w-paypot-amt-gross                                      &
+            * factor of f112-pycdceilings			      &
+           )							      &
+          / 10000
+
+;def  new-doc-ytdear integer*8 signed size 4 = doc-ytdear of f020-doctor-mstr + w-paypot-amt-net
+def  new-doc-ytdear integer*10 signed         		&
+	= doc-ytdear of f020-doctor-mstr + w-paypot-amt-net
+
+;S.B.
+use $use/def_compensation_status.def
+
+subfile debugu116cd5 keep include                                     &
+        ep-nbr of f112-pycdceilings,                                  &
+        doc-nbr of f112-pycdceilings,                                 &
+        doc-pay-code of f112-pycdceilings,                            &
+        doc-pay-sub-code of f112-pycdceilings,                        &
+        factor of f112-pycdceilings,                                  &
+        doc-ytdear of f020-doctor-mstr,               		      &
+        new-doc-ytdear,						      &
+        w-doc-yrly-ceiling,					      &
+        doc-ceicea of f020-doctor-mstr,				      &
+        amt-net of f110-totinc,					      &
+        w-paypot-amt-gross,					      &
+        w-paypot-amt-net					
+
+
+;------------- F 1 1 0 --------------------------------------------------------
+output f110-compensation add alias f110-output-paypot
+        item ep-nbr          = w-current-ep-nbr
+        item ep-nbr-entry    = w-current-ep-nbr
+        item comp-code       = "PAYPOT"
+        item comp-type       = paypot-type
+        item process-seq     = paypot-seq
+        item factor          = factor          of f112-pycdceilings
+        item factor-override = "*" if factor of f112-pycdceilings <> 10000 &
+                          else " "
+        item comp-units      = 0
+        item amt-gross       = w-doc-yrly-ceiling
+        item amt-net         = w-paypot-amt-net
+;S.B.
+;        item compensation-status = " "
+        item compensation-status = compensation-status-accepted
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U116 gen'd"
+
+;------------- F 0 2 0 --------------------------------------------------------
+
+;(update Doctor rec's YTD EARNINGS with calculated earnings for this EP)
+output f020-doctor-mstr alias f020-update update ; AT DOC-NBR
+   item doc-ytdear final new-doc-ytdear
+  item doc-ep-pay-code final doc-pay-code   of f112-pycdceilings
+  item doc-ep-pay-sub-code final doc-pay-sub-code of f112-pycdceilings
+
+
+
+;------------- F 1 1 9 --------------------------------------------------------
+;def x-not-needed integer*8 signed size 4 = 0
+def x-not-needed integer*10 signed        = 0
+def x-rec-type  char*1 = "A"
+def x-comp-code char*6 = "PAYPOT"
+subfile f119 append                                   include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         paypot-seq-rpt                 , &
+         paypot-group                   , &
+         x-rec-type                     , &
+         new-doc-ytdear                 , &
+         w-paypot-amt-net
+
+  

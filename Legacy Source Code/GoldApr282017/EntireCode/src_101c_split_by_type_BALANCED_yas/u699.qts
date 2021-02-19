@@ -1,0 +1,105 @@
+; program: u699.qts
+; purpose: take an incoming 'claims history subfile' and reformat the claim
+;	   details into the regular 'ohip submission file' format so that
+;	   progrma (new)u701.cbl can process it.
+;	   - the program is part of a processs that allows previously entered
+;	     claims to be 're-priced'
+
+; 2001/sep/26 MC/YB	- original
+; 2001/sep/28 MC   	- Eliminate Oma cd = 'T995' or amount > 9999.99
+; 2003/dec/23 A.A.	- alpha doctor nbr
+;
+cancel clear
+set process nolimit
+set lock file update 
+
+request upload_data on calculation errors report on edit errors report
+
+access *r699  
+
+sel if clmdtl-fee-ohip < 1000000
+
+def x-clinic    num*2 = nconvert(clmdtl-id[1:2])
+;!def x-doctor    num*3 = nconvert(clmdtl-id[4:3])
+;!def x-batch-nbr num*3 = nconvert(clmdtl-id[7:3])
+;!def x-claim-nbr num*2 = nconvert(clmdtl-id[10:2])
+def x-doctor   char*3 = clmdtl-id[3:3]
+def x-batch-nbr num*3 = nconvert(clmdtl-id[6:3])
+def x-claim-nbr num*2 = nconvert(clmdtl-id[9:2])
+
+sorted on x-clinic on x-doctor on x-batch-nbr on x-claim-nbr
+
+temp x-batch-number
+item x-batch-number = x-batch-number + 1		&
+		at x-batch-nbr reset at initial to 1
+
+;def x-batch-id zoned*12 unsigned = nconvert(ascii(sysdate,8) + ascii(x-batch-number,4))
+def x-batch-id zoned*12 unsigned = x-batch-number
+
+temp x-h-count 
+item x-h-count = x-h-count + 1 at x-claim-nbr	&
+		reset at x-batch-nbr
+
+temp x-t-count
+item x-t-count = x-t-count + 1 reset at x-batch-nbr
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+
+output bathdr-rec add at start of x-batch-nbr on errors report
+item bathdr-trans-id		      final 'HE'
+item bathdr-rec-id		      final 'B'
+item bathdr-release-id		      final 'V03'
+item bathdr-moh-cd		      final 'G'
+item bathdr-batch-id		      final x-batch-id
+item bathdr-oper-num		      final 0
+item bathdr-group-num		      final '0000'
+item bathdr-provider-num              final clmhdr-doc-nbr-ohip
+item bathdr-specialty-cd              final clmhdr-doc-spec-cd
+item bathdr-def-batch-i-o-ind         final clmhdr-i-o-pat-ind
+item bathdr-def-batch-location        final clmhdr-loc
+item bathdr-clinic-1-2        	      final x-clinic
+item bathdr-dept              	      final clmhdr-doc-dept
+item bathdr-doc-nbr           	      final x-doctor
+item filler-cr			      final x-lf
+
+output clmhdr-1-rec add at start of x-claim-nbr on errors report 
+item clmhdr-1-trans-id		      final 'HE'
+item clmhdr-1-rec-id		      final 'H'
+item clmhdr-1-account-num	      final clmdtl-id[4:8]
+item clmhdr-1-ref-doc-num	      final clmhdr-refer-doc-nbr
+item clmhdr-1-admit-date	      final nconvert(clmhdr-date-admit)
+item clmhdr-1-loc-code                final clmhdr-loc
+item clmhdr-1-man-rev-ind	      final clmhdr-1-man-rev-ind of r699
+item filler-cr			      final x-lf
+
+
+output item-rec add on errors report
+item item-trans-id		      final 'HE'
+item item-rec-id		      final 'T'
+item item-service-cd		      final clmdtl-id[12:5]
+item item-fee-submit                  final clmdtl-fee-ohip
+item item-num-of-serv                 final x-nbr-serv     
+item item-service-date                final nconvert(clmdtl-sv-date)
+;item item-diag-cd             	      final ascii(clmdtl-diag-cd,3) if clmdtl-diag-cd <> 0
+item item-diag-cd             	      final ascii(clmhdr-diag-cd,3) 	&
+					       if clmhdr-diag-cd <> 0
+item item-filler-diag   	      final ' '
+
+;item item-1-override-price            final ' '
+item item-1-override-price	      final item-1-override-price of r699
+;item item-1-bilateral                 final ' '
+item item-1-bilateral		      final item-1-bilateral of r699
+item filler-cr			      final x-lf
+
+
+output trailer-rec add at x-batch-nbr on errors report
+item trailer-trans-id 		      final 'HE'
+item trailer-rec-id		      final 'E'
+item trailer-h-count		      final x-h-count
+item trailer-t-count		      final x-t-count
+item filler-cr			      final x-lf
+
+
+build $obj/u699

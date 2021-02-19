@@ -1,0 +1,168 @@
+;#> PROGRAM-ID.     u141a.qts
+;
+;       ((C)) Dyad Infosys LTD   
+;
+;    PURPOSE:   Create miscellaneous payment  batches/claims from a 'text' file.
+;		First pass to validate the data from the incoming file
+
+;  MODIFICATION HISTORY
+;    DATE     WHO     DESCRIPTION
+; 2015/Nov/09 MC      - original   
+; 2016/Feb/22 MC1     - Yasemin requests to create the record for error 4 and bypass has provided in the text file
+; 2016/May/31 MC2     - Yasemin requests to add edit check for amount >= -99,999.99 and <= 99,999.99
+; 2017/Feb/13 MC3     - Yasemin requests to add edit check for doc nbr from f040-dtl
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+;-------------------------------------------------------------------------------
+;
+; verify transaction contain valid data
+;
+request u141_verify_data                			&
+                on edit        errors report    		&
+                on calculation errors report
+
+access misc-payment-file					&
+	link doc-nbr						&
+	  to doc-nbr     of f020-doctor-mstr  opt		&
+	link clmdtl-oma-cd					&
+	  to fee-oma-cd  of f040-oma-fee-mstr opt		&
+	link clmdtl-oma-cd,					&
+	     doc-dept,     					&
+; MC3
+	     '000'						&
+	  to fee-oma-cd,		 			&
+;	     dept-nbr    of f040-dtl opt 
+	     dept-nbr,						&
+	     doc-nbr    of f040-dtl opt 			&
+	link clmdtl-oma-cd,					&
+	     doc-dept,     					&
+	     doc-nbr of f020-doctor-mstr			&
+	  to fee-oma-cd,		 			&
+	     dept-nbr,						&
+	     doc-nbr    of f040-dtl alias f040-dtl-doc opt 			
+; MC3 - end
+
+define up-bypass char*6 = upshift(bypass-edit)
+          
+define valid-doc char*1 =					&
+	'Y' if   record f020-doctor-mstr exists			&
+   else '1' if   not record f020-doctor-mstr exists		
+
+define valid-clinic char*1 = 					&
+	'Y' if  (    clinic-nbr = doc-clinic-nbr		&
+                 or  clinic-nbr = doc-clinic-nbr-2		&
+                 or  clinic-nbr = doc-clinic-nbr-3		&
+                 or  clinic-nbr = doc-clinic-nbr-4		&
+                 or  clinic-nbr = doc-clinic-nbr-5		&
+                 or  clinic-nbr = doc-clinic-nbr-6		&
+	        )						&
+   else '2'
+
+define valid-oma-cd char*1 =					&
+	'Y' if   record f040-oma-fee-mstr exists		&
+   else	'3' if   not record f040-oma-fee-mstr exists		
+
+define valid-data-entry char*1 =				&
+	'Y' if    record f040-dtl exists			&
+; MC3
+;	      and data-entry-flag = 'V'				&
+	      and data-entry-flag of f040-dtl = 'V'		&
+	      and not record f040-dtl-doc  exists		&	
+; MC3 - end  
+   else 'Y' if  not record f040-dtl exists			&
+; MC3
+	    and not record f040-dtl-doc exists			& 
+; MC3 - end
+
+; MC1 
+   else 'Y' if    record f040-dtl exists			&
+; MC3
+;	      and data-entry-flag <> 'V'			&
+	      and data-entry-flag of f040-dtl <> 'V'		&
+; MC3 - end
+	      and up-bypass = 'BYPASS'				&
+; MC3
+	      and not record f040-dtl-doc exists		&
+; MC3 - end
+; MC1 - end
+; MC3
+   else 'Y' if     not record f040-dtl exists			&
+	      and (    record f040-dtl-doc exists		&
+	           and data-entry-flag of f040-dtl-doc = 'V'	&
+		  )						&
+   else 'Y' if     not record f040-dtl exists			&
+	      and (    record f040-dtl-doc exists		&
+	           and data-entry-flag of f040-dtl-doc <> 'V'	&
+	           and up-bypass = 'BYPASS'			&
+		  )						&
+   else 'Y' if    record f040-dtl exists			&
+	      and data-entry-flag of f040-dtl <> 'V'		&
+              and record f040-dtl-doc exists			&
+              and data-entry-flag of f040-dtl-doc = 'V'		&
+; MC3 - end
+  else '4'
+
+define valid-agent char*1 = 					&
+	'Y' if hdr-agent-cd >= '0' and hdr-agent-cd <= '9'	&
+   else '5'
+
+define valid-note char*1 = 					&
+	'Y' if clmhdr-reference <> ' '				&
+  else '6'
+
+define term-days =  days(sysdate) - days(doc-date-fac-term)	
+
+define valid-terminate char*1 =					&
+	'W' if     doc-date-fac-term <> 0			& 
+               and term-days <= 180				&
+	       and up-bypass  <> 'BYPASS'			&
+   else	'E' if     doc-date-fac-term <> 0			& 
+               and term-days >  180				&
+	       and up-bypass  <> 'BYPASS'			&
+   else 'Y'
+
+; MC2
+define valid-amt char*1 =					&
+	'Y' if      signed-amt-net >= -9999999 			&
+		and signed-amt-net <=  9999999			&
+   else '7'
+; MC2 - end
+
+define valid-rec char*1 =					&
+	'N' if   valid-doc    	  <> 'Y'                 	& ; error 1  
+	      or valid-clinic     <> 'Y'			& ; error 2
+	      or valid-oma-cd     <> 'Y'               		& ; error 3
+	      or valid-data-entry <> 'Y'           		& ; error 4
+	      or valid-agent      <> 'Y'			& ; error 5
+	      or valid-note       <> 'Y'			& ; error 6
+; MC2
+	      or valid-amt        <> 'Y'			& ; error 7
+; MC2 - end
+	      or valid-terminate  <> 'Y'			& ; error 'W'arning or 'E'rror
+   else 'Y'	
+
+define error-cd char*1 =					&
+	valid-doc	 if valid-doc 		<> 'Y'		&
+   else valid-clinic	 if valid-clinic 	<> 'Y'		&
+   else valid-oma-cd	 if valid-oma-cd 	<> 'Y'		&
+   else valid-data-entry if valid-data-entry 	<> 'Y'		&
+   else valid-agent      if valid-agent	 	<> 'Y'		&
+   else valid-note	 if valid-note 		<> 'Y'		&
+; MC2
+   else valid-amt 	 if valid-amt  		<> 'Y'		&
+; MC2 - end
+   else valid-terminate  if valid-terminate 	<> 'Y'
+
+subfile u141a_valid  keep if valid-rec = 'Y'			& 
+;  or valid-terminate = 'W'					&
+  include   misc-payment-file, doc-dept
+
+subfile u141a_error  keep if valid-rec <> 'Y'			& 
+  include   misc-payment-file, error-cd
+
+
+build $pb_obj/u141a     

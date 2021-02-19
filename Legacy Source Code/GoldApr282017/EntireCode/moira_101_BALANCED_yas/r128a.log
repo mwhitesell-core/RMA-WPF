@@ -1,0 +1,173 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Thu Oct 22 16:29:19 EDT 2015
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/r128a.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ;#> PROGRAM-ID.     r128a.qts
+> ;
+> ;       ((C)) Dyad Infosys LTD
+> ;
+> ;    PURPOSE: first pass for inactive doctors that do not have earnings for 3 most recent months
+> ;
+> ;             STAGE 1 - create subfile of values from f119-doctor-ytd-history
+> ;
+> ;    MODIFICATION HISTORY
+> ;        DATE    SAF #  WHO      DESCRIPTION
+> ;   2014/Jul/16  ____   M.C.     - original
+> ;				 - Doctor terminated and do not notify RMA.  This is especially a problem
+> ;				   with the non-GFT physicians
+> ;   2015/Jun/18		MC1	 - change the selection criteria as requested by Brad
+> ;				 - select on "no activity" - if BILL and AFPIN and AFPOUT <= 0 for the
+> ;				   current EP and 2 previous EP's for all dept and pay code
+> ;				 - only doctors with claims balance due <> 0
+> ;				 - this program will be run as part of $cmd/teb3 instead of $cmd/teb2
+> ;				   because current-ep-nbr has increased by 1 from u126.qts
+> cancel clear
+> 
+> run u128_inactive_doctors
+> 
+> set default
+WORKSPACE and STACKSIZE can't be reset within a QTP run.
+> set process nolimit
+> set lock record update
+> 
+> global temp w-current-ep-nbr            numeric
+> global temp w-last-3-ep-nbr	 	numeric
+> 
+> ;-------------------------------------------------------------------------------
+> request get_constants_values_ep_nbr          		&
+>                 on edit        errors report 		&
+>                 on calculation errors report
+> 
+> access constants-mstr-rec-6
+> 
+> choose const-rec-nbr 6
+*W* Item (CONST-REC-NBR) is stored by the file system as a character type.
+Choose viaindex CONSTANTS-MSTR-REC-6.
+> 
+> def ep-mm =   mod(current-ep-nbr,100)
+> 
+> item w-current-ep-nbr  = current-ep-nbr
+> item w-last-3-ep-nbr   = current-ep-nbr -  3    if ep-mm >= 4	&
+> 		else     current-ep-nbr - 90    if ep-mm <= 3
+> 
+> 
+> ;-------------------------------------------------------------------------------
+> request access_f119_hist                     		&
+>                 on edit        errors report 		&
+>                 on calculation errors report
+> 
+> access f119-doctor-ytd-history				&
+> 	link doc-nbr					&
+> 	 to  doc-nbr of f020-doctor-mstr
+> 
+> choose doc-nbr, ep-nbr (w-last-3-ep-nbr to w-current-ep-nbr), rec-type 'A'
+*W* Item (EP-NBR) is stored by the file system as a character type.
+Choose viaindex F119-DOCTOR-YTD-HISTORY.
+> 
+> sort on doc-nbr on ep-nbr
+> 
+> sel f119-doctor-ytd-history if                    	&
+> ; MC1
+> ;	(comp-code = 'TOTINC'  and amt-mtd <= 0)	&
+> ;     or (comp-code = 'INCEXP'  and amt-mtd <= 0)	&
+> ;     or (comp-code = 'PAYEFT'  and amt-mtd <= 0)	&
+> ;     or (comp-code = 'ADVOUT'  and amt-mtd >  0)
+> 	(comp-code = 'BILL'                    )	&
+>      or (comp-code = 'AFPIN'                   )	&
+>      or (comp-code = 'AFPOUT'                  )
+> 
+> ;sel f020-doctor-mstr if					&
+> ;	(doc-dept = 14 or doc-dept =15)  		&
+> ;     and doc-ep-pay-code = '2'
+> 
+> temp x-bill
+> item x-bill = x-bill + 1            			&
+> 	if comp-code = 'BILL' and amt-mtd > 0		&
+> 	reset at doc-nbr
+> 
+> temp x-afpin
+> item x-afpin = x-afpin + 1             			&
+> 	if comp-code = 'AFPIN' and amt-mtd >  0		&
+> 	reset at doc-nbr
+> 
+> temp x-afpout
+> item x-afpout = x-afpout + 1              		&
+> 	if comp-code = 'AFPOUT' and amt-mtd >  0	&
+> 	reset at doc-nbr
+> 
+> def x-bill-afpin-afpout = x-bill + x-afpin + x-afpout
+> 
+> ;subfile r128a            keep            include	&
+> subfile r128a            keep at doc-nbr include	&
+> ; MC1 - end
+>      doc-nbr of f119-doctor-ytd-history, 		&
+>      doc-dept, doc-name,                 		&
+>      doc-date-fac-start, doc-date-fac-term,		&
+>      doc-ep-pay-code,					&
+>      doc-ep-pay-sub-code,				&
+> ; MC1
+> ;     ep-nbr of f119-doctor-ytd-history, 		&
+> ;     comp-code, amt-mtd,  amt-ytd
+> 	x-bill, x-afpin, x-afpout, x-bill-afpin-afpout
+*E* A subfile with the name r128a was found, but the record lengths differ.
+> ; MC1 - end
+> ;-------------------------------------------------------------------------------
+> ; MC1 - add this new request to select the inactive doctors for last 3 ep-nbr
+> request select_inactive                   		&
+>                 on edit        errors report 		&
+>                 on calculation errors report
+> 
+> access *r128a
+> 
+> ; sel no activity
+> sel if x-bill-afpin-afpout = 0
+> 
+> subfile r128a_inactive   keep  		include	&
+> 	r128a
+> 
+> ;-------------------------------------------------------------------------------
+> request check_claim_balance				&
+>                 on edit        errors report 		&
+>                 on calculation errors report
+> 
+> access f002-outstanding				&
+> 	link key-clm-type, key-clm-batch-nbr,	&
+> 	     key-clm-claim-nbr, '00000', '0'    &
+> 	 to  key-clm-type, key-clm-batch-nbr,	&
+> 	     key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+> 
+> def doc-nbr char*3 = key-clm-batch-nbr[3:3]
+> 
+> sort on doc-nbr
+> 
+> temp x-claim-bal zoned*10 numeric
+> item x-claim-bal = x-claim-bal + clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments reset at doc-nbr
+> 
+> output tmp-counters-alpha add at doc-nbr on errors report
+>    item tmp-counter-key-alpha   final   doc-nbr
+>    item tmp-counter-1   	final   x-claim-bal
+> 
+> subfile r128a_claim_doc keep at doc-nbr	&
+> 	include doc-nbr, x-claim-bal
+> 
+> ;-------------------------------------------------------------------------------
+> request select_inactive_doc_with_clm			&
+>                 on edit        errors report 		&
+>                 on calculation errors report
+> 
+> access *r128a_inactive 			&
+> 	link doc-nbr 			&
+> 	 to  tmp-counter-key-alpha of tmp-counters-alpha
+> 
+> subfile r128a_inactive_doc_with_clm keep 	&
+> 	include r128a_inactive, tmp-counter-1 alias x-claim-bal
+> 
+> ; MC1 - end
+> 
+> build $obj/r128a
+*E* There were errors in the source code. BUILD wasn't performed.
+Thu Oct 22 16:29:24 EDT 2015

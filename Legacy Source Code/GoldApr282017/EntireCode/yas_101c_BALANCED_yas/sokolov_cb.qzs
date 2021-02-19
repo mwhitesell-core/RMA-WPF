@@ -1,0 +1,83 @@
+; DOC: SOKOLOV_CB.QZS
+; DOC: SELECT DOC 736 AND REPORT BILLINGS
+; DOC: TO DETERMINE IF HE HAS BILLED HIS QUOTA FOR DAYS THAT HE WAS
+;      SEEING PATIENTS AT ST. JOSEPH'S HOSPITAL
+; DOC: RUN FOR: THEGLA / DR. SOKOLOV
+
+;     **** DO NOT MAKE CHANGES TO THIS WITHOUT CONSULTING YAS *****
+
+;PROGRAM PURPOSE : USE SOKOLOV_B.SF TO CREATE REPORT
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;95/07/06   YASEMIN      ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name sokolov_cb
+set formfee
+
+access *sokolov_b          &
+  link (x-code[1:4])    &
+    to fee-oma-cd of f040-oma-fee-mstr opt
+
+select if x-doc-nbr = 736
+
+define x-factor      =  .25 if x-code[1:4] = "A194"    		&
+		  else  .25 if x-code[1:4] = "C192"		&
+		  else  .75 if x-code[1:4] = "A195"		&
+		  else  .75 if x-code[1:4] = "C195"		&
+		  else  .50 if x-code[1:4] = "K624"		&
+		  else  .50 if x-code[1:4] = "K198"		&
+		  else  .50 if x-code[1:4] = "K197"		&
+		  else  .50 if x-code[1:4] = "K195"		&
+		  else  .50 if x-code[1:4] = "K193"		&
+		  else  .50 if x-code[1:4] = "K190"		&
+		  else  .00 if x-code[1:4] = "W990"		&
+		  else  .00 if (   x-code[2:3] >= "990"         &
+                                or x-code[2:3] <= "997")        &
+		  else  .50
+
+define x-tot-hrs = x-factor * x-sv-nbr1
+
+define x-amount zoned*7 signed = x-sv-nbr1 * fee-curr-h-fee-1
+
+define x-day = days(nconvert(x-sv-date1))
+
+define x-yy num*2 = nconvert( x-sv-date1[1:2] )
+
+define x-ddd = days((x-yy * 10000) + 101)
+
+define x-wk  =    floor((x-day - x-ddd + 1) / 7)
+
+sort                          &
+     on x-sv-date1
+
+page heading                                       &
+        tab 1    sysdate                           &
+	tab 49   "BILLINGS PROCESSED FOR DR. A. SOKOLOV" &
+skip 3  tab  1   "DOC NBR:"                        &
+        tab 10   x-doc-nbr                         &
+        tab 14   "  DATE"                          &
+        tab 50   "     SERVICES"                   &
+        tab 65   "        HOURS"                   &
+        tab 83   "    AMOUNT"                      &
+skip 2
+
+footing at x-sv-date1                              &
+	tab 14   x-sv-date1 pic "^^/^^/^^" print at x-sv-date1     &
+	tab 60   x-sv-nbr1  subtotal pic "^^^^"                    &
+	tab 73   x-tot-hrs  subtotal pic "^^^^.^^" output scale 2  &
+	tab 83   x-amount   subtotal pic "^^^,^^^.^^"
+
+final footing skip 4                                                &
+        tab 42  "GRAND TOTALS"                                      &
+	tab 60   x-sv-nbr1 subtotal    pic "^^^^"                   &
+	tab 83   x-amount  subtotal    pic "^^^,^^^.^^"
+
+build $pb_obj/sokolov_cb
+
+
+  

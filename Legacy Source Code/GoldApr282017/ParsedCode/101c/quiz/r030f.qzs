@@ -1,0 +1,223 @@
+;#> PROGRAM-ID.     R030F.QZS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : PRINT THE AUTOMATIC ADJUSTED CLAIMS ON RU030C
+;                      REPORT
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/MAR/05 M.C.         - ORIGINAL (SMS 138)
+;     91/OCT/01 M.C.	     - PDR 520
+;			     - SHOW THE EQUIVALENCE FLAG "?" ON THE RPT
+;     94/JAN/12 M.C.         - SMS 144
+;			     - USE U030_TOT_CLAIMS SUBFILE INSTEAD OF
+;			       U030_AUTO_ADJ AND ADD THE SELECTION
+;			       CRITERIA
+;     97/SEP/17 M.C.         - PDR 663
+;			     - ADD SORT ON X-CLINIC-NBR AND FOOTING
+;			       AT X-CLINIC-NBR
+;     98/AUG/14 M.C.         - S149     
+;			     - ADD "ICONST-CLINIC-NBR-1-2 OF" ON ACCESS
+;			       STATEMENT
+;
+;     03/dec/12 A.A.	     - alpha doctor nbr
+;     07/jul/31 M.C.	     - At final footing, print x-true-auto-adj-amt instead of x-auto-adj-amt in the 
+;			       last pass r030f2
+
+can clear
+set default
+set report nolim
+set rep dev disc name ru030c
+set page length 63 width 132
+set formfeed
+set noclose
+
+access *u030_tot_claims						&
+;!	link ("B", nconvert(part-hdr-claim-id[1:9]),		&
+	link ("B", part-hdr-claim-id[1:8] ,		&
+;!	      nconvert(part-hdr-claim-id[10:2]), "00000", "0")   &
+	      nconvert(part-hdr-claim-id[9:2]), "00000", "0")   &
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+	     key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr &
+	link clmhdr-pat-ohip-id-or-chart			&
+	viaindex key-pat-mstr to f010-pat-mstr			&
+	and part-hdr-clinic-nbr, part-hdr-claim-nbr		&
+   	 to part-dtl-clinic-nbr, part-dtl-claim-nbr of		&
+	    part-paid-dtl					&
+        and part-dtl-clinic-nbr  to iconst-clinic-nbr-1-2 of  iconst-mstr-rec
+
+sel if x-auto-adj = "Y" or x-hold-back = "Y" or x-over-pay = "Y"
+
+;SORTED ON PART-HDR-CLAIM-ID - 970917
+
+;! def x-claim-nbr char*10 = part-hdr-claim-id[1:2] + 		&
+;!			  part-hdr-claim-id[4:8]
+def x-claim-nbr char*10 = part-hdr-claim-id[1:10]
+
+def x-clinic-nbr char*2 = part-hdr-claim-id[1:2]
+
+def x-out-bal int*7 signed = part-hdr-amt-bill -       		&
+			     part-hdr-amt-paid
+
+
+;! def x-doc-nbr int*4 = nconvert(part-hdr-claim-id[3:4])
+def x-doc-nbr char*3 = part-hdr-claim-id[3:3]
+
+def x-pat-id char*12 = ascii(pat-health-nbr) if pat-health-nbr <> 0 &
+;y2k
+	else pat-ohip-mmyy if pat-ohip-mmyy <> " "		&
+	else pat-chart-nbr
+
+sort on x-clinic-nbr on part-hdr-claim-id
+
+
+page heading							&
+  tab   1 "RU030C/"						&
+  tab   8 iconst-clinic-nbr     				&
+  tab  42 "OHIP PARTIAL PAYMENTS   AS AT"                	&
+;y2k
+  tab  75 sysdate						&
+  tab 120 "PAGE"						&
+  tab 126 syspage						&
+skip 1								&
+  tab   1 "CLINIC NUMBER:"  					&
+  tab  16 iconst-clinic-nbr     				&
+  tab  55 "R.  M.  A."						&
+skip 2								&
+  tab   1 "--CLAIM        ------- PATIENT -------"    		&
+  tab  49 "---RMA---  ---------------OHIP-------------"		&
+  tab 101 "BALANCE   AUTOMATIC   SRC"				&
+skip 1								&
+  tab   1 "  NUMBER   DP  ID           NAME       DOC LOCN"	&
+  tab  49 "$ BILLED   $BILLED      $ PAID   CODE  REAS  EQUIV"  &
+  tab 101 "OUTSTD    ADJUSTMENT  TYPE"         			&
+skip 2
+
+heading at part-hdr-claim-id   					&
+  tab   1 x-claim-nbr                              		&
+  tab  11 "/"                 					&
+  tab  12 clmhdr-doc-dept  significance 2			&
+  tab  16 x-pat-id						&
+  tab  29 clmhdr-pat-acronym	pic "^^^^^^ ^^^"		&
+;!  tab  40 x-doc-nbr pic "^^^"	significance 3			&
+  tab  40 x-doc-nbr                                             &
+  tab  44 clmhdr-loc						&
+  tab  49 part-hdr-amt-bill					&
+  tab 124 clmhdr-adj-cd-sub-type
+
+report								&
+  tab  59 part-dtl-amt-bill of part-paid-dtl			&
+  tab  71 part-dtl-amt-paid of part-paid-dtl			&
+  tab  81 part-dtl-oma-cd of part-paid-dtl			&
+  tab  89 part-dtl-explan-cd of part-paid-dtl			&
+  tab  96 part-dtl-equiv-flag of part-paid-dtl
+
+footing at part-hdr-claim-id  					&
+  tab  49 "---------"						&	
+  tab  59 "---------"              				&
+  tab  71 "---------"                                           &
+skip 1								&
+  tab  49 part-hdr-amt-bill       				&
+  tab  59 part-dtl-amt-bill  of part-paid-dtl subtotal		&
+  tab  71 part-dtl-amt-paid  of part-paid-dtl subtotal		&
+  tab 100 x-out-bal pic "^,^^^.^^ " trail "-"			&
+  tab 113 x-out-bal      pic "^,^^^.^^ " trail "-"		&
+skip 3
+
+footing at x-clinic-nbr						&
+skip 2								&
+   tab   1 "      TOTAL CLINIC - "				&
+   tab  24 x-clinic-nbr						&
+   tab  30 "ACCEPTED  NUMBER"					&
+   tab  50 count at part-hdr-claim-id   pic "^^^,^^^"		&
+   tab  61 "AMOUNT"						&
+   tab  68 part-dtl-amt-paid of part-paid-dtl subtotal pic "^^^^,^^^.^^ " &
+   skip page
+
+final footing							&
+skip 2								&
+   tab   1 "FINAL TOTAL CLINIC - "				&
+   tab  24 x-clinic-nbr						&
+   tab  30 "ACCEPTED  NUMBER"					&
+   tab  50 count at part-hdr-claim-id   pic "^^^,^^^"		&
+   tab  61 "AMOUNT"						&
+   tab  68 part-dtl-amt-paid of part-paid-dtl subtotal pic "^^^^,^^^.^^ " 
+
+
+
+build $pb_obj/r030f1
+
+access *u030_tot_claims 					&
+	link part-hdr-clinic-nbr to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+def x-clinic-nbr char*2 = part-hdr-claim-id[1:2]
+
+def x-out-bal int*7 signed = part-hdr-amt-bill -       		&
+			     part-hdr-amt-paid
+ 
+def x-unadjust-amt int*8 signed = x-out-bal if x-auto-adj = " " &
+	and x-hold-back = "N" and x-over-pay = "N"
+
+def x-auto-adj-amt int*8 signed = x-out-bal if x-auto-adj = "Y" &
+   	or x-hold-back = "Y" or x-over-pay = "Y"
+
+; 2007/07/31 - MC
+def x-true-auto-adj-amt int*8 signed = x-part-bal if x-auto-adj = 'Y' &
+	or x-hold-back = "Y" or x-over-pay = "Y"
+; 2007/07/31 - end
+
+	
+sort on x-clinic-nbr
+
+page heading							&
+  tab   1 "RU030C/"						&
+  tab   8 iconst-clinic-nbr     				&
+  tab  42 "OHIP PARTIAL PAYMENTS   AS AT"                	&
+;y2k
+  tab  75 sysdate						&
+  tab 120 "PAGE  LAST"						&
+skip 1								&
+  tab   1 "CLINIC NUMBER:"  					&
+  tab  16 iconst-clinic-nbr     				&
+  tab  55 "R.  M.  A."						&
+skip 2								&
+  tab   1 "--CLAIM        ------- PATIENT -------"    		&
+  tab  49 "---RMA---  ---------------OHIP-------------"		&
+  tab  94 "BALANCE   UNADJUSTED  AUTOMATIC"  			&
+  tab 127 "SRC"							&
+skip 1								&
+  tab   1 "  NUMBER   DP  ID           NAME       DOC LOCN"	&
+  tab  49 "$ BILLED   $BILLED      $ PAID   CODE  REAS"		&
+  tab  94 "OUTSTD       AMOUNT  ADJUSTMENT"    			&
+  tab 127 "TYPE"						&
+skip 2
+
+
+footing at x-clinic-nbr						&
+skip 1    							&
+  tab  20 "      TOTAL CLINIC - "				&
+  tab  41 x-clinic-nbr						&
+  tab  47 part-hdr-amt-bill  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  58 part-hdr-ohip-bill subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  70 part-hdr-amt-paid  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  92 x-out-bal subtotal pic "^^^^^^.^^ " trail "-"	&
+  tab 105 x-unadjust-amt subtotal pic "^^^^^^.^^ " trail "-"	&
+  tab 116 x-auto-adj-amt subtotal pic "^^^^^^.^^ " trail "-"	&
+  skip 3
+
+final footing							&
+skip 1    							&
+  tab  20 "FINAL TOTAL CLINIC - "				&
+  tab  41 x-clinic-nbr						&
+  tab  47 part-hdr-amt-bill  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  58 part-hdr-ohip-bill subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  70 part-hdr-amt-paid  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  92 x-out-bal subtotal pic "^^^^^^.^^ " trail "-"	&
+  tab 105 x-unadjust-amt subtotal pic "^^^^^^.^^ " trail "-"	&
+; 2007/07/31 - MC
+;  tab 116 x-auto-adj-amt subtotal pic "^^^^^^.^^ " trail "-"
+  tab 116 x-true-auto-adj-amt subtotal pic "^^^^^^.^^ " trail "-"
+; 2007/07/31
+
+build $pb_obj/r030f2

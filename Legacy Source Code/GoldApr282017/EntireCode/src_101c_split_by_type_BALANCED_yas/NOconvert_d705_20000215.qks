@@ -1,0 +1,338 @@
+; the following functionality must be programmed in d705 and d705a:
+; - d705a allow all fields to be changed except doctor-ohip nbr and accounting
+;   nbr when amt fields are changed, records added or deleted, then reflect the
+;   differences in the total claim amt fields in the header record (d705-fields 
+;   "tot claim ar oma / tot claim ar ohip)
+; - d705a - when code is changed, the oma/ohip "fee" amounts are changed to the
+;		values of the code read in the oma fee master (fields
+;               11 and 12), however the "amt tech billed" (field 10) is not
+;		updated). Recalulate "tech fee" using the following logic:
+;case #1:
+;       fee-tech-ind of f040 = "Y"
+;   and oma-fee-code-suffix of detail record being updated = "B"
+;then	
+;     move the "ohip fee" to the "tech fee"
+;
+;case #2:
+;        fee-tech-ind of f040 = "Y"
+;   and oma-fee-code-suffix of detail record being updated = "C"
+;then	
+;     move 0 to "tech fee"
+;
+;case #3:
+;fee record"s icc-sec = "NM" or "DR" or "DU" or "PF"
+;then
+;    move fee record"s oma-fee-1 to "tech fee"
+;    move fee record"s oma-fee-2 to "prof fee"
+;    add "tech fee", "prof fee" giving tmp-tech-prof-fee.
+;    if tmp-tech-prof-fee = zero
+;    then
+;        move zero                               to "tech fee"
+;    else
+;        compute "tech fee" rounded =
+;                "tech fee"
+;	       * (fee-ohip / tmp-tech-prof-fee).
+;
+;otherwise:
+;    move 0 to "tech fee"
+;
+;
+;
+;#> PROGRAM-ID.     D705.QKS
+;
+;  ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : TO ALLOW CORRECTIONS TO SUSPENDED CLAIM HEADER/DETAIL/ADDRESS RECS
+;
+; MODIFICATION HISTORY
+;     DATE   WHO          DESCRIPTION
+;  90/JUN/13 D.B.         - ORIGINAL
+;  90/OCT/02 B.E.         - ADDED OHIP CODE/SUFFIX, ADJ CD/SUB-TYPE FIELDS TO SCREEN
+;  90/OCT/22 D.B.         - ADDED EDITS
+;  91/FEB/15 B.E.         - ADDED "ADD" DESIGNER RTN TO ACCESS SUSPENDED ADDRESS RECORDS
+;  91/OCT/29 M.C.         - CORRECT THE ACCESS STMT IN F091-DIAG-CODEa
+;  98/aug/19 B.E.         - added new edits for hospital code
+;  98/aug/20 B.E.         - re-added clinic/doc # fields
+;  98/oct/05 B.E.         - re-added manual-review-flag field
+;  1998/Nov/11 S.B.	  - Added file "F002-SUSPEND-HDR" to the passing
+;			    list of the DESIGNER DTL procedure.
+;			  - Put a "refresh" on the fields "clmdtl-fee-oma"
+;			    and "clmdtl-fee-ohip".
+;  1999/jan/26 B.E        - error that patient Ikey/acronym don't match
+;                           changed to a warning message (Kathy K request)
+;  1999/jan/28 B.E	  - y2k
+;  1999/Mar/09 M.C.  	  - edit check on clinic nbr and specialty cd  
+;  1999/jul/06 B.E.       - access f020 via doc-nbr instead of doc-ohip-nbr
+;                         - changed get in Edit procedure of clmhdr-loc
+;  2000/Feb/03 B.A.       - add code to set an update flag
+;  2000/Feb/08 B.A.       - added a confidental-flag field
+;
+
+can clear
+
+screen $pb_obj/d705 activities find, change ;, delete 
+
+file f002-suspend-hdr
+;2000/02/03 begin
+     item clmhdr-status initial ' '
+;2000/02/03 end
+
+file f002-suspend-dtl delete 
+  
+file f020-doctor-mstr reference
+;      access viaindex doc-ohip-nbr using clmhdr-doc-nbr-ohip
+       access viaindex doc-nbr      using clmhdr-doc-nbr
+
+file f091-diag-codes-mstr reference
+;      ACCESS VIAINDEX DIAG-CD USING ASCII(CLMHDR-DIAG-CD,3)
+   access viaindex diag-cd using clmhdr-diag-cd-alpha
+
+file f094-msg-mstr reference
+
+file f010-pat-mstr reference
+
+temp w-clmhdr-doc-ohip-nbr
+temp w-clmhdr-accounting-nbr char*8
+
+title "SUSPENDED **HEADER** MAINTENANCE" at 1,48
+skip 1
+
+align (1,4,29)
+field clmhdr-doc-ohip-nbr of f002-suspend-hdr required nochange   &
+        pic "^^^^^^" label "DOCTOR OHIP NBR"
+;be 98/aug/20
+align (1,4,29) (41,44,59) (,62,64)
+field clmhdr-accounting-nbr of f002-suspend-hdr required nochange &
+      id same        label "ACCOUNTING NBR"
+;FIELD CLMHDR-BATCH-NBR OF F002-SUSPEND-HDR
+;be 98/aug/20
+field clmhdr-clinic-nbr-1-2 of f002-suspend-hdr label "CLINIC/DOCTOR:"
+field clmhdr-doc-nbr        of f002-suspend-hdr label "/"
+align (1,4,29)
+skip 1
+;FIELD CLMHDR-CLAIM-NBR OF F002-SUSPEND-HDR
+;FIELD CLMHDR-ADJ-OMA-CD OF F002-SUSPEND-HDR
+;FIELD CLMHDR-ADJ-OMA-SUFF OF F002-SUSPEND-HDR
+;FIELD CLMHDR-ADJ-ADJ-NBRF OF F002-SUSPEND-HDR
+;FIELD CLMHDR-BATCH-TYPE OF F002-SUSPEND-HDR
+;FIELD CLMHDR-ADJ-CD OF F002-SUSPEND-HDR           &
+; LABEL "ADJ. CODE"
+;FIELD CLMHDR-ADJ-CD-SUB-TYPE OF F002-SUSPEND-HDR &
+;   LABEL "CLAIM SOURCE "D"ISK"
+;FIELD CLMHDR-DOC-NBR-OHIP OF F002-SUSPEND-HDR
+field clmhdr-doc-spec-cd of f002-suspend-hdr                   &
+       label "DOCTOR SPECIALITY CODE" lookup on f020-doctor-mstr
+field clmhdr-refer-doc-nbr of f002-suspend-hdr pic "^^^^^^"    &
+       label "REFERRING PHYSICIAN NBR"
+; 10 DIGIT CHECK MODE IS NOT DONE
+field clmhdr-diag-cd-alpha of f002-suspend-hdr                  &
+       label "DIAGNOSTIC CODE"                                 &
+       lookup on f091-diag-codes-mstr
+field clmhdr-loc of f002-suspend-hdr                              &
+       label "LOCATION"
+field clmhdr-hosp of f002-suspend-hdr                           &
+       label "HOSPITAL"                                        &
+; B.E. 98/aug/19 new edits on hospital code
+       value "A" to "Z", "0" to "9"
+;       value "B", "C", "D", "G", "H", "J", "L", "M", "N",      &
+;             "O", "R", "S", "W", "Z"
+field clmhdr-agent-cd-alpha of f002-suspend-hdr                   &
+       label "AGENT CODE"                                      &
+       value "0", "1", "4", "6", "7", "8", "9"
+field clmhdr-tape-submit-ind of f002-suspend-hdr         &
+       label "TAPE SUBMIT INDICATOR" value "Y", "N"
+field clmhdr-i-o-pat-ind of f002-suspend-hdr                        &
+       label "PATIENT I/O INDICATOR" values "I", "O"
+field clmhdr-date-admit of f002-suspend-hdr                        &
+       label "DATE ADMIT" pic "^^^^/^^/^^"
+skip 1
+field clmhdr-pat-key-type of f002-suspend-hdr                   &
+       label "PATIENT KEY TYPE" value "I"
+field clmhdr-pat-key-data of f002-suspend-hdr                 &
+       label "            DATA" id same
+field clmhdr-pat-acronym of f002-suspend-hdr                    &
+       label "         ACRONYM" id same
+field clmhdr-health-care-prov of f002-suspend-hdr               &
+       label "   PROVINCE CODE" id same
+;FIELD CLMHDR-REFERENCE OF F002-SUSPEND-HDR
+skip to 6
+align (41,44,69)
+field clmhdr-doc-dept-alpha of f002-suspend-hdr     display &
+       label "DOCTOR DEPARTMENT"
+field clmhdr-msg-nbr of f002-suspend-hdr &;   IF CLMHDR-AGENT-CD = 0 &
+ label "MSG NBR"
+field clmhdr-reprint-flag of f002-suspend-hdr &; IF CLMHDR-AGENT-CD =0 &
+ label "REPRINT FLAG" value "Y", "N"
+field clmhdr-sub-nbr of f002-suspend-hdr &;   IF CLMHDR-AGENT-CD = 0 &
+       label "SUB NBR" value "0" to "9"
+field clmhdr-auto-logout of f002-suspend-hdr &;IF CLMHDR-AGENT-CD = 0 &
+ label "AUTO LOGOUT" value "Y", "N"
+field clmhdr-fee-complex of f002-suspend-hdr &;IF CLMHDR-AGENT-CD = 0 &
+       label "FEE COMPLEX" value "Y", "N"
+;FIELD CLMHDR-CURR-PAYMENT OF F002-SUSPEND-HDR
+;FIELD CLMHDR-DATE-PERIOD-END OF F002-SUSPEND-HDR
+;FIELD CLMHDR-CYCLE-NBR OF F002-SUSPEND-HDR
+field clmhdr-date-sys of f002-suspend-hdr     display               &
+       label "SYSTEM DATE" pic "^^^^/^^/^^"
+;FIELD CLMHDR-AMT-TECH-BILLED OF F002-SUSPEND-HDR            &
+;LABEL "AMT TECH BILLED"
+;FIELD CLMHDR-AMT-TECH-PAID OF F002-SUSPEND-HDR
+field clmhdr-tot-claim-ar-oma of f002-suspend-hdr               &
+       label "TOT CLAIM AR OMA"					&
+       refresh
+field clmhdr-tot-claim-ar-ohip of f002-suspend-hdr              &
+       label "TOT CLAIM AR OHIP"				&
+       refresh
+;FIELD CLMHDR-MANUAL-AND-TAPE-PAYMENTS OF F002-SUSPEND-HDR
+;FIELD CLMHDR-STATUS-OHIP OF F002-SUSPEND-HDR
+;FIELD CLMHDR-ORIG-BATCH-NBR OF F002-SUSPEND-HDR
+;FIELD CLMHDR-ORIG-CLAIM-NBR OF F002-SUSPEND-HDR
+
+skip 3
+field clmhdr-manual-review
+field clmhdr-status of f002-suspend-hdr                           &
+;      label "RECORD STATUS" value "D", " "                    &
+       label "RECORD STATUS"                                   &
+       help "Value can be 'R'esubmit, 'D'elete or ' ' after fixing 'X' claims"
+
+field clmhdr-confidential-flag of f002-suspend-hdr                &
+       label "CONFIDENTIAL FLAG"
+
+
+; 99/03/09 add procedure edit on clinic nbr by MC
+procedure edit clmhdr-clinic-nbr-1-2
+begin
+    get f020-doctor-mstr opt
+    if fieldvalue <> doc-clinic-nbr   and  &
+       fieldvalue <> doc-clinic-nbr-2 and  &
+       fieldvalue <> doc-clinic-nbr-3 and  &
+       fieldvalue <> doc-clinic-nbr-4 and  &
+       fieldvalue <> doc-clinic-nbr-5 and  &
+       fieldvalue <> doc-clinic-nbr-6
+    then begin
+      error "INVALID CLINIC NBR for doctor"    
+      end
+  end
+ 
+procedure edit clmhdr-doc-spec-cd
+begin
+; 1999/jul/06 - get via rma doc nbr
+;  get f020-doctor-mstr viaindex doc-ohip-nbr using clmhdr-doc-nbr-ohip
+    get f020-doctor-mstr opt
+    if fieldvalue <> doc-spec-cd   and  &
+       fieldvalue <> doc-spec-cd-2 and  &
+       fieldvalue <> doc-spec-cd-3
+    then begin
+      error "INVALID SPECIALTY CODE for doctor"
+      end
+  end
+ 
+procedure edit clmhdr-loc
+begin
+;  1999/jul/06 - get via rma doc nbr
+;  get f020-doctor-mstr viaindex doc-ohip-nbr using clmhdr-doc-nbr-ohip
+  get f020-doctor-mstr opt
+    if fieldtext <> doc-loc-1 and fieldtext <> doc-loc-2 and  &
+       fieldtext <> doc-loc-3 and fieldtext <> doc-loc-4 and   &
+       fieldtext <> doc-loc-5 and fieldtext <> doc-loc-6 and   &
+       fieldtext <> doc-loc-7 and fieldtext <> doc-loc-8 and   &
+       fieldtext <> doc-loc-9 and fieldtext <> doc-loc-10 and  &
+       fieldtext <> doc-loc-11 and fieldtext <> doc-loc-12 and &
+       fieldtext <> doc-loc-13 and fieldtext <> doc-loc-14 and &
+       fieldtext <> doc-loc-15 and fieldtext <> doc-loc-16 and &
+       fieldtext <> doc-loc-17 and fieldtext <> doc-loc-18 and &
+       fieldtext <> doc-loc-19 and fieldtext <> doc-loc-20 and &
+       fieldtext <> doc-loc-21 and fieldtext <> doc-loc-22 and &
+       fieldtext <> doc-loc-23 and fieldtext <> doc-loc-24 and &
+       fieldtext <> doc-loc-25 and fieldtext <> doc-loc-26 and &
+       fieldtext <> doc-loc-27 and fieldtext <> doc-loc-28 and &
+       fieldtext <> doc-loc-29 and fieldtext <> doc-loc-30
+     then error "INVALID LOCATION CODE for doctor"
+  end
+ 
+procedure edit clmhdr-hosp
+begin
+    if clmhdr-hosp <> clmhdr-loc[1:1]
+      then error "WRONG HOSPITAL CODE WITH LOCATION"
+ end
+
+procedure input clmhdr-msg-nbr
+begin
+  if clmhdr-agent-cd = 0 and 0 <> size(fieldtext)
+    then error "Cannot change MSG NBR for OHIP agent"
+ end
+
+procedure edit clmhdr-msg-nbr
+begin
+  if clmhdr-agent-cd <> 0
+    then begin
+      get f094-msg-mstr viaindex msg-sub-key using clmhdr-msg-nbr
+      if not accessok
+        then error "INVALID MSG NUMBER"
+      end
+  end
+
+procedure input clmhdr-reprint-flag
+begin
+  if clmhdr-agent-cd = 0 and 0 <> size(fieldtext)
+    then error "Cannot change REPRINT FLAG for OHIP agent"
+ end
+
+procedure input clmhdr-sub-nbr
+begin
+  if clmhdr-agent-cd = 0 and 0 <> size(fieldtext)
+    then error "Cannot change SUB NBR for OHIP agent"
+ end
+
+procedure input clmhdr-auto-logout
+begin
+  if clmhdr-agent-cd = 0 and 0 <> size(fieldtext)
+    then error "Cannot change AUTO LOGOUT for OHIP agent"
+ end
+
+procedure input clmhdr-fee-complex
+begin
+  if clmhdr-agent-cd = 0 and 0 <> size(fieldtext)
+    then error "CANNOT CHANGE FEE COMPLEX FOR OHIP AGENT"
+ end
+
+procedure edit clmhdr-pat-key-data
+begin
+  get f010-pat-mstr viaindex key-pat-mstr       &
+       using (clmhdr-pat-key-type + clmhdr-pat-key-data)
+    if clmhdr-pat-acronym <> pat-acronym
+; be  then error "CLMHDR AND PATIENT ACRONYM ARE DIFFERENT"
+      then warning "CLMHDR and PATIENT ACRONYM are DIFFERENT"
+   end
+ 
+procedure designer dtl
+begin
+  let w-clmhdr-doc-ohip-nbr = clmhdr-doc-ohip-nbr
+  let w-clmhdr-accounting-nbr = clmhdr-accounting-nbr
+  run screen $pb_obj/d705a passing w-clmhdr-doc-ohip-nbr,   &
+       w-clmhdr-accounting-nbr, f002-suspend-hdr mode f
+  end
+
+procedure designer add
+begin
+  let w-clmhdr-doc-ohip-nbr = clmhdr-doc-ohip-nbr
+  let w-clmhdr-accounting-nbr = clmhdr-accounting-nbr
+  run screen $pb_obj/d705b passing w-clmhdr-doc-ohip-nbr,   &
+       w-clmhdr-accounting-nbr mode f
+  end
+
+;2000/02/03 begin
+procedure preupdate
+begin
+;  (if any fields have been changed, then flag record as "U"pdated so that
+;   the modified record can be passed back to the remote site that submitted
+;   the visit)
+  if    alteredrecord 		&
+    and not newrecord 		&
+    and clmhdr-status <> "D" ; don't changed 'D'eleted record to 'U'pdate
+    then begin
+      let clmhdr-status = 'U'
+    end
+end
+
+build 

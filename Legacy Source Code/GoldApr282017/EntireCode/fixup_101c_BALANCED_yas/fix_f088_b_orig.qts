@@ -1,0 +1,62 @@
+; program: fix_f088_b.qts
+; purpose: set "Y"es charge for claims based upon criteria specified
+;	   by lori/yas. fix_f088_a run before this pgm has set all
+;	   charges to " " ie NO by default.
+
+cancel clear
+
+request  fix_f088_set_charge  on calculation error report
+
+set process nolimit
+set lock file update
+
+access f088-rat-rejected-claims-hist-hdr                        &
+	alias f088-hdr						&
+  link clmhdr-doc-nbr                                      	&
+    to doc-nbr 			 of f020-doctor-mstr           	&
+  link ohip-err-code to rat-code of f096-ohip-pay-code opt
+
+select if &
+          ohip-err-code <> "  "    & ;rejection
+     and  ohip-err-code <> "00"          &
+     and  ohip-err-code <> "V7"          &
+     and  ohip-err-code <> "V1"          &
+     and  ohip-err-code <> "C7"          &
+     and  ohip-err-code <> "D2"          &
+     and  ohip-err-code <> "55"          &
+     and  ohip-err-code <> "51"          &
+     and  ohip-err-code <> "EV"          &
+     and  ohip-err-code <> "48"          &
+     and  ohip-err-code <> "I5"          &
+     and  ohip-err-code <> "80"          &
+                                                         ; don't charge for 35
+                                                         ; unless dept = 2/5
+     and  (    (   ohip-err-code <> "35"                &
+                or (    doc-dept = 5                    &
+                     or doc-dept = 2                    &
+                  )                                     &
+               )                                        &
+           and (    not record f096-ohip-pay-code exists&; no possibility of
+                                                         ; automatic adjustm.
+                or (    ohip-err-code = "35"            &; unless dept 2/5's 35
+                   and (    doc-dept = 5                &
+                          or doc-dept = 2               &
+                       )                                &
+                   )                                    &
+              )                                         &
+          )						&
+     and  (   ohip-err-code <> "D8"			&
+	   or (    ohip-err-code  =  "D8" 		&
+	       and clmhdr-doc-nbr <> 308		&
+	      )						&
+	  )						&
+     and  (   ohip-err-code <> "DP"			&
+	   or (    ohip-err-code  =  "DP" 		&
+	       and clmhdr-doc-nbr <> 977		&
+	      )						&
+	  )
+
+
+output F088-RAT-REJECTED-CLAIMS-HIST-HDR alias f088-hdr-update update
+  item charge-status = "Y" 
+

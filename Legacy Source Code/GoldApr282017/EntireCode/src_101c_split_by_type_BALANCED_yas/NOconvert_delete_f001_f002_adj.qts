@@ -1,0 +1,48 @@
+; 2013/Jul/22 MC	B adjustment were made exactly the same as the one done on July 2, 2013
+;			there should be $124,764.75- to be reversed
+
+
+cancel clear
+set process nolimit
+set lock record update
+
+request remove_adj_clmdtl  
+; subfile generated from check_f002hdr_adj.qzs
+access *savef002hdradj		&
+	link key-clm-type, clmdtl-id[1:8], nconvert(clmdtl-id[9:2]), key-clm-serv-code, '1' &
+	 to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+sel if clmdtl-orig-batch-nbr = key-clm-batch-nbr of savef002hdradj	&
+  and  clmdtl-orig-claim-nbr-in-batch = key-clm-claim-nbr of savef002hdradj
+subfile savef002dtladj_del  keep include  f002-claims-mstr
+output f002-claims-mstr delete on errors report
+
+request reduce_adj_clmdtl_amt_to_hdr
+; subfile generated from check_f002hdr_adj.qzs
+access *savef002hdradj		&
+	link key-clm-type, clmdtl-id[1:8], nconvert(clmdtl-id[9:2]), '00000', '0' &
+	 to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+subfile savef002hdradj_reduce keep include  f002-claims-mstr
+output f002-claims-mstr update on errors report
+  item clmhdr-tot-claim-ar-ohip subtotal clmdtl-fee-ohip of savef002hdradj negative
+  item clmhdr-tot-claim-ar-oma  subtotal clmdtl-fee-ohip of savef002hdradj negative
+
+request delete_f002_adj
+; subfile generated from check_f001_adj.qzs
+access *savef001adj             &
+    link 'B', batctrl-batch-nbr       &
+     to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+subfile saveorighdradj_del keep if clmdtl-oma-cd of f002-claims-mstr  =  '0000'  include f002-claims-mstr       
+subfile saveorigdtladj_del keep if clmdtl-oma-cd of f002-claims-mstr <>  '0000'  include f002-claims-mstr       
+output f002-claims-mstr delete on errors report
+
+request delete_f001_adj
+; subfile generated from check_f001_adj.qzs
+access *savef001adj		&
+	link to f001-batch-control-file
+subfile savef001adj_del keep include f001-batch-control-file
+output f001-batch-control-file delete on errors report
+
+
+
+
+

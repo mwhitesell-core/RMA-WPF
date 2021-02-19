@@ -1,0 +1,319 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U119.QTS
+COMMENT "#> PROGRAM-ID.     u119.qts   ;      / u119_icu.qts"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: sub-process within  earnings generation  process."
+COMMENT "calculate 'PAYEFT/TRANSF' transactions for all pay codes(except 7)"
+COMMENT "taking into consideration any deficits outstanding. If the"
+COMMENT "total deductions exceed the Potential Pay then the PAYEFT"
+COMMENT "is zeroed and appropriate ADVOUT/DEFIC transactions created"
+COMMENT "to process the deficit"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "93/JAN/01  ____   B.E.     - original"
+COMMENT "93/MAY/18  ____   B.E.     - added *F119"
+COMMENT "93/MAY/21  ____   B.E.     - Optimize"
+COMMENT "93/JUN/20  ____   B.E.     - Don't allow negative EFT NET amount"
+COMMENT "93/JUN/21  ____   B.E.     - allow Advances (TOTADV) to affect PAYEFT, removed SELECT"
+COMMENT "93/JUN/22  ____   B.E.     - added U119_PAYEFT"
+COMMENT "93/JUL/06  ____   B.E.     - Output  Outstanding Advances  (ADVOUT)"
+COMMENT "only if non-zero value"
+COMMENT "94/NOV/19         B.E.     - removed TOTADV from this pgm, now affect PAYPOT"
+COMMENT "in U116."
+COMMENT "??????? EP PLUS 1 AND MINUS 1 MUST BE READ NEXT/BACKWARDS, NOT SUBTRACTION"
+COMMENT "1999/Feb/18         S.B.     - Checked for Y2K."
+COMMENT "1999/June/01  S.B.     - Added the use file"
+COMMENT "def_compensation_status.def to "
+COMMENT "prevent hard coding of compensation-status."
+COMMENT "2001/feb/20         B.E. - added conditional compile. If running in ICU"
+COMMENT "payroll then select only the ICU paid doctors"
+COMMENT "determined with select on dept # from use file"
+COMMENT "2001/feb/20         B.E. - added another request for 'rma' ICU doctors"
+COMMENT "so that their Potential payment amount is"
+COMMENT "updated into f020 so that it can be printed"
+COMMENT "on their r124b statements as  tranfer  amt."
+COMMENT "2001/may/19 B.E. - changed advout and defic processing logic "
+COMMENT "2001/may/22 B.E. - added calculation of TRANSF transaction instead of"
+COMMENT "PAYEFT for ICU doctors"
+COMMENT "- conditional compile genenerates either u119(regular pay)"
+COMMENT "of u119_icu (ICU payroll)"
+COMMENT "2002/Nov/22 M.C. - make w-comp-code-transfer-or-eft alias comp-code when creating"
+COMMENT "subfile f119 so that no compile error in u122 because the pgm is"
+COMMENT "referencing comp-code instead "
+COMMENT "2003/dec/16 A.A. - alpha doctor nbr"
+COMMENT "2005/mar/22 b.e. - alias x-amt-gross and x-amt-net so that u122 compiles"
+COMMENT "2006/may/10 b.e.      - $1M payroll changes to size of calculated fields"
+COMMENT "2014/apr/15 be1  - don't run this program if doctors paycode is 7 as PAYEFT isn't needed"
+CANCEL CLEAR
+SET DEFAULT
+SET STACKSIZE 1000
+SET PROCESS LIMIT 100000
+RUN U119
+GLOBAL TEMP W-CURRENT-EP-NBR NUMERIC
+GLOBAL TEMP W-CURRENT-EP-NBR-MINUS1 NUMERIC
+GLOBAL TEMP W-CURRENT-EP-NBR-PLUS1 NUMERIC
+GLOBAL TEMP PAYEFT-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP PAYEFT-TYPE CHAR*1
+GLOBAL TEMP PAYEFT-GROUP CHAR*1
+GLOBAL TEMP PAYEFT-FACTOR NUMERIC
+GLOBAL TEMP TOTDED-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP TOTDED-TYPE CHAR*1
+GLOBAL TEMP TOTDED-GROUP CHAR*1
+GLOBAL TEMP TOTDED-FACTOR NUMERIC
+GLOBAL TEMP PAYPOT-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP PAYPOT-TYPE CHAR*1
+GLOBAL TEMP PAYPOT-GROUP CHAR*1
+GLOBAL TEMP ADVOUT-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP ADVOUT-TYPE CHAR*1
+GLOBAL TEMP ADVOUT-GROUP CHAR*1
+GLOBAL TEMP ADVOUT-FACTOR NUMERIC
+GLOBAL TEMP DEFIC-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP DEFIC-TYPE CHAR*1
+GLOBAL TEMP DEFIC-GROUP CHAR*1
+GLOBAL TEMP DEFIC-FACTOR NUMERIC
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS"
+REQUEST U119_A ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6
+CHOOSE CONST-REC-NBR 6
+ITEM W-CURRENT-EP-NBR = CURRENT-EP-NBR
+COMMENT "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+COMMENT "W A R N I N G "
+COMMENT "-1 and +1 below won't work on first and last EP of year!!!!!!!!!!!!!!!!"
+ITEM W-CURRENT-EP-NBR-MINUS1 = CURRENT-EP-NBR - 1
+ITEM W-CURRENT-EP-NBR-PLUS1 = CURRENT-EP-NBR + 1
+COMMENT "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+COMMENT "DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'"
+COMMENT "FOR THE TRANSACTIONS BEING CREATED IN THIS RUN"
+REQUEST U119_A_GET_PAYEFT ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "PAYEFT"
+ITEM PAYEFT-SEQ = PROCESS-SEQ
+ITEM PAYEFT-TYPE = COMP-TYPE
+ITEM PAYEFT-GROUP = COMP-CODE-GROUP
+ITEM PAYEFT-FACTOR = FACTOR
+REQUEST U119_A_GET_TOTDED ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "TOTDED"
+ITEM TOTDED-SEQ = PROCESS-SEQ
+ITEM TOTDED-TYPE = COMP-TYPE
+ITEM TOTDED-FACTOR = FACTOR
+REQUEST U119_A_GET_PAYPOT ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "PAYPOT"
+ITEM PAYPOT-SEQ = PROCESS-SEQ
+ITEM PAYPOT-TYPE = COMP-TYPE
+REQUEST U119_A_GET_ADVOUT ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "ADVOUT"
+ITEM ADVOUT-SEQ = PROCESS-SEQ
+ITEM ADVOUT-TYPE = COMP-TYPE
+ITEM ADVOUT-GROUP = COMP-CODE-GROUP
+ITEM ADVOUT-FACTOR = FACTOR
+REQUEST U119_A_GET_DEFIC ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "DEFIC"
+ITEM DEFIC-SEQ = PROCESS-SEQ
+ITEM DEFIC-TYPE = COMP-TYPE
+ITEM DEFIC-GROUP = COMP-CODE-GROUP
+ITEM DEFIC-FACTOR = FACTOR
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "PAY CODE 0/1/2/3/4"
+REQUEST U119_B ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "link doc-nbr of f112-pycdceilings,                            &"
+COMMENT "ep-nbr  of f112-pycdceilings,                            &"
+COMMENT "advout-seq,                                              &"
+COMMENT " ADVOUT                                                  &"
+COMMENT "to   doc-nbr,                                                 &"
+COMMENT "ep-nbr,                                                  &"
+COMMENT "process-seq,                                             &"
+COMMENT "comp-code    of f110-compensation                        &"
+COMMENT "alias f110-advout          opt                 &"
+ACCESS CONSTANTS-MSTR-REC-6 LINK CURRENT-EP-NBR VIAINDEX F112-EP-DOC-NBR TO EP-NBR OF F112-PYCDCEILINGS LINK DOC-NBR OF F112-PYCDCEILINGS, EP-NBR OF F112-PYCDCEILINGS, PAYPOT-SEQ, "PAYPOT" TO DOC-NBR, EP-NBR, PROCESS-SEQ, COMP-CODE OF F110-COMPENSATION ALIAS F110-PAYPOT OPTIONAL LINK DOC-NBR OF F112-PYCDCEILINGS, EP-NBR OF F112-PYCDCEILINGS, TOTDED-SEQ, "TOTDED" TO DOC-NBR, EP-NBR, PROCESS-SEQ, COMP-CODE OF F110-COMPENSATION ALIAS F110-TOTDED OPT LINK DOC-NBR OF F112-PYCDCEILINGS, EP-NBR OF F112-PYCDCEILINGS, PAYEFT-SEQ, "PAYEFT" TO DOC-NBR, EP-NBR, PROCESS-SEQ, COMP-CODE OF F110-COMPENSATION ALIAS F110-PAYEFT OPT LINK DOC-NBR OF F112-PYCDCEILINGS TO DOC-NBR OF F020-DOCTOR-MSTR OPT
+CHOOSE CONST-REC-NBR 6
+COMMENT "be1"
+SELECT IF DOC-PAY-CODE OF F112-PYCDCEILINGS <> "7"
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\ICU_DEPTS.DEF
+COMMENT "icu_depts.def"
+DEF ICU-DEPT-1 ZONED*2 = 15
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\ICU_DEPTS.DEF
+COMMENT "@if ICU"
+COMMENT "select if doc-dept = icu-dept-1 "
+COMMENT "@elseif  rma"
+COMMENT "select if 1=1"
+COMMENT "@else "
+COMMENT "error - program must be compiled using conditional statements"
+COMMENT "@endif"
+COMMENT "(subtract Deductions from Potential Pay)"
+COMMENT "def w-payeft-amt-1 integer*8 signed size 4                                  &"
+DEF W-PAYEFT-AMT-1 INTEGER*10 SIGNED = ROUND(( ( AMT-NET OF F110-PAYPOT - AMT-NET OF F110-TOTDED) * PAYEFT-FACTOR)/10000,0,NEAR) IF NOT RECORD F110-PAYEFT EXISTS ELSE ROUND(( ( AMT-NET OF F110-PAYPOT - AMT-NET OF F110-TOTDED) * FACTOR OF F110-PAYEFT) / 10000,0,NEAR)
+COMMENT "(Don't allow negative EFT if Deductions have exceeded Potential Pay)"
+COMMENT "def w-payeft-amt-n integer*8 signed size 4                                   &"
+DEF W-PAYEFT-AMT-N INTEGER*10 SIGNED = W-PAYEFT-AMT-1 IF W-PAYEFT-AMT-1 >= 0 ELSE 0
+COMMENT "(If Deductions exceed Potential Pay then record a 'deficit' amount)"
+COMMENT "def w-amt-deficit integer*8 signed size 4                                   &"
+DEF W-AMT-DEFICIT INTEGER*10 SIGNED = 0 IF W-PAYEFT-AMT-1 >= 0 ELSE ABS(W-PAYEFT-AMT-1)
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_COMPENSATION_STATUS.DEF
+COMMENT "; (carry over total of excess Deductions)"
+COMMENT "def w-amt-advout integer*8 signed size 4                             &"
+COMMENT "=  amt-net  of f110-advout                                   &"
+COMMENT "+ w-amt-deficit      if record f110-advout exists     &"
+COMMENT "else  w-amt-deficit"
+COMMENT "DEF_COMPENSATION_STATUS.DEF"
+COMMENT "This program is called from the following programs:"
+COMMENT "holdbk6.qts, u111c.qts, u113.qts, u114a.qts, u115c.qts,"
+COMMENT "u116_paycode0.qts, u116_paycode1.qts, u116_paycode2.qts,"
+COMMENT "u116_paycode34.qts, u116_paycode5.qts, u117.qts,"
+COMMENT "u118.qts, u119.qts "
+DEF COMPENSATION-STATUS-ACCEPTED CHAR*1 = " "
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_COMPENSATION_STATUS.DEF
+COMMENT ", &"
+SUBFILE DEBUGU119 KEEP INCLUDE DOC-NBR OF F112-PYCDCEILINGS , DOC-DEPT , ICU-DEPT-1 , AMT-NET OF F110-PAYPOT , AMT-NET OF F110-TOTDED , PAYEFT-FACTOR , FACTOR OF F110-PAYEFT , W-PAYEFT-AMT-1 , W-AMT-DEFICIT , W-PAYEFT-AMT-N
+COMMENT "w-amt-advout"
+COMMENT "------------- F 1 1 9 --------------------------------------------------------"
+COMMENT "define w-not-needed integer*8 signed size 4 = 0"
+DEFINE W-NOT-NEEDED INTEGER*10 SIGNED = 0
+DEFINE W-REC-TYPE CHAR*1 = "A"
+TEMP W-COMP-CODE-TRANSFER-OR-EFT CHAR*6
+COMMENT "(in ICU payroll,RMA doctor's are not paid the  $ but rather it is transferred"
+COMMENT "manually to their regular payroll)"
+ITEM W-COMP-CODE-TRANSFER-OR-EFT = "TRANSF" IF DOC-DEPT <> ICU-DEPT-1 ELSE "PAYEFT"
+COMMENT "item w-comp-code-transfer-or-eft =  PAYEFT "
+COMMENT "2002/11/22 - MC"
+COMMENT "w-comp-code-transfer-or-eft    , &"
+COMMENT "2002/11/22 - end"
+COMMENT "w-not-needed                   , &"
+COMMENT "w-payeft-amt-n"
+SUBFILE F119 KEEP APPEND INCLUDE DOC-NBR OF F112-PYCDCEILINGS , W-COMP-CODE-TRANSFER-OR-EFT ALIAS COMP-CODE , PAYEFT-SEQ , PAYEFT-GROUP , W-REC-TYPE , W-NOT-NEEDED ALIAS W-AMT-GROSS , W-PAYEFT-AMT-N ALIAS W-AMT-NET
+COMMENT "if there was insufficient potential pay to cover the total deductions then"
+COMMENT "create only 1 transaction in f119 to show on statement"
+COMMENT "- create an 'advance' transaction (ADVOUT) in the CURRENT EP to allow a"
+COMMENT "message in the Current statement warning doctor of deficit"
+COMMENT "note that the deficit transaction is placed into f110 for NEXT EP and "
+COMMENT "therefore is written to f119 now"
+COMMENT "------------- U 1 1 9 _ A D V O U T -----------------------------------------"
+TEMP W-COMP-CODE-ADVOUT CHAR*6
+ITEM W-COMP-CODE-ADVOUT = "ADVOUT"
+COMMENT "2004/01/08 - MC"
+COMMENT "w-comp-code-advout             , &"
+COMMENT "2004/01/06 - end"
+SUBFILE F119 ALIAS F119-ADVOUT APPEND IF W-AMT-DEFICIT > 0 INCLUDE DOC-NBR OF F112-PYCDCEILINGS , W-COMP-CODE-ADVOUT ALIAS COMP-CODE , ADVOUT-SEQ , ADVOUT-GROUP , W-REC-TYPE , W-NOT-NEEDED , W-AMT-DEFICIT
+COMMENT "; ------------- U 1 1 9 _ D E F I C -----------------------------------------"
+COMMENT "temp w-comp-code-defic  char*6"
+COMMENT "item w-comp-code-defic  =  DEFIC "
+COMMENT "subfile f119 alias f119-defic  append     &"
+COMMENT "if w-amt-deficit > 0                   &"
+COMMENT "include                              &"
+COMMENT "doc-nbr of f112-pycdceilings   , &"
+COMMENT "w-comp-code-defic              , &"
+COMMENT "defic-seq                  , &"
+COMMENT "defic-group                    , &"
+COMMENT "w-rec-type                     , &"
+COMMENT "w-not-needed                   , &"
+COMMENT "w-amt-deficit"
+COMMENT "------------- U 1 1 9 _ P A Y E F T -----------------------------------------"
+COMMENT "Only ICU doctors are paid via the PAYEFT transaction code"
+SUBFILE U119_PAYEFT PORTABLE KEEP IF W-COMP-CODE-TRANSFER-OR-EFT = "PAYEFT" INCLUDE DOC-NBR OF F112-PYCDCEILINGS , DOC-DEPT OF F020-DOCTOR-MSTR , W-PAYEFT-AMT-N
+COMMENT "------------- F 0 2 0 -------------------------------------------------------"
+COMMENT "update doctor master with either transfer(TRANSF) or EFT Payment(PAYEFT) amt"
+OUTPUT F020-DOCTOR-MSTR UPDATE
+ITEM DOC-PAYEFT FINAL W-PAYEFT-AMT-N
+COMMENT "------------------------------------------------------------------------"
+COMMENT "------------- F 1 1 0 update delayed until next pgm due to weird bug "
+COMMENT "---------------    whereby PAYPOT got clobbered by PAYEFT add."
+COMMENT "---------------    Now values written to subfile and added to f110 in u119b"
+COMMENT "------------------------------------------------------------------------"
+COMMENT "if there was insufficient potential pay to cover the total deductions then"
+COMMENT "create 2 transactions:"
+COMMENT "- create an 'advance' transaction (ADVOUT) in the CURRENT EP to allow a"
+COMMENT "message in the Current statement warning doctor of deficit"
+COMMENT "and "
+COMMENT "- create a 'deficit' transaction (DEFIC) in the NEXT EP. This transaction"
+COMMENT "appears as a 'deduction' so that it will take back the amount owing"
+COMMENT "from the next pay's potential pay"
+COMMENT "PAYEFT"
+TEMP W-EP-NBR NUM
+ITEM W-EP-NBR = W-CURRENT-EP-NBR
+TEMP W-EP-NBR-ENTRY NUM
+ITEM W-EP-NBR-ENTRY = W-CURRENT-EP-NBR
+ITEM W-COMP-CODE-TRANSFER-OR-EFT = "TRANSF" IF DOC-DEPT <> ICU-DEPT-1 ELSE "PAYEFT"
+COMMENT "item w-comp-code-transfer-or-eft =  PAYEFT "
+TEMP W-TYPE CHAR*1
+ITEM W-TYPE = PAYEFT-TYPE
+TEMP W-SEQ NUM*2
+ITEM W-SEQ = PAYEFT-SEQ
+TEMP W-FACTOR ZONED*6
+ITEM W-FACTOR = PAYEFT-FACTOR
+TEMP W-FACTOR-OVERRIDE CHAR*1
+ITEM W-FACTOR-OVERRIDE = "*" IF RECORD F110-PAYEFT EXISTS ELSE " "
+TEMP W-COMP-UNITS
+ITEM W-COMP-UNITS = (( COMP-UNITS OF F110-PAYEFT * FACTOR OF F110-PAYEFT)+.5) / 10000 IF RECORD F110-PAYEFT EXISTS ELSE 0
+TEMP W-AMT-GROSS NUM
+ITEM W-AMT-GROSS = ( AMT-NET OF F110-PAYPOT - AMT-NET OF F110-TOTDED )
+TEMP W-AMT-NET
+ITEM W-AMT-NET = W-PAYEFT-AMT-N
+SUBFILE U119_F110 KEEP INCLUDE DOC-NBR OF F112-PYCDCEILINGS, W-EP-NBR, W-EP-NBR-ENTRY, W-COMP-CODE-TRANSFER-OR-EFT, W-TYPE, W-SEQ, W-FACTOR, W-FACTOR-OVERRIDE, W-COMP-UNITS , W-AMT-GROSS , W-AMT-NET
+COMMENT "ADVOUT"
+ITEM W-EP-NBR = W-CURRENT-EP-NBR
+ITEM W-EP-NBR-ENTRY = W-CURRENT-EP-NBR
+ITEM W-COMP-CODE-ADVOUT = "ADVOUT"
+ITEM W-TYPE = ADVOUT-TYPE
+ITEM W-SEQ = ADVOUT-SEQ
+ITEM W-FACTOR = ADVOUT-FACTOR
+ITEM W-FACTOR-OVERRIDE = "*"
+ITEM W-COMP-UNITS = 0
+ITEM W-AMT-GROSS = W-AMT-DEFICIT
+ITEM W-AMT-NET = W-AMT-DEFICIT
+SUBFILE U119_F110 ALIAS U110_F110_ADVOUT KEEP IF W-AMT-DEFICIT > 0 APPEND INCLUDE DOC-NBR OF F112-PYCDCEILINGS, W-EP-NBR, W-EP-NBR-ENTRY, W-COMP-CODE-ADVOUT, W-TYPE, W-SEQ, W-FACTOR, W-FACTOR-OVERRIDE, W-COMP-UNITS , W-AMT-GROSS , W-AMT-NET
+COMMENT "DEFIC - note this deduction goes into NEXT EP (ie EP plus 1)"
+ITEM W-EP-NBR = W-CURRENT-EP-NBR-PLUS1
+ITEM W-EP-NBR-ENTRY = W-CURRENT-EP-NBR
+TEMP W-COMP-CODE-DEFIC CHAR*6
+ITEM W-COMP-CODE-DEFIC = "DEFIC"
+ITEM W-TYPE = DEFIC-TYPE
+ITEM W-SEQ = DEFIC-SEQ
+ITEM W-FACTOR = DEFIC-FACTOR
+ITEM W-FACTOR-OVERRIDE = "*"
+ITEM W-COMP-UNITS = 0
+ITEM W-AMT-GROSS = W-AMT-DEFICIT
+ITEM W-AMT-NET = W-AMT-DEFICIT
+SUBFILE U119_F110 ALIAS U110_F110_DEFIC KEEP IF W-AMT-DEFICIT > 0 APPEND INCLUDE DOC-NBR OF F112-PYCDCEILINGS, W-EP-NBR, W-EP-NBR-ENTRY, W-COMP-CODE-DEFIC, W-TYPE, W-SEQ, W-FACTOR, W-FACTOR-OVERRIDE, W-COMP-UNITS , W-AMT-GROSS , W-AMT-NET
+COMMENT "@if ICU"
+COMMENT "; (within ICU payroll, rma doctors do not have a PAYEFT record generate"
+COMMENT ";  and therefore have no  deposit  amount on their statements - r124b -"
+COMMENT ";  however the amount of their potential pay (PAYPOT) is placed into the"
+COMMENT ";  doctor master as if it were and eft deposit so that a  tranfer  amount"
+COMMENT ";  can be printed on their statements"
+COMMENT "request u119_rma_doctors_paypot_amt_update_f020 &"
+COMMENT "on edit        errors report &"
+COMMENT "on calculation errors report"
+COMMENT "access constants-mstr-rec-6                             &"
+COMMENT "link current-ep-nbr                             &"
+COMMENT "viaindex f112-ep-doc-nbr                        &"
+COMMENT "to   ep-nbr of f112-pycdceilings                &"
+COMMENT "link doc-nbr of f112-pycdceilings,                            &"
+COMMENT "ep-nbr  of f112-pycdceilings,                            &"
+COMMENT "paypot-seq,                                              &"
+COMMENT " PAYPOT                                                  &"
+COMMENT "to   doc-nbr,                                                 &"
+COMMENT "ep-nbr,                                                  &"
+COMMENT "process-seq,                                             &"
+COMMENT "comp-code    of f110-compensation                        &"
+COMMENT "link doc-nbr of f112-pycdceilings                             &"
+COMMENT "to   doc-nbr of f020-doctor-mstr       "
+COMMENT "use $use/icu_depts.def"
+COMMENT "select if doc-dept <> icu-dept-1 "
+COMMENT "; ------------- F 0 2 0 -------------------------------------------------------"
+COMMENT "output f020-doctor-mstr update"
+COMMENT "item doc-payeft final amt-net of f110-compensation"
+COMMENT "@else "
+COMMENT "error - program must be compiled using conditional statements"
+COMMENT "@endif"
+BUILD $PB_OBJ/U119_ICU
+ENDMODULE U119.QTS

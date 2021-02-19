@@ -1,0 +1,134 @@
+;doc     : Dept4142_E420.qts
+;purpose : Report for ED
+;who     : report for ED as Yasemin requested
+
+;If oma-code = E420
+;and department = 41 or 42
+;and reason code not equal to I2
+;service dates from July 2015 to current
+
+;Report by doc by service date
+
+;RMAclaim#  Dept  doc#  Code  servicedate  #services  rejectcode
+
+; *************************************************************
+
+;Date		Who		Description
+;2017/Jan/24    MC		requested by Yasemin
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             	&
+        on edit        errors report    	&
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  			&
+	key-clm-batch-nbr,                      &
+ 	key-clm-claim-nbr,     			&
+	key-clm-serv-code '00000', 		&
+	key-clm-adj-nbr '0'
+
+select f002-claims-mstr if   (    clmhdr-batch-type = 'C'   &
+			     )				    &
+                        and  (    clmhdr-doc-dept = 41      &
+			      or  clmhdr-doc-dept = 42	    &
+			     )        			    &
+		        and       clmhdr-serv-date >= 20150701 &
+		        and       clmhdr-status-ohip  <> 'I2'
+
+subfile dept4142     keep include                    	&
+key-clm-batch-nbr             of f002-claims-mstr,	&
+key-clm-claim-nbr             of f002-claims-mstr,	&
+clmhdr-doc-dept               of f002-claims-mstr,	&
+clmhdr-status-ohip            of f002-claims-mstr,	&
+clmhdr-elig-error	      of f002-claims-mstr,	&
+clmhdr-serv-error	      of f002-claims-mstr
+
+request two                             	&
+        on edit        errors report    	&
+        on calculation errors report
+
+access *dept4142                                                         &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20150701' &
+       and  clmdtl-oma-cd       = "E420"     & 
+       and  clmdtl-adj-nbr      =  0
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+subfile dept4142dtl keep include           &
+dept4142,				  &
+clmdtl-id             of f002-claims-mstr,&
+clmdtl-sv-date        of f002-claims-mstr,&
+x-nbr-svcs                               ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *dept4142dtl                                                       
+
+def x-claim  cha*10= clmdtl-id[1:10]
+def x-doc    cha*3 = clmdtl-id[3:3]
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile dept41b_E420 portable keep  include               &
+x-claim                                             ,&
+comma                                               ,&
+clmhdr-doc-dept                                     ,&
+comma                                               ,&
+x-doc                                               ,&
+comma                                               ,&
+clmdtl-sv-date                                      ,&
+comma                                               ,&
+clmdtl-oma-cd                                       ,&
+comma                                               ,&
+x-nbr-svcs                                          ,&
+comma                                               ,&
+clmhdr-status-ohip                                  ,&
+x-cr
+
+build $obj/dept4142_E420

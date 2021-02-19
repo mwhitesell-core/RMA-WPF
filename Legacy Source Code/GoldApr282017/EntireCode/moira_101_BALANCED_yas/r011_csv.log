@@ -1,0 +1,405 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Wed Jan  6 10:39:52 EST 2016
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/r011_csv.qzs]
+Q U I Z   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ; DOC: R011_CSV.QZS
+> ; DOC: PHYSICIAN REVENUE ANALYSIS BY CLINIC  with delimiter and column heading (requested by Brad)
+> ; DOC: RUN FOR: ROSS
+> ;
+> ;PROGRAM PURPOSE : REVENUE ANALYSIS BY CLINIC
+> ;
+> ;DATE       	WHO     DESCRIPTION
+> ;2015/Jun/11 	MC      - original
+> ;			- this report would be run in next monthend; hence to determine what
+> ;			  the previous ped should be
+> ;2015/Jul/07    MC1	- add a new pass to report the final total for all clinics
+> ;2016/Jan/05	MC2	- correct previous ped
+> 
+> can clear
+> set rep nolimit
+> 
+> access iconst-mstr-rec
+> 
+> choose iconst-clinic-nbr-1-2   22
+*W* Item (ICONST-CLINIC-NBR-1-2) is stored by the file system as a character 
+type.
+Choose viaindex ICONST-CLINIC-NBR-1-2.
+> 
+> def x-ped-yyyymm zoned*6 unsigned = iconst-date-period-end / 100
+> def x-ped-yyyy zoned*4 unsigned = iconst-date-period-end / 10000
+> def x-ped-mm zoned*2 unsigned = mod(x-ped-yyyymm , 100)
+> def x-ped-dd zoned*2 unsigned = mod(iconst-date-period-end, 100)
+> 
+> def x-ep-yr zoned*4 unsigned =                  &
+>                 x-ped-yyyy                      &
+>                 if x-ped-mm >= 8 and x-ped-mm <= 12 &
+>         else    x-ped-yyyy - 1                  &
+>                 if x-ped-mm <= 7
+> 
+> def x-prev-ped zoned*8 unsigned =                   &
+> ; MC2
+> ; if current ped is January, make sure the month is correct as December and previous year
+>                  ((x-ped-yyyy - 1) * 10000) + 1201  &
+>                 if x-ped-mm = 1                     &
+> ; MC2 - end
+> ; if current ped is not July or yearend
+>         else     ((x-ped-yyyymm - 1) * 100) + 1     &
+>                 if x-ped-dd <> 30 and x-ped-mm <> 7 &
+> ; if current ped is yearend - yyyy0630, then prev ped should be yyyy0601
+>         else     (x-ped-yyyymm * 100) +  1          &
+>                 if x-ped-dd = 30  and x-ped-mm =  6 &
+> ; if current ped is July (yyyy07dd), then prev ped should be yyyy0630
+>         else     ((x-ped-yyyymm - 1) * 100) +  30    &
+>                 if x-ped-mm =  7
+> 
+> set subfile name r011_ped keep
+> 
+> rep summ x-ep-yr  x-prev-ped  iconst-date-period-end
+> 
+> build $obj/r011a_csv
+> 
+> 
+> access *r011_ped                                        &
+> 	link x-ep-yr, x-prev-ped                        &
+> 	 to  ep-yr, iconst-date-period-end of f050-doc-revenue-mstr-history     &
+> 	link docrev-dept		         	&
+> 	 to  dept-nbr of f070-dept-mstr opt
+> 
+> sorted on docrev-clinic-1-2 on docrev-dept
+> 
+> def x-svc-mtd-in  zoned*4 signed = docrev-mtd-in-svc    &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-svc-mtd-out zoned*4 signed = docrev-mtd-out-svc   &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-amt-mtd-in  zoned*8 signed = docrev-mtd-in-rec    &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-amt-mtd-out zoned*8 signed = docrev-mtd-out-rec   &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-misc-svc-mtd zoned*4 signed =(docrev-mtd-in-svc + docrev-mtd-out-svc) &
+>                               if docrev-location = "MISC"
+> 
+> def x-misc-amt-mtd zoned*8 signed =(docrev-mtd-in-rec + docrev-mtd-out-rec) &
+>                               if docrev-location = "MISC"
+> 
+> def x-svc-ytd-in  zoned*5 signed = docrev-ytd-in-svc    &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-svc-ytd-out zoned*5 signed = docrev-ytd-out-svc   &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-amt-ytd-in  zoned*10 signed = docrev-ytd-in-rec    &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-amt-ytd-out zoned*10 signed = docrev-ytd-out-rec   &
+>                                    if docrev-location ne "MISC"
+> 
+> def x-misc-svc-ytd zoned*5 signed =  &
+>     (docrev-ytd-in-svc + docrev-ytd-out-svc) if docrev-location = "MISC"
+> 
+> def x-misc-amt-ytd zoned*10 signed =   &
+>     (docrev-ytd-in-rec + docrev-ytd-out-rec) if docrev-location = "MISC"
+> 
+> def x-svc-total-mtd zoned*4 signed= (x-svc-mtd-in + x-svc-mtd-out + x-misc-svc-mtd)
+> 
+> def x-svc-total-ytd zoned*5 signed= (x-svc-ytd-in + x-svc-ytd-out + x-misc-svc-ytd)
+> 
+> def x-amt-total-mtd zoned*8 signed= (x-amt-mtd-in + x-amt-mtd-out + x-misc-amt-mtd)
+> 
+> def x-amt-total-ytd zoned*10 signed= (x-amt-ytd-in + x-amt-ytd-out + x-misc-amt-ytd)
+> 
+> set subfile name r011a_csv keep at docrev-dept
+> 
+> rep summary										    &
+>                 docrev-clinic-1-2                                 			    &
+> 		docrev-dept								    &
+> 		dept-company 								    &
+>                 x-svc-mtd-in    subtotal reset at docrev-dept                               &
+>                 x-amt-mtd-in    subtotal reset at docrev-dept                               &
+>                 x-svc-mtd-out   subtotal reset at docrev-dept                               &
+>                 x-amt-mtd-out   subtotal reset at docrev-dept                               &
+>                 x-misc-svc-mtd  subtotal reset at docrev-dept                               &
+>                 x-misc-amt-mtd  subtotal reset at docrev-dept                               &
+>                 x-svc-total-mtd subtotal reset at docrev-dept                               &
+>                 x-amt-total-mtd subtotal reset at docrev-dept                               &
+>                 x-svc-ytd-in    subtotal reset at docrev-dept                               &
+>                 x-amt-ytd-in    subtotal reset at docrev-dept                               &
+>                 x-svc-ytd-out   subtotal reset at docrev-dept                               &
+>                 x-amt-ytd-out   subtotal reset at docrev-dept                               &
+>                 x-misc-svc-ytd  subtotal reset at docrev-dept                               &
+>                 x-misc-amt-ytd  subtotal reset at docrev-dept                               &
+>                 x-svc-total-ytd subtotal reset at docrev-dept                               &
+>                 x-amt-total-ytd subtotal reset at docrev-dept
+> 
+> build $obj/r011b_csv
+The file /alpha/rmabill/rmabill101/obj/r011b_csv.qzc already exists. Ok to 
+delete?
+> 
+> access *r011a_csv
+> 
+> set rep device disc name r011_csv
+> set page length 0 width 264
+> set nohead
+> set noformfeed
+> 
+> ;----------------------------------------
+> def x-delimiter char*1 = "~"
+> 
+> def x-period char*1 = "."
+> 
+> def x-amt-mtd-in-sign char*1 = "-"   		   if x-amt-mtd-in < 0  	&
+>                 else " "
+> def x-amt-mtd-in-dollars = abs(x-amt-mtd-in) / 100 if x-amt-mtd-in <> 0       	&
+>                 else  0
+> def x-amt-mtd-in-cents   = mod(abs(x-amt-mtd-in),100)  if x-amt-mtd-in <> 0    	&
+>                 else  0
+> 
+> def x-amt-mtd-out-sign char*1 = "-"   		     if x-amt-mtd-out < 0  	&
+>                 else " "
+> def x-amt-mtd-out-dollars = abs(x-amt-mtd-out) / 100 if x-amt-mtd-out <> 0      &
+>                 else  0
+> def x-amt-mtd-out-cents   = mod(abs(x-amt-mtd-out),100)  if x-amt-mtd-out <> 0    	&
+>                 else  0
+> 
+> def x-misc-amt-mtd-sign char*1 = "-"   		       if x-misc-amt-mtd < 0  	&
+>                 else " "
+> def x-misc-amt-mtd-dollars = abs(x-misc-amt-mtd) / 100 if x-misc-amt-mtd <> 0   &
+>                 else  0
+> def x-misc-amt-mtd-cents   = mod(abs(x-misc-amt-mtd),100)  if x-misc-amt-mtd <> 0  	&
+>                 else  0
+> 
+> def x-amt-total-mtd-sign char*1 = "-"   		 if x-amt-total-mtd < 0    &
+>                 else " "
+> def x-amt-total-mtd-dollars = abs(x-amt-total-mtd) / 100 if x-amt-total-mtd <> 0   &
+>                 else  0
+> def x-amt-total-mtd-cents   = mod(abs(x-amt-total-mtd),100)  if x-amt-total-mtd <> 0   &
+>                 else  0
+> 
+> def x-amt-ytd-in-sign char*1 = "-"   		   if x-amt-ytd-in < 0  	&
+>                 else " "
+> def x-amt-ytd-in-dollars = abs(x-amt-ytd-in) / 100 if x-amt-ytd-in <> 0       	&
+>                 else  0
+> def x-amt-ytd-in-cents   = mod(abs(x-amt-ytd-in),100)  if x-amt-ytd-in <> 0    	&
+>                 else  0
+> 
+> def x-amt-ytd-out-sign char*1 = "-"   		     if x-amt-ytd-out < 0  	&
+>                 else " "
+> def x-amt-ytd-out-dollars = abs(x-amt-ytd-out) / 100 if x-amt-ytd-out <> 0      &
+>                 else  0
+> def x-amt-ytd-out-cents   = mod(abs(x-amt-ytd-out),100)  if x-amt-ytd-out <> 0    	&
+>                 else  0
+> 
+> def x-misc-amt-ytd-sign char*1 = "-"   		       if x-misc-amt-ytd < 0  	&
+>                 else " "
+> def x-misc-amt-ytd-dollars = abs(x-misc-amt-ytd) / 100 if x-misc-amt-ytd <> 0   &
+>                 else  0
+> def x-misc-amt-ytd-cents   = mod(abs(x-misc-amt-ytd),100)  if x-misc-amt-ytd <> 0  	&
+>                 else  0
+> 
+> def x-amt-total-ytd-sign char*1 = "-"   		 if x-amt-total-ytd < 0    &
+>                 else " "
+> def x-amt-total-ytd-dollars = abs(x-amt-total-ytd) / 100 if x-amt-total-ytd <> 0   &
+>                 else  0
+> def x-amt-total-ytd-cents   = mod(abs(x-amt-total-ytd),100)  if x-amt-total-ytd <> 0   &
+>                 else  0
+> 
+> ;----------------
+> 
+> def x-clinic       char*4  = '"' +  docrev-clinic-1-2  + '"'
+> def x-dept	   char*4  = '"' + ascii(docrev-dept,2) + '"'
+> def x-company	   char*1  = ascii(dept-company)
+> 
+> def x-svc-mtd-in-alpha char*5  =  pack(ascii(x-svc-mtd-in))
+> def x-amt-mtd-in-alpha char*11 =  pack(trunc(lj(x-amt-mtd-in-sign +       	&
+>                                               ascii(x-amt-mtd-in-dollars) +     &
+>                                               x-period +                        &
+>                                               ascii(x-amt-mtd-in-cents,2))))
+> 
+> def x-svc-mtd-out-alpha char*5  =  pack(ascii(x-svc-mtd-out))
+> def x-amt-mtd-out-alpha char*11 =  pack(trunc(lj(x-amt-mtd-out-sign +       	  &
+>                                               ascii(x-amt-mtd-out-dollars) +      &
+>                                               x-period +                          &
+>                                               ascii(x-amt-mtd-out-cents,2))))
+> 
+> def x-misc-svc-mtd-alpha char*5  =  pack(ascii(x-misc-svc-mtd))
+> def x-misc-amt-mtd-alpha char*11 =  pack(trunc(lj(x-misc-amt-mtd-sign +       	   &
+>                                               ascii(x-misc-amt-mtd-dollars) +      &
+>                                               x-period +                           &
+>                                               ascii(x-misc-amt-mtd-cents,2))))
+> 
+> def x-svc-total-mtd-alpha char*5  =  pack(ascii(x-svc-total-mtd))
+> def x-amt-total-mtd-alpha char*11 =  pack(trunc(lj(x-amt-total-mtd-sign +           &
+>                                               ascii(x-amt-total-mtd-dollars) +      &
+>                                               x-period +                            &
+>                                               ascii(x-amt-total-mtd-cents,2))))
+> 
+> def x-svc-ytd-in-alpha char*6  =  pack(ascii(x-svc-ytd-in))
+> def x-amt-ytd-in-alpha char*13 =  pack(trunc(lj(x-amt-ytd-in-sign +       	&
+>                                               ascii(x-amt-ytd-in-dollars) +     &
+>                                               x-period +                        &
+>                                               ascii(x-amt-ytd-in-cents,2))))
+> 
+> def x-svc-ytd-out-alpha char*6  =  pack(ascii(x-svc-ytd-out))
+> def x-amt-ytd-out-alpha char*13 =  pack(trunc(lj(x-amt-ytd-out-sign +             &
+>                                               ascii(x-amt-ytd-out-dollars) +      &
+>                                               x-period +                          &
+>                                               ascii(x-amt-ytd-out-cents,2))))
+> 
+> def x-misc-svc-ytd-alpha char*6  =  pack(ascii(x-misc-svc-ytd))
+> def x-misc-amt-ytd-alpha char*13 =  pack(trunc(lj(x-misc-amt-ytd-sign +       	  &
+>                                               ascii(x-misc-amt-ytd-dollars) +     &
+>                                               x-period +                          &
+>                                               ascii(x-misc-amt-ytd-cents,2))))
+> 
+> def x-svc-total-ytd-alpha char*6  =  pack(ascii(x-svc-total-ytd))
+> def x-amt-total-ytd-alpha char*13 =  pack(trunc(lj(x-amt-total-ytd-sign +         &
+>                                               ascii(x-amt-total-ytd-dollars) +    &
+>                                               x-period +                          &
+>                                               ascii(x-amt-total-ytd-cents,2))))
+> 
+> def x-line char*220 =					&
+>         lj(pack(  				 	&
+>                 x-clinic        +                       &
+> 		x-delimiter  +					 &
+>                 x-dept          +                       &
+> 		x-delimiter  +					 &
+>                 x-company       +                       &
+> 		x-delimiter  +					 &
+>                 x-svc-mtd-in-alpha    +                         &
+> 		x-delimiter  +					 &
+>                 x-amt-mtd-in-alpha    +                         &
+> 		x-delimiter  +					 &
+>                 x-svc-mtd-out-alpha   +                         &
+> 		x-delimiter  +					 &
+>                 x-amt-mtd-out-alpha   +                         &
+> 		x-delimiter  +					 &
+>                 x-misc-svc-mtd-alpha  +                         &
+> 		x-delimiter  +					 &
+>                 x-misc-amt-mtd-alpha  +                         &
+> 		x-delimiter  +					 &
+>                 x-svc-total-mtd-alpha +                         &
+> 		x-delimiter  +					 &
+>                 x-amt-total-mtd-alpha +                         &
+> 		x-delimiter  +					 &
+>                 x-svc-ytd-in-alpha    +                         &
+> 		x-delimiter  +					 &
+>                 x-amt-ytd-in-alpha    +                         &
+> 		x-delimiter  +					 &
+>                 x-svc-ytd-out-alpha   +                         &
+> 		x-delimiter  +					 &
+>                 x-amt-ytd-out-alpha   +                         &
+> 		x-delimiter  +					 &
+>                 x-misc-svc-ytd-alpha  +                         &
+> 		x-delimiter  +					 &
+>                 x-misc-amt-ytd-alpha  +                         &
+> 		x-delimiter  +					 &
+>                 x-svc-total-ytd-alpha +                         &
+> 		x-delimiter  +					 &
+>                 x-amt-total-ytd-alpha                           &
+> 		) )
+> 
+> initial heading                         &
+>   tab  01 'Clinic'                    &
+>   tab  07 x-delimiter                         &
+>   tab  08 'Dept'                      &
+>   tab  12 x-delimiter                         &
+>   tab  13 'Company'                   &
+>   tab  20 x-delimiter                         &
+>   tab  21 'In-Pat Svc'            &
+>   tab  31 x-delimiter                         &
+>   tab  32 'In-Pat Amt'            &
+>   tab  42 x-delimiter                         &
+>   tab  43 'Out-Pat Svc'           &
+>   tab  54 x-delimiter                         &
+>   tab  55 'Out-Pat Amt'           &
+>   tab  66 x-delimiter                         &
+>   tab  67 'Misc Svc'              &
+>   tab  75 x-delimiter                         &
+>   tab  76 'Misc Amt'              &
+>   tab  84 x-delimiter                         &
+>   tab  85 'Tot Svc'             &
+>   tab  92 x-delimiter                         &
+>   tab  93 'Tot Amt'             &
+>   tab 100 x-delimiter                         &
+>   tab 101 'In-Pat Svc'            &
+>   tab 111 x-delimiter                         &
+>   tab 112 'In-Pat Amt'            &
+>   tab 122 x-delimiter                         &
+>   tab 123 'Out-Pat Svc'           &
+>   tab 134 x-delimiter                         &
+>   tab 135 'Out-Pat Amt'           &
+>   tab 146 x-delimiter                         &
+>   tab 147 'Misc Svc'              &
+>   tab 155 x-delimiter                         &
+>   tab 156 'Misc Amt'              &
+>   tab 164 x-delimiter                         &
+>   tab 165 'Tot Svc'             &
+>   tab 172 x-delimiter                         &
+>   tab 173 'Tot Amt'
+> 
+> report tab 01 x-line
+> 
+> build $pb_obj/r011c_csv
+The file /alpha/rmabill/rmabill101/obj/r011c_csv.qzc already exists. Ok to 
+delete?
+> 
+> ; MC1
+> 
+> access *r011a_csv
+> 
+> set rep device disc name r011_all
+> set rep page length 60 width 80
+> 
+> page heading                                            &
+>         tab  1  'R011_all'                              &
+>         tab  25 'Doctor Revenue for all clinics'        &
+>         tab  60 'Run Date:'                             &
+>         tab  70 sysdate                                 &
+>         skip 2
+> 
+> final footing                                           &
+>         tab  1  'MTD In    Svc: '                       &
+>         tab 20  x-svc-mtd-in    subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD In    Amt: '                       &
+>         tab 20  x-amt-mtd-in    subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD Out   Svc: '                       &
+>         tab 20  x-svc-mtd-out   subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD Out   Amt: '                       &
+>         tab 20  x-amt-mtd-out   subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD Misc  Svc: '                       &
+>         tab 20  x-misc-svc-mtd  subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD Misc  Amt: '                       &
+>         tab 20  x-misc-amt-mtd  subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD Total Svc: '                       &
+>         tab 20  x-svc-total-mtd subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'MTD Total Amt: '                       &
+>         tab 20  x-amt-total-mtd subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD In    Svc: '                       &
+>         tab 20  x-svc-ytd-in    subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD In    Amt: '                       &
+>         tab 20  x-amt-ytd-in    subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD Out   Svc: '                       &
+>         tab 20  x-svc-ytd-out   subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD Out   Amt: '                       &
+>         tab 20  x-amt-ytd-out   subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD Misc  Svc: '                       &
+>         tab 20  x-misc-svc-ytd  subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD Misc  Amt: '                       &
+>         tab 20  x-misc-amt-ytd  subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD Total Svc: '                       &
+>         tab 20  x-svc-total-ytd subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+> skip 2  tab  1  'YTD Total Amt: '                       &
+>         tab 20  x-amt-total-ytd subt pic '^^^,^^^,^^^.^^ ' trail '-'
+> 
+> build $obj/r011d_csv
+The file /alpha/rmabill/rmabill101/obj/r011d_csv.qzc already exists. Ok to 
+delete?
+> 
+Wed Jan  6 10:39:53 EST 2016

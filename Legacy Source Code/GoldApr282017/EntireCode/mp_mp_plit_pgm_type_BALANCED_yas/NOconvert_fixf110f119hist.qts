@@ -1,0 +1,89 @@
+; 2013/Dec/18	MC	- original (fixf110f119hist.qts) - this version is for MP only
+;			- fix records based on the passing parameteres
+
+cancel clear
+set process nolimit
+set lock record update
+
+request save_parameters
+
+access f190-comp-codes
+
+choose comp-code parm prompt 'Enter comp code : ' 1 time
+
+def  x-ep-nbr zoned*6 unsigned 	= parm prompt 'Enter ep nbr (yyyymm) : '
+def  x-doc-nbr char*3          	= parm prompt 'Enter doctor nbr : '
+def  x-comp-code char*6 	= comp-code
+
+subfile save_parms keep include x-ep-nbr, x-doc-nbr, x-comp-code
+
+request fix_f110  on calculation errors report          &
+                  on edit errors report
+
+access *save_parms 			&
+	link x-doc-nbr, x-ep-nbr	&
+	 to  doc-nbr, ep-nbr of f110-compensation
+
+def fix-f110-flag num*2         = parm prompt 'Enter fix flag (93 - fix, 0 - no fix) : '
+def x-amt-gross zoned*9 numeric = parm prompt 'Enter amt Gross without  decimal :'
+def x-amt-net   zoned*9 numeric = parm prompt 'Enter amt Net   without  decimal :'
+
+sel  if comp-code = x-comp-code  	&
+    and fix-f110-flag = 93
+
+
+output f110-compensation update on errors report
+   item amt-gross final x-amt-gross
+   item amt-net   final x-amt-net
+   item last-mod-date final sysdate
+   item last-mod-time final systime / 10000
+   item last-mod-user-id final 'Fixf110f119hist'
+
+
+request fix_f119  on calculation errors report          &
+                  on edit errors report
+
+access *save_parms        	&
+	link x-doc-nbr,		&
+	     x-comp-code 	&
+	 to doc-nbr,		&
+	    comp-code of f119-doctor-ytd    
+
+def fix-f119-flag num*2         = parm prompt 'Enter fix flag (94 - fix, 0 - no fix) : '
+def x-amt-mtd   zoned*9 numeric = parm prompt 'Enter amt MTD without decimal :'
+def x-amt-ytd   zoned*9 numeric = parm prompt 'Enter amt YTD without decimal :'
+
+sel  if fix-f119-flag = 94  	&
+    and rec-type = 'A'
+
+output f119-doctor-ytd update on errors report 
+      item amt-mtd final x-amt-mtd 
+      item amt-ytd final x-amt-ytd  
+      item last-mod-date final sysdate
+      item last-mod-time final systime / 10000
+      item last-mod-user-id final 'Fixf110f119hist'
+
+
+request fix_f119hist  on calculation errors report          &
+                      on edit errors report
+
+access *save_parms        	&
+	link x-doc-nbr,		&
+	     x-ep-nbr     	&
+	 to doc-nbr,		&
+	    ep-nbr of f119-doctor-ytd-history
+
+def fix-f119hist-flag num*2     = parm prompt 'Enter fix flag (94 - fix, 0 - no fix) : '
+def x-amt-mtd   zoned*9 numeric = parm prompt 'Enter amt MTD without decimal :'
+def x-amt-ytd   zoned*9 numeric = parm prompt 'Enter amt YTD without decimal :'
+
+sel  if comp-code = x-comp-code  	&
+    and rec-type = 'A'			&
+    and fix-f119hist-flag = 94
+
+output f119-doctor-ytd-history update on errors report 
+      item amt-mtd final x-amt-mtd 
+      item amt-ytd final x-amt-ytd 
+
+
+build $obj/fixf110f119hist

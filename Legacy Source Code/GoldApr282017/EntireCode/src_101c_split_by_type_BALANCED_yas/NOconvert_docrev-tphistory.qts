@@ -1,0 +1,62 @@
+; DOC: docrev-tphistory.qzs 
+; DOC: report rev by department
+; DOC: RUN FOR: Leena
+;
+;PROGRAM PURPOSE :
+;
+;
+;DATE       BY WHOM   DESCRIPTION
+;09/10/01   YASEMIN   ORIGINAL
+;
+;
+can clear
+set default
+set process nolimit
+set lock file update
+
+access f050tp-doc-revenue-mstr-history   &
+  link DOCREVTP-DOC-NBR to doc-nbr of f020-doctor-mstr opt
+
+select if ep-yr = 2000 and ICONST-DATE-PERIOD-END = 20010601  
+
+def docrev-dept    zoned*2 = doc-dept
+def docrev-doc-nbr zoned*3 = docrevtp-doc-nbr
+;def docrev-oma-cd cha*5 = docrevtp-oma-cd
+
+sort  on docrev-dept        &
+      on docrev-doc-nbr     &
+      on docrevtp-oma-cd
+
+def in-svc-ytd zoned*7 signed =   DOCREVTP-IN-PROF-NBR-SVC(2) &
+                               if docrevtp-loc-cd ne "MISC"
+
+def in-amt-ytd zoned*10 signed =   DOCREVTP-IN-PROF-AMT-BILLED(2)  &
+                                + DOCREVTP-IN-PROF-AMT-ADJUSTS(2) &
+                               if docrevtp-loc-cd ne "MISC"
+
+def out-svc-ytd zoned*7 signed =  DOCREVTP-OUT-PROF-NBR-SVC(2) &
+                               if docrevtp-loc-cd ne "MISC"
+
+def out-amt-ytd zoned*10 signed =  DOCREVTP-OUT-PROF-AMT-BILLED(2)  &
+                                + DOCREVTP-OUT-PROF-AMT-ADJUSTS(2) &
+                               if docrevtp-loc-cd ne "MISC"
+
+
+temp tot-svc-ytd zoned*7 signed 
+item tot-svc-ytd =tot-svc-ytd 	&
+		 +     in-svc-ytd    &
+                  + out-svc-ytd   reset at docrevtp-oma-cd 
+temp tot-amt-ytd zoned*10 signed
+item tot-amt-ytd  = tot-amt-ytd  		&
+		 +    in-amt-ytd    &
+                   + out-amt-ytd  reset at docrevtp-oma-cd 
+
+
+subfile docrevhistory keep at docrevtp-oma-cd  portable append include &
+ docrev-dept ,          &
+ docrev-doc-nbr,        &
+ docrevtp-oma-cd,       &
+ tot-svc-ytd,           & 
+ tot-amt-ytd    
+
+  

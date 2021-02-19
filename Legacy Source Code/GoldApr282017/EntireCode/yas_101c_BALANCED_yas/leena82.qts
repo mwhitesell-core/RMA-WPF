@@ -1,0 +1,140 @@
+;doc     : leenag82.qts
+;purpose : report dollar amount for clinic 82 by service date
+;          Pass 1 - select appropriate claims and "explode" repetitive services
+;who     : Leena Jaanimagi
+
+
+;Date           Who             Description
+;2001/05/15     Yasemin         Original
+
+
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+;this is for subfiles with extention .ps
+;access *claims_subfile_old
+
+;this is for subfile with extention .sf
+access *claims_subfile
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-oma-code cha*4 = clmdtl-id[12:4]
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def consec zoned*11 unsigned = clmdtl-consec-dates
+
+def clmdtl-consec-dates-r cha*9 = ascii(clmdtl-consec-dates,11)[3:9] 
+
+def x-sv-nbr2 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[1:1])    &
+        if (clmdtl-consec-dates-r[2:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[2:2] <> 'OP'  &
+        and clmdtl-consec-dates-r[2:2] <> 'BI') &
+        and clmdtl-consec-dates-r[1:1] <> '0'
+
+def x-sv-nbr3 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[4:1])    &
+        if (clmdtl-consec-dates-r[5:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[5:2] <> 'OP'  &
+        and clmdtl-consec-dates-r[5:2] <> 'BI') &
+        and clmdtl-consec-dates-r[4:1] <> '0'
+
+def x-sv-nbr4 zoned*2=                          &
+        nconvert(clmdtl-consec-dates-r[7:1])    &
+        if (clmdtl-consec-dates-r[8:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[8:2] <> 'OP'  &
+        and clmdtl-consec-dates-r[8:2] <> 'BI') &
+        and clmdtl-consec-dates-r[7:1] <> '0'
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee
+
+def x-sv-date-1 char*6 = clmdtl-sv-date
+
+def x-sv-date-2 char*6 = clmdtl-sv-date[1:4] + clmdtl-consec-dates-r[2:2]
+
+def x-sv-date-3 char*6 = clmdtl-sv-date[1:4] + clmdtl-consec-dates-r[5:2]
+
+def x-sv-date-4 char*6 = clmdtl-sv-date[1:4] + clmdtl-consec-dates-r[8:2]
+
+;select if x-oma-code = "G510"
+
+subfile leena82 keep include               &
+clmdtl-id                                 ,&
+x-doc-nbr                                 ,&
+x-sv-date-1                               ,&
+x-sv-nbr1	                          ,&
+x-oma-code	                          ,&
+clmdtl-date-period-end                    ,&
+x-clmdtl-fee-ohip-1
+
+subfile leena82 alias leena82_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id                  of leena82     ,&
+x-doc-nbr                                 ,&
+x-sv-date-2                               ,&
+x-sv-nbr2                                 ,&
+x-oma-code                                ,&
+clmdtl-date-period-end    of leena82      ,&
+x-clmdtl-fee-ohip-2
+
+subfile leena82 alias leena82_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id                  of leena82     ,&
+x-doc-nbr                                 ,&
+x-sv-date-3                               ,&
+x-sv-nbr3                                 ,&
+x-oma-code                                ,&
+clmdtl-date-period-end    of leena82      ,&
+x-clmdtl-fee-ohip-3
+
+subfile leena82 alias leena82_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id                  of leena82     ,&
+x-doc-nbr                                 ,&
+x-sv-date-4                               ,&
+x-sv-nbr4                                 ,&
+x-oma-code                                ,&
+clmdtl-date-period-end     of leena82     ,&
+x-clmdtl-fee-ohip-4
+
+request two
+
+access *leena82
+
+def x-svc-month cha*4 = x-sv-date-1[1:4]
+
+sort on x-svc-month
+
+temp clmdtl-fee-ohip
+item clmdtl-fee-ohip = x-clmdtl-fee-ohip-1 + clmdtl-fee-ohip	&
+	reset at x-svc-month
+
+subfile leena821 keep at x-svc-month include    &
+clmdtl-id       of leena82             ,&
+x-doc-nbr                              ,&
+x-sv-date-1                            ,&
+x-sv-nbr1	                       ,&
+x-oma-code	                       ,&
+clmdtl-date-period-end of leena82      ,&
+x-svc-month                            ,&
+clmdtl-fee-ohip
+
+build $obj/leena82
+
+

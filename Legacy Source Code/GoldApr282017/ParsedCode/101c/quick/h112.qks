@@ -1,0 +1,195 @@
+cancel clear
+set verify errors
+;#> PROGRAM-ID.     H112.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician PAYCODES / CEILINGS
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     95/JUN/29  ____   B.M.L.   - original COPIED FROM D112.QKS
+;   1999/Apr/9		S.B.	 - FIX DISPLAYS AND ALIGNMENST FOR Y2K. 
+;				 - Changed t-ep-nbr-yy to use the full year.
+;   1999/Jun/07         S.B.     - Altered the call to scrtitle.use and
+;                                  stdhilite.use to be called from $use
+;                                  instead of src.
+;                                - Removed the call to secfile.use because
+;                                  it was not doing anything.
+; 2003/nov/10 b.e.      - alpha doctor nbr
+; 2004/sep/02 b.e.      - made all fields display so that data can't be
+;                         accidently changed
+;                       - added new designer procedcure FIX to allow change
+;                         of each field only after a 'secret' password has
+;                         been entered
+; 2006/apr/17 b.e.      - adjust display of 3 ceiling fields to allow 1M $
+;
+
+screen $pb_obj/h112     					&
+	on line 7 for 17 				&
+	activities find, change				&
+	message on line 24                    		&
+        receiving 	w-doc-nbr, 			&
+			w-ep-nbr-yy,			&
+			constants-mstr-rec-6, 		&
+			f020-doctor-mstr
+
+temp w-doc-nbr char*3
+temp w-ep-nbr-yy
+temp w-password date
+;temp w-sysdate date
+
+description of screen                                                &
+"                                                                   " &
+"       This screen allows a User to query        Earnings Period   " &
+"       transactions that specify a doctor's PAY CODE, PAY SUB CODE," &
+"       EARNINGS CEILING, EXPENSE CEILING and GUARANTEE INFORMATION." &
+"                                                                   "
+
+temp t-ep-nbr-yy char*4 reset at startup initial ascii(w-ep-nbr-yy,4)
+temp w-sysdate date reset at startup initial sysdate
+
+file  f112-pycdceilings-history primary  occurs 12
+        access viaindex pycdceilings-history-key using w-doc-nbr
+
+select if t-ep-nbr-yy  = (ascii(ep-nbr of f112-pycdceilings-history,6)[1:4])
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 designer
+
+file f191-earnings-period reference
+     access viaindex ep-nbr using ep-nbr of f112-pycdceilings-history
+
+
+define x-screen-name char*55 = "PAY CODES, CEILINGS, GUARANTEES"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+"   E/P    BILLING  ---PAY--- --EARNINGS--- -GUARANTEE- ---EXPENSES-- ALLOC RTRO" &
+        at ,1
+skip
+title &
+"   Nbr      PED    CD/FACTOR CEILING/ORIGNL   %  AMOUNT CEILING/ORIGNL PER  TO " &
+         at ,1
+skip
+
+cluster occurs with f112-pycdceilings-history
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 YYYYMM YYYY/MM/DD _X 99.9999 999,999 999,999 999 999,999 999,999 999,999 99  YYYYMM  YYYY/MM/DD HH:MM USERID--
+align (1,,4) (,,11) (,,20)(,,21) (,,22) (,,30) (,,37) (,,45) (,,49) (,,57) (,,64) (,,72) (,,75)
+
+field ep-nbr				of f112-pycdceilings-history display
+field iconst-date-period-end		of f191-earnings-period      display &
+        pic "^^^^^^^^" sig 8
+
+field doc-pay-code			of f112-pycdceilings-history display
+field doc-pay-sub-code			of f112-pycdceilings-history display
+field factor				of f112-pycdceilings-history
+field doc-yrly-ceiling			of f112-pycdceilings-history	&
+        pic "^^^^^^^"
+field doc-yrly-ceiling-adjusted 	of f112-pycdceilings-history	&
+        pic "^^^^^^^"
+field doc-yrly-ceiling-guar-perc        of f112-pycdceilings-history
+field doc-yrly-ceil-guar                of f112-pycdceilings-history	&
+        pic "^^^^^^^"
+field doc-yrly-expense                  of f112-pycdceilings-history	&
+        pic "^^^^^^"
+field doc-yrly-expense-adjusted         of f112-pycdceilings-history	&
+        pic "^^^^^^"
+field doc-yrly-expn-alloc-pers          of f112-pycdceilings-history
+field retro-to-ep-nbr			of f112-pycdceilings-history
+cluster
+field w-password noid noecho
+
+
+;procedure initialize
+;begin
+;  let w-sysdate = sysdate
+;end
+
+procedure designer fix help "Use this 'secret' function to make corrections to data"
+begin
+  accept w-password
+end
+
+procedure edit factor
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(factor) 
+  end
+end
+
+procedure edit doc-yrly-ceiling
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-ceiling) 
+  end
+end
+
+procedure edit doc-yrly-ceiling-adjusted
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-ceiling-adjusted) 
+  end
+end
+
+procedure edit doc-yrly-ceiling-guar-perc
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-ceiling-guar-perc) 
+  end
+end
+
+procedure edit doc-yrly-ceil-guar 
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-ceil-guar) 
+  end
+end
+
+procedure edit doc-yrly-expense 
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-expense) 
+  end
+end
+
+procedure edit doc-yrly-expense-adjusted 
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-expense-adjusted) 
+  end
+end
+
+procedure edit doc-yrly-expn-alloc-pers 
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(doc-yrly-expn-alloc-pers) 
+  end
+end
+
+procedure edit retro-to-ep-nbr
+begin
+  if w-password <> w-sysdate
+  then begin
+    let fieldvalue = oldvalue(retro-to-ep-nbr) 
+  end
+end
+
+
+build

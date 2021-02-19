@@ -1,0 +1,475 @@
+;#> PROGRAM-ID.     U116.QTS
+;
+;       ((C)) Dyad Systems
+;
+;    PURPOSE: Sub-process within 'EARNINGS GENERATION' process.
+;             Calculate 'POTENTIAL PAYMENTS'("PAYPOT") for all PAY CODES
+;             Create/update GTYPE-x GUARantee transactions for PAY CODE 1
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;     92/APR/30         B.E.     - incorporate GTYPE-x logic
+;     92/MAY/11         B.E.     - allow for scaling of dollar values
+;     92/MAY/20         B.E.     - CODE for "1D" pay-sub-CODE
+;     92/SEP/20         B.E.     - CODE for YTD GUARantee Amt CODE 1A
+;     92/SEP/22         B.E.     - added FACTOR from F112 to affect
+;                                  NET PAY calculation
+;     92/SEP/28         B.E.     - changed 'W-DOC-YRLY-CEILING'
+;                                       to 'AMT-NET OF F110-YTDCEA'
+;     92/OCT/13         B.E.     - changed 'YTDGUC' to 'YTDGUD' for 1D calc's
+;     92/OCT/13         B.E.     - added calculation for UNDERage Comp CODE
+;                                  for payCODE 1.
+;                                - changed 'YTDGUC' to 'YTDGUD' for 1D calc's
+;                                - NOVE/10 CHANGED YTDGUD BACK TO YTDGUCB
+;                               ??? HOW DOES GUARANTEE UNDER CODE 1/A/B/C
+;                               GET MOVED OVER TO GUD TO DETERMINE "TRUE" INCOME
+;     92/OCT/14         B.E.     - added Ceiling Guarantee % to 1B calc.
+;     93/FEB/21         B.E.     - added update of Doctor Mstr logic in pay code 1
+;                                  into paycode 2/3/4 logic.
+;
+;     93/APR/20         B.E.     - removed access to F190 for YTDEXP since no   1
+;                                  longer needed after using F020 values.
+;     93/MAY/18         B.E.     - removed access to F110 for TOTINC and CEIEAR
+;     93/MAY/25         B.E.     - changed UNDER to STATUS
+;     93/MAY/27         B.E.     - output F110 STATUS rec even if $ value is 0
+;     93/JUN/01         B.E.     - STATUS rec output to F119 changed X-NOT-NEEDED
+;                                  to DOC-YTDEAR from F020
+;     93/JUN/03         B.E.     - 1C PAYPOT changed to do pay calculation
+;                                  than add addition current EP Income (TOTINC)
+;                                  up to limits (ie. YTD Ceiling - YTDCEA)
+;     93/JUN/08         B.E.     - YTDEAR updated with -AMT-NET-3 not -AMT-NET
+;     93/JUL/13         B.E.     - include all "GTYPE" transactions in F119
+;                                  even if not a "I"ncome TYPE transaction
+;     94/FEB/14         M.C.     - FOR PAY CODE 1, REVERSE THE SIGN ON
+;                                  W-POTGUAR-AMT-NET
+
+;     94/MAR/04         M.C.     - ADD THE CONDITIONAL COMPILE FOR PAY
+;                                  CODE 5 LOGIC
+;   SEE LINE BELOW "SHOULDN'T ABOVE LINE TAKE INTO CONSIDERATION ..." TO
+;       DETERMINE IF FURTHER EDIT REQUIRED ??????????????????
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/June/03	S.B.	 - Changed the calls for the u116_paycode0,
+;				   1,2,34,5 from pb_src to use.
+; 2014-feb-20 	be1	- new paycode 7 logic
+;			- TODO - complete description of change here
+; 2014-apr-20 	be2	- add logic to calc HST on doc charges(HSTRTE, PY7HST, FINCHG)
+;
+
+cancel clear
+run u116
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+global temp paypot-seq     zoned*2 unsigned
+global temp paypot-seq-rpt zoned*2 unsigned
+global temp paypot-type    char*1
+global temp paypot-group   char*1
+
+global temp ceiear-seq    zoned*2 unsigned
+global temp ceiear-type   char*1
+global temp ceiexp-seq    zoned*2 unsigned
+global temp ceiexp-type   char*1
+global temp totinc-seq    zoned*2 unsigned
+global temp totinc-type   char*1
+
+global temp ytdcea-seq    zoned*2 unsigned
+global temp ytdcea-type   char*1
+global temp ytdcex-seq    zoned*2 unsigned
+global temp ytdcex-type   char*1
+global temp ytdear-seq    zoned*2 unsigned
+global temp ytdear-type   char*1
+
+global temp ytdinc-seq    zoned*2 unsigned
+global temp ytdinc-type   char*1
+
+global temp ytdgub-seq    zoned*2 unsigned
+global temp ytdgub-type   char*1
+global temp ytdguc-seq    zoned*2 unsigned
+global temp ytdguc-type   char*1
+global temp ytdgud-seq    zoned*2 unsigned
+global temp ytdgud-type   char*1
+
+global temp status-seq     zoned*2 unsigned
+global temp status-seq-rpt zoned*2 unsigned
+global temp status-type    char*1
+global temp status-group   char*1
+
+global temp advout-seq     zoned*2 unsigned
+global temp advout-seq-rpt zoned*2 unsigned
+global temp advout-type    char*1
+global temp advout-group   char*1
+global temp advout-factor  numeric
+
+global temp totadv-seq     zoned*2 unsigned
+global temp totadv-seq-rpt zoned*2 unsigned
+global temp totadv-type    char*1
+global temp totadv-group   char*1
+global temp totadv-factor  numeric
+
+;be1
+global temp depinc-seq     zoned*2 unsigned
+global temp depinc-seq-rpt zoned*2 unsigned
+global temp depinc-type    char*1
+global temp depinc-group   char*1
+global temp depinc-factor  numeric
+;be1
+global temp svcrte-seq     zoned*2 unsigned
+global temp svcrte-seq-rpt zoned*2 unsigned
+global temp svcrte-type    char*1
+global temp svcrte-group   char*1
+global temp svcrte-factor  numeric
+;be1
+global temp svcchg-seq     zoned*2 unsigned
+global temp svcchg-seq-rpt zoned*2 unsigned
+global temp svcchg-type    char*1
+global temp svcchg-group   char*1
+global temp svcchg-factor  numeric
+;be1
+global temp keyhrs-seq     zoned*2 unsigned
+global temp keyhrs-seq-rpt zoned*2 unsigned
+global temp keyhrs-type    char*1
+global temp keyhrs-group   char*1
+global temp keyhrs-factor  numeric
+;be1
+global temp keyrte-seq     zoned*2 unsigned
+global temp keyrte-seq-rpt zoned*2 unsigned
+global temp keyrte-type    char*1
+global temp keyrte-group   char*1
+global temp keyrte-factor  numeric
+;be1
+global temp keychg-seq     zoned*2 unsigned
+global temp keychg-seq-rpt zoned*2 unsigned
+global temp keychg-type    char*1
+global temp keychg-group   char*1
+global temp keychg-factor  numeric
+;be1
+global temp depchg-seq     zoned*2 unsigned
+global temp depchg-seq-rpt zoned*2 unsigned
+global temp depchg-type    char*1
+global temp depchg-group   char*1
+global temp depchg-factor  numeric
+;be1
+global temp depfte-seq     zoned*2 unsigned
+global temp depfte-seq-rpt zoned*2 unsigned
+global temp depfte-type    char*1
+global temp depfte-group   char*1
+global temp depfte-factor  numeric
+;be1
+global temp docchg-seq     zoned*2 unsigned
+global temp docchg-seq-rpt zoned*2 unsigned
+global temp docchg-type    char*1
+global temp docchg-group   char*1
+global temp docchg-factor  numeric
+;be2
+global temp hstrte-seq     zoned*2 unsigned
+global temp hstrte-seq-rpt zoned*2 unsigned
+global temp hstrte-type    char*1
+global temp hstrte-group   char*1
+global temp hstrte-factor  numeric
+;be2
+global temp py7hst-seq     zoned*2 unsigned
+global temp py7hst-seq-rpt zoned*2 unsigned
+global temp py7hst-type    char*1
+global temp py7hst-group   char*1
+global temp py7hst-factor  numeric
+;be2
+global temp finchg-seq     zoned*2 unsigned
+global temp finchg-seq-rpt zoned*2 unsigned
+global temp finchg-type    char*1
+global temp finchg-group   char*1
+global temp finchg-factor  numeric
+
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u116_const_mstr_get_ep-nbr           &
+                on edit        errors report &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        = current-ep-nbr
+item w-current-ep-nbr-minus1 = current-ep-nbr - 1
+
+;
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+request u116_a_get_paypot                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "PAYPOT"
+item paypot-seq     = process-seq
+item paypot-seq-rpt = reporting-seq
+item paypot-type    = comp-type
+item paypot-group   = comp-code-group
+
+request u116_get_ceiear                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "CEIEAR"
+item ceiear-seq  = process-seq
+item ceiear-type = comp-type
+
+request u116_get_ytdear                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDEAR"
+item ytdear-seq  = process-seq
+item ytdear-type = comp-type
+
+request u116_get_ytdcea                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDCEA"
+item ytdcea-seq  = process-seq
+item ytdcea-type = comp-type
+
+request u116_get_ytdcex                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDCEX"
+item ytdcex-seq  = process-seq
+item ytdcex-type = comp-type
+
+request u116_get_totinc                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTINC"
+item totinc-seq  = process-seq
+item totinc-type = comp-type
+
+request u116_get_ytdinc                      &
+                on edit        errors report &
+               on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDINC"
+item ytdinc-seq  = process-seq
+item ytdinc-type = comp-type
+
+request u116_get_ytdgub                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDGUB"
+item ytdgub-seq  = process-seq
+item ytdgub-type = comp-type
+
+request u116_get_ytdguc                      &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDGUC"
+item ytdguc-seq  = process-seq
+item ytdguc-type = comp-type
+
+request u116_get_under                       &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "STATUS"
+item status-seq     = process-seq
+item status-seq-rpt = reporting-seq
+item status-type    = comp-type
+item status-group   = comp-code-group
+
+request u116_a_get_advout                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "ADVOUT"
+item advout-seq     =  process-seq
+item advout-seq-rpt =  reporting-seq
+item advout-type    =  comp-type
+item advout-group   =  comp-code-group
+item advout-factor  =  factor
+
+request u116_a_get_totadv                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+;choose comp-code "TOTADV"
+choose comp-code "ADVOUT"
+item totadv-seq     =  process-seq
+item totadv-seq-rpt =  reporting-seq
+item totadv-type    =  comp-type
+item totadv-group   =  comp-code-group
+item totadv-factor  =  factor
+
+;be1
+request u116_a_get_depinc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPINC"
+item depinc-seq     =  process-seq
+item depinc-seq-rpt =  reporting-seq
+item depinc-type    =  comp-type
+item depinc-group   =  comp-code-group
+item depinc-factor  =  factor
+;be1
+request u116_a_get_svcrte                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "SVCRTE"
+item svcrte-seq     =  process-seq
+item svcrte-seq-rpt =  reporting-seq
+item svcrte-type    =  comp-type
+item svcrte-group   =  comp-code-group
+item svcrte-factor  =  factor
+;be1
+request u116_a_get_svcchg                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "SVCCHG"
+item svcchg-seq     =  process-seq
+item svcchg-seq-rpt =  reporting-seq
+item svcchg-type    =  comp-type
+item svcchg-group   =  comp-code-group
+item svcchg-factor  =  factor
+;be1
+request u116_a_get_keyhrs                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "KEYHRS"
+item keyhrs-seq     =  process-seq
+item keyhrs-seq-rpt =  reporting-seq
+item keyhrs-type    =  comp-type
+item keyhrs-group   =  comp-code-group
+item keyhrs-factor  =  factor
+;be1
+request u116_a_get_keyrte                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "KEYRTE"
+item keyrte-seq     =  process-seq
+item keyrte-seq-rpt =  reporting-seq
+item keyrte-type    =  comp-type
+item keyrte-group   =  comp-code-group
+item keyrte-factor  =  factor
+;be1
+request u116_a_get_keychg                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "KEYCHG"
+item keychg-seq     =  process-seq
+item keychg-seq-rpt =  reporting-seq
+item keychg-type    =  comp-type
+item keychg-group   =  comp-code-group
+item keychg-factor  =  factor
+;be1
+request u116_a_get_depchg                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPCHG"
+item depchg-seq     =  process-seq
+item depchg-seq-rpt =  reporting-seq
+item depchg-type    =  comp-type
+item depchg-group   =  comp-code-group
+item depchg-factor  =  factor
+;be1
+request u116_a_get_depfte                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPFTE"
+item depfte-seq     =  process-seq
+item depfte-seq-rpt =  reporting-seq
+item depfte-type    =  comp-type
+item depfte-group   =  comp-code-group
+item depfte-factor  =  factor
+;be1
+request u116_a_get_docchg                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DOCCHG"
+item docchg-seq     =  process-seq
+item docchg-seq-rpt =  reporting-seq
+item docchg-type    =  comp-type
+item docchg-group   =  comp-code-group
+item docchg-factor  =  factor
+;be2
+request u116_a_get_py7hst                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "PY7HST"
+item py7hst-seq     =  process-seq
+item py7hst-seq-rpt =  reporting-seq
+item py7hst-type    =  comp-type
+item py7hst-group   =  comp-code-group
+item py7hst-factor  =  factor
+;be2
+request u116_a_get_finchg                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "FINCHG"
+item finchg-seq     =  process-seq
+item finchg-seq-rpt =  reporting-seq
+item finchg-type    =  comp-type
+item finchg-group   =  comp-code-group
+item finchg-factor  =  factor
+
+;-------------------------------------------------------------------------------
+; PAY CODE 0
+;
+; use $pb_src/u116_paycode0    nol
+;
+use $use/u116_paycode0.use    nol
+
+;-------------------------------------------------------------------------------
+;
+; PAY CODE  1
+;
+; use $pb_src/u116_paycode1     nol
+;
+use $use/u116_paycode1.use    nol
+
+;-------------------------------------------------------------------------------
+; PAY CODE  2
+;
+; use $pb_src/u116_paycode2     nol
+;
+use $use/u116_paycode2.use     ;nol
+
+;-------------------------------------------------------------------------------
+; PAY CODE  3 / 4 / 6
+;
+;use $use/u116_paycode34.use    nol
+;
+use $use/u116_paycode346.use    ;nol
+
+;--------------------------------------------------------------------------
+; PAY CODE  5
+;
+@if hsc and dg
+;use $pb_src/u116_paycode5     nol
+use $use/u116_paycode5.use     ;nol
+@endif
+
+;--------------------------------------------------------------------------
+; PAY CODE  7
+;
+;DONT NEED IN 101c use $pb_use/u116_paycode7.use   
+
+build $pb_obj/u116
+  

@@ -1,0 +1,132 @@
+; Program: d114
+;
+; Purpose: allow maintence (or entry) of special payments uploaded from
+;	   csv file
+;
+; 2006/may/24 b.e. change alignment to allow for 1M payroll amounts
+; 2008/jun/30 M.C. display rec-type on the screen
+; 2008/oct/30 M.C. add upshift to doc-nbr field
+; 2009/jan/12 M.C. Yasemin would like to change rec-type other than 'A'
+;		   because Mary forgot to set group H132 for dr D64 and Yas
+; 		   does not want to rerun governance file, she wants to manually add
+;		   the record in solo
+; 2012/oct/31 MC1  add lookup on f112 file to make sure doctor record exist
+
+screen $pb_obj/d114
+
+file f114-special-payments primary  occurs 18
+; 2008/06/30 - MC
+    item rec-type initial 'A'
+; 2008/06/30 - end
+
+file f020-doctor-mstr reference
+; 2012/10/31 - MC1 - not sure why now has compile error
+;     access via doc-nbr     ;    using doc-nbr of f114-special-payments
+     access via doc-nbr         using doc-nbr of f114-special-payments
+; 2012/10/31 - end
+
+; 2012/10/31 - MC1
+file f112-pycdceilings reference
+     access via doc-nbr         using doc-nbr of f114-special-payments
+; 2012/10/31 - end
+
+;file constants-mstr-rec-6 designer
+
+file f191-earnings-period reference
+     access viaindex ep-nbr ;using ep-nbr-from of f114-special-payments
+
+file f190-comp-codes reference
+
+;item last-mod-time of f114-special-payments 	initial systime
+item last-mod-date of f114-special-payments 	initial sysdate
+item last-mod-user-id of f114-special-payments 	initial signonuser
+
+temp comline char*256
+
+define x-screen-name char*55 = "Special Payments"
+use $use/scrtitle.use  nol nod
+
+use $use/stdhilite.use nol nod
+skip to 3
+skip
+title &
+; 2008/06/30 - MC
+;"   Doc    Comp        EP     EP      Nbr             Amt           Amt" at ,1
+"   Doc    Comp        EP     EP      Nbr             Amt           Amt   Rec" at ,1
+ski  
+title &
+;"   Nbr    Code      From     To    Units           Gross           Net" at ,1
+"   Nbr    Code      From     To    Units           Gross           Net  Type" at ,1
+; 2008/06/30 - end
+
+skip 1
+cluster occurs with f114-special-payments
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 xxx  xxxxxx    yyyymm  yyyymm  99,999  99,999.99- 9999,999.99- 9999,999.99-
+;align (1,,4) (,,09) (,,19) (,,26) (,,34) (,,45) (,,57)
+; 2008/06/30 - MC
+;align (1,,4) (,,09) (,,19) (,,26) (,,34) (,,45) (,,59)
+align (1,,4) (,,09) (,,19) (,,26) (,,34) (,,45) (,,59) (,,75)
+; 2008/06/30 - end
+
+; 2008/10/20 - MC - add upshift
+;field doc-nbr of f114-special-payments required nochange		&
+field doc-nbr of f114-special-payments upshift required nochange	&
+; 2008/10/30 - end
+; 2012/10/31 - MC1
+;     lookup on f020-doctor-mstr    
+      lookup on f020-doctor-mstr    					&
+      lookup on f112-pycdceilings
+; 2012/10/31 - end
+
+field comp-code of f114-special-payments id same required nochange	&
+      lookup on f190-comp-codes
+
+field ep-nbr-from of f114-special-payments id same required nochange 	&
+      lookup on f191-earnings-period 
+
+field ep-nbr-to of f114-special-payments  display
+field comp-units of f114-special-payments 
+field amt-gross of f114-special-payments  
+field amt-net of f114-special-payments    display
+
+; 2008/06/30 - MC
+; 2009/01/12 - MC - allow user to change rec-type
+;field rec-type of f114-special-payments   display
+field rec-type of f114-special-payments  predisplay value 'A', 'C', 'D' upshift
+; 2009/01/12 - end
+; 2008/06/30 - end
+
+;FIELD EP-NBR-ENTRY OF F114-SPECIAL-PAYMENTS
+;FIELD LAST-MOD-DATE OF F114-SPECIAL-PAYMENTS
+;FIELD LAST-MOD-TIME OF F114-SPECIAL-PAYMENTS
+;FIELD LAST-MOD-USER-ID OF F114-SPECIAL-PAYMENTS
+
+
+
+procedure process amt-gross
+begin
+   let amt-net = amt-gross
+   display amt-net
+end
+
+procedure process ep-nbr-from
+begin
+   let ep-nbr-to = ep-nbr-from
+   display ep-nbr-to
+end
+
+;procedure designer post
+;begin
+;    let comline =  "qtp auto=$obj/u130.qtc      > $HOME/u130_last_run.log; " &
+;		 + "cat $HOME/u130_last_run.log >> $HOME/u130.log; "	     &
+;		 + "pg  $HOME/u130_last_run.log  "
+;    run command comline  clear all
+;end
+
+;procedure designer log 
+;begin
+;    run command "pg $HOME/u130_last_run.log" clear all
+;end
+build 

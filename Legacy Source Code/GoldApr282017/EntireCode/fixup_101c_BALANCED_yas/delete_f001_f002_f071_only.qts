@@ -1,0 +1,42 @@
+; 2008/nov/24 	M.C.	- delete the duplicate batch/claims for 44M41000, there are 26 duplicate
+;			  claims generated for the first 26 claims in the batch from web4
+;			- reverse claims in f010, delete f002 clmhdr/detail/desc and f001 & f071
+
+cancel clear
+set process nolimit
+set lock record update
+
+request reverse_update_pat_clm-nbr
+
+access *u706a_claims_keys link ("I" + w-p-key-claims-mstr[2:15]) &
+        to key-pat-mstr of f010-pat-mstr
+
+select u706a_claims_keys if w-key-claims-mstr[1:9] = 'B93769000'
+
+sort on w-p-key-claims-mstr
+
+temp x-claim-count
+   item x-claim-count = x-claim-count + 1 reset at w-p-key-claims-mstr
+
+output f010-pat-mstr update at w-p-key-claims-mstr on errors report
+   item pat-nbr-outstanding-claims final pat-nbr-outstanding-claims - x-claim-count
+   item pat-total-nbr-claims final pat-total-nbr-claims - x-claim-count
+
+request delete_f071
+
+access f071-client-rma-claim-nbr
+choose clinic-nbr 93, claim-nbr-rma '769000@'
+subfile savef071 keep include f071-client-rma-claim-nbr
+output f071-client-rma-claim-nbr delete on errors report
+
+request delete_f002
+
+access f002-claims-mstr
+choose key-clm-type 'B', key-clm-batch-nbr '93769000'
+output f002-claims-mstr delete on errors report
+
+request delete_f001
+access f001-batch-control-file
+choose batctrl-batch-nbr '93769000'
+output f001-batch-control-file delete on errors report
+

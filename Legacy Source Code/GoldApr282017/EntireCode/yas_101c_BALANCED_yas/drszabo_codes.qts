@@ -1,0 +1,176 @@
+;doc     : drszabo.qts
+;purpose : report echocardiography fiscal 2000/01 20000401 to 20010331
+;          Pass 1 - select appropriate claims and "explode" repetitive services
+;who     : Leena Jaanimagi
+
+
+;Date		Who		Description
+;2001/08/12	Yasemin		Original
+
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                           
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 610000001 to 610999999,   &
+                                              220000001 to 220999999,   &
+        key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+def x-code Cha*4 = clmdtl-id[12:4]
+
+select f002-claims-mstr if                   &
+            clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0           & ; ignore adjustments
+       and (            x-code = "G560"                 &           
+                     or x-code = "G561"                 &           
+                     or x-code = "G562"                 &           
+                     or x-code = "G566"                 &           
+                     or x-code = "G567"                 &           
+                     or x-code = "G568"                 &           
+                     or x-code = "G570"                 &           
+                     or x-code = "G571"                 &           
+                     or x-code = "G572"                 &           
+                     or x-code = "G574"                 &           
+                     or x-code = "G575"                 &           
+                     or x-code = "G577"                 &           
+                     or x-code = "G578"                 &           
+                     or x-code = "G579"                 &           
+                     or x-code = "G580"                 &           
+                     or x-code = "G581")                &           
+       and (     clmdtl-sv-date >= "20000401"  &  
+             and clmdtl-sv-date <= "20010331")
+
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[1:1])    &
+        if (clmdtl-consec-dates-r[2:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[2:2] <> 'OP') &
+        and clmdtl-consec-dates-r[1:1] <> '0'
+
+def x-sv-nbr3 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[4:1])    &
+        if (clmdtl-consec-dates-r[5:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[5:2] <> 'OP') &
+        and clmdtl-consec-dates-r[4:1] <> '0'
+
+def x-sv-nbr4 zoned*2=                          &
+        nconvert(clmdtl-consec-dates-r[7:1])    &
+        if (clmdtl-consec-dates-r[8:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[8:2] <> 'OP') &
+        and clmdtl-consec-dates-r[7:1] <> '0'
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+
+def x-prof-fee num*7 = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+subfile szabo keep include                 &
+clmdtl-id              of f002-claims-mstr,&
+key-clm-batch-nbr      of f002-claims-mstr,&
+key-clm-claim-nbr      of f002-claims-mstr,&
+x-doc-nbr                                 ,&
+x-nbr-svcs 	                          ,& 
+x-code	                                  ,& 
+x-prof-fee				  ,&
+clmdtl-amt-tech-billed of f002-claims-mstr
+
+
+request two
+
+access *szabo				                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&	
+	key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr  &
+   link x-doc-nbr to doc-nbr of f020-doctor-mstr opt
+
+def x-clinic char*2 = ascii(key-clm-batch-nbr,9)[1:2] 
+
+sel if      clmhdr-batch-type = 'C'                           & 
+       and (x-clinic          = '61'                          & 
+        or (x-clinic          = '22' and clmhdr-agent-cd = 1))
+
+subfile szabo1 keep include szabo, clmhdr-i-o-pat-ind,	&
+	doc-name, doc-inits
+
+request three
+
+access *szabo1		
+
+
+sort on x-doc-nbr  on x-code 
+  
+temp x-svc-in   num*7 
+item x-svc-in   = x-svc-in + x-nbr-svcs                 &            
+                  if  clmhdr-i-o-pat-ind = "I"            &
+                       reset at x-code
+
+temp x-prof-fee-in   num*7
+item x-prof-fee-in   = x-prof-fee-in + x-prof-fee         &
+                       if  clmhdr-i-o-pat-ind = "I"       &
+                       reset at x-code
+
+temp x-tech-fee-in   num*7
+item x-tech-fee-in  = x-tech-fee-in + clmdtl-amt-tech-billed &
+                       if  clmhdr-i-o-pat-ind = "I"       &
+                       reset at x-code
+
+temp x-svc-out   num*7 
+item x-svc-out   = x-svc-out + x-nbr-svcs                 &            
+                  if  clmhdr-i-o-pat-ind = "O"            &
+                       reset at x-code
+
+temp x-prof-fee-out   num*7
+item x-prof-fee-out   = x-prof-fee-out + x-prof-fee         &
+                       if  clmhdr-i-o-pat-ind = "O"       &
+                       reset at x-code
+
+temp x-tech-fee-out   num*7
+item x-tech-fee-out  = x-tech-fee-out + clmdtl-amt-tech-billed &
+                       if  clmhdr-i-o-pat-ind = "O"       &
+                       reset at x-code
+
+
+
+subfile drszabo2 keep at x-code  include   &
+x-doc-nbr                                   ,&
+doc-name                                  ,&
+doc-inits                                 ,& 
+x-code                                    ,& 
+x-svc-in                                ,& 
+x-prof-fee-in                             ,& 
+x-tech-fee-in                              ,& 
+x-svc-out                               ,& 
+x-prof-fee-out                            ,& 
+x-tech-fee-out                          
+
+
+build $obj/drszabo_codes
+

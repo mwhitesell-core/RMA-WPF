@@ -1,0 +1,190 @@
+
+;#> PROGRAM         U100.QTS  
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Verify there is a primary doctor assigned either for a single or multliple doctor
+;	      that belong to the same doc ohip nbr  
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 2008/jun/18 M.C.      - original  
+; 2009/may/19 MC1	- set doc-count to include the doctor is active in criteria
+; 2009/oct/05 MC2    	- add the second request to check for blank doc-paym-group
+; 2011/nov/29 MC3    	- add the third  request to check for blank record in f112-pycdceilings
+;			- modify select in second request
+; 2012/Feb/13 MC4       - add the 'optional' to the access statement in the first request, so that
+;			  if f020-doctor-extra record does not exist will be included
+; 2012/Dec/20 MC5	- pass the payroll flag as part of the selection, payroll A = 101c, payroll C = solo
+; 2013/Dec/11 MC6	- include clinic 23, 24 & 25 in the selection - same as in u100_rma_1.qts
+; 2014/Feb/11 MC7       - include dept and term date in the subfile
+; 2014/Oct/14 MC8	- comment out the first request for checking primary flag because it has transferred to u100_b.qzs
+
+
+cancel clear
+run u100
+
+set default
+set process nolimit
+set lock record update
+
+
+;-------------------------------------------------------------------------------
+;
+;
+; MC8
+;;request u100_search_primary_doctor    		&
+;;		on edit        errors report	&
+;;                on calculation errors report
+
+;;access f020-doctor-mstr				&
+;;	link doc-nbr 				&
+; 2012/02/13 - MC4
+;	  to  doc-nbr of f020-doctor-extra 
+;;	  to  doc-nbr of f020-doctor-extra  optional
+; 2012/02/13 -end
+
+;;choose doc-ohip-nbr
+
+; 2012/12/20 - MC5
+;;def payroll-flag char*1 = parm prompt 'Enter Payroll (A = 101c, C = solo): '
+; 2012/12/20 - end
+
+;;sorted on doc-ohip-nbr
+
+; select active doctors only
+;sel if 		doc-date-fac-term = 0		&
+
+
+; 2012/12/20 - MC5 - add the payroll-flag check with selection condition
+;;sel if 		                      		&
+;;      (    (   (doc-dept = 4)			&
+;;	    or (    (    doc-dept = 14          &
+;;		      or doc-dept = 15		&
+;;		    )				&
+;; 	        and doc-afp-paym-group = 'H111' &
+;;	       )				&
+;;           )					&
+;;       and payroll-flag = 'A'			&
+;;      )						&
+;;   or (    (    doc-dept = 31			&
+;;	    and doc-afp-paym-group = 'H132' 	&
+;;           )				 	&
+;;       and payroll-flag = 'C'			&
+;;      )	
+; 2012/12/20 - end
+
+;;temp doc-count 
+; 2009/may/19 - MC1
+;item doc-count = doc-count + 1 if doc-flag-primary = 'Y'  reset at doc-ohip-nbr
+;;item doc-count = doc-count + 1 if doc-flag-primary = 'Y' &
+;;		             and  doc-date-fac-term = 0	 &
+;;		 reset at doc-ohip-nbr
+; 2009/may/19 - end
+
+;;subfile u100_prim_doc keep at doc-ohip-nbr include	&
+; 2012/12/20 - MC5 - include payroll-flag
+;	doc-ohip-nbr, doc-count
+;;	doc-ohip-nbr, doc-count, payroll-flag          
+; 2012/12/20 - end
+
+;-------------------------------------------------------------------------------
+; 2009/10/05 - MC2 - add new request
+;
+request u100_search_blank_paym_group  		&
+		on edit        errors report	&
+                on calculation errors report
+
+
+access f050-doc-revenue-mstr            &
+   link docrev-doc-nbr                  &
+     to doc-nbr of f020-doctor-mstr     &
+   link nconvert(docrev-clinic-1-2)     &
+     to iconst-clinic-nbr-1-2           &
+     of iconst-mstr-rec
+
+; 'regular' payroll (ie.BILL type transaction use only clinic 22 however
+; 'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the
+;  clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the
+;  doctor belongs to an AFP group
+
+;select if   docrev-clinic-1-2 = "22"                            &
+;         or (     iconst-clinic-card-colour = "Y"               &
+;             and  doc-afp-paym-group of f020-doctor-mstr <> " " &
+;             and  (   docrev-clinic-1-2 <  "71"                 &
+;                   or docrev-clinic-1-2 >  "75"                 &
+;                  )                                             &
+;
+
+; check if there is any doctor who has blank afp-paym-group in f020
+; for any clinics other than 22 & 70's
+
+select if                                                       &
+                iconst-clinic-card-colour = "Y"                 &
+             and  doc-afp-paym-group of f020-doctor-mstr =  " " &
+             and  (   docrev-clinic-1-2 <  "71"                 &
+                   or docrev-clinic-1-2 >  "75"                 &
+                  )						&
+; 2011/11/29 - MC3
+	     and  (   docrev-mtd-in-rec <> 0			&
+		   or docrev-mtd-out-rec <> 0			&
+		  )
+; 2011/11/29 - end
+
+subfile u100_blank_paym_grp keep include			&
+    doc-nbr, doc-ohip-nbr, doc-dept, doc-name,			&
+; MC7 
+    doc-date-fac-term,						&
+; MC7 - end
+    docrev-key, docrev-mtd-in-rec, docrev-mtd-out-rec
+
+;-------------------------------------------------------------------------------
+; 2011/11/29 - MC3 - add new request
+;
+request u100_search_blank_f112_record		&
+		on edit        errors report	&
+                on calculation errors report
+
+
+access f050-doc-revenue-mstr            &
+   link docrev-doc-nbr                  &
+     to doc-nbr of f020-doctor-mstr     &
+   link nconvert(docrev-clinic-1-2)     &
+     to iconst-clinic-nbr-1-2           &
+     of iconst-mstr-rec			&
+   link docrev-doc-nbr			&
+    to  doc-nbr of f112-pycdceilings opt
+
+; 'regular' payroll (ie.BILL type transaction use only clinic 22 however
+; 'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the
+;  clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the
+;  doctor belongs to an AFP group
+
+select if    (   docrev-clinic-1-2 = "22"                            &
+; 2013/12/11 - MC6 - include clinic 23 to 25
+              or docrev-clinic-1-2 = "23"                            &
+              or docrev-clinic-1-2 = "24"                            &
+              or docrev-clinic-1-2 = "25"                            &
+; 2013/12/11 - end
+              or (     iconst-clinic-card-colour = "Y"               &
+                  and  doc-afp-paym-group of f020-doctor-mstr <> " " &
+                  and  (   docrev-clinic-1-2 <  "71"                 &
+                        or docrev-clinic-1-2 >  "75"                 &
+                       )                                             &
+		 )						     &
+	     )							     &
+	and  (   docrev-mtd-in-rec <> 0				     &
+	      or docrev-mtd-out-rec <> 0			     &
+             )							     &
+	and  not record f112-pycdceilings exists
+
+sort on docrev-doc-nbr
+
+subfile u100_blank_f112_rec keep at docrev-doc-nbr include		&
+; MC7 
+;   docrev-doc-nbr, doc-ohip-nbr, doc-dept, doc-name	
+    docrev-doc-nbr, doc-ohip-nbr, doc-dept, doc-name, doc-date-fac-term
+; MC7 - end
+    
+
+build $pb_obj/u100

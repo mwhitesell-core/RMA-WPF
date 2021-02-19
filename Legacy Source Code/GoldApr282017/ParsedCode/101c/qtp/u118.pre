@@ -1,0 +1,243 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U118.QTS
+COMMENT "#> PROGRAM-ID.     U118.QTS"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "purpose: sub-process within  earnings generation  process."
+COMMENT "- calculates 'tot'  deductions  and  advances  trans."
+COMMENT "- also places deduction type transactions into the f119 subfile"
+COMMENT "for eventual upload into the f119-doctor-ytd EXCEPT 'percentage"
+COMMENT "based deductions such as TAX which are placed there in u117"
+COMMENT "Note: - originally program also did a o'TOT'al 'ADV'ances TRANS"
+COMMENT "but advances/deficit processing now handled as just"
+COMMENT "another deduction."
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "93/JAN/01  ____   B.E.     - original"
+COMMENT "93/MAY/19  ____   B.E.     - sort to sorted, added *F119"
+COMMENT "93/MAY/27  ____   B.E.     - added F119-DOCTOR-YTD"
+COMMENT "93/JUN/21  ____   B.E.     - added ADVANCES"
+COMMENT "93/JUN/22  ____   B.E.     - optimize (calculate TOT values and"
+COMMENT "add to YTD values in F020)"
+COMMENT "removed LINKAGE to F119-DOCTOR-YTD"
+COMMENT "93/JUN/24  ____   B.E.     - added update of F020's YTDDED"
+COMMENT "98/oct/21         B.E.     - in conversion to unix values in data base"
+COMMENT "were changed to 'numeric size 8'. The"
+COMMENT "f119 subfile contained variables that"
+COMMENT "were defined int*8 size 4. The database"
+COMMENT "fields were assigned to temp field to make"
+COMMENT "them match."
+COMMENT "in this pgm modified to use new size defn."
+COMMENT "1999/Feb/18         S.B.     - Checked for Y2K."
+COMMENT "1999/may/05  B.E.  - getting data conversion errors in field amt-gross"
+COMMENT "within f119 - changed to use x-tmp-amt instead"
+COMMENT "of amt-net taken directly from f110"
+COMMENT "1999/June/01  S.B.     - Added the use file"
+COMMENT "def_compensation_status.def to "
+COMMENT "prevent hard coding of compensation-status."
+COMMENT "2001/apr/12  B.E. - TOTDED now written out if non-zero, not just if"
+COMMENT "positive amount. This allows 'negative' adjustments"
+COMMENT "to increase the PAYEFT amount"
+COMMENT "2001/nov/08 B.E. - all 'D'eduction type transactions EXCEPT 'TAX' where"
+COMMENT "placed into f119 subfile. At the time TAX was the"
+COMMENT "only 'percentage' based deduction. Changed to NOT"
+COMMENT "put ANY percentage based deduction rather than"
+COMMENT "specifically TAX."
+COMMENT "2002/jul/23 B.E. - fixed bug on above change for percentage based"
+COMMENT "deductions - logic on output to f119 should have"
+COMMENT "only output 'flat' based deductions which have"
+COMMENT "are identified due to their factor being = 1.0000"
+COMMENT "2003/dec/24 A.A. - alpha doctor nbr"
+COMMENT "2006/may/10 b.e.      - $1M payroll changes to size of calculated fields"
+COMMENT "2010/dec/14 MC1 - comment out write record in subfile f119"
+COMMENT "2012/May/05 MC2 - add new temp item amt-totded-true to exclude 'DEFIC'"
+COMMENT "this value will be used to update f119 amt-ytd in u122.qts"
+CANCEL CLEAR
+SET DEFAULT
+SET STACKSIZE 450
+SET PROCESS NOLIMIT
+RUN U118
+SET DEFAULT
+SET PROCESS NOLIMIT
+GLOBAL TEMP W-CURRENT-EP-NBR INTEGER*8 SIGNED SIZE 4
+GLOBAL TEMP W-FIRST-EP-NBR-OF-FISCAL-YR INTEGER*8 SIGNED SIZE 4
+COMMENT "GLOBAL TEMP YTDDED-SEQ     ZONED*2 UNSIGNED"
+COMMENT "GLOBAL TEMP YTDDED-TYPE    CHAR*1"
+COMMENT "GLOBAL TEMP YTDDED-GROUP   CHAR*1"
+GLOBAL TEMP TOTDED-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP TOTDED-SEQ-RPT ZONED*2 UNSIGNED
+GLOBAL TEMP TOTDED-TYPE CHAR*1
+GLOBAL TEMP TOTDED-GROUP CHAR*1
+GLOBAL TEMP TOTADV-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP TOTADV-SEQ-RPT ZONED*2 UNSIGNED
+GLOBAL TEMP TOTADV-TYPE CHAR*1
+GLOBAL TEMP TOTADV-GROUP CHAR*1
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "OBTAIN CONSTANTS VALUES FOR PASSING TO SUBSEQUENT REQUESTS"
+REQUEST U118_A_CONSTANTS_VALUES_EP_NBR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6
+CHOOSE CONST-REC-NBR 6
+ITEM W-CURRENT-EP-NBR = CURRENT-EP-NBR
+ITEM W-FIRST-EP-NBR-OF-FISCAL-YR = FIRST-EP-NBR-OF-FISCAL-YR
+COMMENT "DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'"
+COMMENT "FOR THE TRANSACTIONS BEING CREATED IN THIS RUN"
+REQUEST U118_A_GET_TOTDED ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "TOTDED"
+ITEM TOTDED-SEQ = PROCESS-SEQ
+ITEM TOTDED-SEQ-RPT = REPORTING-SEQ
+ITEM TOTDED-TYPE = COMP-TYPE
+ITEM TOTDED-GROUP = COMP-CODE-GROUP
+REQUEST U118_A_GET_TOTADV ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "TOTADV"
+ITEM TOTADV-SEQ = PROCESS-SEQ
+ITEM TOTADV-SEQ-RPT = REPORTING-SEQ
+ITEM TOTADV-TYPE = COMP-TYPE
+ITEM TOTADV-GROUP = COMP-CODE-GROUP
+COMMENT "-------------------------------------------------------------------------------"
+REQUEST U118_RUN_0_CALC_TOTDED ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "ACCESS CONSTANTS-MSTR-REC-6                            &"
+COMMENT "LINK CURRENT-EP-NBR VIAINDEX COMPENSATION-KEY2        &"
+COMMENT "TO   EP-NBR  OF F110-COMPENSATION"
+COMMENT "CHOOSE CONST-REC-NBR 6"
+ACCESS CONSTANTS-MSTR-REC-6 LINK CURRENT-EP-NBR VIAINDEX COMPENSATION-KEY2 TO EP-NBR OF F110-COMPENSATION LINK COMP-CODE OF F110-COMPENSATION TO COMP-CODE OF F190-COMP-CODES OPT
+COMMENT "SELECT IF    EP-NBR OF F110-COMPENSATION >=W-FIRST-EP-NBR-OF-FISCAL-YR &"
+COMMENT "AND EP-NBR OF F110-COMPENSATION <=W-CURRENT-EP-NBR        &"
+CHOOSE CONST-REC-NBR 6
+SELECT IF ( COMP-TYPE OF F190-COMP-CODES = "D" OR COMP-TYPE OF F190-COMP-CODES = "A")
+SORTED ON DOC-NBR ON EP-NBR ON COMP-CODE OF F110-COMPENSATION
+COMMENT "SORT TO SORTED 93/MAY/19, COMP-CODE MAY/27"
+COMMENT "TEMP AMT-YTDDED-G INTEGER*8 SIGNED SIZE 4"
+COMMENT "ITEM AMT-YTDDED-G = AMT-YTDDED-G + AMT-GROSS OF F110-COMPENSATION    &"
+COMMENT "IF    COMP-TYPE OF F190-COMP-CODES =  D      &"
+COMMENT "AND EP-NBR   <= W-CURRENT-EP-NBR      &"
+COMMENT "ELSE AMT-YTDDED-G          &"
+COMMENT "RESET AT DOC-NBR"
+COMMENT "TEMP AMT-YTDADV-G INTEGER*8 SIGNED SIZE 4"
+COMMENT "ITEM AMT-YTDADV-G = AMT-YTDADV-G + AMT-GROSS OF F110-COMPENSATION  &"
+COMMENT "IF    COMP-TYPE OF F190-COMP-CODES =  A      &"
+COMMENT "AND EP-NBR   <= W-CURRENT-EP-NBR      &"
+COMMENT "ELSE AMT-YTDADV-G          &"
+COMMENT "RESET AT DOC-NBR"
+COMMENT "TEMP AMT-YTDDED-N INTEGER*8 SIGNED SIZE 4"
+COMMENT "ITEM AMT-YTDDED-N = AMT-YTDDED-N + AMT-NET OF F110-COMPENSATION      &"
+COMMENT "IF    COMP-TYPE OF F190-COMP-CODES =  D      &"
+COMMENT "AND EP-NBR   <= W-CURRENT-EP-NBR      &"
+COMMENT "ELSE AMT-YTDDED-N          &"
+COMMENT "RESET AT DOC-NBR"
+COMMENT "temp amt-totded-g integer*8 signed size 4"
+TEMP AMT-TOTDED-G INTEGER*10 SIGNED
+COMMENT "AND EP-NBR    =  W-CURRENT-EP-NBR      &"
+ITEM AMT-TOTDED-G=AMT-TOTDED-G + AMT-GROSS OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "D" ELSE AMT-TOTDED-G RESET AT DOC-NBR
+COMMENT "temp amt-totadv-g integer*8 signed size 4"
+TEMP AMT-TOTADV-G INTEGER*10 SIGNED
+COMMENT "AND EP-NBR    =  W-CURRENT-EP-NBR      &"
+ITEM AMT-TOTADV-G=AMT-TOTADV-G + AMT-GROSS OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "A" ELSE AMT-TOTADV-G RESET AT DOC-NBR
+COMMENT "temp amt-totded-n integer*8 signed size 4"
+TEMP AMT-TOTDED-N INTEGER*10 SIGNED
+COMMENT "and ep-nbr    =  w-current-ep-nbr       &"
+ITEM AMT-TOTDED-N = AMT-TOTDED-N + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "D" ELSE AMT-TOTDED-N RESET AT DOC-NBR
+COMMENT "temp amt-totadv-n integer*8 signed size 4"
+TEMP AMT-TOTADV-N INTEGER*10 SIGNED
+COMMENT "and ep-nbr    =  w-current-ep-nbr       &"
+ITEM AMT-TOTADV-N = AMT-TOTADV-N + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "A" ELSE AMT-TOTADV-N RESET AT DOC-NBR
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_COMPENSATION_STATUS.DEF
+COMMENT "S.B."
+COMMENT "DEF_COMPENSATION_STATUS.DEF"
+COMMENT "This program is called from the following programs:"
+COMMENT "holdbk6.qts, u111c.qts, u113.qts, u114a.qts, u115c.qts,"
+COMMENT "u116_paycode0.qts, u116_paycode1.qts, u116_paycode2.qts,"
+COMMENT "u116_paycode34.qts, u116_paycode5.qts, u117.qts,"
+COMMENT "u118.qts, u119.qts "
+DEF COMPENSATION-STATUS-ACCEPTED CHAR*1 = " "
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_COMPENSATION_STATUS.DEF
+COMMENT "------------- F 1 1 0 -------------------------------------------------------"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-EP-TOT-DEDUCT AT DOC-NBR IF AMT-TOTDED-N <> 0
+ITEM EP-NBR = W-CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = W-CURRENT-EP-NBR
+ITEM COMP-CODE = "TOTDED"
+ITEM COMP-TYPE = TOTDED-TYPE
+ITEM PROCESS-SEQ = TOTDED-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = AMT-TOTDED-G
+ITEM AMT-NET = AMT-TOTDED-N
+COMMENT "S.B."
+COMMENT "item compensation-status =    "
+ITEM COMPENSATION-STATUS = COMPENSATION-STATUS-ACCEPTED
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U118 gen'd"
+OUTPUT F110-COMPENSATION ADD ALIAS F110-TOTADV AT DOC-NBR IF AMT-TOTADV-N > 0
+ITEM EP-NBR = W-CURRENT-EP-NBR
+ITEM EP-NBR-ENTRY = W-CURRENT-EP-NBR
+ITEM COMP-CODE = "TOTADV"
+ITEM COMP-TYPE = TOTADV-TYPE
+ITEM PROCESS-SEQ = TOTADV-SEQ
+ITEM FACTOR = 0.0
+ITEM FACTOR-OVERRIDE = " "
+ITEM COMP-UNITS = 0
+ITEM AMT-GROSS = AMT-TOTADV-G
+ITEM AMT-NET = AMT-TOTADV-N
+COMMENT "S.B."
+COMMENT "item compensation-status =    "
+ITEM COMPENSATION-STATUS = COMPENSATION-STATUS-ACCEPTED
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U118 gen'd"
+COMMENT "------  * F 1 1 9 ------------------------"
+DEF X-REC-TYPE CHAR*1 = "A"
+COMMENT "def x-not-needed integer*8 signed size 4 = 0"
+DEF X-NOT-NEEDED INTEGER*10 SIGNED = 0
+COMMENT "98/oct/21 B.E. (amt-net from f110 size doesn't match subfile element)"
+COMMENT "def x-tmp-amt    integer*8 signed size 4 = amt-net of f110-compensation"
+DEF X-TMP-AMT INTEGER*10 SIGNED = AMT-NET OF F110-COMPENSATION
+COMMENT "2010/12/14 - MC1 - I think this is redundant because"
+COMMENT "records should have already created from  u117.qts"
+COMMENT "hence it created duplicate records for the deduction that"
+COMMENT "has factor < 10000 when run last month payroll"
+COMMENT "subfile f119 append                        at comp-code        &"
+COMMENT "if (    comp-type of f190-comp-codes =  D          &"
+COMMENT "and comp-code of f190-comp-codes <>  TAX  &;)               &"
+COMMENT "and factor of f110-compensation < 10000          &"
+COMMENT ";;;;      and factor of f110-compensation = 10000          &"
+COMMENT ")              &"
+COMMENT "include            &"
+COMMENT "doc-nbr   of f110-compensation  , &"
+COMMENT "comp-code of f110-compensation  , &"
+COMMENT "reporting-seq   of f190-comp-codes , &"
+COMMENT "comp-code-group of f190-comp-codes , &"
+COMMENT "x-rec-type    , &"
+COMMENT "x-not-needed                    , &"
+COMMENT "1999/may/05 B.E. used x-tmp-amt instead of f110 value"
+COMMENT "amt-net   of f110-compensation"
+COMMENT "x-tmp-amt"
+COMMENT "2010/12/14 - end"
+COMMENT "2012/05/03 - MC2 - calculate the true TOTDED without including DEFIC"
+TEMP AMT-TOTDED-TRUE INTEGER*10 SIGNED
+ITEM AMT-TOTDED-TRUE = AMT-TOTDED-TRUE + AMT-NET OF F110-COMPENSATION IF COMP-TYPE OF F190-COMP-CODES = "D" AND COMP-CODE OF F110-COMPENSATION <> 'DEFIC' RESET AT DOC-NBR
+COMMENT "2012/05/03 - end"
+TEMP X-COMP-CODE-TOTDED CHAR*6
+ITEM X-COMP-CODE-TOTDED = "TOTDED"
+COMMENT "2012/05/03 - MC2"
+COMMENT "x-not-needed           , &"
+COMMENT "2012/05/03 - end"
+SUBFILE F119 ALIAS F119-TOTDED APPEND AT DOC-NBR INCLUDE DOC-NBR OF F110-COMPENSATION , X-COMP-CODE-TOTDED , TOTDED-SEQ-RPT , TOTDED-GROUP , X-REC-TYPE , AMT-TOTDED-TRUE , AMT-TOTDED-N
+TEMP X-COMP-CODE-TOTADV CHAR*6
+ITEM X-COMP-CODE-TOTADV = "TOTADV"
+SUBFILE F119 ALIAS F119-TOTADV APPEND AT DOC-NBR IF AMT-TOTADV-N > 0 INCLUDE DOC-NBR OF F110-COMPENSATION , X-COMP-CODE-TOTADV , TOTADV-SEQ-RPT , TOTADV-GROUP , X-REC-TYPE , X-NOT-NEEDED , AMT-TOTADV-N
+COMMENT "------------- F 0 2 0 -------------------------------------------------------"
+OUTPUT F020-DOCTOR-MSTR UPDATE
+COMMENT "2012/05/03 - MC2"
+COMMENT "item doc-ytdded final doc-ytdded + amt-totded-n"
+ITEM DOC-YTDDED FINAL DOC-YTDDED + AMT-TOTDED-TRUE
+COMMENT "2012/05/03 - end"
+BUILD $PB_OBJ/U118
+ENDMODULE U118.QTS

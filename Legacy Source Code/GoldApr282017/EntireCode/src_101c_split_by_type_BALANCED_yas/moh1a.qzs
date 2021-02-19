@@ -1,0 +1,65 @@
+; Name   : MOH1A.QZS
+; Purpose: - FIRST PASS - EXTRACT ALL DETAILS FOR ALTERNATIVE FUNDING CLAIMS
+;
+;  MODIFICATION HISTORY
+;  YY/MMM/DD  by whom          why
+;  90/NOV/08  M. CHAN          - original
+;  91/APR/19  M. CHAN	       - SMS 138 - KEY STRUCTURE HAS BEEN CHANGED
+;			         MODIFIED THE ACCESS AND/OR CHOOSE STMTS
+;  91/OCT/22   B.M.L.          - MODIFY TO INCLUDE ADJUSTMENT RECORDS
+;  95/OCT/25   M.C.	       - ADD CHOOSE ON KEY-CLM-BATCH-NBR
+;  97/APR/21   YAS.	       - CANGE FROM CL 22 TO CL 82 AGENT 0
+;  03/dec/11   A.A.	       - alpha doctor nbr
+;
+
+cancel clear
+
+set report nolimit
+
+access f002-claims-mstr
+
+;CHOOSE KEY-CLAIMS-MSTR PARM					&
+;	PROMPT "Enter 'B82@' for Clinic 2215 or 'B60@' for Clinic 6008 and NEWLINE: "
+
+choose key-clm-type 'B', key-clm-batch-nbr parm range        &
+;!	prompt 'ENTER CLINIC ie 820000000 TO 829999999: ' 1 time
+	prompt 'ENTER CLINIC ie 82000000  TO 82ZZZ999: ' 1 time
+;
+; select DETAIL recs with Agent = "ALTERNATIVE FUNDING" (IE. 8)
+sel f002-claims-mstr if    clmdtl-oma-cd ne '0000'     		&
+ 		       and clmdtl-oma-cd ne 'ZZZZ'		&
+  		       and clmdtl-agent-cd eq 0			&
+		       and clmdtl-batch-nbr = key-clm-batch-nbr &
+		       and clmdtl-claim-nbr = key-clm-claim-nbr
+
+;DEFINE X-CLINIC CHAR*2 = PARM 					&
+;	PROMPT "Enter '22' for Clinic 2215 or '60' for Clinic 6008: "
+
+define sel-from-ped zoned*6 = parm prompt 'Enter From Period End Date: '
+define sel-to-ped   zoned*6 = parm prompt 'Enter  To  Period End Date: '
+
+;! define clmdtl-doc-nbr zoned*3 = nconvert(ascii(clmdtl-batch-nbr,9)[3:4])
+define clmdtl-doc-nbr char*3 = clmdtl-batch-nbr[3:3]
+
+;
+; reselect records that meet the selection PED date range
+sel    if     clmdtl-date-period-end ge ascii(sel-from-ped,6) 	&
+         and  clmdtl-date-period-end le ascii(sel-to-ped,6)	;&
+;	 AND  X-CLINIC = ASCII(CLMDTL-BATCH-NBR,9)[1:2]
+
+set subfile  name moh1aa keep
+report  summary							&
+	sel-from-ped						&
+	sel-to-ped		  				&
+	clmdtl-batch-nbr of f002-claims-mstr			&
+	clmdtl-claim-nbr of f002-claims-mstr			&
+	clmdtl-oma-cd of f002-claims-mstr			&
+ 	clmdtl-fee-ohip of f002-claims-mstr			&
+	clmdtl-date-period-end of f002-claims-mstr		&
+	clmdtl-sv-date                      			&
+ 	clmdtl-nbr-serv						&
+	clmdtl-consec-dates					&
+ 	clmdtl-adj-cd
+
+build $pb_obj/moh1a
+  

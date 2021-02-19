@@ -1,0 +1,63 @@
+;#> PROGRAM-ID.     U704A.QTS
+;
+;	((C)) Dyad Technologies
+;
+
+;    PROGRAM PURPOSE : UPDATE DATE-LAST-VISIT in f010 from F002-SUSPEND-HDR/DTL
+;            DESCRIP : THIS PROGRAM SHOULD BE RUN BEFORE PATIENT PURGE BECAUSE
+;                      USER MAY NOT FINISH CREATE CLAIMS FROM SUSPENSE.  DO NOT
+;                      WANT TO DELETE THE PATIENTS THAT ARE IN PROGRESS.
+;
+;    MODIFICATION HISTORY
+;       DATE     SMS #   WHO       DESCRIPTION
+;  2009/OCT/06           M.C.      - ORIGINAL
+
+can clear
+set process nolimit
+set lock record update
+
+request select_claims_with_ikey  on calculation errors report	&
+				 on edit errors report
+
+access f002-suspend-hdr   
+
+select if clmhdr-pat-key-type = 'I'
+
+subfile u704_clmhdr keep include		&
+	clmhdr-pat-ohip-id-or-chart,		&
+	clmhdr-doc-ohip-nbr,			&
+	clmhdr-accounting-nbr
+
+request select_clmdtl on calculation errors report   &
+                      on edit errors report
+
+
+access *u704_clmhdr 				&
+	link clmhdr-doc-ohip-nbr,		&
+	     clmhdr-accounting-nbr 		&
+	 to  clmdtl-doc-ohip-nbr,		&
+	     clmdtl-accounting-nbr of f002-suspend-dtl
+
+sort on clmhdr-pat-ohip-id-or-chart on clmdtl-sv-date
+
+subfile u704_last_visit keep at clmhdr-pat-ohip-id-or-chart include 		&
+	clmhdr-pat-ohip-id-or-chart,		&
+	clmdtl-sv-date
+
+request update_patients on calculation errors report &
+			on edit errors report
+
+access *u704_last_visit				&
+	link clmhdr-pat-ohip-id-or-chart	&
+	 to  key-pat-mstr of f010-pat-mstr  
+
+temp xcount 
+item xcount = xcount + 1
+
+subfile u704a_f010_before keep include f010-pat-mstr, xcount, clmdtl-sv-date
+
+output f010-pat-mstr update on errors report  
+   item pat-date-last-visit final nconvert(clmdtl-sv-date of u704_last_visit)
+
+build $pb_obj/u704a
+  

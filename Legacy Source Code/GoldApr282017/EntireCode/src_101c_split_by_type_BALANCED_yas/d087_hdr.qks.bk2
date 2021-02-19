@@ -1,0 +1,152 @@
+; PROGRAM: d087_hdr_hdr
+; PURPOSE:
+;       allow the update/entry of claims that have been submittedly rejected by the
+;       local OHIP office. This file is normally added to by the electronic file
+;	obtained back from OHIP after a submission.
+;       The PED is defaulted from the Constants master but can be changed since
+;       some entry is done after month end.
+
+; MODIFICATION HISTORY
+;
+; WHEN        WHO       WHY
+; 2003/sep/01 b.e.      - original
+; 2003/dec/01 M.C.	- switch the access for f087-hdr to prompt for
+;			  claim#, then health# , then process-date
+;			  instead of health#, tehn process-date, then claim#
+
+cancel clear
+
+screen $pb_obj/d087_hdr
+
+file f087-submitted-rejected-claims-hdr 
+    access via submitted-rejected-claim                         &
+         using submitted-rejected-claim[1:2] +                  &
+               submitted-rejected-claim[3:9]                    &
+         request  submitted-rejected-claim
+
+    access via  edt-health-nbr                                 	&
+         request edt-health-nbr ;,				&
+;		 edt-process-date			
+
+    access via  edt-process-date                                &
+         request edt-process-date
+
+    access sequential
+
+item entry-date       initial sysdate
+item entry-time-long  initial systime
+item entry-user-id    initial signonuser
+
+item last-mod-date    final sysdate
+item last-mod-time    final systime/10000
+item last-mod-user-id final signonuser
+
+file f093-ohip-error-msg-mstr reference 
+   access via ohip-err-code using edt-err-h-cd-1
+
+temp w-name char*20 		occurs with f087-submitted-rejected-claims-hdr
+temp w-ped date
+temp w-edt-process-date date
+
+; NOTE: when user enters claim they don't type the leading '0' of doctor nbr
+;       so the using clause adds '0' 
+
+file f002-claims-mstr reference
+   access via key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+              key-clm-serv-code, key-clm-adj-nbr                  &
+    using 'B',                                                    &
+;   nconvert((submitted-rejected-claim[1:2]) + '0' + submitted-rejected-claim[3:6]), &
+;   nconvert(submitted-rejected-claim[9:2]), '00000', '0'
+    nconvert((submitted-rejected-claim[1:2]) +       submitted-rejected-claim[3:7]), &
+    nconvert(submitted-rejected-claim[10:2]), '00000', '0'
+
+file f002-claims-mstr alias f002find designer 	&
+				occurs with f087-submitted-rejected-claims-hdr 
+   access via key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+              key-clm-serv-code, key-clm-adj-nbr                  &
+    using 'B',                                                    &
+    clmhdr-batch-nbr of f087-submitted-rejected-claims-hdr,             &   
+    clmhdr-claim-nbr of f087-submitted-rejected-claims-hdr, '00000', '0'
+
+file f010-pat-mstr reference
+   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002-claims-mstr
+
+file f010-pat-mstr alias f010find designer 			&
+				occurs with f087-submitted-rejected-claims-hdr
+   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002find
+
+temp found char*1
+
+temp w-date date initial sysdate
+temp w-claim-id  char*11
+temp w-batch-nbr char*9
+temp w-claim-nbr char*2
+
+title "Claims rejected by Ohip at SUBMISSION Time" at 1,25
+align (,,70)
+field w-date display predisplay
+
+skip to 3
+align (1,4,23)
+field submitted-rejected-claim	label "Claim Nbr........:"
+align (1,4,26)
+field edt-account-nbr		label "EDT Account Nbr..:"
+align (1,4,24)
+field clmhdr-doc-nbr 		label "Doc Nbr..........:"
+align (1,4,23)
+field ped			label "Claim's PED......."
+field edt-process-date		label "EDT Process Date.:"
+field edt-pay-prog		label "Payment Program..:"
+field edt-payee			label "Payee............:"
+field eft-referring-doc-nbr	label "Referring Doc Nbr:"
+field edt-facility-nbr		label "Facility.........:"
+field edt-admit-date		label "Admit Date.......:"
+field edt-location-cd		label "Location.........:"
+align (1,4,23)
+field pat-surname of f010-pat-mstr				&
+				label "Patient's Surname:"
+field pat-given-name of f010-pat-mstr				&
+				label "       Given name:"
+field edt-pat-birth-date	label "Patient's DOB....:"
+field edt-health-nbr		label "       Health Nbr:"
+field edt-health-version-cd	labeL "          Version:"
+skip to 3
+align (35,38,57) (,61,62) (,66,67) (,71,72) (,76,77)
+field edt-err-h-cd-1		label "H Error 1/2/3/4/5:"
+field edt-err-h-cd-2		label "/"
+field edt-err-h-cd-3		label "/"
+field edt-err-h-cd-4		label "/"
+field edt-err-h-cd-5		label "/"
+skip 1
+align (35,38,57)
+field entry-date		label "Entry Date...... - "
+;field entry-time-long		label "      Time...... - "
+field entry-user-id		label "      User ID... - "
+field last-mod-date		label "Last Mod Date... - "
+field last-mod-time		label "         Time... - "
+field last-mod-user-id		label "         User Id - "
+
+skip 2 
+align (35,38,57) (,66,62)
+field charge-status label "Charge Doctor ?  :"
+field ohip-err-code label "<-- Error Code"
+skip
+title "summarized" at ,70
+skip 
+title "from details" at ,69
+
+procedure designer dtl help 'Claims Details'
+begin
+;  let w-doc-nbr = doc-nbr
+  let w-claim-id = ascii(clmhdr-batch-nbr,9) + ascii(clmhdr-claim-nbr,2)
+  let w-ped = ped of f087-submitted-rejected-claims-hdr
+  let w-edt-process-date		& 
+    =   edt-process-date  of f087-submitted-rejected-claims-hdr
+  run screen $pb_obj/d087_dtl mode same clear lines 7 to 23     	&
+                passing w-claim-id,					&
+		        w-ped,						&
+		        w-edt-process-date ,				&
+			f087-submitted-rejected-claims-hdr
+end
+
+build 

@@ -1,0 +1,118 @@
+; 2004/03/02	M.C.	- createf086.qts
+;			- create f086-pat-id for the patient have mess code
+; 2004/03/10    M.C.    - update f010
+;			- add the second request to delete records from 
+;			  rejected-claims, all records in rejected-claims
+;			  should contain 'H' status with non-zero balance (>0)
+; 2004/03/10    M.C.	- alpha doc nbr
+
+cancel clear
+set process nolimit
+set lock record update
+
+request one on calculation errors report on edit errors report
+
+access f010-pat-mstr		&
+	link (ascii(pat-health-nbr,10))	&
+	 to  edt-health-nbr of f087-submitted-rejected-claims-hdr
+
+sel f010-pat-mstr if pat-mess-code <> ' '
+
+choose pat-health-nbr
+
+sorted on edt-health-nbr on edt-process-date
+
+subfile extf010mess keep at edt-health-nbr      &
+include edt-health-nbr,				&
+	edt-process-date,			&
+	pat-date-last-elig-maint,	  	&
+	key-pat-mstr,				&
+	pat-health-nbr,				&
+ 	pat-chart-nbr,				&
+	pat-chart-nbr-2,		  	&
+	pat-chart-nbr-3,			&
+        pat-chart-nbr-4,		 	&
+        pat-chart-nbr-5,	            	&
+	pat-surname,				&
+        pat-given-name,				&
+        pat-birth-date,			        &
+        pat-last-birth-date, 			&
+	pat-version-cd,				&
+        pat-last-version-cd,			&
+        subscr-addr1,				&
+        subscr-addr2,			        &
+	subscr-addr3
+
+request two on calculation errors report on edit errors report
+
+; 2004/03/10 - MC
+;access *extf010mess 
+access *extf010mess  link key-pat-mstr to key-pat-mstr of f010-pat-mstr
+; 2004/03/10 - end
+
+sel if edt-process-date < pat-date-last-elig-maint
+
+def run-date date = sysdate
+
+output f086-pat-id add on errors report
+  item clmhdr-pat-ohip-id-or-chart  final key-pat-mstr of extf010mess        
+  item pat-last-birth-date          final pat-last-birth-date of extf010mess
+  item pat-last-version-cd          final pat-last-version-cd of extf010mess
+  item pat-old-surname              final pat-surname of extf010mess
+  item pat-old-given-name           final pat-given-name of extf010mess
+  item pat-old-health-nbr           final pat-health-nbr of extf010mess
+  item pat-old-chart-nbr            final pat-chart-nbr of extf010mess
+  item pat-old-chart-nbr-2          final pat-chart-nbr-2 of extf010mess
+  item pat-old-chart-nbr-3          final pat-chart-nbr-3 of extf010mess
+  item pat-old-chart-nbr-4          final pat-chart-nbr-4 of extf010mess 
+  item pat-old-chart-nbr-5          final pat-chart-nbr-5 of extf010mess 
+  item pat-old-addr1                final subscr-addr1 of extf010mess
+  item pat-old-addr2                final subscr-addr2 of extf010mess
+  item pat-old-addr3                final subscr-addr3 of extf010mess
+
+; 2004/03/10 - MC
+subfile savef010mess keep append include	&
+	key-pat-mstr of f010-pat-mstr,		&
+	pat-health-nbr of f010-pat-mstr,	&
+	pat-mess-code of f010-pat-mstr,		&
+	pat-date-last-elig-maint of f010-pat-mstr, &
+	pat-date-last-maint of f010-pat-mstr,	&
+	pat-no-of-letter-sent of f010-pat-mstr,	&
+	run-date
+
+output f010-pat-mstr update on errors report
+  item pat-mess-code final ' '
+  item pat-date-last-elig-maint final sysdate 
+  item pat-date-last-maint final sysdate 
+  item pat-no-of-letter-sent final 0
+
+request three on calculation errors report on edit errors report
+
+access rejected-claims          		&
+; 2004/03/10 - MC
+;!        link 'B', nconvert(ascii(claim-nbr,10)[1:2] + '0'+     &
+;!                           ascii(claim-nbr,10)[3:6]),          &
+;!                   nconvert(ascii(claim-nbr,10)[9:2]), '00000', '0' &
+        link 'B', claim-nbr[1:8],    		&
+                   nconvert(claim-nbr[9:2]), '00000', '0' &
+; 2004/03/10 - end
+         to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+            key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+def bal-due = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+def run-date date = sysdate
+
+sel if clmhdr-tape-submit-ind <> 'H' or bal-due <= 0  
+
+subfile savef085 keep append include				&
+         rejected-claims,					&
+	 clmhdr-tape-submit-ind,				&
+	 bal-due,						&
+	 run-date
+
+output rejected-claims delete on errors report
+
+; 2004/03/10 - end
+
+build $obj/createf086

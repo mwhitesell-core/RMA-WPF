@@ -1,0 +1,199 @@
+/alpha/rmabill/rmabill101/src
+Tue Jun 17 13:22:50 EDT 2014
+ + + + Sourced in /alpha/rmabill/rmabill101/src + + +
+;Compiling program [/alpha/rmabill/rmabill101/src/u021f.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ;#> PROGRAM-ID.     u021f.qts
+> ;
+> ;	((C)) Dyad Technologies
+> ;
+> ;
+> ;    PROGRAM PURPOSE :  the OHIP EDT error file is used to update:
+> ;			-  the f087 submission rejection file,
+> ;			- the f002 claim record service/eligibility status
+> ;			- the f010 patient's message code and obec status
+> ;			- and the rejected-claims file (f085)
+> ;  Logic:
+> ;	if any of the claim detail error codes are 'E'ligibility type
+> ;	errors according to error code lookup in f093 then set claim's
+> ;	status to chargeable to doctor
+> ;
+> ;    MODIFICATION HISTORY
+> ;    DATE   WHO         DESCRIPTION
+> ; 03/jul/10 b.e.        - original
+> ; 03/oct/20 b.e.	- add update of f002
+> ; 03/oct/27 b.e.	- added audit of f002/f010 updates
+> ; 03/nov/17 b.e.	- handle both header and detail errors on a single claim
+> ; 03/nov/20 b.e.	- added 'on error report' to output statement of
+> ;			  all 'add' files so that the program continues if we
+> ;			  attempt to add a duplicate record
+> ; 03/nov/21 b.e.	- code added to consider error codes in all 5 codes
+> ;			  positions within header and detail error arrays
+> ; 03/nov/28 b.e.	- if patient's version code has changed since the
+> ;			  submission and submission error is certain eligibiligy
+> ;			  errors then force claim resubmit by setting status
+> ;			  to "X"
+> ; 04/jan/14 b.e.	- don't add transaction to rejected-claim file if claim
+> ;			  is being automatically resubmitted ie. status set
+> ;			  to "X"
+> ; 04/feb/26 M.C.	- don't update pat-mstr file if claim is being automatically
+> ;			  resubmitted ie. status set to "X"
+> ; 04/mar/04 M.C.	- convert the current first request into copybook
+> ;			- add the second request to access u021a-edt-rmb-file to do
+> ;			  the same as the u021a-edt-1ht-file  (never process for rmb file)
+> ; 04/may/03 M.C.        - if service reject and error code = VJ7, set charge-status = 'N'
+> 
+> 
+> 
+> can clear
+> set default
+> set process nolimit
+> set lock record update
+> 
+> request u021f_process_submit_errors		&
+>                 on edit        errors report	&
+>                 on calculation errors report
+> 
+> access u021a-edt-1ht-file alias u021a 			&
+> ;!        link (nconvert(rat-rmb-account-nbr[1:3]))       &
+>         link   (       rat-rmb-account-nbr[1:3]   )     &
+>         to   doc-nbr of f020-doctor-mstr  opt           &
+> ;            (access f002 for PED of claim)
+>         link  "B",                                      &
+> ;!              nconvert(  rat-rmb-group-nbr[1:2]         &
+> ;!                       + "0"                          &
+> ;!                       + rat-rmb-account-nbr[1:6]     &
+>                          rat-rmb-group-nbr[1:2]         &
+>                        + rat-rmb-account-nbr[1:6],      &
+>               nconvert(rat-rmb-account-nbr[7:2]) , 	&
+>               "00000",                                  &
+> 	      "0"                                       &
+>         to   key-clm-type      ,                        &
+>              key-clm-batch-nbr ,                        &
+>              key-clm-claim-nbr ,                        &
+>              key-clm-serv-code ,                        &
+>              key-clm-adj-nbr                            &
+>                 of f002-claims-mstr       opt		&
+>    	link clmhdr-pat-ohip-id-or-chart 		&
+> 	to   key-pat-mstr 				&
+> 		of f010-pat-mstr opt			&
+>  	link (nconvert(rat-rmb-group-nbr[1:2]))		&
+> 	to   iconst-clinic-nbr-1-2 of iconst-mstr-rec   &
+>   	link rat-rmb-error-h-cd-1			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-1 opt 			&
+>   	link rat-rmb-error-h-cd-2			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-2 opt 			&
+>   	link rat-rmb-error-h-cd-3			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-3 opt 			&
+>   	link rat-rmb-error-h-cd-4			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-4 opt 			&
+>   	link rat-rmb-error-h-cd-5			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-5 opt 			&
+>   	link rat-rmb-error-t-cd-1			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-1 opt 			&
+>   	link rat-rmb-error-t-cd-2			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-2 opt 			&
+>   	link rat-rmb-error-t-cd-3			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-3 opt 			&
+>   	link rat-rmb-error-t-cd-4			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-4 opt 			&
+>   	link rat-rmb-error-t-cd-5			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-5 opt
+> 
+> use $src/u021f_use.qts nolist
+> 	   AND 1 = 1
+*W* Linkage should be via a unique key/index if the file is output only.
+>     CLMHDR-TAPE-SUBMIT-IND 	OF F002-CLAIMS-MSTR
+*W* PowerHouse name for $pb_data/u021f_f002_audit is U021F_F002_AUDIT.
+>     PAT-OBEC-STATUS		OF F010-PAT-MSTR
+*W* PowerHouse name for $pb_data/u021f_f010_audit is U021F_F010_AUDIT.
+> 
+> 
+> request u021f_process_rmb_submit_errors		&
+Item ENTRY-DATE OF F087-DTL-ADD initial ENTRY-DATE OF F093-HDR-1.
+Item ENTRY-USER-ID OF F087-DTL-ADD initial ENTRY-USER-ID OF F093-HDR-1.
+>                 on edit        errors report	&
+>                 on calculation errors report
+> 
+> access u021a-edt-rmb-file alias u021a 			&
+> ;!        link (nconvert(rat-rmb-account-nbr[1:3]))       &
+>         link   (       rat-rmb-account-nbr[1:3]   )     &
+>         to   doc-nbr of f020-doctor-mstr  opt           &
+> ;            (access f002 for PED of claim)
+>         link  "B",                                      &
+> ;!              nconvert(  rat-rmb-group-nbr[1:2]         &
+> ;!                       + "0"                          &
+> ;!                       + rat-rmb-account-nbr[1:6]     &
+>                          rat-rmb-group-nbr[1:2]         &
+>                        + rat-rmb-account-nbr[1:6],      &
+>               nconvert(rat-rmb-account-nbr[7:2]) , 	&
+>               "00000",                                  &
+> 	      "0"                                       &
+>         to   key-clm-type      ,                        &
+>              key-clm-batch-nbr ,                        &
+>              key-clm-claim-nbr ,                        &
+>              key-clm-serv-code ,                        &
+>              key-clm-adj-nbr                            &
+>                 of f002-claims-mstr       opt		&
+>    	link clmhdr-pat-ohip-id-or-chart 		&
+> 	to   key-pat-mstr 				&
+> 		of f010-pat-mstr opt			&
+>  	link (nconvert(rat-rmb-group-nbr[1:2]))		&
+> 	to   iconst-clinic-nbr-1-2 of iconst-mstr-rec   &
+>   	link rat-rmb-error-h-cd-1			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-1 opt 			&
+>   	link rat-rmb-error-h-cd-2			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-2 opt 			&
+>   	link rat-rmb-error-h-cd-3			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-3 opt 			&
+>   	link rat-rmb-error-h-cd-4			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-4 opt 			&
+>   	link rat-rmb-error-h-cd-5			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-hdr-5 opt 			&
+>   	link rat-rmb-error-t-cd-1			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-1 opt 			&
+>   	link rat-rmb-error-t-cd-2			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-2 opt 			&
+>   	link rat-rmb-error-t-cd-3			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-3 opt 			&
+>   	link rat-rmb-error-t-cd-4			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-4 opt 			&
+>   	link rat-rmb-error-t-cd-5			&
+>     	to   ohip-err-code of f093-ohip-error-msg-mstr  &
+> 		alias f093-dtl-5 opt
+> 
+> use $src/u021f_use.qts nolist
+> 	   AND 1 = 1
+*W* Linkage should be via a unique key/index if the file is output only.
+>     CLMHDR-TAPE-SUBMIT-IND 	OF F002-CLAIMS-MSTR
+*W* PowerHouse name for $pb_data/u021f_f002_audit is U021F_F002_AUDIT.
+>     PAT-OBEC-STATUS		OF F010-PAT-MSTR
+*W* PowerHouse name for $pb_data/u021f_f010_audit is U021F_F010_AUDIT.
+> 
+> build $pb_obj/u021f
+0 ERRORS  6 WARNINGS.
+Item ENTRY-DATE OF F087-DTL-ADD initial ENTRY-DATE OF F093-HDR-1.
+Item ENTRY-USER-ID OF F087-DTL-ADD initial ENTRY-USER-ID OF F093-HDR-1.
+Tue Jun 17 13:22:54 EDT 2014

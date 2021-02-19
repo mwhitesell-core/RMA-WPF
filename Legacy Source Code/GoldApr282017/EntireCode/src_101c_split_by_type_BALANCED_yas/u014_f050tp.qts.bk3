@@ -1,0 +1,166 @@
+;#> PROGRAM-ID.     u014_f050tp.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: transfer the current status of the f050tp revenue files
+;	      to the appropriate history files to keep a snapshot of the
+;	      revenue at the end of the month.
+;
+;    MODIFICATION HISTORY
+;     DATE     WHO      DESCRIPTION
+; 2000/jan/10  B.E.	- original
+; 2000/jan/18  B.E.	- constants master PED has yyyymmdd but each dd
+;			  is different for each clinic and we want all
+;			  clinic data to be easily accessible for the
+;			  same period. Therefore the 'dd' portion of the
+;			  clinic's PED is ignored and '01' is used. For
+;			  the 13th month the 'update' action on the output
+;			  statement is will 12th monthend values.
+; 2000/apr/27 B.E.      - changed output on f050tp-history to have separate
+;                         output statements for add and update
+; 2000/jun/18 B.E.	- for clinic 61-65 the passed parameter is 60 so 
+;			  the match for clinic-nbr must be only on 1st digitS
+; 2000/jul/08 B.E.	- corrected bug on item statuement for output to file 'f050tp-hist-update'
+;			  where the items statement for incorrectly set for file 'f050tp-hist-add' 
+;		         
+; 2003/jun/15 M.C.	- corrected bug on MTD item statement for output to file 'f050-hist-update'
+; 2007/apr/10 M.C.	- for clinic 71-75 the passed parameter is 70 so 
+;			  the match for clinic-nbr must be only on 1st digit
+; 2009/sep/29 M.C.      - correct the criteria for clinic 60 and clinic 70 when updating to
+;                         f050tp history file via u014_f050tp subfile
+; 2010/feb/10 MC1	- include clinic 66
+
+cancel clear
+set stacksize 10000
+run u014_f050tp
+
+set default
+set lock file update
+
+set process nolimit
+
+; define globals for this run
+use $use/get_const_rec_7_values_globals.qts
+
+global temp x-selected-clinic       num*2 	parm			&
+	prompt "Enter CLINIC(2 digits) to be transferred to history: " 
+global temp x-selected-clinic-alpha char*2 
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values.qts
+
+;-------------------------------------------------------------------------------
+;
+
+item x-selected-clinic-alpha        = ascii(x-selected-clinic,2)
+
+request u014_transfer_f050tp_to_f050_histtp     &
+                on edit        errors report    &
+                on calculation errors report
+
+access f050tp-doc-revenue-mstr			&
+    link x-selected-clinic			&
+      to iconst-clinic-nbr-1-2  of iconst-mstr-rec
+
+; (for clinic 61-66 passed parameter is 60 so match only on 1st digit)
+; (for clinic 71-75 passed parameter is 70 so match only on 1st digit)
+def x-selected-clinic-1 = nconvert(ascii(x-selected-clinic,2)[1:1])
+def x-docrevtp-clinic-1 = nconvert(ascii(docrevtp-clinic-nbr,2)[1:1])
+select if docrevtp-clinic-nbr                                   &
+        =    x-selected-clinic                                  &
+         or (    x-selected-clinic = 60                         &
+; 2009/09/29 - MC - match the specific clinic range instead of ONLY the first digit
+;             and x-selected-clinic-1  = x-docrevtp-clinic-1    &
+; 2010/02/10 - MC1
+;             and (docrevtp-clinic-nbr >= 61 and docrevtp-clinic-nbr <= 65)   &
+              and (docrevtp-clinic-nbr >= 61 and docrevtp-clinic-nbr <= 66)   &
+; 2010/02/10 - end
+; 2009/09/29 - end
+            )							&
+         or (    x-selected-clinic = 70                         &
+; 2009/09/29 - MC - match the specific clinic range instead of ONLY the first digit
+;             and x-selected-clinic-1 = x-docrevtp-clinic-1     &
+              and (docrevtp-clinic-nbr >= 71 and docrevtp-clinic-nbr <= 75)   &
+; 2009/09/29 - end
+            )
+
+;  (PED from constants master has yyyymmdd however each clinic's dd is
+;   different for the same month.
+;   Therefore use hard coded '01' for dd so that each clinics data is 
+;   in effect stored at the yyyymm level and thus monthly values can
+;   be easily obtained across clinic)
+def x-iconst-date-period-end date = 					&
+     nconvert(								&
+	         ascii (						&
+		        ( iconst-date-period-end of iconst-mstr-rec	&
+		         /100   					&
+		        )						&
+		       ,6)						&
+    	       + '01'							&
+	     )
+subfile u014_f050tp keep include		 &
+     x-iconst-date-period-end		,&
+     f050tp-doc-revenue-mstr	
+
+
+request u014_transfer_f050tp_to_f050tp_hist     &
+                on edit        errors report    &
+                on calculation errors report
+set process nolimit
+
+access *u014_f050tp 				&
+  link w-ep-yr,					&
+       x-iconst-date-period-end, 		&
+       docrevtp-key 				&
+    to ep-yr,					&
+       iconst-date-period-end,			&
+       docrevtp-key of f050tp-doc-revenue-mstr-history   opt
+       
+
+;(the 13th monthend processing will use the 'update' action on the output
+; statement to update the 12th monthend values)
+
+output f050tp-doc-revenue-mstr-history alias f050tp-hist-add   add 		&	
+  if not record f050tp-doc-revenue-mstr-history exists
+
+  item ep-yr 			initial w-ep-yr
+  item iconst-date-period-end	initial x-iconst-date-period-end
+
+output f050tp-doc-revenue-mstr-history alias f050tp-hist-update update 	&	
+  if     record f050tp-doc-revenue-mstr-history exists
+ 
+; 2003/06/13 - MC
+;(the 13th monthend processing will use the 'update' action on the output
+; statement to update the 12th monthend values for YTD , but subtotal for 
+; MTD
+
+  item DOCREVTP-IN-TECH-AMT-BILLED (1)   final DOCREVTP-IN-TECH-AMT-BILLED (1)  of u014_f050tp
+  item DOCREVTP-IN-TECH-AMT-ADJUSTS (1)  final DOCREVTP-IN-TECH-AMT-ADJUSTS (1) of u014_f050tp
+  item DOCREVTP-IN-TECH-NBR-SVC (1)      final DOCREVTP-IN-TECH-NBR-SVC (1)     of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-BILLED (1)   final DOCREVTP-IN-PROF-AMT-BILLED (1)  of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-ADJUSTS (1)  final DOCREVTP-IN-PROF-AMT-ADJUSTS (1) of u014_f050tp
+  item DOCREVTP-IN-PROF-NBR-SVC (1)      final DOCREVTP-IN-PROF-NBR-SVC (1)     of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-BILLED (1)  final DOCREVTP-OUT-TECH-AMT-BILLED (1) of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-ADJUSTS (1) final DOCREVTP-OUT-TECH-AMT-ADJUSTS (1)of u014_f050tp
+  item DOCREVTP-OUT-TECH-NBR-SVC (1)     final DOCREVTP-OUT-TECH-NBR-SVC (1)    of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-BILLED (1)  final DOCREVTP-OUT-PROF-AMT-BILLED (1) of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-ADJUSTS (1) final DOCREVTP-OUT-PROF-AMT-ADJUSTS (1)of u014_f050tp
+  item DOCREVTP-OUT-PROF-NBR-SVC (1)     final DOCREVTP-OUT-PROF-NBR-SVC (1)    of u014_f050tp
+; 2003/06/13 - end
+
+  item DOCREVTP-IN-TECH-AMT-BILLED (2)   final DOCREVTP-IN-TECH-AMT-BILLED (2)  of u014_f050tp
+  item DOCREVTP-IN-TECH-AMT-ADJUSTS (2)  final DOCREVTP-IN-TECH-AMT-ADJUSTS (2) of u014_f050tp
+  item DOCREVTP-IN-TECH-NBR-SVC (2)      final DOCREVTP-IN-TECH-NBR-SVC (2)     of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-BILLED (2)   final DOCREVTP-IN-PROF-AMT-BILLED (2)  of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-ADJUSTS (2)  final DOCREVTP-IN-PROF-AMT-ADJUSTS (2) of u014_f050tp
+  item DOCREVTP-IN-PROF-NBR-SVC (2)      final DOCREVTP-IN-PROF-NBR-SVC (2)     of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-BILLED (2)  final DOCREVTP-OUT-TECH-AMT-BILLED (2) of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-ADJUSTS (2) final DOCREVTP-OUT-TECH-AMT-ADJUSTS (2)of u014_f050tp
+  item DOCREVTP-OUT-TECH-NBR-SVC (2)     final DOCREVTP-OUT-TECH-NBR-SVC (2)    of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-BILLED (2)  final DOCREVTP-OUT-PROF-AMT-BILLED (2) of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-ADJUSTS (2) final DOCREVTP-OUT-PROF-AMT-ADJUSTS (2)of u014_f050tp
+  item DOCREVTP-OUT-PROF-NBR-SVC (2)     final DOCREVTP-OUT-PROF-NBR-SVC (2)    of u014_f050tp
+
+build $obj/u014_f050tp

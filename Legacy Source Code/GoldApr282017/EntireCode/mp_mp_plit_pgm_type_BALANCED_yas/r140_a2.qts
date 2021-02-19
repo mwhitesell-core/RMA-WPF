@@ -1,0 +1,81 @@
+cancel clear
+set rep nolimit
+set report dev disc name r140_a
+set page width 132 length 60
+set rep nohead
+
+access afp-a2g-file
+
+def  x-payment-amt				&
+	= afp-payment-amt 			&
+		if afp-payment-sign  = " "	&
+    else  0 - afp-payment-amt
+def x-payment-amt-subtotal = x-payment-amt
+
+set subfile name r140_a1 keep 
+
+report summary                  &
+  doc-afp-paym-group  		&
+  afp-payment-percentage   	&
+  x-payment-amt			&
+  x-payment-amt-subtotal subt
+
+build $obj/r140_a1
+
+access *r140_a      						&
+  	link doc-afp-paym-group                      		&
+	to   doc-afp-paym-group  of f074-afp-group-mstr opt
+
+sort	on afp-reporting-mth	&
+	on doc-afp-paym-group
+page heading 					&
+    tab   1 "r140_a"				&
+    tab  30 "Governance SUMMARY Report"	&
+    tab 106 "Page: "				&
+    tab 112 syspage				&
+  skip 1
+heading at afp-reporting-mth 				&
+    tab 38 "for "					&
+    tab 43 afp-reporting-mth pic "^^^^/^^"		&
+  skip 2						&
+    tab  01 "Goverance Group: HAMILTON ACADEMIC HEALTH SCIENCES ORGANIZATION" &
+    tab  79 "Fixed Monthly Payment:"			&
+    tab 100 afp-payment-amt-total  			&
+  skip 2						&
+    tab   1 "Group"					&
+    tab  68 "Billing"					&
+    tab  79 "Conversion"				&
+    tab  92 "Conversion"				&
+  skip 1						&
+    tab   1 "Name"					&
+    tab  67 " Number"					&
+    tab  81 "Rate (%)"					&
+    tab  92 "Amount ($)"				&
+  skip 2
+
+def x-percentage  = afp-payment-percentage 
+def x-count = 1
+def x-conversion-payment-running-total	&
+	=   x-payment-amt-subtotal	
+def x-conversion-payment-final-total		&
+	=   x-conversion-payment-running-total	& 
+          + afp-payment-amt-total
+
+def x-afp-group-name-shortened char*70 = afp-group-name[1:70]
+
+rep						&
+  tab   1 x-afp-group-name-shortened		&
+  tab  71 doc-afp-paym-group                   	&
+  tab  83 x-percentage  pic "^^^^"      	&
+  tab  87 x-payment-amt pic " ^^^,^^^,^^^.^^ "                       
+
+final footing						&
+  skip 2						&
+  tab  76 "Total Conversion Payment:"			&
+  tab 101 x-payment-amt subt pic "^^^,^^^,^^^.^^ "	&
+  skip							&
+  tab 103 "------------"				&
+  skip							&
+  tab  76 "           Total Payment:"			
+
+build $obj/r140_a2

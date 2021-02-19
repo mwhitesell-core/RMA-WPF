@@ -1,0 +1,119 @@
+;doc     : ucc_patient_count_hdr.qts                
+;purpose : report patient count and amount by doctor for dept 44  with agent 0,2,4,6,9                                        
+;	   for the period from July 1 - Dec 31, 2012 for clinic 22, 23 & 98 only
+;who     : Ross/John Crossley/Rob Kerr
+;
+; *************************************************************
+
+;Date           Who            Description
+;2013/02/07     MC             original  
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B', key-clm-batch-nbr '22@', '23@', '98@', key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'             &
+                           and     clmhdr-doc-dept = 44                &
+                           and (      clmhdr-serv-date   >= 20120701   &
+                                 and  clmhdr-serv-date   <= 20121231   &
+			       )				       &
+			   and (      clmhdr-agent-cd = 0	       &
+				  or  clmhdr-agent-cd = 2              &
+				  or  clmhdr-agent-cd = 4              &
+				  or  clmhdr-agent-cd = 6              &
+				  or  clmhdr-agent-cd = 9              &
+			       )				       
+
+sort on doc-nbr
+
+temp agent-0-pat-count num*5                    
+item agent-0-pat-count = agent-0-pat-count + 1			&
+		if clmhdr-agent-cd = 0  or clmhdr-agent-cd = 4  &
+		reset at doc-nbr
+
+temp agent-0-amount num*7            
+item agent-0-amount = agent-0-amount + clmhdr-tot-claim-ar-ohip &
+		if clmhdr-agent-cd = 0  or clmhdr-agent-cd = 4  &
+		reset at doc-nbr
+
+temp agent-2-pat-count  num*5 
+item agent-2-pat-count = agent-2-pat-count + 1			&
+		if clmhdr-agent-cd = 2                          &
+		reset at doc-nbr
+
+temp agent-2-amount num*7 
+item agent-2-amount = agent-2-amount + clmhdr-tot-claim-ar-ohip &
+		if clmhdr-agent-cd = 2                          &
+		reset at doc-nbr
+
+temp agent-6-pat-count  num*5 
+item agent-6-pat-count = agent-6-pat-count + 1			&
+		if clmhdr-agent-cd = 6                          &
+		reset at doc-nbr
+
+temp agent-6-amount num*7 
+item agent-6-amount = agent-6-amount + clmhdr-tot-claim-ar-ohip &
+		if clmhdr-agent-cd = 6                          &
+		reset at doc-nbr
+
+temp agent-9-pat-count  num*5 
+item agent-9-pat-count = agent-9-pat-count + 1			&
+		if clmhdr-agent-cd = 9                          &
+		reset at doc-nbr
+
+temp agent-9-amount num*7 
+item agent-9-amount = agent-9-amount + clmhdr-tot-claim-ar-ohip &
+		if clmhdr-agent-cd = 9                          &
+		reset at doc-nbr
+
+temp agent-tot-pat-count  num*5 
+item agent-tot-pat-count = agent-tot-pat-count + 1			&
+		reset at doc-nbr
+
+temp agent-tot-amount num*7 
+item agent-tot-amount = agent-tot-amount + clmhdr-tot-claim-ar-ohip &
+		reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+	
+subfile ucc_hdr portable   keep at doc-nbr  include      &
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+agent-0-pat-count				    ,&
+comma                                               ,&
+agent-0-amount   				    ,&
+comma                                               ,&
+agent-2-pat-count				    ,&
+comma                                               ,&
+agent-2-amount   				    ,&
+comma                                               ,&
+agent-6-pat-count				    ,&
+comma                                               ,&
+agent-6-amount   				    ,&
+comma                                               ,&
+agent-9-pat-count				    ,&
+comma                                               ,&
+agent-9-amount   				    ,&
+comma                                               ,&
+agent-tot-pat-count				    ,&
+comma                                               ,&
+agent-tot-amount   				    ,&
+x-cr
+
+build $pb_obj/ucc_patient_count_hdr

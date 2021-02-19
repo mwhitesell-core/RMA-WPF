@@ -1,0 +1,70 @@
+; Program: r905a/b.qzs
+; Purpose: select all detail records and sum up the ohip fee for all the detail
+; 	   records of the same claim, and store the total into the subfile.
+; 91/APR/19	M. CHAN		- SMS 138
+;				- MODIFY CHOOSE AND DEFINE STATEMENTS
+;
+; 91/AUG/09	M. CHAN		- PDR 507, MODIFY THE LOGIC
+;
+; 92/APR/22	M. CHAN		- PDR 522, INCLUDE THE "PAID" DETAIL
+;				  RECORD OF THE ORIGINAL CLAIM ONLY
+;
+;03/Oct/29 	M. Chan		- modify the selection criteria to exclude
+;				  'C' or 'M' payements records
+;
+
+;y2k
+access f002-claims-mstr
+choose key-clm-type "B"
+
+; DO NOT INCLUDE HEADER OR DESCRIPTION OR "C" PAYMENT RECORDS FROM
+; BATCH 800 OR "MISC" PAYMENT FROM BATCH 700
+
+;y2k
+select f002-claims-mstr if 				&
+	       (clmdtl-oma-cd	   <> "0000"    & ; no header records
+           and  clmdtl-oma-cd 	   <> "ZZZZ"    & ; no description records
+           and  clmdtl-oma-cd      <> "PAID"	& ; no payment records
+           and  clmdtl-oma-cd      <> "MICM"    & ; no miscellaneous billings
+           and  clmdtl-oma-cd      <> "MISJ"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MISC"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MICV"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MISP"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MOHR"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MICB"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MIBR"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MINH"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MHSC"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "NHSC"    & ; "  "             "
+		)
+;			   (clmdtl-oma-cd =  "PAID" and   &
+;			    key-clm-batch-nbr <> clmdtl-orig-batch-nbr)
+
+;DEFINE SORT-KEY CHAR*12  = KEY-CLAIMS-MSTR[1:12]
+define sort-key char*11  = ascii(key-clm-batch-nbr,9) +   &
+			   ascii(key-clm-claim-nbr,2)
+sorted on sort-key
+
+set default
+set report nolim
+set subfile name sub905 keep at sort-key
+rep summary key-clm-batch-nbr key-clm-claim-nbr sort-key clmdtl-fee-ohip subtotal
+build $pb_obj/r905a
+
+
+
+; TO CHECK IF THE CLAIM HEADER RECORD IS MISSING - SMS 107.1
+
+access *sub905 link ("B", key-clm-batch-nbr,     		&
+ 		     key-clm-claim-nbr, "00000", "0") to	&
+               key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+	       key-clm-serv-code, key-clm-adj-nbr of		&
+	       f002-claims-mstr optional
+
+select if not record  f002-claims-mstr exist
+set default
+set report device disc name r905
+set report nolimit
+report sort-key
+build $pb_obj/r905b
+  

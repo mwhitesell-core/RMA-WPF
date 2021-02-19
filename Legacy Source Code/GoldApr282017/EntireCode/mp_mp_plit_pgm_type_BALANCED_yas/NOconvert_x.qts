@@ -1,0 +1,135 @@
+; Program: u140_a
+; Purpose: Before the RA is run this program must to be to put all doctors
+;	   into the f075 file with an indication of the number of doctors
+;	   that share the same MOH OHIP Number
+;	   This f075 file is then updated with the RA payments and based upon
+;	   the split between a doctors RMA doctors of their RA Payments the
+;	   same ratio is used to divy up the single AFP payment identified
+;	   only with the doctor's OHIP number
+;
+; 2005/apr/08 b.e. - set lock update statement
+; 2005/apr/13 M.C. - count number of doctors within the group with MOH ohip number
+; 2005/may/10 b.e. - removed all select statements on doctors so that both
+;	  	     active and terminated doctors are selected
+; 2007/jul/19 M.C. - create a new request 'u140_extract_doc_afp_group' in the beginning
+;                    and a new request'u140_update_doc_count' at the end of the program
+cancel clear
+
+run u140_a
+set process nolimit
+set lock record update
+
+; 2007/07/19 - MC - add the new request to extract doctor afp group
+request u140_extract_doc_afp_group			&
+	    on calculation errors report		&
+	    on edit errors report
+
+access f020-doctor-mstr 			&
+	link doc-clinic-nbr    to iconst-clinic-nbr-1-2 of iconst-mstr-rec alias clinic1 opt &
+        link  doc-clinic-nbr-2 to iconst-clinic-nbr-1-2 of iconst-mstr-rec alias clinic2 opt &
+        link  doc-clinic-nbr-3 to iconst-clinic-nbr-1-2 of iconst-mstr-rec alias clinic3 opt &
+        link  doc-clinic-nbr-4 to iconst-clinic-nbr-1-2 of iconst-mstr-rec alias clinic4 opt &
+        link  doc-clinic-nbr-5 to iconst-clinic-nbr-1-2 of iconst-mstr-rec alias clinic5 opt &
+        link  doc-clinic-nbr-6 to iconst-clinic-nbr-1-2 of iconst-mstr-rec alias clinic6 opt
+
+choose doc-ohip-nbr 1 to 999999
+
+subfile u140_afp_group keep 			&
+	if iconst-clinic-card-colour of clinic1 = 'Y' include &
+doc-ohip-nbr of f020-doctor-mstr,		&
+doc-nbr of f020-doctor-mstr,			&
+doc-clinic-nbr of f020-doctor-mstr,		&
+iconst-clinic-nbr of clinic1		
+
+subfile u140_afp_group alias afpclinic2 keep append 	&
+	if iconst-clinic-card-colour of clinic2 = 'Y' include &
+doc-ohip-nbr of f020-doctor-mstr,		&
+doc-nbr of f020-doctor-mstr,			&
+doc-clinic-nbr-2 of f020-doctor-mstr,		&
+iconst-clinic-nbr of clinic2		
+
+subfile u140_afp_group alias afpclinic3 keep append 	&
+	if iconst-clinic-card-colour of clinic3 = 'Y' include &
+doc-ohip-nbr of f020-doctor-mstr,		&
+doc-nbr of f020-doctor-mstr,			&
+doc-clinic-nbr-3 of f020-doctor-mstr,		&
+iconst-clinic-nbr of clinic3		
+
+subfile u140_afp_group alias afpclinic4 keep append 	&
+	if iconst-clinic-card-colour of clinic4 = 'Y' include &
+doc-ohip-nbr of f020-doctor-mstr,		&
+doc-nbr of f020-doctor-mstr,			&
+doc-clinic-nbr-4 of f020-doctor-mstr,		&
+iconst-clinic-nbr of clinic4		
+
+subfile u140_afp_group alias afpclinic5 keep append 	&
+	if iconst-clinic-card-colour of clinic5 = 'Y' include &
+doc-ohip-nbr of f020-doctor-mstr,		&
+doc-nbr of f020-doctor-mstr,			&
+doc-clinic-nbr-5 of f020-doctor-mstr,		&
+iconst-clinic-nbr of clinic5		
+
+subfile u140_afp_group alias afpclinic6 keep append 	&
+	if iconst-clinic-card-colour of clinic6 = 'Y' include &
+doc-ohip-nbr of f020-doctor-mstr,		&
+doc-nbr of f020-doctor-mstr,			&
+doc-clinic-nbr-6 of f020-doctor-mstr,		&
+iconst-clinic-nbr of clinic6		
+; 2007/07/19 - end
+
+request u140_count_f020_doc_ohip_nbr         	&
+                on edit        errors report 	&
+                on calculation errors report
+
+; 2007/07/19 - MC - use the subfile above as the driver file
+; access f020-doctor-mstr 
+;choose doc-ohip-nbr
+access *u140_afp_group
+
+define doc-afp-paym-group char*4 = iconst-clinic-nbr
+; 2007/07/19 - end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;and select if doc-afp-paym-group <> " "
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; 2005/04/13 - MC
+;sorted on doc-ohip-nbr
+sort 	on doc-ohip-nbr 	&
+	on doc-afp-paym-group
+; 2005/04/13 - end
+
+temp x-rec-count
+item x-rec-count = x-rec-count +1 	&
+	reset at doc-afp-paym-group  
+
+subfile u140_a keep at doc-afp-paym-group include		&
+  doc-ohip-nbr,				&
+; 2007/07/19 - MC - redundant
+; doc-nbr,				&
+; 2007/07/19 - end               
+  doc-afp-paym-group,			&
+  x-rec-count
+
+; 2005/04/13 - MC - comment out -redundant
+;request u140_select_only_multi_doc           	&
+;               on edit        errors report 	&
+;               on calculation errors report
+;
+;access *u140_a 	
+;
+;sort on doc-ohip-nbr 	&
+;  on x-rec-count D	
+;
+;;select if x-rec-count > 1
+;
+;subfile u140_a1 keep at doc-ohip-nbr	include	&
+;  doc-ohip-nbr,					&
+;  doc-nbr,					&
+;  doc-afp-paym-group,			&
+;  x-rec-count
+
+;request u140_select_only_multi_doc           	&
+;                on edit        errors report 	&
+;                on calculation errors report
+

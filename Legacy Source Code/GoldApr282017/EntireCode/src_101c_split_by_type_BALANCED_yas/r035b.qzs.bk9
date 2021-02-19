@@ -1,0 +1,731 @@
+;PROGRAm-id.     r035b.qzs
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : To print the direct bill invoices
+;                      This pgm is the second series of the 3 pgms
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2001/MAR/27 M.C.         - ORIGINAL (convert from u035a/b/c.cbl)
+;   2001/Apr/16 yas.         - create new format for the letter          
+;   2001/May/24 yas.         - create new format for the letter          
+;   2001/may/29 B.E.	- added HP escape codes for compress/font printing
+;   2001/jun/26 B.E.	- decimal alignment depending upon number of digits
+;			  to be printed before decimal was altered.
+;   2001/jul/23 B.E.	- moved columns to allow for longer doctor name
+;   2003/jan/21 yas     - define x-cheques to print company name depending on 
+;                         dept-company (add link to f070-dept-mstr)
+;   2004/mar/09 M.C.    - Yas requested to print province 
+;   2004/apr/06 M.C.    - Yas requested to not to print province if the province
+;                         is 'XX'
+;   2004/jun/16 b.e.	- added 'FOR CANADIAN RESIDENTS ONLY' line and
+;			  shading-box-4
+
+cancel clear
+set rep nolimit
+set rep dev disc name r035
+set rep page length 0 width 255
+set noformfeed
+set noblanks
+set nohead
+
+; (link to messages are at the patient, not claim level and print them
+;  at the very end of the bill)
+access *u035dtl_totalled					&
+;   link clm-shadow-patient 			        	&
+  link clmhdr-pat-ohip-id-or-chart				&
+    to key-pat-mstr   of f010-pat-mstr   opt  			&
+  link ('M', subscr-msg-nbr)     				&
+    to msg-sub-key-1, msg-sub-key-23 of f094-msg-mstr opt       &
+  link clmhdr-doc-dept to dept-nbr of f070-dept-mstr opt
+
+
+sort    on clmhdr-agent-cd                   &
+        on clm-shadow-clinic                 &
+        on clm-shadow-subdivision            &
+        on pat-surname                       &
+        on pat-given-name                    &
+;         on clm-shadow-patient reset page   	&
+ 	on clmhdr-pat-ohip-id-or-chart	     &
+	on x-pat			     &
+        on clm-shadow-batch-nbr              &
+        on clm-shadow-claim-nbr	             &
+	on x-claim-rec-counter 			& 
+	on x-type
+
+;(testing code)
+;select if x-claim-no =  "2219710301"
+;select if pat-surname = "VEITCH"  &
+;       or pat-surname = "MORRIS" &
+;       or pat-surname = "ABDAISLAM" &
+;       or pat-surname = "FREEMAN" &
+;       or pat-surname = "PIETERSE" &
+;       or pat-surname = "HUDSON" &
+;       or pat-surname = "KENNEDY"
+
+use $pb_src/printer_codes.def nol
+
+def hp-set-top-margin char*6 =                                  &
+   hpiii-set-margin-top-part1 + "2" + hpiii-set-margin-top-part2
+
+; (CG TIMES 10 POINT)
+def hpiii-init-page-codes char*198 =                            &
+    truncate(hpiii-font-symbol-ascii)                           &
+  + truncate(hpiii-lines-per-inch)                              &
+  + truncate(hpiii-font-spacing-prop)                           &
+  + truncate(hpiii-font-height-10)                              &
+  + truncate(hpiii-font-upright)                                &
+  + truncate(hpiii-medium)                                      &
+  + truncate(hpiii-cgtimes)                                     &
+  + hp-set-top-margin
+
+def x-title-1a char*90                     				&
+    =  hpiii-font-height-14                  				&
+     + hpiii-bold                            				&
+     + "STATEMENT OF ACCOUNT"					 	&
+     + hpiii-font-height-8                  				&
+     + hpiii-medium
+def x-title-1b char*90                     				&
+    =  hpiii-font-height-14                  				&
+     + hpiii-bold                            				&
+     + "FOR PHYSICIAN PROFESSIONAL SERVICES" 				&
+     + hpiii-font-height-8                  				&
+     + hpiii-medium
+
+def x-msg-0 char*150                     				&
+    =  hpiii-font-height-10                  				&
+     + hpiii-font-italic						&
+     + " NOTE:"								&
+     + hpiii-font-upright						&
+     + hpiii-font-height-8                  				&
+     + hpiii-medium
+def x-msg-1 char*150                    				&
+    =  hpiii-font-height-10                  				&
+     + hpiii-font-italic						&
+     + " This account is for physician services only.  The hospital may have billed you separately for services they rendered."  &
+     + hpiii-font-upright						&
+     + hpiii-font-height-8                  				&
+     + hpiii-medium
+
+def x-msg-2 char*150                     				&
+    =  hpiii-font-height-10                  				&
+     + hpiii-bold                            				&
+     + "If this invoice is not paid within 60 days, it will be sent to a collection agency." &
+     + hpiii-font-height-8                  				&
+     + hpiii-medium
+
+def x-pat-name char*40 = pack(pat-given-name + ' ' + pat-surname) 
+
+; 2004/03/09 - MC
+
+; 2004/04/06 - MC - do not print province if province is XX (out of country)
+;def x-city-prov char*30 = pack(subscr-addr3 + ', ' + subscr-prov-cd)
+def x-city-prov char*30 = pack(subscr-addr3 + ', ' + subscr-prov-cd)      &
+                        if pat-prov-cd <> 'XX'                         &
+                  else  pack(subscr-addr3)
+; 2004/04/06 - end
+
+; 2004/03/09 - end
+
+def x-cheques cha*62 =                                                    &
+         "Make cheque payable to Regional Medical Associates of Hamilton" &
+       if dept-company = 1                                                &
+    else "Make cheque payable to RMA Inc." 
+
+;def x-baldue =  x-charge - x-credit 
+
+;page heading				                                    &
+heading at clmhdr-pat-ohip-id-or-chart                                   &
+skip 1  tab 1   "         " 		                                    &
+skip 1  tab 1 hpiii-init-page-codes					    &
+skip 2  tab 88  x-title-1a						    &
+skip 2  tab 80  x-title-1b						    &
+skip 4  tab 1   x-pat-name  		                                    &
+skip 1  tab 1   subscr-addr1		                                    &
+skip 1  tab 1   subscr-addr2		                                    &
+; 2004/03/09 - MC
+;skip 1  tab 1   subscr-addr3		                                    &
+skip 1  tab 1   x-city-prov						    &
+; 2004/03/09 - end 
+skip 1  tab 1   subscr-postal-cd		                            &
+skip 1  tab 1   pat-country		                                    &
+skip 2 &
+
+;heading at clm-shadow-patient                                            &
+        tab 1   "ACCOUNT NO.: "                                          &
+	tab 15  pat-ohip-mmyy		                                 &
+	tab 35  "INVOICE DATE:"  	                                 &
+        tab 49  sysdate			                                 &
+skip 1  tab 33  'SERVICE'	   	                          	 &
+        tab 46  'NBR' 							 &
+skip 1  tab 1   'PHYSICIAN NAME'                                 	 &
+	tab 20  'CLAIM NO'		                                 &
+	tab 35  'DATE'		   	                          	 &
+;       tab 45  'LOC'   		                                 &
+        tab 46  'SVC'	  		                                 &
+	tab 52  'CODE -'          		                         &
+	tab 59  'SERVICE DESCRIPTION'	                                 &
+	tab 135 'CHARGES'		                                 &
+	tab 147 'CREDITS'		                                 &
+skip 2 
+
+def x-period char*1 = "."
+
+def x-charge-lit1 char*88           &
+     = hpiii-column-209 ; position to column for decimal alignment
+def x-charge-tot-lit1 char*88       &
+   =   hpiii-column-209             & ; position to column for decimal alignment
+     + hpiii-up-a-row               & ; up a row
+     + hpiii-backward-dot-125       & ; back up dots
+     + hpiii-underline-on           & ; underline on
+     + hpiii-forward-dot-162        & ; forward dots (underlining)
+     + hpiii-underline-off          & ; underline off
+     + hpiii-down-a-row             & ; down a row
+     + hpiii-column-209               ; re-position to column for decimal alignment
+def x-credit-lit1 char*88           &
+     = hpiii-column-228               ; position to column for decimal alignment
+def x-credit-tot-lit1 char*88       &
+   =   hpiii-column-228             & ; position to column for decimal alignment
+     + hpiii-up-a-row               & ; up a row
+     + hpiii-backward-dot-125       & ; back up dots
+     + hpiii-underline-on           & ; underline on
+     + hpiii-forward-dot-162        & ; forward dots (underlining)
+     + hpiii-underline-off  	    & ; underline off
+     + hpiii-down-a-row             & ; down a row
+     + hpiii-column-228               ; re-position to column for decimal alignment
+def x-baldue-tot-lit1 char*88       &
+     = hpiii-column-160               ; position to column for decimal alignment
+
+
+def x-charge-dollars     =         x-charge     / 100 
+def x-charge-cents       = mod(abs(x-charge    ),100) 
+def x-charge-tot-dollars =         x-charge-tot / 100 
+def x-charge-tot-cents   = mod(abs(x-charge-tot),100) 
+
+def x-credit-dollars     =         x-credit     / 100
+def x-credit-cents       = mod(abs(x-credit    ),100)  
+def x-credit-tot-dollars =         x-credit-tot / 100
+def x-credit-tot-cents   = mod(abs(x-credit-tot),100)  
+
+def x-baldue-tot-dollars =         x-baldue-tot / 100
+def x-baldue-tot-cents   = mod(abs(x-baldue-tot),100)  
+
+; (DETERMINE HOW MANY NUMBERS TO BE PRINTED, OFFSET BY WIDTH OF 1 NUMBER. IE 21)
+def x-charge-dollars-abs     int*8 = abs(x-charge-dollars)
+def x-charge-tot-dollars-abs int*8 = abs(x-charge-tot-dollars)
+def x-credit-dollars-abs     int*8 = abs(x-credit-dollars)
+def x-credit-tot-dollars-abs int*8 = abs(x-credit-tot-dollars)
+def x-baldue-tot-dollars-abs int*8 = abs(x-baldue-tot-dollars)
+
+def x-charge-ctr1        num*1 =  26 if x-charge-dollars-abs < 10     &
+                           else   46 if x-charge-dollars-abs < 100    &
+                           else   61 if x-charge-dollars-abs < 1000   &
+                           else   76 if x-charge-dollars-abs < 10000  &
+                           else   95 if x-charge-dollars-abs < 100000 &
+                           else  126
+def x-charge-tot-ctr1    num*1 =  26 if x-charge-tot-dollars-abs < 10     &
+                           else   46 if x-charge-tot-dollars-abs < 100    &
+                           else   61 if x-charge-tot-dollars-abs < 1000   &
+                           else   76 if x-charge-tot-dollars-abs < 10000  &
+                           else   95 if x-charge-tot-dollars-abs < 100000 &
+                           else  126
+
+def x-credit-ctr1        num*1 =  26 if x-credit-dollars-abs < 10     &
+                           else   46 if x-credit-dollars-abs < 100    &
+                           else   61 if x-credit-dollars-abs < 1000   &
+                           else   76 if x-credit-dollars-abs < 10000  &
+                           else   95 if x-credit-dollars-abs < 100000 &
+                           else  126
+def x-credit-tot-ctr1    num*1 =  26 if x-credit-tot-dollars-abs < 10     &
+                           else   46 if x-credit-tot-dollars-abs < 100    &
+                           else   61 if x-credit-tot-dollars-abs < 1000   &
+                           else   76 if x-credit-tot-dollars-abs < 10000  &
+                           else   95 if x-credit-tot-dollars-abs < 100000 &
+                           else  126
+
+def x-baldue-tot-ctr1    num*1 =  26 if x-baldue-tot-dollars-abs < 10     &
+                           else   46 if x-baldue-tot-dollars-abs < 100    &
+                           else   61 if x-baldue-tot-dollars-abs < 1000   &
+                           else   76 if x-baldue-tot-dollars-abs < 10000  &
+                           else   95 if x-baldue-tot-dollars-abs < 100000 &
+                           else  126 
+
+; (CHECK IF NEGATIVE SIGN WILL BE PRINTED)
+def x-charge-ctr2     num*1= x-charge-ctr1     + 14 if x-charge-dollars     < 0&
+                        else x-charge-ctr1
+def x-charge-tot-ctr2 num*1= x-charge-tot-ctr1 + 14 if x-charge-tot-dollars < 0&
+                        else x-charge-tot-ctr1
+def x-charge-sign     char*1= "-"                   if x-charge-dollars     < 0&
+                          else " "
+def x-charge-tot-sign char*1= "-"                   if x-charge-tot-dollars < 0&
+                          else " "
+def x-credit-ctr2     num*1= x-credit-ctr1     + 14 if x-credit-dollars     < 0&
+                        else x-credit-ctr1
+def x-credit-tot-ctr2 num*1= x-credit-tot-ctr1 + 14 if x-credit-tot-dollars < 0&
+                        else x-credit-tot-ctr1
+def x-credit-sign     char*1 = "-"                  if x-credit-dollars     < 0&
+                          else " "
+def x-credit-tot-sign char*1 = "-"                  if x-credit-tot-dollars < 0&
+                          else " "
+def x-baldue-tot-ctr2 num*1= x-baldue-tot-ctr1 + 14 if x-baldue-tot-dollars < 0&
+                        else x-baldue-tot-ctr1
+def x-baldue-tot-sign char*1= "-"                   if x-baldue-tot-dollars < 0&
+                         else " "
+
+; (CHECK IF COMMA REQUIRED FOR VALUE)
+def x-charge-ctr3     num*1=x-charge-ctr2     if x-charge-dollars-abs    < 1000&
+                       else x-charge-ctr2     + 14
+def x-charge-tot-ctr3 num*1=x-charge-tot-ctr2 if x-charge-tot-dollars-abs< 1000&
+                       else x-charge-tot-ctr2 + 14
+def x-credit-ctr3     num*1=x-credit-ctr2     if x-credit-dollars-abs    < 1000&
+                       else x-credit-ctr2     + 14
+def x-credit-tot-ctr3 num*1=x-credit-tot-ctr2 if x-credit-tot-dollars-abs< 1000&
+                       else x-credit-tot-ctr2 + 14
+def x-baldue-tot-ctr3 num*1=x-baldue-tot-ctr2 if x-baldue-tot-dollars-abs< 1000&
+                       else x-baldue-tot-ctr2 + 14
+
+
+def x-charge-lit2 char*10     =  x-esc + '*p-'				       &
+			        + truncate(ascii(x-charge-ctr3    ,3)) + 'X'
+def x-charge-tot-lit2 char*10 =  x-esc + '*p-' 			       	       &
+			        + truncate(ascii(x-charge-tot-ctr3,3)) + 'X'
+def x-credit-lit2 char*10     =  x-esc + '*p-' 			               &
+			        + truncate(ascii(x-credit-ctr3    ,3)) + 'X'
+def x-credit-tot-lit2 char*10 =  x-esc + '*p-' 			               &
+			        + truncate(ascii(x-credit-tot-ctr3,3)) + 'X'
+def x-baldue-tot-lit2 char*10 = x-esc + '*p-'				       &
+			        + truncate(ascii(x-baldue-tot-ctr3,3)) + 'X'
+
+; (REMOVE LEADING ZEROS FROM DOLLAR VALUE AND REPLACE WITH SPACES)
+def x-charge-dollars-abs-a     char*6 = ascii(x-charge-dollars-abs    ,6)
+def x-charge-tot-dollars-abs-a char*6 = ascii(x-charge-tot-dollars-abs,6)
+def x-credit-dollars-abs-a     char*6 = ascii(x-credit-dollars-abs    ,6)
+def x-credit-tot-dollars-abs-a char*6 = ascii(x-credit-tot-dollars-abs,6)
+def x-baldue-tot-dollars-abs-a char*6 = ascii(x-baldue-tot-dollars-abs,6)
+
+def x-charge-dollars-abs-b char*7                                       &
+      =  x-charge-sign     + x-charge-dollars-abs-a    			&
+				if x-charge-dollars-abs > 99999 	&
+   else  x-charge-sign     + x-charge-dollars-abs-a[2:5] 		&
+				if x-charge-dollars-abs >  9999 	&
+   else  x-charge-sign     + x-charge-dollars-abs-a[3:4] 		&
+				if x-charge-dollars-abs >   999 	&
+   else  x-charge-sign     + x-charge-dollars-abs-a[4:3] 		&
+			   	if x-charge-dollars-abs >    99 	&
+   else  x-charge-sign     + x-charge-dollars-abs-a[5:2] 		&
+			   	if x-charge-dollars-abs >     9 	&
+   else  x-charge-sign + x-charge-dollars-abs-a[6:1]
+
+def x-charge-tot-dollars-abs-b char*7                                   &
+      =  x-charge-tot-sign + x-charge-tot-dollars-abs-a      		&
+				if x-charge-tot-dollars-abs > 99999 	&
+   else  x-charge-tot-sign + x-charge-tot-dollars-abs-a[2:5] 		&
+				if x-charge-tot-dollars-abs >  9999 	&
+   else  x-charge-tot-sign + x-charge-tot-dollars-abs-a[3:4] 		&
+				if x-charge-tot-dollars-abs >   999 	&
+   else  x-charge-tot-sign + x-charge-tot-dollars-abs-a[4:3] 		&
+				if x-charge-tot-dollars-abs >    99 	&
+   else  x-charge-tot-sign + x-charge-tot-dollars-abs-a[5:2] 		&
+				if x-charge-tot-dollars-abs >     9 	&
+   else  x-charge-tot-sign + x-charge-tot-dollars-abs-a[6:1]
+
+def x-credit-dollars-abs-b char*7                                       &
+      =  x-credit-sign     + x-credit-dollars-abs-a    			&
+				if x-credit-dollars-abs > 99999 	&
+   else  x-credit-sign     + x-credit-dollars-abs-a[2:5] 		&
+				if x-credit-dollars-abs >  9999 	&
+   else  x-credit-sign     + x-credit-dollars-abs-a[3:4] 		&
+				if x-credit-dollars-abs >   999 	&
+   else  x-credit-sign     + x-credit-dollars-abs-a[4:3] 		&
+			   	if x-credit-dollars-abs >    99 	&
+   else  x-credit-sign     + x-credit-dollars-abs-a[5:2] 		&
+			   	if x-credit-dollars-abs >     9 	&
+   else  x-credit-sign + x-credit-dollars-abs-a[6:1]
+
+def x-credit-tot-dollars-abs-b char*7                                   &
+      =  x-credit-tot-sign + x-credit-tot-dollars-abs-a      		&
+				if x-credit-tot-dollars-abs > 99999 	&
+   else  x-credit-tot-sign + x-credit-tot-dollars-abs-a[2:5] 		&
+				if x-credit-tot-dollars-abs >  9999 	&
+   else  x-credit-tot-sign + x-credit-tot-dollars-abs-a[3:4] 		&
+				if x-credit-tot-dollars-abs >   999 	&
+   else  x-credit-tot-sign + x-credit-tot-dollars-abs-a[4:3] 		&
+				if x-credit-tot-dollars-abs >    99 	&
+   else  x-credit-tot-sign + x-credit-tot-dollars-abs-a[5:2] 		&
+				if x-credit-tot-dollars-abs >     9 	&
+   else  x-credit-tot-sign + x-credit-tot-dollars-abs-a[6:1]
+
+def x-baldue-tot-dollars-abs-b char*7                                   &
+      =  x-baldue-tot-sign + x-baldue-tot-dollars-abs-a      		&
+				if x-baldue-tot-dollars-abs > 99999 	&
+   else  x-baldue-tot-sign + x-baldue-tot-dollars-abs-a[2:5] 		&
+				if x-baldue-tot-dollars-abs >  9999 	&
+   else  x-baldue-tot-sign + x-baldue-tot-dollars-abs-a[3:4] 		&
+				if x-baldue-tot-dollars-abs >   999 	&
+   else  x-baldue-tot-sign + x-baldue-tot-dollars-abs-a[4:3] 		&
+				if x-baldue-tot-dollars-abs >    99 	&
+   else  x-baldue-tot-sign + x-baldue-tot-dollars-abs-a[5:2] 		&
+				if x-baldue-tot-dollars-abs >     9 	&
+   else  x-baldue-tot-sign + x-baldue-tot-dollars-abs-a[6:1]
+
+def x-charge-dollars-abs-char     char*7 = rj(x-charge-dollars-abs-b)
+def x-charge-tot-dollars-abs-char char*7 = rj(x-charge-tot-dollars-abs-b)
+def x-credit-dollars-abs-char     char*7 = rj(x-credit-dollars-abs-b)
+def x-credit-tot-dollars-abs-char char*7 = rj(x-credit-tot-dollars-abs-b)
+def x-baldue-tot-dollars-abs-char char*7 = rj(x-baldue-tot-dollars-abs-b)
+
+; (build print format of amount with comma in number if number $1000 or more)
+define x-charge-prt-dollars char*8                                             &
+     =" " + x-charge-dollars-abs-char         if x-charge-dollars-abs    < 1000&
+  else      x-charge-dollars-abs-char[1:4] 				       &
+	  + "," 							       &
+	  + x-charge-dollars-abs-char[5:3]
+define x-charge-tot-prt-dollars char*8                                         &
+     =" " + x-charge-tot-dollars-abs-char     if x-charge-tot-dollars-abs< 1000&
+  else      x-charge-tot-dollars-abs-char[1:4] 				       &
+	  + "," 							       &
+	  + x-charge-tot-dollars-abs-char[5:3]
+
+define x-credit-prt-dollars char*8                                             &
+     =" " + x-credit-dollars-abs-char         if x-credit-dollars-abs    < 1000&
+  else      x-credit-dollars-abs-char[1:4] 				       &
+	  + "," 							       &
+	  + x-credit-dollars-abs-char[5:3]
+define x-credit-tot-prt-dollars char*8                                         &
+     =" " + x-credit-tot-dollars-abs-char     if x-credit-tot-dollars-abs< 1000&
+  else      x-credit-tot-dollars-abs-char[1:4] 				       &
+	  + "," 							       &
+	  + x-credit-tot-dollars-abs-char[5:3]
+define x-baldue-tot-prt-dollars char*8                                         &
+     =" " + x-baldue-tot-dollars-abs-char     if x-baldue-tot-dollars-abs< 1000&
+  else      x-baldue-tot-dollars-abs-char[1:4] 				       &
+	  + "," 							       &
+	  + x-baldue-tot-dollars-abs-char[5:3]
+
+define x-charge-prt-cents       char*2 = ascii(x-charge-cents    ,2)
+define x-charge-tot-prt-cents   char*2 = ascii(x-charge-tot-cents,2)
+define x-credit-prt-cents       char*2 = ascii(x-credit-cents    ,2)
+define x-credit-tot-prt-cents   char*2 = ascii(x-credit-tot-cents,2)
+define x-baldue-tot-prt-cents   char*2 = ascii(x-baldue-tot-cents,2)
+
+define x-charge-prt char*120 						&
+   =   truncate(lj(x-charge-lit1))                                     	&
+     + truncate(lj(x-charge-lit2))                                     	& 
+     + truncate(lj(x-charge-prt-dollars))                          	&
+     + x-period                                                 	&
+     + x-charge-prt-cents						&
+		if x-charge <> 0					&
+ else " "
+define x-charge-tot-prt char*120 					&
+   =   truncate(x-charge-tot-lit1)                                    	&
+     + truncate(x-charge-tot-lit2)                                    	& 
+     + truncate(lj(x-charge-tot-prt-dollars))                          	&
+     + x-period                                                 	&
+     + x-charge-tot-prt-cents
+
+define x-credit-prt char*120 						&
+   =   truncate(x-credit-lit1)                                     	&
+     + truncate(x-credit-lit2)                                     	& 
+     + truncate(lj(x-credit-prt-dollars))                          	&
+     + x-period                                                 	&
+     + x-credit-prt-cents						&
+		if x-credit <> 0					&
+ else " "
+define x-credit-tot-prt char*120 					&
+   =   truncate(x-credit-tot-lit1)                                    	&
+     + truncate(x-credit-tot-lit2)                                     	& 
+     + truncate(lj(x-credit-tot-prt-dollars))                          	&
+     + x-period                                                 	&
+     + x-credit-tot-prt-cents
+
+define x-baldue-tot-prt char*120 					&
+   =   truncate(x-baldue-tot-lit1)                                    	&
+     + truncate(x-baldue-tot-lit2)                                     	& 
+     + truncate(lj(x-baldue-tot-prt-dollars))                          	&
+     + x-period                                                 	&
+     + x-baldue-tot-prt-cents
+
+def x-serv-date-ascii char*8 =  ascii(x-serv-date,8)
+def x-serv-date-prt char*10						&
+      =  x-serv-date-ascii[1:4]						&
+       + "/"								&
+       + x-serv-date-ascii[5:2]						&
+       + "/"								&
+       + x-serv-date-ascii[7:2]						&
+		if x-serv-date <> 0 					&
+  else " "
+
+def x-serv-nbr-prt char*2 						&
+     = ascii(x-nbr-serv,2)						&
+		if x-nbr-serv <> 0					&
+  else " "
+
+def x-ohip-cd-prt char*5 						&
+     = x-ohip-cd      							&
+		if    x-ohip-cd <> "PAID"				&
+ else " "
+
+def x-dash char*1 							&
+     = "-"      							&
+		if    x-ohip-cd <> "PAID"				&
+ else " "
+
+def x-print-line char*250 						&
+;    =   hpiii-column-5	 						&
+;      + x-serv-date-prt						&
+;      + hpiii-column-27 						&
+;      + x-claim-no   		                                        &
+;      + hpiii-column-47 						&
+;      + x-doc-name 							&
+    =   x-doc-name 							&
+      + hpiii-column-34 						&
+      + x-claim-no   		                                        &
+      + hpiii-column-58 						&
+      + x-serv-date-prt							&
+      + hpiii-column-83 						&
+      + x-serv-nbr-prt 	                                                &
+;       + x-hosp                                              		&
+      + hpiii-column-91 						&
+      + x-ohip-cd-prt  							&
+      + hpiii-column-101 						&
+      + x-dash								&
+      + hpiii-column-103 						&
+      + x-desc								&
+      + truncate(lj(x-charge-prt))					&
+      + truncate(lj(x-credit-prt))					&
+			if    x-ohip-cd <> "     "			&
+			  and x-ohip-cd <> "ZZZZZ"			&
+ else 									&
+       hpiii-font-height-8                                              &
+     + hpiii-bold                            				&
+     + hpiii-column-103							&
+     + hpiii-underline-on						&
+     + truncate(x-desc)							&
+     + hpiii-underline-off						&
+     + hpiii-font-height-8                                              &
+     + hpiii-medium
+        
+report tab 01 x-print-line 						&
+;skip 1  tab 1 "1" tab 2 x-credit & 
+;skip 1  tab 1 "2" tab 2 x-credit-dollars-abs-char &
+;skip 1  tab 1 "3" tab 2 x-credit-dollars-abs-b &
+;skip 1  tab 1 "4" tab 2 x-credit-prt	        &
+skip 1
+
+define x-pat-msg-1-2 char*190						&
+    =  hpiii-font-height-10                                             &
+     + hpiii-font-italic						&
+     + hpiii-bold                                                       &
+     + truncate(lj(msg-dtl1))						&
+     + " "								&
+     + truncate(lj(msg-dtl2))						&
+     + hpiii-font-upright						&
+     + hpiii-font-height-8                                              &
+     + hpiii-medium
+define x-pat-msg-3-4 char*190						&
+    =  hpiii-font-height-10                                             &
+     + hpiii-font-italic						&
+     + hpiii-bold                                                       &
+     + truncate(lj(msg-dtl3))						&
+     + " "								&
+     + truncate(lj(msg-dtl4))						&
+     + hpiii-font-upright						&
+     + hpiii-font-height-8                                              &
+     + hpiii-medium
+
+define x-msg-due-1 char*190						&
+    =  hpiii-font-height-10                                             &
+     + hpiii-bold                            				&
+     + "Note: All accounts are due when rendered."			&
+     + hpiii-font-height-8                                              &
+     + hpiii-medium
+
+define x-shading-box-1 char*80 &  ; Done in graphic mode
+    =  x-esc + "&a-2R"          & ; backup 2 rows
+     + x-esc + "&a01C"          & ; go to 1st column
+     + x-esc + "*c1900A"        & ; set horizontal rectangle size in dot
+     + x-esc + "*c075B"         & ; set vertical rectangle size in dots
+;     + x-esc + "*c10G"         & ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"          & ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"           & ; fill rectangle area
+     + x-esc + "&a0C"           & ; reposition upper left corner
+     + x-esc + "&a+2R"            ; go down 2 rows
+
+define x-shading-box-2 char*80 &  ; Done in graphic mode
+    =  x-esc + "&a-2R"          & ; backup 2 rows
+     + x-esc + "&a125C"         & ; go to 100th column
+     + x-esc + "*c800A"         & ; set horizontal rectangle size in dot
+     + x-esc + "*c075B"         & ; set vertical rectangle size in dots
+;     + x-esc + "*c10G"         & ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"          & ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"           & ; fill rectangle area
+     + x-esc + "&a0C"           & ; reposition upper left corner
+     + x-esc + "&a+2R"            ; go down 2 rows
+
+define x-shading-box-3a char*80 &  ; Done in graphic mode
+    =  x-esc + "&a-2R"          & ; backup 2 rows
+     + x-esc + "&a115C"         & ; go to 115th column
+     + x-esc + "*c485A"         & ; set horizontal rectangle size in dot
+     + x-esc + "*c075B"         & ; set vertical rectangle size in dots
+;     + x-esc + "*c10G"         & ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"          & ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"           & ; fill rectangle area
+     + x-esc + "&a0C"             ; reposition upper left corner
+;     + x-esc + "&a+2R"            ; go down 2 rows
+define x-shading-box-3b char*80 &  ; Done in graphic mode
+;    =  x-esc + "&a-2R"          & ; backup 2 rows
+    =  x-esc + "&a168C"         & ; go to 125th column
+;brad
+     + x-esc + "*c700A"         & ; set horizontal rectangle size in dot
+     + x-esc + "*c075B"         & ; set vertical rectangle size in dots
+;     + x-esc + "*c10G"         & ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"          & ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"           & ; fill rectangle area
+     + x-esc + "&a0C"           & ; reposition upper left corner
+     + x-esc + "&a+2R"            ; go down 2 rows
+
+define x-shading-box-4 char*80 &  ; Done in graphic mode
+    =  x-esc + "&a-3R"          & ; backup 3 rows 
+     + x-esc + "&a01C"          & ; go to 1st column
+     + x-esc + "*c1900A"        & ; set horizontal rectangle size in dot
+;     + x-esc + "*c075B"         & ; set vertical rectangle size in dots
+     + x-esc + "*c150B"         & ; set vertical rectangle size in dots
+;     + x-esc + "*c10G"         & ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"          & ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"           & ; fill rectangle area
+     + x-esc + "&a0C"           & ; reposition upper left corner
+     + x-esc + "&a+2R"            ; go down 2 rows 
+
+def x-subtotals-line char*220 						&
+    =   x-esc + "&a+1R"          & ; go down 1 rows
+      + x-esc + "&a170C"         & ; go to 170th column
+      + "Totals:"							&
+      + truncate(lj(x-charge-tot-prt))					&
+      + truncate(lj(x-credit-tot-prt))
+
+def x-baldue-line char*220 						&
+    =  hpiii-font-height-10                                             &
+     + hpiii-bold                                                       &
+     + "BALANCE DUE"							&
+     + lj(x-baldue-tot-prt)						&
+     + hpiii-font-height-8                                              &
+     + hpiii-medium
+
+footing at x-pat             	        	                   	&
+skip 3									&
+    tab 140 x-subtotals-line						&
+;skip 1 								&
+;    tab   1 " "							&
+;   tab 130 x-baldue-line						&
+;skip 1 tab   1 x-shading-box-2					        &
+skip 3									&
+    tab  01 hpiii-font-height-10                                        & 
+    tab  15 hpiii-bold                                                  &
+    tab  20 "Total Charges:"						&
+    tab  35 x-charge-tot      pic "^^^,^^^.^^ " float "$"		&
+    tab  55 "Total Credits"						&
+    tab  73 x-credit-tot      pic "^^^,^^^.^^ " float "$"		&
+    tab  95 "BALANCE DUE:"						&
+    tab 110 x-baldue-tot      pic "^^^,^^^.^^ " float "$"		&
+skip 1									&
+    tab   1 hpiii-font-height-8                                         &
+    tab  15 hpiii-medium						&
+    tab  25 x-shading-box-1					        &
+skip 2									&
+    tab   1 x-pat-msg-1-2						&
+skip 1									&
+    tab   1 x-pat-msg-3-4						&
+skip 2									&
+    tab   1 x-msg-due-1					   		&
+;skip page
+    tab 190 x-ff ; force new page
+
+def x-msg-email char*198 						&
+    =   "4)  E-mail RMA at "						&
+      + hpiii-bold                            				&
+      + hpiii-underline-on						&
+      + "lemees@mcmaster.ca"						&
+      + hpiii-underline-off						&
+      + hpiii-medium                          				&
+      + " with your credit card information and the account number above."
+
+;footing at clm-shadow-patient	        	                    &
+footing at clmhdr-pat-ohip-id-or-chart				   &
+skip page                                                          &
+        tab 1   "         " 		                                    &
+skip 1  tab 1 hpiii-init-page-codes					    &
+skip 2  tab 88  x-title-1a						    &
+skip 2  tab 80  x-title-1b						    &
+skip 4  tab 1   x-pat-name  		                                    &
+skip 1  tab 1   subscr-addr1		                                    &
+skip 1  tab 1   subscr-addr2		                                    &
+; 2004/03/09 - MC
+;skip 1  tab 1   subscr-addr3		                                    &
+skip 1  tab 1   x-city-prov						    &
+; 2004/03/09 - end 
+skip 1  tab 1   subscr-postal-cd		                            &
+skip 1  tab 1   pat-country		                                    &
+
+;skip 10 tab   1 "ACCOUNT NO. :"                                    &
+;        tab  15 pat-ohip-mmyy                                      &
+;        tab  42 "Balance Due          :"                           &
+;        tab  65 hpiii-font-height-12   	   		    &
+;        tab  75 hpiii-bold                 			    &
+;        tab  85 x-baldue-tot      pic " ^^,^^^.^^" float "$"       &
+;        tab 100 hpiii-font-height-8           			    &
+;        tab 110 hpiii-medium					    &
+;skip 1  tab 1   "INVOICE DATE:"                                    &
+;       tab 15  sysdate                                             &
+
+skip  2 tab  01 hpiii-font-height-10   	   			   &
+        tab  10 hpiii-bold                 			   &
+        tab  15 "Account No.:"                                     &
+        tab  30 pat-ohip-mmyy                                      &
+        tab  47 "Invoice Date:"                                    &
+        tab  63 sysdate                                            &
+        tab  82 "Balance Due:"                           	   &
+        tab  97 x-baldue-tot      pic " ^^,^^^.^^" float "$"       &
+        tab 113 "Amount Enclosed: $ ______________"  	   	   &
+        tab 165 hpiii-font-height-8           			   &
+        tab 175 hpiii-medium					   &
+skip 1  tab   1 x-shading-box-3a				   &
+        tab  60 x-shading-box-3b				   &
+skip 1  tab   1 "Payment Options:"                                 &
+skip 2  tab   5 "____ Cheque"                                      &
+;      tab  20 "Make cheque payable to Regional Medical Associates of Hamilton"&
+        tab  20 x-cheques                                         &
+skip 1  tab  27 "To ensure proper credit to your account, please return this invoice in the enclosed self addressed envelope." & 
+Skip 2  tab   5 "____ VISA"                                        &
+        tab  45 "____ MasterCard"                                  &
+        tab  75 "____ American Express"                            &
+skip 2  tab   5 "For payment by CREDIT CARD, you have the following options:            "  &
+skip 1  tab   1  x-shading-box-1				   &
+skip 2  tab   1 "1)  Complete this form and mail to RMA.                                "  &
+skip 1  tab   1 "2)  Complete this form and fax to RMA at (905)529-7998.                "  &
+skip 1  tab   1 "3)  Phone RMA at (905)525-9762 with your credit card information.      "  &
+skip 1  tab   1 x-msg-email						      &
+skip 2  tab  1  "Credit Card Number: _______________________________________" &
+skip 2  tab  1  "Expiry Date:   MM / YY  _____ / _____"                       &
+        tab  70 "Signature: ______________________________________________"   &
+skip 4  tab   5 "FOR CANADIAN RESIDENTS ONLY"                                 &
+skip 1  tab   5 "If these servies are covered by OHIP or OTHER INSURANCE, please complete the appropriate section below:"                           &
+skip 1  tab   1 x-shading-box-4				   	    &
+skip 2  tab  1  "________________________  ____________                           ______ / _____ / ___              _______________________________"&
+skip 1  tab   1 "Health Number"                                    &
+        tab  36 "Version Code"                                     &
+        tab  55 "Effective Date YYYY /  MM  /  DD"                 &
+        tab 102 "Surname"                                          &
+skip 4  tab   1 "Other Insurance Company Name: ______________________________________________________________________________"		&
+skip 2  tab   1 "Policy Number: ____________________________________________" &
+        tab  80 "Telephone: ( ________ ) ________  -  _____________"          &
+skip 2  tab   1 "Address: _________________________________________________ " &
+skip 1  tab  14          "_________________________________________________ " &
+skip 1  tab  14          "_________________________________________________ " &
+skip 3  tab   1 x-msg-0							      &
+skip 1  tab   1 x-msg-1							      &
+;skip 1  tab   1 x-msg-2						      &
+skip 1  tab 185 x-ff
+;skip page
+
+build $obj/r035b

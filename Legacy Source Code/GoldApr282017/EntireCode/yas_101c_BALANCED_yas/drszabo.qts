@@ -1,0 +1,96 @@
+;doc     : drszabo.qts
+;purpose : create report by doctor clinic 61 echocardiograhy codes only
+;          out patient -total claims and total prof fees only 
+;           in patient -total claims and total prof fees only
+;who     : Sylvia Szabo
+
+
+;Date           Who             Description
+;2001/07/24     Yasemin         Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one
+
+access *claims_subfile           &
+  link (nconvert(clmdtl-id[4:3])) &
+   to doc-nbr of f020-doctor-mstr opt 
+
+def x-code Cha*4 = clmdtl-id[12:4]
+
+select if (                                        &
+              (    x-code = "G560"                 &           
+                or x-code = "G561"                 &           
+                or x-code = "G562"                 &           
+                or x-code = "G567"                 &           
+                or x-code = "G568"                 &           
+                or x-code = "G570"                 &           
+                or x-code = "G571"                 &           
+                or x-code = "G572"                 &           
+                or x-code = "G574"                 &           
+                or x-code = "G575"                 &           
+                or x-code = "G577"                 &           
+                or x-code = "G578"                 &           
+                or x-code = "G579"                 &           
+                or x-code = "G580"                 &           
+                or x-code = "G581")                &           
+           and (     clmdtl-sv-date >= "20000401"  &  
+                 and clmdtl-sv-date <= "20010331"))&
+           and       clmdtl-id[1:2] = "61"        
+
+def x-prof-fee num*7 = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+def x-claim-id char*11 = clmdtl-id[1:11]
+
+sort on doc-nbr  on x-claim-id
+  
+temp x-claim-in   num*7 
+item x-claim-in   = x-claim-in  + 1               &            
+                  if  clmhdr-i-o-pat-ind = "I"    &
+			at x-claim-id  reset at doc-nbr
+
+temp x-prof-fee-in   num*7
+item x-prof-fee-in   = x-prof-fee-in + x-prof-fee      &
+                       if  clmhdr-i-o-pat-ind = "I"    &
+                       reset at doc-nbr
+
+
+temp x-tot-fee-in   num*7
+item x-tot-fee-in  = x-tot-fee-in + clmdtl-fee-ohip  &
+                       if  clmhdr-i-o-pat-ind = "I"     &
+                       reset at doc-nbr
+
+temp x-claim-out  num*7 
+item x-claim-out  = x-claim-out  + 1               &
+                    if  clmhdr-i-o-pat-ind = "O"    &
+                    	at x-claim-id  reset at doc-nbr
+
+temp x-prof-fee-out  num*7
+item x-prof-fee-out  = x-prof-fee-out + x-prof-fee      &
+                       if  clmhdr-i-o-pat-ind = "O"     &
+                       reset at doc-nbr
+
+
+temp x-tot-fee-out   num*7
+item x-tot-fee-out  = x-tot-fee-out + clmdtl-fee-ohip  &
+                       if  clmhdr-i-o-pat-ind = "O"     &
+                       reset at doc-nbr
+
+
+
+subfile drszabo keep at doc-nbr include    &
+doc-nbr					  ,&
+doc-name                                  ,&
+doc-inits                                 ,& 
+x-claim-in                                ,& 
+x-prof-fee-in                             ,& 
+x-tot-fee-in                              ,& 
+x-claim-out                               ,& 
+x-prof-fee-out                            ,& 
+x-tot-fee-out                          
+
+
+build $obj/drszabo

@@ -1,0 +1,573 @@
+;#> program-id.     u115a_0.qts
+;
+;       ((C)) Dyad Infosys  LTD
+;
+;    purpose: sub-process within "earnings generation" process.
+;             calculate required 'tot'al / 'ytd' transactions as of current EP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/jan/01  ____   B.E.     - original
+;     92/may/01  ____   B.E.     - Added YTDGUC logic
+;     92/may/11  ____   B.E.     - YTDGUC logic changed from 1C to 1B (YTDGUC)
+;     92/aug/11  ____   b.e.     - moved ytd logic into 2nd request
+;     92/sep/14  ----   b.e.     - comment out output of YTDGUx transaction
+;                                  since GTYPEx is now calculated as ytd not
+;                                  current ep.  If GTYPEx changed re-activatE
+;                                  the TYDGUx code.
+;     92/oct/26  ----   B.E.     - Updated F020 with YTDINC value
+;     92/nov/10         B.E.     - updated F020 within this run with OUTPUT stmt
+;                                  rather than using U115 SUBFILE.
+;     93/apr/10         B.E.     - YTDCEA/CEX use values in DOCTOR-MSTR rather
+;                                  than calculated ones.
+;     93/may/06         B.E.     - Added SUBFILE F119
+;     93/may/11         B.E.     - Added ACCESS of F119-DOCTOR-YTD to preset
+;     93/may/18         B.E.     - INTEGER*4 for zoned*8, F119/F119 SUBFILE changes
+;                                  YTD values
+;     93/may/27         B.E.     - *F119 exclude records added to F119
+;                                - add/subtract F110 "M"anual type recs to 
+;				   F020's YTDEAR (ytd earnings)
+;                                - changed YTDxxx to use = not < current-ep-nbr
+;                       ?????? WITH ABOVE = VS < CHANGE IS THIS CODE NOW NOT REQUIRED ????????????????
+;     93/JUN/01         B.E.     - removed ADD of recs to F119-DOCTOR-YTD, all records
+;                                 now added to *F119 and then U122 adds them to F119-YTD
+;     93/JUN/22         B.E.     - added Part timer Expense logic
+;     93/AUG/09         B.E.     - GST/AMT EXPENSE now calculated by
+;                                  separating these two amounts from the
+;                                  the amount of the difference between
+;                                  GROSS and NET amounts.
+;     93/SEP/14         B.E.     - added RMA+GST and DEPT MISC/REG Expense Logic
+;                                  and rounding of result
+;     93/SEP/20         B.E.     - added separate expenses for RMA MISC/REG.
+;                                  now using RMAEXR(RMA  Regular expense),
+;                                            RMAEXM(RMA  Misc.   expense),
+;                                            DEPEXR(DEPT Regular expense),
+;                                            DEPEXM(DEPT Misc.   expense)
+;                                  OUTPUT RMA and DEPT expense only if > 0
+;     93/SEP/24         B.E.     - added DOCTOR'S CEIEXP to TOTEXP amount
+;     93/SEP/28         B.E.     - changed update of *F119 from GROSS to NET values
+;     93/OCT/02         B.E.     - OUTPUT TOTxxx records to *F119 only if > 0
+;     93/OCT/05         B.E.     - RMA-EXPENSE calc. as diff between GROSS and NET
+;                                  minus DEPT-EXPENSE even if doctor's RMA
+;                                  EXPENSE PERCENTAGES are zero.
+;     93/OCT/26         B.E.     - changed IF > 0  to IF <> 0 on all OUTPUT stmnts
+;     93/OCT/30         B.E.     - AMT-INCOME-MINUS-EXPENSES-G now allowed  to go
+;                                  negative (otherwise negative income
+;                                  wasn't reported correctly)
+;     93/NOV/26         B.E.     - Reversed GROSS/NET fields on CEIEXP output to *F119
+;     93/DEC/03         B.E.     - for CEIEXP used AMT-NET not 0 in calc.
+;     93/DEC/24         B.E.     - put YTDEAR into *F119 for update into F119-DOCTOR-YTD
+;
+;     94/MAR/07         M.C.     - ADD THE CONDITIONAL COMPILE FOR 'INCEXP'
+;                                  LOGIC
+;     94/MAR/16         M.C.     - INCLUDE COMP-TYPE 'P' IN THE SUBFILE,
+;                                - CHANGE THE FORMULA FOR CALCULATING
+;                                  DEPT AND RMA EXPENSE
+;     95/MAY/02		M.C.	 - ADD THE BACKHOLD AS PART OF THE
+;				   EXPENSE
+;     95/MAY/08         M.C.     - COMMENT OUT THE SUBFILE DEBUGU115A,
+;				   MESSAGE 'VIRTUAL MEMORY HAS EXCEEDED'
+;				   OCCURRED WHEN EXECUTING PROGRAM EVEN
+;				   THE STACKSIZE HAS INCREASED FROM 1500
+;				   TO 10000. NOTE:  KEEP IN MIND THAT
+;				   SIMILIAR PROBLEM MAY OCCUR IF THERE
+;				   ARE MORE ITEMS, SUBFILES OR RECORDS
+;				   TO BE ADDED IN THE REQUESTS
+;     95/MAY/09		M.C.	 - CALCULATE THE RMA EXPENSE BY THE
+;				   DOCTOR RMA EXPENSE PERCENTAGE RATHER
+;				   THAN THE REMAINING VALUE BETWEEN
+;				   GROSS - NET - DEPT
+;     95/JUL/05         M.C.     - IF HOLDBACK < 10 CENTS, ADD TO RMA
+;				   EXPENSE IF RMA-EXPENSE IS NON-ZERO;
+;				   OTHERWISE, ADD TO DEPT EXPENSE
+;     95/JUL/14 	M.C.	 - DUE TO VIRTUAL MEMORY HAS EXCEEDED
+;				   SPLIT THE LAST REQUEST INTO A NEW
+;				   PROGRAM(U115B.QTS).  IF CHANGES ARE
+;				   REQUIRED IN THE LAST REQUEST, ALSO
+;				   MAKE THE SAME CHANGE IN U115B.QTS
+;     95/SEP/15		M.C.	 - INCLUDE 'E'XPENSE RECORDS AS PART OF
+;				   FINAL-ALL-EXPENSES
+;     95/NOV/07		M.C.	 - PDR 634 - INCLUDE NEW CONDITION FOR
+;				   TOT-REVHBK DEFINITION
+;     95/NOV/22  	M.C.	 - OPTIMIZE THE PROGRAM BY DELETING ALL
+;				   THE UNUSED TEMP & DEFINE ITEMS
+;     96/APR/19		M.C.	 - INCLUDE 'REVCLA' IN TOT-REVHBK
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/Jun/07		S.B.	 - Altered the call to gst.use to call 
+;				   from $use instead of src.
+; 00/nov/23.B.E.	- HOLDBK calculation has some rounding problems whereby
+;			  hold backs in the amount of a few cents occur. The
+;			  original logic ignored values less than 10 cents.
+;			  Changed to ignore anything less than $1.00
+; 00/mar/01 B.E.	- added debug subfiles and cosmetic alignment
+;			  of calculations
+; 03/jan/21 B.E.	- added doc-nbr to debug file debugu115a_at_doc_nbr
+; 03/dec/16 A.A.	- alpha doctor nbr
+; 04/jan/28 b.e.	- calculation of RMAEXR/RMAEXM which are based upon
+;			tot-rma-expense-only-reg/misc created only if calc is
+;			positive (doesn't fix all of problem but at least if
+;			total amount for month is negative we don't create
+;			negative charge)
+; 04/mar/01 b.e.	- added 'O'ther 'I'ncome processing in addition to
+;			  current logic that handles 'R'egular and 'M'isc
+;			  types of Income.
+; 04/mac/25 b .e.	- changed sequence of factor divide by 100000 to try
+;			  to avoid rounding errors (approx 5cents on 10,500)
+; 04/apr/01 b.e. 	- undid the jan 28 change as the GST and TOTEXP calcs
+;			  were still output and negative so unbalanced with
+; 06/mar/20 b.e.	- generate of HOLDBK transaction eliminated in 
+;			  u115_common.qts used by this program
+; 2006/may/10 b.e.      - $1M payroll changes to size of calculated fields
+; 2008/may/10 brad1     - "AFPADJ" transactions no longer shown on r124a stmnts
+;			   nor the '94' screen - moved to "C" type transactions
+;			   in f119 to 'hide' them (shown on new 96 screen)
+; 2008/jun/05 M.C.      - change access to link to f116-dtl file
+;			- change criteria when calculating amounts for TOTINC
+;			- modify criteria in $src/u115_common.qts
+;			- create records in new subfile f119_tithe
+; 2008/aug/19 M.C.      - prompt for global parameter for payroll-flag
+; 2008/sep/29 M.C.      - access to use f119 instead of f110 since titheable records have rec-type = 'D' in f119
+;			  which were generated from u130.qts
+; 2008/oct/21 brad2	- take all records for rec-type D  from f119 even if mtd-amt = 0 since ytd is what is used in calcs
+; 2008/oct/21 brad3	- amt-gross values set to amt-ytd (amt-net left set to amt-mtd) as the ytd values are used in calcs
+; 2008/oct/21 brad4	- UNDID ABOVE CHANGE - CHANGED ONE TIME CONVERSION FROM "A" to "D" records to put amt-mtd = amt-ytd
+; 2015/Jun/25 MC1	- add second linkage to f116-dtl for the actual doc-nbr for determine tithe 
+
+; needs TOTITE created from u122 -- this comment may be wrong!
+
+cancel clear
+set stacksize 10000
+run u115
+
+set default
+set process 50000
+
+set lock record update
+
+global temp ytdear-group   char*1
+global temp ytdear-seq-rpt zoned*2 unsigned
+
+global temp rmaexr-group   char*1
+global temp rmaexr-seq-rpt zoned*2 unsigned
+
+global temp rmaexm-group   char*1
+global temp rmaexm-seq-rpt zoned*2 unsigned
+
+global temp incexp-group   char*1
+global temp incexp-seq-rpt zoned*2 unsigned
+
+global temp totinc-group   char*1
+global temp totinc-seq-rpt zoned*2 unsigned
+
+global temp totexp-group   char*1
+global temp totexp-seq-rpt zoned*2 unsigned
+
+global temp depexr-group   char*1
+global temp depexr-seq-rpt zoned*2 unsigned
+
+global temp depexm-group   char*1
+global temp depexm-seq-rpt zoned*2 unsigned
+
+global temp gst-group   char*1
+global temp gst-seq-rpt zoned*2 unsigned
+
+global temp holdback-group   char*1
+global temp holdback-seq-rpt zoned*2 unsigned
+
+; 2008/08/19 - MC
+global temp payroll-flag char*1  parm  prompt 'Enter payroll (A/C) : '
+global temp totite-group   char*1
+global temp totite-seq-rpt zoned*2 unsigned
+
+global temp totitd-group   char*1
+global temp totitd-seq-rpt zoned*2 unsigned
+
+;  2008/08/19 - end
+
+;-------------------------------------------------------------------------------
+
+;
+; DETERMINE THE 'REPORTING-SEQ' AND 'COMP CODE GROUP'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u115_a_get_ytdear                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDEAR"
+item ytdear-group   = comp-code-group
+item ytdear-seq-rpt = reporting-seq
+
+request u115_a_get_rmaexr                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "RMAEXR"
+item rmaexr-group   = comp-code-group
+item rmaexr-seq-rpt = reporting-seq
+
+request u115_a_get_rmaexm                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "RMAEXM"
+item rmaexm-group   = comp-code-group
+item rmaexm-seq-rpt = reporting-seq
+
+request u115_a_get_incexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "INCEXP"
+item incexp-seq-rpt  = reporting-seq
+item incexp-group    = comp-code-group
+
+request u115_a_get_totinc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTINC"
+item totinc-seq-rpt  = reporting-seq
+item totinc-group    = comp-code-group
+
+request u115_a_get_totexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTEXP"
+item totexp-seq-rpt  = reporting-seq
+item totexp-group    = comp-code-group
+
+request u115_a_get_depexr                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPEXR"
+item depexr-group   = comp-code-group
+item depexr-seq-rpt = reporting-seq
+
+request u115_a_get_depexm                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPEXM"
+item depexm-group   = comp-code-group
+item depexm-seq-rpt = reporting-seq
+
+request u115_a_get_gst                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "GST"
+item gst-group   = comp-code-group
+item gst-seq-rpt = reporting-seq
+
+request u115_a_get_holdback                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "HOLDBK"
+item holdback-group   = comp-code-group
+item holdback-seq-rpt = reporting-seq
+
+;-------------------------------------------------------------------------------
+
+request u115_run_0                              &
+                on edit        errors report    &
+                on calculation errors report
+;main
+; 2008/09/29 - use f119 instead of 110
+;access constants-mstr-rec-6                                     &
+;	link current-ep-nbr viaindex compensation-key2          &
+;          to   ep-nbr  of f110-compensation                     &
+;	link doc-nbr of f110-compensation                       &
+access f119-doctor-ytd                          	 	&
+       link doc-nbr						&	
+;2008/09/29 - end
+        to   doc-nbr of f020-doctor-mstr                        &
+       link ("FLAT+3_TITHE_LEVELS"), 				&
+	    doc-dept, 						&
+	    doc-afp-paym-group, 				&
+	    '000', 						&
+	    comp-code  						&
+	 to dept-expense-calc-code, 				&
+	    dept-nbr, 						&
+	    doc-afp-paym-group, 				&
+	    doc-nbr, 						&
+	    comp-code 						&
+	  of  f116-dept-expense-rules-dtl alias f116-group  opt	&
+; MC1 - link with real doc-nbr
+       link ("FLAT+3_TITHE_LEVELS"), 				&
+	    doc-dept of f020-doctor-mstr, 			&
+	    doc-afp-paym-group of f020-doctor-mstr, 		&
+	    doc-nbr of f119-doctor-ytd, 			&
+	    comp-code of f119-doctor-ytd 			&
+	 to dept-expense-calc-code, 				&
+	    dept-nbr, 						&
+	    doc-afp-paym-group, 				&
+	    doc-nbr, 						&
+	    comp-code 						&
+	  of  f116-dept-expense-rules-dtl alias f116-doc    opt	&
+; MC1 - end
+; 2008/09/29 - use f119 instead      
+;	link comp-code of f110-compensation                     &
+        link comp-code of f119-doctor-ytd                       &
+; 2008/09/29 - end
+        to   comp-code of f190-comp-codes
+
+; 2008/09/29 - MC
+;choose const-rec-nbr 6
+;sorted on doc-nbr   of f110-compensation                        &
+;       on ep-nbr    of f110-compensation                        &
+;       on comp-code of f110-compensation  ; CHANGED TO SORTED WHEN CHOOSE ADDED !!!!
+sorted on doc-nbr   of f119-doctor-ytd                          &
+       on comp-code of f119-doctor-ytd 
+;2008/09/29 - end
+
+; 2008/09/29 - MC - add select
+;brad2
+select f119-doctor-ytd if rec-type of f119-doctor-ytd = 'D'	;	&
+;brad2	and amt-mtd of f119-doctor-ytd <> 0
+; 2008/09/29 - end
+
+;use $pb_src/gst.use
+use $use/gst.use
+; 2008/09/29 - MC
+;use $src/u115_common.qts 
+use $src/u115_common_f119.qts 
+; 2008/09/29 - end
+
+; if new record, initial YTD record in F119.  (required only for
+; "I"ncome, AND "E"xpense records - .ie calc rec types like CEICEA are
+;  needed AND the "D"eduction records are handled in the tax/eft processing)
+
+;brad1 - hide AFPADJ transactions
+define x-rec-type  char*1 = "A"
+define rec-type  char*1					&
+; 2008/09/29 - MC
+;      = "C" if comp-code of f110-compensation = "AFPADJ"	&
+      = "C" if comp-code of f119-doctor-ytd = "AFPADJ"	&
+   else "A"
+
+
+;def x-not-needed integer*8 signed size 4 = 0
+def x-not-needed integer*10 signed        = 0
+
+
+; (GROSS VALUES ARE USUALLY PUT INTO F119 HOWEVER FOR CEIEXP THE NET VALUE IS REQUIRED)
+
+;def x-amt-net int*8 signed size 4                                      &
+def x-amt-net int*10 signed                                     &
+; 2008/09/29 - MC
+;        = amt-gross of f110-compensation                        &
+;                 if comp-code of f110-compensation = "CEIEXP"	&
+;     else amt-net   of f110-compensation
+        = amt-mtd of f119-doctor-ytd                          &
+                 if comp-code of f119-doctor-ytd   = "CEIEXP"	&
+     else amt-mtd   of f119-doctor-ytd   
+; 2008/09/29 - end
+;def x-amt-gross int*8 signed size 4                                     &
+
+def x-amt-gross int*10 signed                                   &
+; 2008/09/29 - MC
+;        = amt-net   of f110-compensation                        &
+;                 if comp-code of f110-compensation = "CEIEXP"   &
+;     else amt-gross of f110-compensation
+        = amt-mtd   of f119-doctor-ytd                          &
+                 if comp-code of f119-doctor-ytd   = "CEIEXP"   &
+       else amt-mtd   of f119-doctor-ytd   
+;brad3 else amt-mtd   of f119-doctor-ytd   
+;brad4     else amt-ytd   of f119-doctor-ytd   
+; 2008/09/29 - end
+
+; don't put trans into subfile unless it's to appear in '94' screen
+;
+;subfile f119 keep                                	&
+
+;def x-comp-code char*6 = "RMAEXR"
+;subfile f119 alias f119-rmaexr   append     at doc-nbr          &
+;def x-comp-code-rmaexm char*6 = "RMAEXM"
+;subfile f119 alias f119-rmaexm   append     at doc-nbr      &
+;def x-comp-code-gst char*6 = "GST"
+
+def tot-gst-only integer*10 signed        &
+    =  tot-gst-only-reg                   &
+     + tot-gst-only-misc
+;subfile f119 alias f119-gst      append     at doc-nbr &
+
+;def x-comp-code-holdback char*6 = "HOLDBK"
+def tot-holdback-only integer*10 signed   &
+    =  tot-holdback-only-reg              &
+     + tot-holdback-only-misc
+;subfile f119 alias f119-holdback      append     at doc-nbr     &
+
+;def x-comp-code-totinc char*6 = "TOTINC"
+def tot-income-gross   integer*10 signed        &
+    =  tot-income-gross-reg                     &
+     + tot-income-gross-misc			&
+     + tot-income-gross-other
+;def tot-income-net     integer*8 signed size 4  		&
+def tot-income-net     integer*10 signed        &
+    =  tot-income-net-reg                       &
+     + tot-income-net-misc			&
+     + tot-income-net-other
+;subfile f119 alias f119-totinc   append     at doc-nbr      &
+;def x-comp-code-depexr char*6 = "DEPEXR"
+;subfile f119 alias f119-depexr   append     at doc-nbr    &
+;def x-comp-code-depexm char*6 = "DEPEXM"
+;subfile f119 alias f119-depexm   append     at doc-nbr    &
+
+; ('Total Expense" = all "E"xpense trans found in file PLUS the
+;  expense transactions calculated by the pgm IE. 'RMA EXPENSE', 'GST'
+;  and 'DEPARTMENT EXPENSE' and 'HOLDBACK')
+;temp final-all-expenses integer*8 size 4
+temp final-all-expenses integer*10
+item final-all-expenses                                    &
+     =  tot-dept-expense-reg                               &
+      + tot-dept-expense-misc                              &
+      + tot-rma-expense-only-reg                           &
+      + tot-rma-expense-only-misc                          &
+      + tot-gst-only                                       &
+      + tot-holdback-only                                  &
+      + tot-revhbk					   &
+      + doc-ceicex        ; 93/SEP/24
+
+;def x-comp-code-totexp char*6 = "TOTEXP"
+;subfile f119 alias f119-totexp   append     at doc-nbr         &
+
+temp amt-income-minus-expenses-g integer*10 signed
+item amt-income-minus-expenses-g                        &
+       =  tot-income-gross                              &
+        - final-all-expenses
+
+;def x-comp-code-incexp char*6 = "INCEXP"
+;subfile f119 alias u115-incexp   append     at doc-nbr         &
+
+temp doc-ytdear-plus-amt-manpay  integer*10 signed 
+item doc-ytdear-plus-amt-manpay                                 &
+ =   doc-ytdear of f020-doctor-mstr                             &
+   + amt-manpay
+;def x-comp-code-ytdear char*6 = "YTDEAR"
+;subfile f119 alias f119-ytdear   append     at doc-nbr          &
+
+; 2008/09/29 - MC
+;use $src/u115_debug.qts
+use $src/u115_debug_f119.qts
+; 2008/09/29 - end
+
+; 2008/06/05 - MC - include f119-tithe subfile 
+define rec-type-d char*1 = 'D'
+
+def doc-nbr-summ  char*3 = '000'
+
+;output rec with real doc-nbr
+subfile f119_tithe_dtl  keep 	                  &
+  if    comp-type of f190-comp-codes = "I"    	  &
+; MC1 
+;    and tithe-in-ex-clude-flag = "I"		  &
+    and tithe-in-ex-clude-flag of f116-group = "I"  & ; titheable at group level
+    and tithe-in-ex-clude-flag of f116-doc <> 'E' &   ; NOT 'Excluded' at doc level
+; MC1 - end
+   include                                        &
+         doc-ohip-nbr of f020-doctor-mstr       , &
+; 2008/09/29 - use f119 instead
+;         doc-nbr   of f110-compensation         , &
+;         comp-code of f110-compensation         , &
+         doc-nbr   of f119-doctor-ytd     	, &
+         comp-code of f119-doctor-ytd  	, &
+; 2008/09/29 - end
+         reporting-seq   of f190-comp-codes     , &
+         comp-code-group of f190-comp-codes     , &
+         rec-type-d                             , &
+         x-amt-net alias x-amt-net-dtl          , &
+         x-amt-gross alias x-amt-gross-dtl
+
+;output summary rec with doc-nbr = "000"
+subfile f119_tithe_dtl alias f119_doc_summ  append    &
+  if    comp-type of f190-comp-codes = "I"    	  &
+; MC1
+;   and tithe-in-ex-clude-flag = "I"		  &
+    and tithe-in-ex-clude-flag of f116-group = "I"  & ; titheable at group level
+    and tithe-in-ex-clude-flag of f116-doc <> 'E' &   ; NOT 'Excluded' at doc level
+; MC1 - end
+   include                                        & 
+         doc-ohip-nbr of f020-doctor-mstr       , &
+         doc-nbr-summ                           , &
+; 2008/09/29 - use f119 instead
+;         comp-code of f110-compensation         , &
+         comp-code of f119-doctor-ytd  	, &
+; 2008/09/29 - end
+         reporting-seq   of f190-comp-codes     , &
+         comp-code-group of f190-comp-codes     , &
+         rec-type-d                             , &
+         x-amt-net                              , &
+         x-amt-gross
+
+def x-comp-code-totit char*6 = "TOTITE"	if payroll-flag = 'A'	&
+			else   "TOTITD"	if payroll-flag = 'C'
+
+def totit-seq-rpt zoned*2 unsigned  = totite-seq-rpt  if payroll-flag = 'A'	&
+				else  totitd-seq-rpt  if payroll-flag = 'C'
+
+def totit-group    char*1           = totite-group    if payroll-flag = 'A'	&
+				else  totitd-group    if payroll-flag = 'C'
+
+def tot-tithe-gross   integer*10 signed        &
+    =  tot-tithe-gross-reg                     &
+     + tot-tithe-gross-misc                     &
+     + tot-tithe-gross-other
+def tot-tithe-net     integer*10 signed        &
+    =  tot-tithe-net-reg                       &
+     + tot-tithe-net-misc                       &
+     + tot-tithe-net-other
+
+
+;;; debug for MC  
+subfile u115a0_mc keep at doc-nbr  include			&
+         doc-ohip-nbr of f020-doctor-mstr       , &
+         doc-nbr of f119-doctor-ytd     , &
+         x-comp-code-totit             , &
+         totit-seq-rpt                 , &
+         totit-group                   , &
+         rec-type-d                   , &
+         tot-tithe-net                 , &
+	 tot-tithe-gross	       ,&
+       tot-tithe-net-reg               , &
+       tot-tithe-net-misc              , &
+       tot-tithe-net-other
+;;;;;;;
+
+
+	
+;output real doctor with totitE/D           
+subfile f119_tithe_dtl  alias f119-totit-doc append     at doc-nbr      &
+  if tot-tithe-net <> 0           include                          &
+         doc-ohip-nbr of f020-doctor-mstr       , &
+; 2008/09/29 -MC
+;         doc-nbr of f110-compensation   , &
+         doc-nbr of f119-doctor-ytd     , &
+; 2008/09/29 - end 
+         x-comp-code-totit             , &
+         totit-seq-rpt                 , &
+         totit-group                   , &
+         rec-type-d                   , &
+         tot-tithe-net                 , &
+         tot-tithe-gross
+
+
+;output summary doctor '000' with totitE/D           
+subfile f119_tithe_dtl  alias f119-totit-summ   append     at doc-nbr      &
+  if tot-tithe-net <> 0           include                          &
+         doc-ohip-nbr of f020-doctor-mstr       , &
+         doc-nbr-summ                   , &
+         x-comp-code-totit             , &
+         totit-seq-rpt                 , &
+         totit-group                   , &
+         rec-type-d                     , &
+         tot-tithe-net                 , &
+         tot-tithe-gross
+
+
+;-------------------------------------------------------------------------------
+
+build $obj/u115a_0

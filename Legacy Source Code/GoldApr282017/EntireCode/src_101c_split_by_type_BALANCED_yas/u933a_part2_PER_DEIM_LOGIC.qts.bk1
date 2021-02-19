@@ -1,0 +1,634 @@
+; Program: u933a_part2.qts
+; Purpose: create payroll transactions for ICU doctors
+
+;			  
+; 2001/apr/24 B.E.	- split u933.qts into u933a_part1/2 to create
+;			  this pgm.
+;			  This pgm must run in the ICU Payroll directory!
+; 2001/jun/06 B.E.	- holdback percentage (amount shown in HOLDIC) no 
+;			  longer hardcoded as 5% but taken from the factor
+;			  of HOLDIC in f190
+; 2001/oct/26 M.C.      - add conditional compile icu   & 81y2k
+; 2002/jan/16 B.E.	- added logic to include 'per diem' payments as
+;			  part of income in addition to the regular
+;			  'fee for service' billings
+;			- eliminated conditional compile as 81y2k payroll
+;			  no longer needed
+;
+
+can clear
+run u933a_part2
+
+set process nolimit
+set lock file update
+
+global temp holdic-seq      zoned*2 unsigned
+global temp holdic-seq-rpt  zoned*2 unsigned
+global temp holdic-type     char*1
+global temp holdic-group    char*1
+global temp holdic-factor   numeric
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request get_const_mstr_get_ep_nbr              &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        final  current-ep-nbr
+item w-current-ep-nbr-minus1 final  current-ep-nbr - 1
+
+;---------------------------------------------------------------------
+request u116_a_get_holdic                    &
+                on edit        errors report &
+                on calculation errors report
+;------------------------------------------------------------
+access f190-comp-codes
+choose comp-code "HOLDIC"
+item holdic-seq     =  process-seq
+item holdic-seq-rpt =  reporting-seq
+item holdic-type    =  comp-type
+item holdic-group   =  comp-code-group
+item holdic-factor  =  factor
+
+
+
+;---------------------------------------------------------------------
+;request u116_a_get_advout                    &
+;                on edit        errors report &
+;                on calculation errors report
+;------------------------------------------------------------
+;access f190-comp-codes
+;choose comp-code "DEFOUT"
+;item advout-seq     =  process-seq
+;item advout-seq-rpt =  reporting-seq
+;item advout-type    =  comp-type
+;item advout-group   =  comp-code-group
+;item advout-factor  =  factor
+
+
+;------------------------------------------------------------------------
+request u933a_delete_deficit_f119_recs   &
+        on edit        errors report    &
+        on calculation errors report
+
+set process nolimit
+
+access f119-doctor-ytd
+
+; (delete any previous 'text' messages created by previous runs of u993)
+select if     rec-type = "B"				&
+          and last-mod-user-id  = "U993a    Gen'd"
+
+output f119-doctor-ytd delete
+
+;---------------------------------------------------------------------
+request u933_calculate_comp_codes
+;------------------------------------------------------------
+
+set process nolimit
+         
+access *u933a_doc					&
+   link doc-nbr							&
+     to doc-nbr of f020-doctor-mstr opt 			&
+   link comp-code                                               &
+     to comp-code of f190-comp-codes opt			&
+   link 22							&
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+use $use/icu_depts.def nol
+
+def x-clawback-percent = parm prompt  "CLAWBACK % (99.99): "
+def x-charge-per-claim = parm prompt "RMA CHARGE PER CLAIM: "
+
+def tot-fees-billed 						&
+	= x-tot-fees-billed	if clmhdr-batch-type = "C" 	&
+     else 0
+def tot-adjustments 						&
+	= x-tot-fees-billed	if clmhdr-batch-type <> 'C'	&
+     else 0
+
+def tot-per-diem-billings 						 &
+     =   x-tot-days-in-non-fee-for-svc-loc				 &
+       * amt-per-unit of f190-comp-codes if record f190-comp-codes exists &
+ else 0
+
+; 2002/jan/16
+; net fees = fee-for-service billings + per-diem billings - adjustments
+; (NOTE adjustments already negative - so add then don't subtract) 
+def x-net-fees 		= (  tot-fees-billed 			&
+			   + tot-per-diem-billings		&
+			   + tot-adjustments			&
+			  )
+def x-less-clawback 	= round ( round( (  x-net-fees  	&
+   			                  * x-clawback-percent	&
+				         )			&
+			               )			&
+			          / 100				&
+				)
+
+def x-tot-billing 	= x-net-fees - x-less-clawback
+def tmp-1	= round ( (  x-tot-billing 		&
+		           * holdic-factor		&
+		  	  )				&
+			)	
+def tmp-2	= tmp-1 / 10000
+
+def x-amt-holdback-icu	= round ( tmp-2) 
+				  
+def x-tot-billing-minus-holdback= x-tot-billing - x-amt-holdback-icu
+
+def x-rma-icu-charge 	= x-nbr-svcs   * (x-charge-per-claim * 100)
+;brad def x-rma-icu-charge 	= tot-nbr-claims * (x-charge-per-claim * 100)
+
+use $use/gst.use nol
+def x-gst 		= round ((x-rma-icu-charge * gst-percent) / 100)
+
+def x-tot-exp 		= x-rma-icu-charge + x-gst
+def x-net 		= x-tot-billing-minus-holdback - x-tot-exp
+
+
+temp x-comp-code char*6
+temp x-factor
+temp x-units
+temp x-amt-mtd
+temp x-amt-ytd
+
+item x-comp-code= "NBRCLM"
+item x-factor	= x-charge-per-claim * 10000
+;brad item x-units	= tot-nbr-claims
+item x-units	= x-nbr-svcs   
+;brad item x-amt-mtd	= tot-nbr-claims * 100 ; no decimals allowed so bump up nbr
+item x-amt-mtd	= x-nbr-svcs * 100 ; no decimals allowed so bump up nbr
+;brad item x-amt-ytd	= tot-nbr-claims * 100
+item x-amt-ytd	= x-nbr-svcs * 100
+
+subfile u933a2  alias  u933a2-nbrclm keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "NBRSVC"
+item x-factor	= 0
+item x-units	= x-nbr-svcs
+item x-amt-mtd	= x-nbr-svcs * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= x-nbr-svcs * 100
+
+
+subfile u933a2  alias  u933a2-nbrsvc keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILICU"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= tot-fees-billed
+item x-amt-ytd	= tot-fees-billed
+
+subfile u933a2  alias  u933a2-bilicu keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ADJICU"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= tot-adjustments
+item x-amt-ytd	= tot-adjustments
+
+subfile u933a2  alias  u933a2-adjicu keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "NETBIL"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-net-fees
+item x-amt-ytd	= x-net-fees
+
+subfile u933a2  alias  u933a2-netbil keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "CLAWBK"
+item x-factor	= x-clawback-percent * 100
+item x-units	= 0
+item x-amt-mtd	= x-less-clawback
+item x-amt-ytd	= x-less-clawback
+
+subfile u933a2  alias  u933a2-clawbk keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTBIL"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing
+item x-amt-ytd	= x-tot-billing
+
+subfile u933a2  alias  u933a2-totbil keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	X-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "HOLDIC"
+;  item x-factor	= 500 ; 5%
+item x-factor	= holdic-factor
+item x-units	= 0
+item x-amt-mtd	= x-amt-holdback-icu
+item x-amt-ytd	= x-amt-holdback-icu
+
+subfile u933a2  alias  u933a2-holdic keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILL95"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing-minus-holdback
+item x-amt-ytd	= x-tot-billing-minus-holdback
+
+subfile u933a2  alias  u933a2-bill95 keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= comp-code of u933a_doc
+item x-factor	= 1
+item x-units	= x-tot-days-in-non-fee-for-svc-loc 
+item x-amt-mtd	= tot-per-diem-billings
+item x-amt-ytd	= tot-per-diem-billings
+
+; 2002/jan/16
+subfile u933a2  alias  u933a2-per-diem-comp-code keep		&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+;
+;ICU Charges and expense only for non-RMA doctors
+;
+
+item x-comp-code= "ICUCHR"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-rma-icu-charge
+item x-amt-ytd	= x-rma-icu-charge
+
+subfile u933a2  alias  u933a2-rmachr keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ICUGST"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-gst
+item x-amt-ytd	= x-gst
+
+subfile u933a2  alias  u933a2-icugst keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTEXP"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-exp
+item x-amt-ytd	= x-tot-exp
+
+subfile u933a2  alias  u933a2-totexp keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+;2001/may/17 advances no longer taken off of potential pay
+;            any advance (or deficit as now called) is subtrated
+;	     from potential pay as a deduction to reduce EFT)
+;; (advances are taken off potential pay for NON-RMA doctors only)
+;def x-amt-net-f110-advout numeric*8                         	&
+;       = amt-net  of f110-advout   				&
+;		if     record f110-advout exists 		&
+;                   and doc-dept = icu-dept-1			&
+;    else 0
+
+; 'basic' potential pay calculation is the 'net' amount if non-rma doctor 
+; otherwise show the 'net revenue' for rma doctors
+item x-comp-code= "PAYPOT"
+item x-factor	= 0
+item x-units	= 0
+
+; (basic potential pay calculation)
+def  x-paypot-1	= x-net 					&
+			if doc-dept = icu-dept-1	 	&	
+            else  x-tot-billing-minus-holdback
+
+; as noted above - no 'advance/deficit' processing
+;; (for non-rma doctor's subtract any advances coming into this EP)
+;def  x-paypot-2 = x-paypot-1					&
+;			if   x-amt-net-f110-advout = 0		&
+;	     else   x-paypot-1 					&
+;	          - x-amt-net-f110-advout
+
+;; (if is greater than amt 
+;;  to be paid, create a deduction that will
+;;  be processed in Deductions processing and reduce PAY EFT)
+;def x-amt-defic integer*8 signed size 4                      	&
+;        = 0		if x-paypot-2 >= 0                   	&
+;     else abs(x-paypot-2)
+;; (if Advances where greater than amt to be paid, pay zero)
+;def x-paypot-3 integer*8 signed size 4                    	&
+;        = x-paypot-2	if x-paypot-2 >= 0               	&
+;     else 0
+
+item x-amt-mtd	= x-paypot-1 
+;item x-amt-ytd	= x-paypot-3 ; used when 'advances' affect potpay
+item x-amt-ytd	= x-paypot-1 
+
+subfile u933a2  alias  u933a2-paypot keep			&
+     include							&
+	doc-nbr of u933a_doc,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+;item x-comp-code= "DEFIC"
+;item x-factor	= 0
+;item x-units	= 0
+;item x-amt-mtd	= x-amt-defic
+;item x-amt-ytd	= x-amt-defic 
+;
+;subfile u933a2  alias  u933a2-defic keep			&
+; if doc-dept = icu-dept-1					&
+;   and x-amt-defic > 0						&
+;     include							&
+;	doc-nbr of u933a_doc,					& 
+;	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+subfile u933a1     keep include                    			&
+        doc-nbr of u933a_doc,                    			&
+;brad        doc-name, doc-dept, tot-nbr-claims, x-nbr-svcs, 		&
+        doc-name, doc-dept,  x-nbr-svcs, 				&
+	tot-fees-billed, tot-adjustments, x-less-clawback, 		&
+	x-tot-billing, x-tot-billing-minus-holdback, x-rma-icu-charge, 	&
+	x-gst, x-tot-exp, x-net, iconst-date-period-end
+
+
+subfile debug_u933a keep include			&
+  doc-nbr of u933a_doc,					&
+  doc-dept of f020-doctor-mstr,				&
+  w-current-ep-nbr,					&
+  clmdtl-sv-date  ,					&
+;brad  tot-nbr-claims of u933a_doc,			&
+  x-nbr-svcs of u933a_doc,				&
+  x-clawback-percent,					&
+  x-charge-per-claim,					&
+  clmdtl-nbr-serv  ,					&
+  clmhdr-loc      ,					&
+  clmhdr-batch-type ,					&
+  comp-code of u933a_doc,				&
+  x-tot-fees-billed of u933a_doc,			&
+  x-day-in-non-fee-for-svc-loc ,			&
+  x-fee-billed               ,				&
+  x-tot-days-in-non-fee-for-svc-loc,			&
+  x-net-fees,						&
+  x-less-clawback,					&
+  x-tot-billing,					&
+  holdic-factor,					&
+  x-tot-billing-minus-holdback,				&
+  tmp-1, 						&
+  tmp-2, 						&
+  x-amt-holdback-icu,					&
+  x-rma-icu-charge,					&
+  x-gst,						&
+  x-tot-exp,						&
+  x-net,						&
+  x-paypot-1
+
+;---------------------------------------------------------------------
+request u933_build_days_months_worked_records	&
+                on edit        errors report 	&
+                on calculation errors report
+;------------------------------------------------------------
+
+access *u933a_svc_date
+
+sort	on doc-nbr		&
+	on clmdtl-sv-date
+
+; select only those days for which a 'per diem' day is being granted
+select if  x-tot-days-in-non-fee-for-svc-loc <> 0
+
+def x-month char*9					&
+	   = "January"	if clmdtl-sv-date[5:2] = "01"	&
+      else  "February"	if clmdtl-sv-date[5:2] = "02"	&
+      else  "March"   	if clmdtl-sv-date[5:2] = "03"	&
+      else  "April"   	if clmdtl-sv-date[5:2] = "04"	&
+      else  "May"     	if clmdtl-sv-date[5:2] = "05"	&
+      else  "June"    	if clmdtl-sv-date[5:2] = "06"	&
+      else  "July"    	if clmdtl-sv-date[5:2] = "07"	&
+      else  "August"  	if clmdtl-sv-date[5:2] = "08"	&
+      else  "September"	if clmdtl-sv-date[5:2] = "09"	&
+      else  "October" 	if clmdtl-sv-date[5:2] = "10"	&
+      else  "November"	if clmdtl-sv-date[5:2] = "11"	&
+      else  "December"	if clmdtl-sv-date[5:2] = "12"	
+
+def x-day char*2 = clmdtl-sv-date[7:2]	
+
+subfile u933_1 keep include 		&
+	u933a_svc_date,			&
+	x-month,			&
+	x-day
+
+;---------------------------------------------------------------------
+request u933_build_days_worked_array		&
+                on edit        errors report 	&
+                on calculation errors report
+;------------------------------------------------------------
+
+access *u933_1
+
+sort  	on doc-nbr		&
+	on comp-code		&
+	on x-month		&
+	on x-day
+
+temp prev-month char*9 
+temp prev-doc  
+
+temp array1-dates char*80
+item array1-dates 					&
+	=   truncate(lj(array1-dates))			&
+	  + "  "  + truncate(lj(x-month)) + ": "	&
+	  + x-day + "/"					&
+		if     doc-nbr  = prev-doc   		&
+		   and x-month <> prev-month 		&
+     else 						&
+	    truncate(lj(array1-dates)) 			&
+	  + x-day + "/"					&
+		if     doc-nbr  = prev-doc   		&
+		   and x-month  = prev-month 		&
+     else						&
+	    truncate(lj(x-month)) + ": "		&
+	  + x-day + "/"
+
+item prev-month =  x-month  if prev-month <> x-month	&
+		 else  prev-month
+item prev-doc   =  doc-nbr  if prev-doc   <> doc-nbr	&
+		 else  prev-doc
+
+subfile u933_2 keep at doc-nbr include	&
+  doc-nbr,				&
+  clmhdr-batch-type,			&
+  comp-code,				&
+  clmdtl-sv-date,			&
+  x-day-in-non-fee-for-svc-loc,		&
+  x-fee-billed,				&
+  x-nbr-svcs,				&
+  x-tot-fees-billed,			&
+  x-tot-days-in-non-fee-for-svc-loc,	&
+  array1-dates
+
+;---------------------------------------------------------------------
+request u933_update_default_compensation	&
+                on edit        errors report 	&
+                on calculation errors report
+;------------------------------------------------------------
+
+access *u933_2                                                  &
+        link doc-nbr,                                           &
+             w-current-ep-nbr,                                  &
+             comp-code                                          &
+        to   doc-nbr,                                           &
+             ep-nbr-from,                                       &
+             comp-code    of f113-default-comp    opt           &
+        link comp-code                                          &
+        to   comp-code    of f190-comp-codes      opt
+
+output f113-default-comp add alias f113-add                             &
+    if     not record f113-default-comp  exists
+        item doc-nbr         final  doc-nbr of u933_2
+        item ep-nbr-from     final  w-current-ep-nbr
+        item ep-nbr-to       final  w-current-ep-nbr
+        item ep-nbr-entry    final  w-current-ep-nbr
+        item comp-code       final  comp-code   of u933_2
+        item factor          final  10000
+        item factor-override final  " "
+        item comp-units      final  x-tot-days-in-non-fee-for-svc-loc
+
+        item amt-net         final  x-tot-fees-billed
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+        item last-mod-user-id final  "U993a    Gen'd"
+
+output f113-default-comp alias f113-update update  &
+    if     record f113-default-comp  exists
+        item factor          final  10000
+        item factor-override final  " "
+        item comp-units      final  x-tot-days-in-non-fee-for-svc-loc
+        item amt-gross       final  x-tot-fees-billed
+        item amt-net         final  x-tot-fees-billed
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+
+
+;---------------------------------------------------------------------
+request u933_update_f119_msg_rec_with_days_worked	&
+                on edit        errors report 		&
+                on calculation errors report
+;------------------------------------------------------------
+
+access *u933_2								&
+        link doc-nbr of u933_2,                                        	&
+             "MSG",							&
+	     1								&
+        to   doc-nbr,                                           	&
+             comp-code,							&
+             process-seq  of f119-doctor-ytd 		     opt	&
+        link doc-nbr of u933_2,                                        	&
+             "MSG",							&
+	     2								&
+        to   doc-nbr,                                           	&
+             comp-code,							&
+             process-seq  of f119-doctor-ytd alias f119-line-2     opt	&
+        link doc-nbr of u933_2,                                        	&
+             "MSG",							&
+	     3								&
+        to   doc-nbr,                                           	&
+             comp-code,							&
+             process-seq  of f119-doctor-ytd alias f119-line-3     opt
+
+def msg-1-text char*130 				&
+  = "** ICU 'per diem' payment reflects Roster on the following dates:"
+
+output f119-doctor-ytd alias f119-line-1-add add	&
+    if     not record f119-doctor-ytd  exists
+	item rec-type		final  "B"
+        item doc-nbr 		final  doc-nbr of u933_2
+        item comp-code		final  "MSG"
+	item process-seq	final  1
+        item text		final  msg-1-text
+        item last-mod-date	final  sysdate
+        item last-mod-time	final  systime / 10000
+        item last-mod-user-id	final  "U993a    Gen'd"
+
+output f119-doctor-ytd   update 			&	
+    if     record f119-doctor-ytd  exists
+        item text		final  msg-1-text
+        item last-mod-date	final  sysdate
+        item last-mod-time	final  systime / 10000
+        item last-mod-user-id	final  "U993a    Gen'd"
+
+def msg-2-text char*130 				&
+  = "       " + array1-dates
+
+output f119-doctor-ytd  alias f119-line-2-add  add		&
+    if     not record f119-line-2  exists
+	item rec-type		final  "B"
+        item doc-nbr		final  doc-nbr of u933_2
+        item comp-code		final  "MSG"
+	item process-seq	final  2
+        item text		final  msg-2-text
+        item last-mod-date	final  sysdate
+        item last-mod-time	final  systime / 10000
+        item last-mod-user-id	final  "U993a    Gen'd"
+
+output f119-line-2  update			&
+    if     record f119-line-2  exists
+        item text		final  msg-2-text
+        item last-mod-date	final  sysdate
+        item last-mod-time	final  systime / 10000
+        item last-mod-user-id	final  "U993a    Gen'd"
+
+def msg-3-text char*130 					&
+  = "       Refer any discrepancies to Dr. Cindy Hamielec."
+
+output f119-doctor-ytd  alias f119-line-3-add  add		&
+    if     not record f119-line-3  exists
+	item rec-type		final  "B"
+        item doc-nbr		final  doc-nbr of u933_2
+        item comp-code		final  "MSG"
+	item process-seq	final  3
+        item text		final  msg-3-text
+        item last-mod-date	final  sysdate
+        item last-mod-time	final  systime / 10000
+        item last-mod-user-id	final  "U993a    Gen'd"
+
+output f119-line-3  update				& 
+    if     record f119-line-3  exists
+        item text		final  msg-3-text
+        item last-mod-date	final  sysdate
+        item last-mod-time	final  systime / 10000
+        item last-mod-user-id	final  "U993a    Gen'd"
+
+build $obj/u933a_part2

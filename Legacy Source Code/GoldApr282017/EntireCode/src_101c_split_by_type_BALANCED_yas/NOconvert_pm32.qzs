@@ -1,0 +1,108 @@
+; NAME:   PM32.QZS
+; PURPOSE: PRINT PWO's on a requested employee.
+; MODIFICATION HISTORY
+;  DATE       WHO            WHY
+; 90/AUG/16   B. LANGENDOCK  - Original.
+; 92/FEB/28   B. LANGENDOCK  - STREAM LINE PROGRAM TO RUN FASTER AND
+;                              INCLUDE NEW CHANGES - SMS 1005
+
+can clear
+set default
+set report device printer
+set report nolimit
+set report page length 60 width 80
+
+access ftimesht &
+       link tsht-emp to emp-num of femployees &
+       and to fpwos &
+       and (ascii(tsht-emp,4) + ascii(pwo-num of ftimesht,5)) &
+               to emppwo-key of femppwos
+
+choose tsht-key parm    &
+           prompt "Enter START period YYMM : "     &
+   range toprompt "       END  period YYMM : " 1 time
+
+
+sort on emp-num on tsht-yymm on pwo-num
+
+define x-bill-hrs pic '^^^^.^^' = tot if billable = ' ' &
+   and billable of fpwos = 'Y'
+
+define x-nobill-hrs pic '^^^^.^^' = tot if billable = '*' &
+   or  billable of fpwos = 'N'
+
+;;;define x-emp-num zoned*4 unsigned = parm &
+;;;  prompt "Enter employee number: "
+
+define x-wdays zoned*5 unsigned = parm &
+        prompt "ENTER THE NUMBER OF WORKING DAYS IN MONTH(S): "
+define x-hours zoned*5 unsigned = parm &
+        prompt "ENTER THE NUMBER OF HOURS IN WORKING DAY : "
+define x-base-hr numeric*5 = x-wdays * x-hours
+define x-bill-dol numeric*6 pic '^^^^.^^' = x-bill-hrs * (bill-rate/100)
+define x-bill-per numeric*8 = (x-bill-hrs/x-hours)/x-wdays * 100
+define x-nobill-per numeric*8 = (x-nobill-hrs/x-hours)/x-wdays * 100
+
+define year character*2 = characters(tsht-yymm)[1:2]
+define month character*9 = &
+ 	"  JANUARY" if characters(tsht-yymm)[3:2] = "01" else &
+        " FEBRUARY" if characters(tsht-yymm)[3:2] = "02" else &
+        "    MARCH" if characters(tsht-yymm)[3:2] = "03" else &
+        "    APRIL" if characters(tsht-yymm)[3:2] = "04" else &
+        "      MAY" if characters(tsht-yymm)[3:2] = "05" else &
+        "     JUNE" if characters(tsht-yymm)[3:2] = "06" else &
+        "     JULY" if characters(tsht-yymm)[3:2] = "07" else &
+        "   AUGUST" if characters(tsht-yymm)[3:2] = "08" else &
+        "SEPTEMBER" if characters(tsht-yymm)[3:2] = "09" else &
+        "  OCTOBER" if characters(tsht-yymm)[3:2] = "10" else &
+        " NOVEMBER" if characters(tsht-yymm)[3:2] = "11" else &
+        " DECEMBER" if characters(tsht-yymm)[3:2] = "12"
+
+page heading sysdate format yymmmdd tab 29 "DYAD TECHNOLOGIES INC." tab 70 &
+   "page: " tab 76 syspage skip 2 tab 29 "EMPLOYEE/PWO BREAKDOWN " &
+   skip 1 tab 31 "FOR" tab 35 month tab 44 "/19" tab 47 year skip 2
+
+heading at emp-num  &
+      skip 3 &
+      tab 1 "Emp Num:" &
+      tab 10 emp-num   &
+      tab 18 "Name:"   &
+      tab 26 name      &
+      skip 2 tab 1 "PWO #" &
+      tab  8 "CLI" &
+      tab 15 "PWO DESCRIPTION"  &
+      tab 42 "BILLABLE"   &
+      tab 55 "BILL $"   &
+      tab 65 "NON-BILL"   &
+      tab 75 "TOTAL" skip 2
+
+footing at pwo-num  &
+      tab 1 pwo-num  &
+      tab 8  client   &
+      tab 12 pwo-desc  &
+      tab 43 x-bill-hrs subtotal pic '^^^^.^^' &
+      tab 54 x-bill-dol subtotal pic '^^^^.^^' &
+      tab 65 x-nobill-hrs subtotal pic '^^^^.^^' &
+      tab 73 tot subtotal pic '^^^^.^^'
+
+footing at emp-num &
+      tab 44 "------" tab 55 "------" tab 66 "------" tab 74 "------" &
+      skip tab 43 x-bill-hrs subtotal pic '^^^^.^^' &
+      tab 53 x-bill-dol subtotal pic '^^^^^.^^' &
+      tab 65 x-nobill-hrs subtotal pic '^^^^.^^' &
+      tab 73 tot subtotal pic '^^^^.^^' &
+      skip 2 &
+      tab 10 "NO OF WORKING DAYS IN MONTH   : " &
+      tab 41 x-wdays &
+      skip tab 10 "NO OF WORKING HOURS IN DAY    : " &
+      tab 41 x-hours                              &
+      skip tab 10 "TOTAL BASE HOURS FOR MONTH(S) : " &
+      tab 41 x-base-hr                            &
+      skip 2 tab 10 "BILLABLE PERCENTAGE      : " &
+      tab 41 x-bill-per  subtotal  pic '^^^.^^%' &
+      skip tab 10 "NON-BILLABLE PERCENTAGE  : " &
+      tab 41 x-nobill-per subtotal pic '^^^.^^%'
+
+
+build $pb_obj/pm32
+  

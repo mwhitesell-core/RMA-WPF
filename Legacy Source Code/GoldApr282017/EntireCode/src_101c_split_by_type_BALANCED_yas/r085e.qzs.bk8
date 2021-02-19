@@ -1,0 +1,324 @@
+; Program: r085e 
+; Purpose: create letters to patients requesting update of health card 
+;	   eligibility information. All claims  of the patient are
+;	   listed in the body of the letter along with doctor's
+;		   name
+;		 - NOTE: only claims that have NOT be flagged as confidential
+;		        ("Y" for ministry, "R" for rma flagged) will be 
+;			printed.
+;		 - If ALL claims are confidential NO letter is genereated
+;
+;	93/03/25	M. CHAN		- SMS 141 (ORIGINAL)
+;       93/03/26        Y. BOCCIA         MODIFY
+;       93/04/27        Y. BOCCIA         REPLACE VH8 WITH EH3
+;	93/05/21	M. CHAN		- ADD MESS CODE CHECK IN THE
+;					  SELECTION CRITERIA (IE. IF
+;					  USER ENTERS THE REJECTED CLAIM
+;					  AND CORRECTS THE INFO WITHIN
+;					  THE SAME CYCLE, LETTER IS NOT
+;					  REQUIRED)
+;	93/06/04        YASEMIN         - SORT ON PAT NAME
+;	93/11/29        YASEMIN         - TAKE OUT ROSE MARINO
+;       94/02/22	M. CHAN		- PDR 594
+;					- CHECK LAST MAILING > 21 DAYS
+;					  OLD INSTEAD OF 10 DAYS
+;       94/08/30	YASEMIN 	- MODIFY FIST PARAGRAPH
+;       96/03/28	YASEMIN 	- ADD RMA HEADING
+;
+;       96/09/05	YASEMIN 	- change body of letter
+;       98/12/10        B.E.		- renamed from r085 to r085c. changed 
+;					  to access subfile created in r085a.
+;  99/jan/31 	B.E.	- y2k
+;  99/june/29   Yasemin - add e-mail address
+;  00/Mar/07    Yasemin - change the body of the letters
+;  00/may/29	B.E.	- added testing of confidentiality flag to ensure
+;			  that no letter shows a confidential claim (either
+;			  flag "Y" (doctor request to ministry) or "R"
+;			  for RMA rule-based suppression
+;			- changed code to print all doctors with rejected 
+;			  claims associated with patient (this option lost
+;			  when location of printing of doc-name was made)
+;  00/jun/28    B.E.	- this code was originally part of r085b.qzs before
+;			  that program was split into u085b.qts and this
+;			  program
+;  00/sep/14    B.E.    - renamed r085c to r085e so that new program
+;			  u085c/d could be run first on u085b subfile to 
+;			  reduce to a max of 5 the number of doctors reported 
+;			  on any individual letter to a patient
+;  02/Jan/22    Yasemin - Change the address and phone ext.
+;  02/Sep/23    Yasemin - Change the address 
+; 2003/nov/05 b.e. - addition 4th letter, new selection error codes
+; 2003/dec/01 yas. - change order in heading e-mail, phone number 
+;                  changed the wording at footing at clmhdr-pat-ohip-id-or-chart
+;                  added another line "This service could have been rendered 
+;                  in any hospital or Clinic in Ontario"
+; 2003/dec/15 A.A.    - alpha doctor nbr
+; 2004/jan/07 yas. - change VN8 to VH8 and add E4 to letter 2
+; 2004/jan/14 M.C.	- do not print letter if the claims are fully paid
+;2005/oct/24 yas    - changed HE2 message and heading
+;2007/08/24  yas    - not fitting on one page changed all skip 4 to 3 recompiled
+;2008/05/27  yas    - take out e-mail address for Privacy Act 
+;2008/06/13  yas    - take out response by e-mail at footing
+;2010/05/26 brad1  - access rejected-claims to filter selection statement so that letters are only printer for patients
+;			who are NOT 'logically' deleted 
+;2010/06/21 MC1    - and the clmhdr-submit-date in the selection criteria  
+;2010/08/10 MC2	   - change the linkage when access to rejected-claims
+;2010/10/06 MC3	   - do not print if clinic 87  
+cancel clear
+
+set def
+set rep nolimit
+set rep dev disc name r085e
+set nohead
+set rep page length 66
+set rep page width  80
+set formfeed
+
+access *u085d							&
+  link ("B",  							&
+;!    nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+;!    nconvert(ascii(claim-nbr,10)[9:2]),                       &
+       (claim-nbr[1:8]), 					&
+       nconvert(claim-nbr[9:2]),  				&
+	"00000", "0")						&
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr   &
+  link clmhdr-pat-ohip-id-or-chart   		           	&
+       viaindex key-pat-mstr					&
+    to f010-pat-mstr                                            &
+  link doc-nbr  		                                &
+    to doc-nbr of f020-doctor-mstr opt				&
+;      brad1							&
+; 2010/08/10 - MC2
+;  link clmhdr-pat-ohip-id-or-chart of u085d			&
+;  to   clmhdr-pat-ohip-id-or-chart of rejected-claims
+  link claim-nbr of u085d					&
+  to   claim-nbr of rejected-claims
+; 2010/08/10 - end
+
+
+; 2010/06/21 - MC1
+def sel-date date = parm prompt 'Enter submit date (yyyymmdd): '
+; 2010/06/21 - end
+
+select if    clmhdr-confidential-flag <> "R" 	&
+	 AND clmhdr-confidential-flag <> "Y"	&
+;	     brad1
+	 AND logically-deleted-flag <> "Y" 	&
+; 2010/10/06 - MC3
+	 and claim-nbr[1:2] <> '87'		&
+; 2010/10/06 - end
+; 2010/06/21 - MC1
+	 and clmhdr-submit-date of rejected-claims = sel-date	
+; 2010/06/21 - end
+
+sort on pat-surname			&
+     on clmhdr-pat-ohip-id-or-chart	&  
+     on doc-nbr				&
+     on claim-nbr
+
+; 2004/01/14 - MC
+def x-bal-due zoned*8 signed                    &
+        = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+and select if x-bal-due <> 0
+; 2004/01/14 - end
+
+
+
+def x-pat-name char*30 = pack(pat-given-name + " " + pat-surname)
+def x-doc-name char*30 = pack(doc-inits + " " + doc-name)
+def x-addr-1 cha*30 = x-pat-name
+def x-addr-3 cha*43 = subscr-addr1 +" "+ subscr-addr2
+def x-addr-4 cha*32 = truncate(subscr-addr3)+"  "+SUBSCR-PROV-CD    &
+                                            +" "+ subscr-post-code1 &
+                                            +" " + subscr-post-code2
+
+def x-letter-nbr char*1 					&
+	= "1"	if   mess-code = "EH2"            		&
+                  or mess-code = "VH4"            		&
+    else  "2"	if   mess-code = "EH4"            		&
+                  or mess-code = "VH9"            		&
+                  or mess-code = "E4"             		&
+    else  "3"	if   mess-code = "VH8"            		&
+    else  "4"	if   mess-code = "EH1"            		&
+                  or mess-code = "EH5" 
+
+def x-mess1 char*80 =                           			&
+    "The Ministry of Health has advised us that at the time of"  	&
+                if    x-letter-nbr = "1"            			&
+                  or  x-letter-nbr = "2"            			&
+                  or  x-letter-nbr = "3"            			&
+;else "Health Insurance Number was not in effect for the date(s) that"	&
+else "Health Insurance Number was not in effect for"			&
+                if    x-letter-nbr = "4"
+
+
+def x-mess2 char*80 =                           &
+     "submission of our doctor's claim, our office did not have your" 	&
+                if    x-letter-nbr = "1"            			&
+else "submission of our doctor's claim, there was a problem with your" 	&
+                if    x-letter-nbr = "2"            			&
+else "submission of our doctor's claim, your health number or birth date"&
+                if    x-letter-nbr = "3"            			&
+;else "service was provided by the doctor(s) listed below."		&
+else "Service Date of ______ / ____________ / ____."			&
+                if    x-letter-nbr = "4"
+
+def x-mess3 char*80 =                           			&
+     "correct health card information."         			&
+                if    x-letter-nbr = "1"            			&
+else "health coverage."                         			&
+                if    x-letter-nbr = "2"            			&
+else "did not match their records."            				&
+                if    x-letter-nbr = "3"            			&
+else " " 								&
+                if    x-letter-nbr = "4"
+
+def x-mess5 char*80 =                           &
+     "Please review the information below and contact us if the health"	&
+                if    x-letter-nbr = "1"            			&
+else "To have coverage re-instated please contact your local MOH office"&
+                if    x-letter-nbr = "2"            			&
+else "Please review the information below and contact us if the health"	&
+                if    x-letter-nbr = "3"            			&
+else "If you had coverage under another insurance plan, please"		&	
+                if    x-letter-nbr = "4"
+
+def x-mess6 char*80 =                           			&
+     "number, version code or date of birth is incorrect." 		&
+                if    x-letter-nbr = "1"            			&
+else "as soon as possible.  In Hamilton, the number is (905)521-7100."	&
+                if    x-letter-nbr = "2"            			&
+else "number, version code or date of birth is incorrect." 		&
+                if    x-letter-nbr = "3"            			&
+else "provide us with this information."				&
+                if    x-letter-nbr = "4"
+
+def x-mess7 char*80 =                           &
+   "The version code is 2 letters after the health number on the photo ID card"&
+                if    x-letter-nbr = "1"            			&
+else "After the problem is resolved, the correct information can be" 	&
+                if    x-letter-nbr = "2"            			&
+else "Version code is 2 letters after the health number on the photo ID card"&
+                if    x-letter-nbr = "3"            			&
+else " "								&
+                if    x-letter-nbr = "4"
+
+def x-mess8 char*80 =                           			&
+     "or the 1-2 letters at the bottom right corner of the red and white card."&
+                if    x-letter-nbr = "1"            			&
+
+;else "e-mailed, faxed, telephoned or returned by mail to our office. "	&
+;                if    x-letter-nbr = "2"            			&
+
+else "faxed, telephoned or returned by mail to our office. "	&
+                if    x-letter-nbr = "2"            			&
+else "or the 1-2 letters at the bottom right corner of the red and white card."&
+                if    x-letter-nbr = "3"            			&
+else " " 								&
+                if    x-letter-nbr = "4"
+
+def x-mess9 char*80 =                           			&
+     "Thank you for your co-operation in this matter."              	&
+                if    x-letter-nbr = "1"            			&
+else "Thank you for your co-operation in this matter."              	&
+                if    x-letter-nbr = "2"            			&
+else "Thank you for your co-operation in this matter."              	&
+                if    x-letter-nbr = "3"            			&
+else " "								&
+                if    x-letter-nbr = "4"
+
+def x-sign-lit char*12 = "SIGNATURE:"
+
+def x-sign-underscore char*20 = "____________________"
+
+def x-date-lit char*8 = "DATE:"
+
+def x-date-underscore char*15 = "_______________"
+
+page heading                                               &
+skip 2 tab 1   "Regional Medical Associates of Hamilton"   &
+;       tab 50  "e-mail: rma@mcmaster.ca"                   &
+skip 1 tab 1   "c/o McMaster University, DTC - 1st Floor"  &
+skip 1 tab 1   "1280 Main Street West"                     &
+       tab 50  "Fax: (905)529-7998"                        &
+skip 1 tab 1   "Hamilton, Ontario L8S 4L8"                 &
+       tab 50  "Tel: (905)525-9140, Ext. 26989"            &
+skip 3
+
+heading at clmhdr-pat-ohip-id-or-chart          &
+skip 10 tab   1  "DATE:"                        &
+        tab   8  sysdate                        &
+skip 2  tab   1  "TO:"                          &
+        tab   8  x-addr-1                       &
+skip 2  tab   8  x-addr-3                       &
+skip    tab   8  x-addr-4                       &
+skip 3  tab   1  "FROM:"                        &
+        tab   8  "Mrs. Maria Costa (Eligibility Clerk)"             &
+skip 2  tab   1  x-mess1                        &
+skip    tab   1  x-mess2                        &
+skip    tab   1  x-mess3                        &
+skip 2  tab   1  x-mess5                        &
+skip    tab   1  x-mess6                        &
+skip 2  tab   1  x-mess7                        &
+skip    tab   1  x-mess8                        &
+;skip 2 &
+;heading at doc-nbr                                     &
+;skip 2  tab   1  "Physician(s) involved in your care:" &
+
+;footing at doc-nbr                                      &
+;skip 1  tab   8  x-doc-name                             &
+;skip 1
+;footing at claim-nbr 	&
+;skip 1 tab 10 claim-nbr
+
+skip 3  tab   1  "PHYSICIAN(S) RECORD"          &
+        tab   36 "CORRECT OR VERIFY"            &
+skip 2  tab   1  "Health #: "                   &
+        tab   12 pat-health-nbr                 &
+        tab   36 "Health #: "                   &
+        tab   46 "_______________"              &
+skip 2  tab   1  "Version Code: "               &
+        tab   15 pat-version-cd                 &
+        tab   36 "Version Code: "               &
+        tab   50 "___________"                  &
+skip 2  tab   1  "Birthdate: "                  &
+        tab   12 pat-birth-date                 &
+        tab   36 "Birthdate: "                  &
+        tab   47 "____________________"         &
+skip    tab   12 "YYYY/MM/DD"                   &
+        tab   47 " Year / Month / Day"          &
+skip 3  tab   1  "Physician(s) involved in your care: " 
+;        tab   37 x-doc-name                             &  
+
+footing at doc-nbr                                      &
+skip 1  tab  10  x-doc-name                             &
+skip 1
+; (reactivate this footing at claim number to debug pgm - it will print
+;  each rejected claim for doctor above the doctor name)
+;footing at claim-nbr 	&
+;skip 1 tab 10 claim-nbr 
+
+
+footing at clmhdr-pat-ohip-id-or-chart          &
+;skip 3  tab   1  "Your immediate response by e-mail rma@mcmaster.ca, phone, fax or return mail" &
+skip 3  tab   1  "Your immediate response by, phone, fax or return mail" &
+skip    tab   1  "will enable us to resubmit the physician's claim for payment."&
+skip 2  tab   1  "RMA bills for patient services for physicians located throughout Ontario."         &
+skip 2  tab   1  x-mess9                           &
+skip 3  tab   1  "REJECT CODE: "                 &
+        tab   14  mess-code                      &
+        tab   60  clmhdr-loc                     &
+skip page
+
+final footing                                                         &
+skip 3  tab   1  "Number of letters created on  "                     &
+        tab   30 sysdate                                              &
+        tab   42 ":"                                                  &
+        tab   44 count at clmhdr-pat-ohip-id-or-chart pic "^^,^^^"    &
+skip 3
+
+build $pb_obj/r085e
+
+

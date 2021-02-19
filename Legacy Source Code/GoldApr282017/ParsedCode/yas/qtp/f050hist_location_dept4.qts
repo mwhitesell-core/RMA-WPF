@@ -1,0 +1,63 @@
+;report revenue by doc by location billings only no Misc rev  - doc dept, doc#, Name, total revenue by location
+;To: Lisa Greer and Annette 
+
+
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr  to doc-nbr of f020-doctor-mstr    opt	&
+ link docrev-location to loc-nbr of f030-locations-mstr opt
+
+choose ep-yr 2015
+
+select if         DOCREV-CLINIC-1-2  = "34"    &
+         and      DOCREV-DEPT    = 04          &
+         and (    DOCREV-OMA-CODE  <> "MOHD"     &
+              and DOCREV-OMA-CODE  <> "AGEP"     &
+              and DOCREV-OMA-CODE  <> "MICM"     &
+              and DOCREV-OMA-CODE  <> "MISJ"     &
+              and DOCREV-OMA-CODE  <> "MISC"     &
+              and DOCREV-OMA-CODE  <> "MISP"     &
+              and DOCREV-OMA-CODE  <> "MICB"     &
+              and DOCREV-OMA-CODE  <> "MIBR"     &
+              and DOCREV-OMA-CODE  <> "MHSC"     &
+              and DOCREV-OMA-CODE  <> "DHSC"     &
+              and DOCREV-OMA-CODE  <> "MICA"     &
+              and DOCREV-OMA-CODE  <> "MICC"     &
+              and DOCREV-OMA-CODE  <> "MICE"     &
+              and DOCREV-OMA-CODE  <> "MICH")     
+
+sort on docrev-doc-nbr on docrev-location 
+
+temp x-amt   zoned*9 signed
+item x-amt   = x-amt+ (DOCREV-YTD-IN-REC + DOCREV-YTD-OUT-REC)   &
+                   if iconst-date-period-end = 20160630                     &
+                   reset at docrev-location
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile dept4loc  portable  keep at docrev-location include		&
+docrev-clinic-1-2    , &
+comma                , &
+doc-dept             , &
+comma                , &
+docrev-doc-nbr       , &
+comma                , &
+loc-nbr              , &
+comma                , &
+doc-name             , &
+comma                , &
+docrev-location      , &
+comma                , &
+loc-name             , &
+comma                , &
+x-amt                , &
+comma                , &
+x-cr                
+
+build $pb_obj/f050hist_location_dept4
+

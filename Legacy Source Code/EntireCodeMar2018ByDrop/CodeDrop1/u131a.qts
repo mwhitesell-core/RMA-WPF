@@ -1,0 +1,121 @@
+;#> PROGRAM-ID.     u131a.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             Creates the 'adjustment for conversion' of AFP inscope
+;	      billings: Regular inscope billings are paid under comp code
+;	      "AFPIN". This program creates an automatic 10% charge against
+;	      that 'AFPIN' amount in a 'AFPADJ' transaction.
+
+;    MODIFICATION HISTORY
+;        DATE    WHO      DESCRIPTION
+; 2004/02/20     b.e.    - original
+; 2004/mar/25    b.e.	 - add access to f110-afpadj alias to see if doctor
+;			   has overrride to adfadj factor
+;
+
+cancel clear
+set stacksize 500
+run u131a
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+global temp afpadj-seq    numeric
+global temp afpadj-type   char*1 
+global temp afpadj-factor numeric 
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u131a_const_mstr_get_ep_nbr              &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        final  current-ep-nbr
+item w-current-ep-nbr-minus1 final  current-ep-nbr - 1
+;
+
+
+;-------------------------------------------------------------------------------
+; Obtain afp billing adjustment comp code details
+request u114_get_afpadj                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "AFPADJ"
+item afpadj-seq    = process-seq
+item afpadj-type   = comp-type
+item afpadj-factor = factor
+
+;-------------------------------------------------------------------------------
+;
+request u131a_process                           &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                                     &
+        link current-ep-nbr viaindex compensation-key2          &
+        to   ep-nbr  of f110-compensation                       &
+        link (        doc-nbr of f110-compensation   		&
+	      + ascii(current-ep-nbr,6)				&
+	      + ascii(afpadj-seq,2)				&
+	      + "AFPADJ"					&
+	     )							&
+        to   compensation-key					&
+	 	of f110-compensation alias f110-afpadj  opt	&
+	link doc-nbr  of f110-compensation			&
+	to doc-nbr of f020-doctor-mstr
+
+choose const-rec-nbr 6
+
+select if     comp-code of f110-compensation          = "AFPIN"	&
+	  and doc-afp-paym-group of f020-doctor-mstr <> " "
+
+define  x-amt-gross						        &
+    = 0 - round(  (  amt-gross of f110-compensation 			&
+		   * factor    of f110-afpadj				&
+		  )							&
+	        / 10000,0,near						&
+	       ) 							&
+	if record f110-afpadj exists					&
+ else 0 - round(  (  amt-gross of f110-compensation 			&
+		   * afpadj-factor					&
+		  )							&
+	        / 10000,0,near						&
+	       ) 
+
+;NOTE: this net amount must be set to gross otherwise the YTDINC amt-net figure
+;      is reduced and is different from YTDINC gross and this is wrong .. 
+;      therfore the factor shows the percentage to take but both gross and net
+;      amounts for this transaction is the same
+define  x-amt-net       &
+      = x-amt-gross
+
+define debug-link-key char*17 =					&
+                      doc-nbr of f110-compensation   		&
+	      + ascii(current-ep-nbr,6)				&
+	      + ascii(afpadj-seq,2)				&
+	      + "AFPADJ"					
+define debug-f110-afpadj-exists-flag char*1			&
+	= "Y" if record f110-afpadj exists			&
+     else "N"
+   
+subfile u131a keep include		&		
+  doc-nbr of f110-compensation,		&
+  w-current-ep-nbr,			&
+  afpadj-type,				&
+  afpadj-seq,				&
+  afpadj-factor,			&
+  x-amt-gross,				&
+  x-amt-net,				&
+  debug-link-key,			&
+  debug-f110-afpadj-exists-flag
+
+build $obj/u131a

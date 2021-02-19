@@ -1,0 +1,45 @@
+; program: r085a - create subfile of selected patients for
+;		   all programs related to sending letters to
+;		   patients for wrong health card info
+; 98/dec/10 B.E.	- created from access/selection logic in r085/86/87/u085
+; 1999/May/16 S.B.	- Y2K checked. Already done.
+
+cancel clear
+
+set rep nolimit
+set subfile name r085 keep
+
+access rejected-claims 		                		&
+  link ("B",  							&
+	nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+	nconvert(ascii(claim-nbr,10)[9:2]),  			&
+	"00000", "0")						&
+  to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+      key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr   &
+  link clmhdr-pat-ohip-id-or-chart   		           	&
+   viaindex key-pat-mstr					&
+   to f010-pat-mstr                                             &
+  link doc-nbr  		                                &
+    to doc-nbr of f020-doctor-mstr opt
+
+define d-test-date numeric*8 = 				&
+ 	days(sysdate) - days(pat-date-last-elig-mailing) &
+	if pat-date-last-elig-mailing > 0
+
+select if   (   pat-date-last-elig-mailing = 0		&
+;y2k	     or pat-date-last-elig-mailing = 160100	& 
+	     or pat-date-last-elig-mailing = 19160100	& 
+	     or (    d-test-date > 35			&
+                 and pat-no-of-letter-sent < 2)		&
+	    )						&
+         and (clmhdr-confidential-flag <> "Y")		&
+	 and (pat-mess-code <> " ")
+
+rep summary 				&
+	claim-nbr			&
+	doc-nbr				&
+	clmhdr-pat-ohip-id-or-chart	&
+	clmhdr-loc			&
+	mess-code
+
+build $pb_obj/r085a

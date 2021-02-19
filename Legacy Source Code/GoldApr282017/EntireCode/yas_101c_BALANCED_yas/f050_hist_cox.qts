@@ -1,0 +1,52 @@
+;for Dr. Cox    report revenue by code Yearend YTD amount for each year from Yearend2011 to Yearend2013
+;
+;
+
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-code  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+choose ep-yr 2010, 2011, 2012
+
+select if 			      &
+   (    docrev-doc-nbr = "980"        &
+     or docrev-doc-nbr = "348")       &
+and (   docrev-clinic-1-2 = '22'      &
+     or docrev-clinic-1-2 = '34'      &
+     or docrev-clinic-1-2 = '98')     &
+and ICONST-DATE-PERIOD-END = 20130630  
+
+sort on docrev-oma-cd
+
+temp x-service num*7 
+item x-service = x-service + docrev-ytd-in-svc + docrev-ytd-out-svc     &
+                reset at docrev-oma-cd
+
+temp x-amount  num*7
+item x-amount  = x-amount  + docrev-ytd-in-rec + docrev-ytd-out-rec     &
+                reset at docrev-oma-cd
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f050cox keep at docrev-oma-cd portable include          &
+docrev-clinic-1-2  ,&
+comma              ,&
+docrev-dept        ,&
+comma              ,&
+docrev-oma-cd      ,&
+comma              ,&
+fee-desc           ,& 
+comma              ,&
+x-service          ,& 
+comma              ,&
+x-amount           ,&
+x-cr                
+
+build $pb_obj/f050cox
+

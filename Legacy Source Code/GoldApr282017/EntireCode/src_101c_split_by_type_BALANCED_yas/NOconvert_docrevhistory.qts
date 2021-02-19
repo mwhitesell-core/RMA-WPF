@@ -1,0 +1,49 @@
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+access f050-doc-revenue-mstr-history
+
+select if ep-yr = 2000 and ICONST-DATE-PERIOD-END = 20010601   &
+         and  docrev-clinic-1-2 ne "61"  &
+         and  docrev-clinic-1-2 ne "62"  &
+         and  docrev-clinic-1-2 ne "63"  &
+         and  docrev-clinic-1-2 ne "64"  &
+         and  docrev-clinic-1-2 ne "65"
+
+sort  on docrev-dept    &
+      on docrev-doc-nbr &
+      on docrev-oma-cd
+
+def in-svc-ytd zoned*7 signed =   docrev-ytd-in-svc       &
+                               if docrev-location ne "MISC"
+
+def in-amt-ytd zoned*10 signed =   docrev-ytd-in-rec       &
+                               if docrev-location ne "MISC"
+
+def out-svc-ytd zoned*7 signed =  docrev-ytd-out-svc      &
+                               if docrev-location ne "MISC"
+
+def out-amt-ytd zoned*10 signed =  docrev-ytd-out-rec      &
+                               if docrev-location ne "MISC"
+
+temp tot-svc-ytd zoned*7  signed 
+item tot-svc-ytd =   tot-svc-ytd 	&
+		   + in-svc-ytd         &
+                   + out-svc-ytd    reset at docrev-oma-cd 
+
+temp tot-amt-ytd zoned*10  signed 
+item tot-amt-ytd =   tot-amt-ytd 	&
+		   + in-amt-ytd         &
+                   + out-amt-ytd  reset at docrev-oma-cd 
+
+def x-comma cha*1 = "~"
+
+subfile docrevhistory keep at docrev-oma-cd portable include&
+ docrev-dept ,                                          &
+ docrev-doc-nbr,                                        &
+ docrev-oma-cd ,                                        &
+ tot-svc-ytd,                                           &
+ tot-amt-ytd      
+

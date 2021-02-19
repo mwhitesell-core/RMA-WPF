@@ -1,0 +1,60 @@
+; DOC: GREK_A.QZS
+; DOC: SELECT DOC 345 AND REPORT BILLINGS
+; DOC: DR. GREK WOULD LIKE TO DETERMINE IF HE HAS BILLED HIS QUOTA
+;      FOR DAYS THAT HE WAS SEEING PATIENTS AT ST. JOSEPH'S HOSPITAL
+; DOC: RUN FOR: THEGLA / DR. GREK
+;
+;PROGRAM PURPOSE : TO INVESTIGATE IF DR. GREK IS BILLING PROPERLY
+
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;93/01/28   YASEMIN      ORIGINAL
+;93/06/18   YASEMIN      CUSTIMIZE & PROMPT DATES TO BE ENTERED
+;
+can clear
+set rep nolimit
+
+access f002-claims-mstr        	          &
+  link (nconvert(clmhdr-claim-id[4:3]))   &
+    to doc-nbr of f020-doctor-mstr  opt
+
+choose key-clm-type "B" , key-clm-batch-nbr 220345000 to 220345999
+
+def date-from date = parm prompt 'ENTER FROM DATE (YYMMDD): '
+def date-to   date = parm prompt 'ENTER  TO  DATE (YYMMDD): '
+
+define x-doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[4:3])
+
+;(SELECT HEADER REC'S ONLY)
+ select f002-claims-mstr                                &
+        if(    clmhdr-oma-suff-adj = "000000"           &
+	   and clmhdr-batch-type = "C"                  &
+           and (    clmhdr-date-period-end ge date-from &
+                and clmhdr-date-period-end le date-to))
+
+select if x-doc-nbr = 345			
+ 
+define x-key char*13=     key-clm-type 			&
+			+ ascii(key-clm-batch-nbr,9)	&
+ 			+ ascii(key-clm-claim-nbr,2)	&
+ 			+ "@"
+
+def x-doc-name cha*20 = pack("DR._" + truncate(pack(doc-inits)) + "_" + truncate(pack(doc-name)))
+
+set subfile name  grek_a  keep
+
+report summary					&
+	key-clm-type				&
+	key-clm-batch-nbr			&
+	key-clm-claim-nbr			&
+	x-key					&
+	x-doc-nbr                		&
+	x-doc-name               		&
+	clmhdr-pat-acronym                      &
+        clmhdr-claim-id
+
+build $pb_obj/grek_a
+
+
+  

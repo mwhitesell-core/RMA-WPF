@@ -1,0 +1,218 @@
+;doc     : afp-dept3.qts
+;purpose : create report for AFP dept 3 doctors by service date         
+;	   by doctor by month by agent (0and4), 2, 6 and 9
+;                               include "B" adjustments
+;who     : Clare Mitchell             
+;
+; *************************************************************
+
+;Date		Who		Description
+;2003/03/01	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access f002-claims-mstr    
+
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr,     &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+
+select f002-claims-mstr if clmhdr-doc-dept = 7                                &
+            and      clmhdr-agent-cd <> 1                                     &
+            and (   (clmhdr-batch-type  = 'C')                                &
+                 or (clmhdr-batch-type = 'P'and clmhdr-adj-cd-sub-type = 'M') &
+                 or (clmhdr-batch-type  = 'A' and clmhdr-adj-cd = 'B')        &
+                )
+
+
+subfile mdept7                 keep include                   &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr,&
+clmhdr-agent-cd
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *mdept7                                                           &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20030101' & 
+       and  clmdtl-sv-date     <= '20031231' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+;       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]        
+
+sort on x-doc-nbr    
+
+temp x-jan-2003-0  num*7
+item x-jan-2003-0   = x-jan-2003-0  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200301"   &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-2  num*7
+item x-jan-2003-2   = x-jan-2003-2  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200301"   &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-6  num*7
+item x-jan-2003-6   = x-jan-2003-6  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200301"   &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-9  num*7
+item x-jan-2003-9   = x-jan-2003-9  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200301"   &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+
+
+temp x-feb-2003-0  num*7
+item x-feb-2003-0   = x-feb-2003-0  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-feb-2003-2  num*7
+item x-feb-2003-2   = x-feb-2003-2  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-feb-2003-6  num*7
+item x-feb-2003-6   = x-feb-2003-6  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-feb-2003-9  num*7
+item x-feb-2003-9   = x-feb-2003-9  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-mar-2003-0  num*7
+item x-mar-2003-0   = x-mar-2003-0  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200303"   &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-mar-2003-2  num*7
+item x-mar-2003-2   = x-mar-2003-2  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200303"   &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-mar-2003-6  num*7
+item x-mar-2003-6   = x-mar-2003-6  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200303"   &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-mar-2003-9  num*7
+item x-mar-2003-9   = x-mar-2003-9  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200303"   &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-apr-2003-0  num*7
+item x-apr-2003-0   = x-apr-2003-0  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200304"   &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-apr-2003-2  num*7
+item x-apr-2003-2   = x-apr-2003-2  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200304"   &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-apr-2003-6  num*7
+item x-apr-2003-6   = x-apr-2003-6  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200304"   &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-apr-2003-9  num*7
+item x-apr-2003-9   = x-apr-2003-9  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200304"   &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+
+
+subfile mdept7a    keep at x-doc-nbr include         &
+x-doc-nbr                                           ,&
+x-jan-2003-0                                        ,&
+x-jan-2003-2                                        ,&
+x-jan-2003-6                                        ,&
+x-jan-2003-9                                        ,& 
+x-feb-2003-0                                        ,&
+x-feb-2003-2                                        ,&
+x-feb-2003-6                                        ,&
+x-feb-2003-9                                        ,& 
+x-mar-2003-0                                        ,&
+x-mar-2003-2                                        ,&
+x-mar-2003-6                                        ,&
+x-mar-2003-9                                        ,& 
+x-apr-2003-0                                        ,&
+x-apr-2003-2                                        ,&
+x-apr-2003-6                                        ,&
+x-apr-2003-9                                        
+
+build $obj/mdept7

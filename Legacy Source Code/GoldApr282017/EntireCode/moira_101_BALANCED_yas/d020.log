@@ -1,0 +1,1930 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Thu Jul 10 16:26:15 EDT 2014
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/d020.qks]
+Q D E S I G N   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-DEVELOPMENT for customer: 0057360001 DYAD Systems Inc. UNIX
+
+> ;#> program-id.     d020.qks
+> ;
+> ;               note: 1) some programming remains to pass ep-minus-1
+> ;                        to sub-screens. should defaut ep to "E" mode
+> ;                        and ep-1 to find mode
+> ;
+> ;       ((c)) dyad technologies
+> ;
+> ;    program purpose : maintenance of doctor - payroll data
+> ;
+> ; modification history
+> ;    date   who         description
+> ; 92/jan/02 b.e.        - original
+> ; 92/oct/13 b.e.        - default from-ep-nbr for sub-screens using
+> ;                         previous ep not current ep.
+> ; 93/jul/02 y.b.        - change column clinic to class
+> ;
+> ; 93/jul/30 m.c.        - changed doc-dept-expense-percent from noid ti
+> ;			  id same
+> ; 93/sep/21 b.e.        - added rma/dept reg/misc billing percents
+> ;
+> ; 95/jun/29 b.m.l.	- added designer procs. h110,hi12,hi13 & hi19
+> ;
+> ; 95/nov/07 m.c.	- for 91 & 98 screens, do not prompt for ep-nbr
+> ;			- for 94 history screen, prompt for ep nbr
+> ; 95/nov/15 m.c.	- add f020-doctor-extra as secondary and pass
+> ;			  it to the tot screen (d020a)
+> ; 96/jan/22 m.c.	- sms 147 - include new screen option 92 for
+> ;			  require & target revenue entry
+> ; 98/jan/06 j.c.	- sms 148 - include for 1,col in last two cluster
+> ;                         statements otherwise error compilation
+> ;
+> ; 1999/Jan/18 S.B.      - Fixed 'start' and 'term' dates for
+> ;			  Y2K compliance.
+> ; 1999/Jun/07 S.B.	- Altered the call to scrtitle.use and
+> ;			  stdhilite.use to be called from $use
+> ;			  instead of src.
+> ;			- Removed the call to secfile.use because
+> ;			  it was not doing anything.
+> ;
+> ; 99/sep/20 B.E.	- added UPSHIFT to gst flag
+> ; 2003/nov/10 b.e.      - alpha doctor nbr
+> ; 2004/jul/20 b.e.	- added field doc-afp-paym-group
+> ; 2006/may/30 b.e.	- restrict activities on screen so no add/delete
+> ; 2008/may/07 b.e.	- add call to d119gov.qkc for goverance transactions
+> ; 2008/may/21 M.C.	- add call to d119tithe.qkc for tithe calculation
+> ; 2008/jun/03 M.C.      - show all doctors with the same doc ohip nbr on line 2
+> ; 2008/oct/06 M.C.	- add call to h119tithe.qkc for history tithe calculation
+> ;			  and call to h119gov.qkc for history governance transactions
+> ; 2012/jan/06 be1 	- new OVERage processing - add new fields and designer routine 'over'
+> ;			  to allow input/processing of overage amount. If a CURRENT EP record exists, then
+> ;			  increase the ceiling for that rec - otherwise generate a new record with the
+> ;			  increased ceiling that includes overpayment for current EP. Then generate
+> ;			  a new record for NEXT EP setting ceiling back to what it is now.
+> ;			  Additionally the TOT screen field "Computed EARNINGS ceiling" has to be increased by
+> ;	                  amount of overage payment so that YTD payments are OK.
+> ; 2012/jan/28 be2	- don't adjust YTD Ceiling Earnings on TOT screen
+> ; 2012/Apr/18 MC1	- access f198 to display user-totals, do not know why it has never accessed in postfind procedure
+> ; 2014/Mar/05 MC2       - change w-current-ep-nbr-plus-1 definition to set properly if ep-nbr = yyyy13
+> ;			  to bump year yyyy by 1 and set back mm to 01; this definition is applied to 'OVER'age designer
+> ; 2014/jun/10 MC3       - add f020-doctor-audit to capture before change records
+> ;                       - specify the file on the field statements
+> ;			- save f020-doctor-mstr & f020-doctor-extra records in f020-doctor-audit in postfind in case
+> ;			  user may change the records
+> 
+> ;screen $pb_obj/d020 activities find, change, entry; on 1 for 23
+> screen $pb_obj/d020 activities find, change       ; on 1 for 23
+> 
+> description of screen                                                    &
+> "                                                                      " &
+> "       This screen allows select of doctors for maintenance of        " &
+> "       Earnings related information.                                  " &
+> "                                                                      "
+> 
+> ;use $pb_src/secfile.use   nol nod
+> 
+> file  f020-doctor-mstr  primary
+> 
+> ; 2008/06/03 - MC
+> file f020-doctor-mstr alias f020-designer designer  open 1
+>    access viaindex doc-ohip-nbr using doc-ohip-nbr of f020-doctor-mstr
+> 
+> temp doc-nbr-1  char*3
+> temp doc-flag-1 char*1
+> 
+> temp doc-nbr-2  char*3
+> temp doc-flag-2 char*1
+> 
+> temp doc-nbr-3  char*3
+> temp doc-flag-3 char*1
+> 
+> temp doc-nbr-4  char*3
+> temp doc-flag-4 char*1
+> 
+> temp doc-nbr-5  char*3
+> temp doc-flag-5 char*1
+> 
+> temp doc-nbr-6  char*3
+> temp doc-flag-6 char*1
+> 
+> temp doc-nbr-7  char*3
+> temp doc-flag-7 char*1
+> 
+> temp doc-nbr-8  char*3
+> temp doc-flag-8 char*1
+> 
+> temp doc-nbr-9  char*3
+> temp doc-flag-9 char*1
+> 
+> temp doc-nbr-10 char*3
+> ; 2008/06/03 - end
+> 
+> ;be1
+> temp bolCurrentCeilingRecordExists char*1
+> temp doc-overage-amt		integer*10
+> temp doc-current-ceiling 	integer*10
+> temp w-new-ceil-earn  		integer*10
+> temp w-monthly-ceil-earn	integer*10
+> temp w-doc-pay-code		char*1
+> temp w-doc-pay-sub-code		char*1
+> temp w-factor 			zoned*6 unsigned
+> temp w-retro-to-ep-nbr		zoned*6	unsigned
+> temp w-doc-yrly-ceiling			integer*10
+> temp w-doc-yrly-ceiling-adjusted	integer*10
+> temp w-doc-yrly-ceiling-computed	integer*10
+> temp w-doc-yrly-expense			integer*10
+> temp w-doc-yrly-expense-adjusted	integer*10
+> temp w-doc-yrly-expense-computed	integer*10
+> temp w-doc-yrly-expn-alloc-pers		zoned*2 unsigned
+> temp w-doc-yrly-ceil-guar		integer*10
+> temp w-doc-yrly-ceiling-guar-perc	zoned*3 unsigned
+> temp w-doc-rma-expense-percent-reg	integer*10
+> temp w-doc-rma-expense-percent-misc	integer*10
+> temp w-doc-dept-expense-percent-reg	integer*10
+> temp w-doc-dept-expense-percent-misc	integer*10
+> temp w-doc-yrly-reqrev			integer*10
+> temp w-doc-yrly-reqrev-adjusted		integer*10
+> temp w-doc-yrly-reqrev-computed		integer*10
+> temp w-doc-yrly-tarrev			integer*10
+> temp w-doc-yrly-tarrev-adjusted		integer*10
+> temp w-doc-yrly-tarrev-computed		integer*10
+> temp w-retro-to-ep-nbr-req		zoned*6 unsigned
+> temp w-retro-to-ep-nbr-tar		zoned*6 unsigned
+> 
+> 
+> 
+> file  f020-doctor-extra secondary
+Item DOC-NBR initialized (fixed) to DOC-NBR OF F020-DOCTOR-MSTR.
+> 
+> file f199-user-defined-fields                    designer
+> file f199-user-defined-fields alias f199-2nd-rec designer
+> file f198-user-defined-totals                    designer
+> file f198-user-defined-totals alias f198-2nd-rec designer
+> 
+> file f070-dept-mstr reference
+>         access viaindex dept-nbr using doc-dept
+> 
+> file f112-pycdceilings     			designer
+> file f112-pycdceilings alias f112-add-new-rec-1	designer open 1
+> file f112-pycdceilings alias f112-add-new-rec-2	designer open 2
+> 
+> file constants-mstr-rec-6 designer
+> 
+> 
+> ;MC3
+> use $use/savef020audit_var.use
+> temp a-doc-nbr           char*3
+> temp a-doc-dept          zoned*2 unsigned
+> temp a-doc-ohip-nbr      zoned*6 unsigned
+> temp a-doc-sin-nbr       zoned*9 unsigned
+> temp a-doc-clinic-nbr    zoned*2 unsigned
+> temp a-doc-spec-cd       zoned*2 unsigned
+> temp a-doc-hosp-nbr      char*4
+> temp a-doc-name          char*24
+> temp a-doc-name-soundex  char*4
+> temp a-doc-inits         char*3
+> temp a-doc-full-part-ind  char*1
+> temp a-doc-bank-nbr       zoned*4 unsigned
+> temp a-doc-bank-branch    zoned*5 unsigned
+> temp a-doc-bank-acct      char*12
+> temp a-doc-date-fac-start  zoned*8 unsigned
+> temp a-doc-date-fac-term   zoned*8 unsigned
+> temp a-doc-ytdgua          zoned*9 numeric
+> temp a-doc-ytdgub          zoned*9 numeric
+> temp a-doc-ytdguc          zoned*9 numeric
+> temp a-doc-ytdgud          zoned*9 numeric
+> temp a-doc-ytdcea          zoned*9 numeric
+> temp a-doc-ytdcex          zoned*9 numeric
+> temp a-doc-ytdear          zoned*9 numeric
+> temp a-doc-ytdinc          zoned*9 numeric
+> temp a-doc-ytdeft          zoned*9 numeric
+> temp a-doc-totinc-g        zoned*9 numeric
+> temp a-doc-ep-date-deposit   zoned*8 unsigned
+> temp a-doc-totinc            zoned*9 numeric
+> temp a-doc-ep-ceiexp         zoned*9 numeric
+> temp a-doc-adjcea            zoned*9 numeric
+> temp a-doc-adjcex            zoned*9 numeric
+> temp a-doc-ceicea            zoned*9 numeric
+> temp a-doc-ceicex            zoned*9 numeric
+> temp a-doc-clinic-nbr-2      zoned*2 unsigned
+> temp a-doc-clinic-nbr-3      zoned*2 unsigned
+> temp a-doc-clinic-nbr-4      zoned*2 unsigned
+> temp a-doc-clinic-nbr-5      zoned*2 unsigned
+> temp a-doc-clinic-nbr-6      zoned*2 unsigned
+> temp a-doc-spec-cd-2         zoned*2 unsigned
+> temp a-doc-spec-cd-3         zoned*2 unsigned
+> temp a-doc-ytdinc-g          zoned*9 numeric
+> temp a-doc-locations         char*120
+> temp a-doc-rma-expense-percent-misc   integer unsigned size 4
+> temp a-doc-afp-paym-group             char*4
+> temp a-doc-dept-2                     zoned*2 unsigned
+> temp a-doc-ind-pays-gst               char*1
+> temp a-doc-nx-avail-batch             zoned*3 unsigned
+> temp a-doc-nx-avail-batch-2           zoned*3 unsigned
+> temp a-doc-nx-avail-batch-3           zoned*3 unsigned
+> temp a-doc-nx-avail-batch-4           zoned*3 unsigned
+> temp a-doc-nx-avail-batch-5           zoned*3 unsigned
+> temp a-doc-nx-avail-batch-6           zoned*3 unsigned
+> temp a-doc-yrly-ceiling-computed      zoned*9 numeric
+> temp a-doc-yrly-expense-computed      zoned*9 numeric
+> temp a-doc-rma-expense-percent-reg    integer unsigned size 4
+> temp a-doc-sub-specialty              char*15
+> temp a-doc-payeft                     zoned*9 numeric
+> temp a-doc-ytdded                     zoned*9 numeric
+> temp a-doc-dept-expense-percent-misc  integer unsigned size 4
+> temp a-doc-dept-expense-percent-reg   integer unsigned size 4
+> temp a-doc-ep-ped                     integer unsigned size 4
+> temp a-doc-ep-pay-code                char*1
+> temp a-doc-ep-pay-sub-code            char*1
+> temp a-doc-partnership                char*1
+> temp a-doc-ind-holdback-active        char*1
+> temp a-group_regular_service          char*4
+> temp a-group_over_serviced            char*4
+> temp a-doc-specialties                char*90
+> temp a-doc-yrly-require-revenue       zoned*9 numeric
+> temp a-doc-yrly-target-revenue        zoned*9 numeric
+> temp a-doc-ceireq                     zoned*9 numeric
+> temp a-doc-ytdreq                     zoned*9 numeric
+> temp a-doc-ceitar                     zoned*9 numeric
+> temp a-doc-ytdtar                     zoned*9 numeric
+> temp a-billing-via-paper-flag         char*1
+> temp a-billing-via-diskette-flag      char*1
+> temp a-billing-via-web-test-flag      char*1
+> temp a-billing-via-web-live-flag      char*1
+> temp a-billing-via-rma-data-entry     char*1
+> temp a-date-start-rma-data-entry      zoned*8 unsigned
+> temp a-date-start-diskette            zoned*8 unsigned
+> temp a-date-start-paper               zoned*8 unsigned
+> temp a-date-start-web-live            zoned*8 unsigned
+> temp a-date-start-web-test            zoned*8 unsigned
+> temp a-leave-description              char*30
+> temp a-leave-date-start               zoned*8 unsigned
+> temp a-leave-date-end                 zoned*8 unsigned
+> temp a-web-user-revenue-only-flag     char*1
+> temp a-manager-flag                   char*1
+> temp a-chair-flag                     char*1
+> temp a-abe-user-flag                  char*1
+> temp a-cpso-nbr                       char*6
+> temp a-cmpa-nbr                       char*9
+> temp a-oma-nbr                        char*10
+> temp a-cfpc-nbr		       	      char*7
+> temp a-rcpsc-nbr                      char*7
+> temp a-doc-med-prof-corp              char*1
+> temp a-mcmaster-employee-id           zoned*7 unsigned
+> temp a-doc-spec-cd-eff-date           zoned*8 unsigned
+> temp a-doc-spec-cd-2-eff-date         zoned*8 unsigned
+> temp a-doc-spec-cd-3-eff-date         zoned*8 unsigned
+> temp a-doc-clinic-nbr-status          char*1
+> temp a-doc-clinic-nbr-2-status        char*1
+> temp a-doc-clinic-nbr-3-status        char*1
+> temp a-doc-clinic-nbr-4-status        char*1
+> temp a-doc-clinic-nbr-5-status        char*1
+> temp a-doc-clinic-nbr-6-status        char*1
+> temp a-factor-gst-income-reg          zoned*5 unsigned
+> temp a-factor-gst-income-misc         zoned*5 unsigned
+> temp a-yellow-pages-flag              char*1
+> temp a-replaced-by-doc-nbr            char*3
+> temp a-prior-doc-nbr                  char*3
+> temp a-cop-nbr                        char*8
+> temp a-doc-flag-primary               char*1
+> temp a-has-valid-current-payroll-record  char*1
+> temp a-pay-this-doctor-ohip-premium      char*1
+> temp a-doc-fiscal-yr-start-month         zoned*2 unsigned
+> 
+> file f020-doctor-audit    designer
+> ;MC3 - end
+> 
+> def w-year = nconvert(ascii(sysdate,6)[1:2])
+> def w-mth = nconvert(ascii(sysdate,6)[3:2])
+> def w-comp-date = nconvert(ascii((w-year - 1),2) + '0701') if w-mth < 7 &
+>     else          nconvert(ascii(w-year,2) + '0701')
+> def w-note-type char*1 = "A"
+> 
+> temp x-doc-nbr-length
+> temp w-current-pycode    char*1
+> temp w-current-pysubcode char*1
+> temp w-curr-ceil-earn zoned*9 numeric
+> temp w-curr-ceil-expn zoned*9 numeric
+> temp w-password    char*5
+> temp w-delete-flag char*1
+> temp w-old-pay-code char*1
+> temp w-doc-nbr  char*3
+> temp w-ep-nbr-from  num*4 reset at startup
+> temp w-ep-nbr-to    num*4 reset at startup
+> temp w-ep-nbr-yy
+> 
+> ; the following defn to change when proper file accessed to get ccorrect
+> ; (ep - 1) record!
+> define w-current-ep-nbr-minus-1 = current-ep-nbr - 1
+> ;MC2
+> ;define w-current-ep-nbr-plus-1  = current-ep-nbr + 1
+> define w-current-ep-nbr-plus-1  = current-ep-nbr + 1 if 13 <> (mod(current-ep-nbr,100))  	&
+> 			else  nconvert(ascii((current-ep-nbr / 100) + 1) + '01')
+> ; MC2 - end
+> 
+> file f080-bank-mstr reference
+>         access viaindex bank-cd using   &
+>         (ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+> 
+> temp w-date date initial sysdate
+> 
+> define x-screen-name char*55 = "PHYSICIAN EARNINGS Info"
+> ;use $pb_src/scrtitle.use  nol nod
+> use $use/scrtitle.use  nol nod
+> 
+> ;use $pb_src/stdhilite.use nol nod
+> use $use/stdhilite.use nol nod
+> 
+> ; 2008/06/03 - MC
+> skip to 2
+> ;align (,,22) (,,25) (,,27) (,,30) (,,32) (,,35) (,,37) (,,40) (,,42) (,,45) (,,47) (,,50) (,,52) (,,55) (,,57) &
+> ;        (,,60) (,,62) (,,65) (,,68)
+> align (,,04) (,,07) (,,09) (,,12) (,,14) (,,17) (,,19) (,,22) (,,24) (,,27) (,,29) (,,32) (,,34) (,,37) (,,39) &
+>          (,,42) (,,44) (,,47) (,,49)
+> 
+> field doc-nbr-1  display
+> field doc-flag-1 display
+> field doc-nbr-2  display
+> field doc-flag-2 display
+> field doc-nbr-3  display
+> field doc-flag-3 display
+> field doc-nbr-4  display
+> field doc-flag-4 display
+> field doc-nbr-5  display
+> field doc-flag-5 display
+> field doc-nbr-6  display
+> field doc-flag-6 display
+> field doc-nbr-7  display
+> field doc-flag-7 display
+> field doc-nbr-8  display
+> field doc-flag-8 display
+> field doc-nbr-9  display
+> field doc-flag-9 display
+> field doc-nbr-10 display
+> ; 2008/06/03 - end
+> 
+> ;be1
+> align (55,58,66)
+> field doc-overage-amt 		label "Overage:"
+> ;field doc-current-ceiling
+> 
+> skip to 3
+> align (1,4,12) (,16,22) (,47,55) (,65,75)
+> field doc-nbr of f020-doctor-mstr      display label "Doctor:" upshift
+> field doc-name of f020-doctor-mstr     display label "Name:"      noid
+> field doc-inits of f020-doctor-mstr    display label "Inits :"    noid
+> field doc-ohip-nbr of f020-doctor-mstr display label "Ohip/Reg#:" noid
+> skip
+> align (,4,11) (,,16) (,47,55) (,56,67)
+> field doc-dept  of f020-doctor-mstr lookup on f070-dept-mstr label "Dept :" display noid
+> field dept-name of f070-dept-mstr display noid
+> field doc-full-part-ind of f020-doctor-mstr label "Class :" display noid
+> title "EARNING/EXPENSE" at ,63
+> skip
+> 
+> ;be1
+> ;align (,4,11) (,22,28) (,39,47) (,,48) (,54,60) (,69,70)
+> align (,4,11) (,22,28) (,39,47) (,,48) (,53,58) (,,69)
+> 
+> field doc-date-fac-start of f020-doctor-mstr label 'Start:' noid
+> field doc-date-fac-term of f020-doctor-mstr  label 'Term:'   noid
+> field w-current-pycode   label "Pay Cd:" noid
+> field w-current-pysubcode                noid
+> field w-curr-ceil-earn          label "Curr: " pic "^^^^,^^^" noid
+*W* Field overwrites the screen background.
+> field w-curr-ceil-expn          label "/"      pic "^^^^,^^^" noid
+> skip
+> ;align (1,4,19) (,54,59) (,70,71)
+> align (1,4,18) (,53,58) (,,70)
+> 
+> field doc-bank-nbr of f020-doctor-mstr label "Bank Nbr:" pic "^^^^" display
+> field doc-yrly-ceiling-computed of f020-doctor-mstr label "Comp:"  pic "^^^^,^^^.^^" noid
+> field doc-yrly-expense-computed of f020-doctor-mstr label "/"      pic "^^^,^^^.^^" noid
+> ;title "REGULAR/MISC" at ,37
+> title "REGULAR/MISC    GST F." at ,31
+> ;align (,4,18) (27,30,35) (,43,45) (54,57,63)
+> ;;align (,4,18) (27,30,35) (,43,45)
+> align (,4,17) (23,26,31) (,38,39) (,,47)
+> field doc-bank-branch of f020-doctor-mstr label "Branch  :" pic "^^^^^" display noid
+> @if dg and hsc
+>_field doc-rma-expense-percent-reg of f020-doctor-mstr  label "HSC :" pic "^^.^^^^"
+>_@elseif dg and rma
+> field doc-rma-expense-percent-reg of f020-doctor-mstr label "RMA :" pic "^^.^^^^"
+> @endif
+> field doc-rma-expense-percent-misc of f020-doctor-mstr label "/"     pic "^^.^^^^" id same
+> field factor-gst-income-reg of f020-doctor-extra id same
+> ;;align (,4,11) (27,30,35) (,43,45)
+> align (,4,10) (23,26,31) (,38,39) (,,47)
+> field doc-bank-acct of f020-doctor-mstr   label "Acct#:" display noid
+> field doc-dept-expense-percent-reg of f020-doctor-mstr   label "Dept:" pic "^^.^^^^"
+> field doc-dept-expense-percent-misc of f020-doctor-mstr  label "/"     pic "^^.^^^^" id same
+> field factor-gst-income-misc of f020-doctor-extra id same
+> skip to 7
+> ;align                 (54,57,67)
+> align                 (55,58,68)
+> field doc-ind-pays-gst  of f020-doctor-mstr           label "Gst?     :" UPSHIFT
+> skip to 8
+> ;align                 (54,57,67)
+> align                 (55,58,68) (70,73,77)
+> field doc-ind-holdback-active of f020-doctor-mstr	   label "Holdback?:"
+> ;align                 (69,72,76)
+> field doc-afp-paym-group of f020-doctor-mstr label 'Afp:' display
+> 
+> skip to 9
+> ;draw from ,1 to 20,80
+> title                                                                           &
+> " YTD Totals "         &
+> at ,36
+> skip to 10
+> align (,,3)
+> cluster occurs with field-desc of f199-user-defined-fields at 10,1 for 1,41
+>  field field-desc of f199-user-defined-fields noid display
+> skip 1
+> cluster ; 1
+> skip to 10
+> align (,,24)
+> cluster occurs with user-total of f198-user-defined-totals at 10,24 for 1,40
+>   field user-total of f198-user-defined-totals noid display
+> skip 1
+> cluster ;2
+> 
+> skip to 10
+> align (,,45)
+> cluster occurs with field-desc of f199-2nd-rec             at 10,45 for 1,30
+>  field field-desc of f199-2nd-rec             noid display
+> skip 1
+> cluster ; 3
+> skip to 10
+> align (,,66)
+> cluster occurs with user-total of f198-2nd-rec             at 10,66 for 1,15
+>   field user-total of f198-2nd-rec             noid display
+> skip 1
+> cluster ;4
+> ;         1         2         3         4         5         6         7         8
+> ;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+> ;             earnings period (e/p): yymm thru yymm
+> 
+> skip to 21
+> align (,14,37)(,50,66)
+> field w-ep-nbr-from  label "EARNINGS PERIOD (E/P):" pic "^^^^^^" noid
+> field w-ep-nbr-yy    label "EARNINGS YEAR:" pic "^^^^" noid
+> ;skip to 21
+> ;align (,42,47)
+> ;field w-ep-nbr-to label "thru"    pic "^^^^" noid
+> 
+> skip to 22
+> title "91 Pay Codes/Ceilings         "  at ,1
+> title "92 Require/Target Rev "		at ,30
+*W* Title overwrites the screen background.
+> title "93 Earnings     "        	at ,52
+> title "94 YTD Totals"      		at ,68
+> skip
+> title "95 Messages  " 			at ,1
+> title "96 Gov(hidden)  " 		at ,14
+> title "97 Tithe Calculations " 		at ,30
+> title "98 Default Comp " 		at ,52
+> title "99 Notes     "  			at ,68
+> ;title   &
+> ;"92 MESSAGES - E/P:                                 99 NOTES               " &
+> ;    at ,1
+> 
+> ;skip to 23
+> ;align (,,75)
+> ;field w-password noid display noecho
+> 
+> procedure internal copyF112ToF112Add-1
+> begin
+> 	let doc-nbr                           of f112-add-new-rec-1 = doc-nbr                           of f112-pycdceilings
+> 	let ep-nbr                            of f112-add-new-rec-1 = ep-nbr                            of f112-pycdceilings
+> 	let factor                            of f112-add-new-rec-1 = factor                            of f112-pycdceilings
+> 	let doc-pay-code                      of f112-add-new-rec-1 = doc-pay-code                      of f112-pycdceilings
+> 	let doc-pay-sub-code                  of f112-add-new-rec-1 = doc-pay-sub-code                  of f112-pycdceilings
+> 	let retro-to-ep-nbr                   of f112-add-new-rec-1 = retro-to-ep-nbr                   of f112-pycdceilings
+> 	let doc-yrly-ceiling                  of f112-add-new-rec-1 = doc-yrly-ceiling                  of f112-pycdceilings
+> 	let doc-yrly-ceiling-adjusted         of f112-add-new-rec-1 = doc-yrly-ceiling-adjusted         of f112-pycdceilings
+> 	let doc-yrly-ceiling-computed         of f112-add-new-rec-1 = doc-yrly-ceiling-computed         of f112-pycdceilings
+> 	let doc-yrly-expense                  of f112-add-new-rec-1 = doc-yrly-expense                  of f112-pycdceilings
+> 	let doc-yrly-expense-adjusted         of f112-add-new-rec-1 = doc-yrly-expense-adjusted         of f112-pycdceilings
+> 	let doc-yrly-expense-computed         of f112-add-new-rec-1 = doc-yrly-expense-computed         of f112-pycdceilings
+> 	let doc-yrly-expn-alloc-pers          of f112-add-new-rec-1 = doc-yrly-expn-alloc-pers          of f112-pycdceilings
+> 	let doc-yrly-ceil-guar                of f112-add-new-rec-1 = doc-yrly-ceil-guar                of f112-pycdceilings
+> 	let doc-yrly-ceiling-guar-perc        of f112-add-new-rec-1 = doc-yrly-ceiling-guar-perc        of f112-pycdceilings
+> 	let last-mod-date                     of f112-add-new-rec-1 = last-mod-date                     of f112-pycdceilings
+> 	let last-mod-time                     of f112-add-new-rec-1 = last-mod-time                     of f112-pycdceilings
+> 	let last-mod-user-id                  of f112-add-new-rec-1 = last-mod-user-id                  of f112-pycdceilings
+> 	let doc-rma-expense-percent-reg       of f112-add-new-rec-1 = doc-rma-expense-percent-reg       of f112-pycdceilings
+> 	let doc-rma-expense-percent-misc      of f112-add-new-rec-1 = doc-rma-expense-percent-misc      of f112-pycdceilings
+> 	let doc-dept-expense-percent-reg      of f112-add-new-rec-1 = doc-dept-expense-percent-reg      of f112-pycdceilings
+> 	let doc-dept-expense-percent-misc     of f112-add-new-rec-1 = doc-dept-expense-percent-misc     of f112-pycdceilings
+> 	let doc-yrly-reqrev                   of f112-add-new-rec-1 = doc-yrly-reqrev                   of f112-pycdceilings
+> 	let doc-yrly-reqrev-adjusted          of f112-add-new-rec-1 = doc-yrly-reqrev-adjusted          of f112-pycdceilings
+> 	let doc-yrly-reqrev-computed          of f112-add-new-rec-1 = doc-yrly-reqrev-computed          of f112-pycdceilings
+> 	let doc-yrly-tarrev                   of f112-add-new-rec-1 = doc-yrly-tarrev                   of f112-pycdceilings
+> 	let doc-yrly-tarrev-adjusted          of f112-add-new-rec-1 = doc-yrly-tarrev-adjusted          of f112-pycdceilings
+> 	let doc-yrly-tarrev-computed          of f112-add-new-rec-1 = doc-yrly-tarrev-computed          of f112-pycdceilings
+> 	let retro-to-ep-nbr-req               of f112-add-new-rec-1 = retro-to-ep-nbr-req               of f112-pycdceilings
+> 	let retro-to-ep-nbr-tar               of f112-add-new-rec-1 = retro-to-ep-nbr-tar               of f112-pycdceilings
+> end
+> procedure internal copyF112ToF112Add-2
+> begin
+> 	let doc-nbr                           of f112-add-new-rec-2 = doc-nbr                           of f112-pycdceilings
+> 	let ep-nbr                            of f112-add-new-rec-2 = ep-nbr                            of f112-pycdceilings
+> 	let factor                            of f112-add-new-rec-2 = factor                            of f112-pycdceilings
+> 	let doc-pay-code                      of f112-add-new-rec-2 = doc-pay-code                      of f112-pycdceilings
+> 	let doc-pay-sub-code                  of f112-add-new-rec-2 = doc-pay-sub-code                  of f112-pycdceilings
+> 	let retro-to-ep-nbr                   of f112-add-new-rec-2 = retro-to-ep-nbr                   of f112-pycdceilings
+> 	let doc-yrly-ceiling                  of f112-add-new-rec-2 = doc-yrly-ceiling                  of f112-pycdceilings
+> 	let doc-yrly-ceiling-adjusted         of f112-add-new-rec-2 = doc-yrly-ceiling-adjusted         of f112-pycdceilings
+> 	let doc-yrly-ceiling-computed         of f112-add-new-rec-2 = doc-yrly-ceiling-computed         of f112-pycdceilings
+> 	let doc-yrly-expense                  of f112-add-new-rec-2 = doc-yrly-expense                  of f112-pycdceilings
+> 	let doc-yrly-expense-adjusted         of f112-add-new-rec-2 = doc-yrly-expense-adjusted         of f112-pycdceilings
+> 	let doc-yrly-expense-computed         of f112-add-new-rec-2 = doc-yrly-expense-computed         of f112-pycdceilings
+> 	let doc-yrly-expn-alloc-pers          of f112-add-new-rec-2 = doc-yrly-expn-alloc-pers          of f112-pycdceilings
+> 	let doc-yrly-ceil-guar                of f112-add-new-rec-2 = doc-yrly-ceil-guar                of f112-pycdceilings
+> 	let doc-yrly-ceiling-guar-perc        of f112-add-new-rec-2 = doc-yrly-ceiling-guar-perc        of f112-pycdceilings
+> 	let last-mod-date                     of f112-add-new-rec-2 = last-mod-date                     of f112-pycdceilings
+> 	let last-mod-time                     of f112-add-new-rec-2 = last-mod-time                     of f112-pycdceilings
+> 	let last-mod-user-id                  of f112-add-new-rec-2 = last-mod-user-id                  of f112-pycdceilings
+> 	let doc-rma-expense-percent-reg       of f112-add-new-rec-2 = doc-rma-expense-percent-reg       of f112-pycdceilings
+> 	let doc-rma-expense-percent-misc      of f112-add-new-rec-2 = doc-rma-expense-percent-misc      of f112-pycdceilings
+> 	let doc-dept-expense-percent-reg      of f112-add-new-rec-2 = doc-dept-expense-percent-reg      of f112-pycdceilings
+> 	let doc-dept-expense-percent-misc     of f112-add-new-rec-2 = doc-dept-expense-percent-misc     of f112-pycdceilings
+> 	let doc-yrly-reqrev                   of f112-add-new-rec-2 = doc-yrly-reqrev                   of f112-pycdceilings
+> 	let doc-yrly-reqrev-adjusted          of f112-add-new-rec-2 = doc-yrly-reqrev-adjusted          of f112-pycdceilings
+> 	let doc-yrly-reqrev-computed          of f112-add-new-rec-2 = doc-yrly-reqrev-computed          of f112-pycdceilings
+> 	let doc-yrly-tarrev                   of f112-add-new-rec-2 = doc-yrly-tarrev                   of f112-pycdceilings
+> 	let doc-yrly-tarrev-adjusted          of f112-add-new-rec-2 = doc-yrly-tarrev-adjusted          of f112-pycdceilings
+> 	let doc-yrly-tarrev-computed          of f112-add-new-rec-2 = doc-yrly-tarrev-computed          of f112-pycdceilings
+> 	let retro-to-ep-nbr-req               of f112-add-new-rec-2 = retro-to-ep-nbr-req               of f112-pycdceilings
+> 	let retro-to-ep-nbr-tar               of f112-add-new-rec-2 = retro-to-ep-nbr-tar               of f112-pycdceilings
+> end
+> 
+> procedure internal f112RecSave
+> begin
+>       let w-current-pycode          	= doc-pay-code     of f112-pycdceilings
+>       let w-current-pysubcode       	= doc-pay-sub-code of f112-pycdceilings
+>       let w-curr-ceil-earn          	= doc-yrly-ceiling of f112-pycdceilings
+>       let w-curr-ceil-expn          	= doc-yrly-expense of f112-pycdceilings
+>       ;be1
+>       let w-factor			= factor			of f112-pycdceilings
+>       let w-doc-pay-code		= doc-pay-code			of f112-pycdceilings
+>       let w-doc-pay-sub-code		= doc-pay-sub-code		of f112-pycdceilings
+>       let w-retro-to-ep-nbr		= retro-to-ep-nbr		of f112-pycdceilings
+>       let w-doc-yrly-ceiling		= doc-yrly-ceiling		of f112-pycdceilings
+>       let w-doc-yrly-ceiling-adjusted	= doc-yrly-ceiling-adjusted	of f112-pycdceilings
+>       let w-doc-yrly-ceiling-computed	= doc-yrly-ceiling-computed	of f112-pycdceilings
+>       let w-doc-yrly-expense		= doc-yrly-expense		of f112-pycdceilings
+>       let w-doc-yrly-expense-adjusted	= doc-yrly-expense-adjusted	of f112-pycdceilings
+>       let w-doc-yrly-expense-computed	= doc-yrly-expense-computed	of f112-pycdceilings
+>       let w-doc-yrly-expn-alloc-pers	= doc-yrly-expn-alloc-pers	of f112-pycdceilings
+>       let w-doc-yrly-ceil-guar		= doc-yrly-ceil-guar		of f112-pycdceilings
+>       let w-doc-yrly-ceiling-guar-perc	= doc-yrly-ceiling-guar-perc	of f112-pycdceilings
+>       let w-doc-rma-expense-percent-reg	= doc-rma-expense-percent-reg	of f112-pycdceilings
+>       let w-doc-rma-expense-percent-misc= doc-rma-expense-percent-misc	of f112-pycdceilings
+>       let w-doc-dept-expense-percent-reg= doc-dept-expense-percent-reg	of f112-pycdceilings
+>       let w-doc-dept-expense-percent-misc=doc-dept-expense-percent-misc	of f112-pycdceilings
+>       let w-doc-yrly-reqrev		= doc-yrly-reqrev		of f112-pycdceilings
+>       let w-doc-yrly-reqrev-adjusted	= doc-yrly-reqrev-adjusted	of f112-pycdceilings
+>       let w-doc-yrly-reqrev-computed	= doc-yrly-reqrev-computed	of f112-pycdceilings
+>       let w-doc-yrly-tarrev		= doc-yrly-tarrev		of f112-pycdceilings
+>       let w-doc-yrly-tarrev-adjusted	= doc-yrly-tarrev-adjusted	of f112-pycdceilings
+>       let w-doc-yrly-tarrev-computed	= doc-yrly-tarrev-computed	of f112-pycdceilings
+>       let w-retro-to-ep-nbr-req		= retro-to-ep-nbr-req		of f112-pycdceilings
+> end
+> 
+> ;be1
+> procedure internal f112RecRestore
+> begin
+>   let factor				of f112-pycdceilings= w-factor
+>   let doc-pay-code			of f112-pycdceilings= w-doc-pay-code
+>   let doc-pay-sub-code			of f112-pycdceilings= w-doc-pay-sub-code
+>   let retro-to-ep-nbr			of f112-pycdceilings= w-retro-to-ep-nbr
+>   let doc-yrly-ceiling-adjusted		of f112-pycdceilings= w-doc-yrly-ceiling-adjusted
+>   let doc-yrly-ceiling-computed		of f112-pycdceilings= w-doc-yrly-ceiling-computed
+>   let doc-yrly-expense			of f112-pycdceilings= w-doc-yrly-expense
+>   let doc-yrly-expense-adjusted		of f112-pycdceilings= w-doc-yrly-expense-adjusted
+>   let doc-yrly-expense-computed		of f112-pycdceilings= w-doc-yrly-expense-computed
+>   let doc-yrly-expn-alloc-pers		of f112-pycdceilings= w-doc-yrly-expn-alloc-pers
+>   let doc-yrly-ceil-guar		of f112-pycdceilings= w-doc-yrly-ceil-guar
+>   let doc-yrly-ceiling-guar-perc 	of f112-pycdceilings= w-doc-yrly-ceiling-guar-perc
+> ;  let last-mod-date    			of f112-pycdceilings= sysdate
+> ;  let last-mod-time    			of f112-pycdceilings= systime/10000
+> ;  let last-mod-user-id 			of f112-pycdceilings= signonuser
+>   let doc-rma-expense-percent-reg	of f112-pycdceilings= w-doc-rma-expense-percent-reg
+>   let doc-rma-expense-percent-misc	of f112-pycdceilings= w-doc-rma-expense-percent-misc
+>   let doc-dept-expense-percent-reg	of f112-pycdceilings= w-doc-dept-expense-percent-reg
+>   let doc-dept-expense-percent-misc	of f112-pycdceilings= w-doc-dept-expense-percent-misc
+>   let doc-yrly-reqrev			of f112-pycdceilings= w-doc-yrly-reqrev
+>   let doc-yrly-reqrev-adjusted		of f112-pycdceilings= w-doc-yrly-reqrev-adjusted
+>   let doc-yrly-reqrev-computed		of f112-pycdceilings= w-doc-yrly-reqrev-computed
+>   let doc-yrly-tarrev			of f112-pycdceilings= w-doc-yrly-tarrev
+>   let doc-yrly-tarrev-adjusted		of f112-pycdceilings= w-doc-yrly-tarrev-adjusted
+>   let doc-yrly-tarrev-computed		of f112-pycdceilings= w-doc-yrly-tarrev-computed
+>   let retro-to-ep-nbr-req		of f112-pycdceilings= w-retro-to-ep-nbr-req
+>   let retro-to-ep-nbr-tar		of f112-pycdceilings= w-retro-to-ep-nbr-tar
+> end
+> 
+> ;MC3
+> use $use/savef020audit.use
+> procedure internal savef020audit
+> begin
+> ; preset from f020-doctor-mstr
+>     let a-doc-nbr                 =   &
+>         doc-nbr           of f020-doctor-mstr
+>     let a-doc-dept                =   &
+>         doc-dept          of f020-doctor-mstr
+>     let a-doc-ohip-nbr            =   &
+>         doc-ohip-nbr      of f020-doctor-mstr
+>     let a-doc-sin-nbr             =   &
+>         doc-sin-nbr       of f020-doctor-mstr
+>     let a-doc-clinic-nbr          =   &
+>         doc-clinic-nbr    of f020-doctor-mstr
+>     let a-doc-spec-cd             =   &
+>         doc-spec-cd       of f020-doctor-mstr
+>     let a-doc-hosp-nbr            =   &
+>         doc-hosp-nbr      of f020-doctor-mstr
+>     let a-doc-name                =   &
+>         doc-name          of f020-doctor-mstr
+>     let a-doc-name-soundex        =   &
+>         doc-name-soundex  of f020-doctor-mstr
+>     let a-doc-inits               =   &
+>         doc-inits         of f020-doctor-mstr
+>     let a-doc-full-part-ind        =   &
+>         doc-full-part-ind  of f020-doctor-mstr
+>     let a-doc-bank-nbr             =   &
+>         doc-bank-nbr       of f020-doctor-mstr
+>     let a-doc-bank-branch          =   &
+>         doc-bank-branch    of f020-doctor-mstr
+>     let a-doc-bank-acct            =   &
+>         doc-bank-acct      of f020-doctor-mstr
+>     let a-doc-date-fac-start        =   &
+>         doc-date-fac-start  of f020-doctor-mstr
+>     let a-doc-date-fac-term         =   &
+>         doc-date-fac-term   of f020-doctor-mstr
+>     let a-doc-ytdgua                =   &
+>         doc-ytdgua          of f020-doctor-mstr
+>     let a-doc-ytdgub                =   &
+>         doc-ytdgub          of f020-doctor-mstr
+>     let a-doc-ytdguc                =   &
+>         doc-ytdguc          of f020-doctor-mstr
+>     let a-doc-ytdgud                =   &
+>         doc-ytdgud          of f020-doctor-mstr
+>     let a-doc-ytdcea                =   &
+>         doc-ytdcea          of f020-doctor-mstr
+>     let a-doc-ytdcex                =   &
+>         doc-ytdcex          of f020-doctor-mstr
+>     let a-doc-ytdear                =   &
+>         doc-ytdear          of f020-doctor-mstr
+>     let a-doc-ytdinc                =   &
+>         doc-ytdinc          of f020-doctor-mstr
+>     let a-doc-ytdeft                =   &
+>         doc-ytdeft          of f020-doctor-mstr
+>     let a-doc-totinc-g              =   &
+>         doc-totinc-g        of f020-doctor-mstr
+>     let a-doc-ep-date-deposit         =   &
+>         doc-ep-date-deposit   of f020-doctor-mstr
+>     let a-doc-totinc                  =   &
+>         doc-totinc            of f020-doctor-mstr
+>     let a-doc-ep-ceiexp               =   &
+>         doc-ep-ceiexp         of f020-doctor-mstr
+>     let a-doc-adjcea                  =   &
+>         doc-adjcea            of f020-doctor-mstr
+>     let a-doc-adjcex                  =   &
+>         doc-adjcex            of f020-doctor-mstr
+>     let a-doc-ceicea                  =   &
+>         doc-ceicea            of f020-doctor-mstr
+>     let a-doc-ceicex                  =   &
+>         doc-ceicex            of f020-doctor-mstr
+>     let a-doc-clinic-nbr-2            =   &
+>         doc-clinic-nbr-2      of f020-doctor-mstr
+>     let a-doc-clinic-nbr-3            =   &
+>         doc-clinic-nbr-3      of f020-doctor-mstr
+>     let a-doc-clinic-nbr-4            =   &
+>         doc-clinic-nbr-4      of f020-doctor-mstr
+>     let a-doc-clinic-nbr-5            =   &
+>         doc-clinic-nbr-5      of f020-doctor-mstr
+>     let a-doc-clinic-nbr-6            =   &
+>         doc-clinic-nbr-6      of f020-doctor-mstr
+>     let a-doc-spec-cd-2               =   &
+>         doc-spec-cd-2         of f020-doctor-mstr
+>     let a-doc-spec-cd-3               =   &
+>         doc-spec-cd-3         of f020-doctor-mstr
+>     let a-doc-ytdinc-g                =   &
+>         doc-ytdinc-g          of f020-doctor-mstr
+>     let a-doc-locations               =   &
+>         doc-locations         of f020-doctor-mstr
+>     let a-doc-rma-expense-percent-misc         =   &
+>         doc-rma-expense-percent-misc   of f020-doctor-mstr
+>     let a-doc-afp-paym-group                   =   &
+>         doc-afp-paym-group             of f020-doctor-mstr
+>     let a-doc-dept-2                           =   &
+>         doc-dept-2                     of f020-doctor-mstr
+>     let a-doc-ind-pays-gst                     =   &
+>         doc-ind-pays-gst               of f020-doctor-mstr
+>     let a-doc-nx-avail-batch                   =   &
+>         doc-nx-avail-batch             of f020-doctor-mstr
+>     let a-doc-nx-avail-batch-2                 =   &
+>         doc-nx-avail-batch-2           of f020-doctor-mstr
+>     let a-doc-nx-avail-batch-3                 =   &
+>         doc-nx-avail-batch-3           of f020-doctor-mstr
+>     let a-doc-nx-avail-batch-4                 =   &
+>         doc-nx-avail-batch-4           of f020-doctor-mstr
+>     let a-doc-nx-avail-batch-5                 =   &
+>         doc-nx-avail-batch-5           of f020-doctor-mstr
+>     let a-doc-nx-avail-batch-6                 =   &
+>         doc-nx-avail-batch-6           of f020-doctor-mstr
+>     let a-doc-yrly-ceiling-computed            =   &
+>         doc-yrly-ceiling-computed      of f020-doctor-mstr
+>     let a-doc-yrly-expense-computed            =   &
+>         doc-yrly-expense-computed      of f020-doctor-mstr
+>     let a-doc-rma-expense-percent-reg          =   &
+>         doc-rma-expense-percent-reg    of f020-doctor-mstr
+>     let a-doc-sub-specialty                    =   &
+>         doc-sub-specialty              of f020-doctor-mstr
+>     let a-doc-payeft                           =   &
+>         doc-payeft                     of f020-doctor-mstr
+>     let a-doc-ytdded                           =   &
+>         doc-ytdded                     of f020-doctor-mstr
+>     let a-doc-dept-expense-percent-misc        =   &
+>         doc-dept-expense-percent-misc  of f020-doctor-mstr
+>     let a-doc-dept-expense-percent-reg         =   &
+>         doc-dept-expense-percent-reg   of f020-doctor-mstr
+>     let a-doc-ep-ped                           =   &
+>         doc-ep-ped                     of f020-doctor-mstr
+>     let a-doc-ep-pay-code                      =   &
+>         doc-ep-pay-code                of f020-doctor-mstr
+>     let a-doc-ep-pay-sub-code                  =   &
+>         doc-ep-pay-sub-code            of f020-doctor-mstr
+>     let a-doc-partnership                      =   &
+>         doc-partnership                of f020-doctor-mstr
+>     let a-doc-ind-holdback-active              =   &
+>         doc-ind-holdback-active        of f020-doctor-mstr
+>     let a-group_regular_service                =   &
+>         group_regular_service          of f020-doctor-mstr
+>     let a-group_over_serviced                  =   &
+>         group_over_serviced            of f020-doctor-mstr
+>     let a-doc-specialties                      =   &
+>         doc-specialties                of f020-doctor-mstr
+> ; preset from f020-doctor-extra
+>     let a-doc-yrly-require-revenue             =   &
+>         doc-yrly-require-revenue       of f020-doctor-extra
+>     let a-doc-yrly-target-revenue              =   &
+>         doc-yrly-target-revenue        of f020-doctor-extra
+>     let a-doc-ceireq                           =   &
+>         doc-ceireq                     of f020-doctor-extra
+>     let a-doc-ytdreq                           =   &
+>         doc-ytdreq                     of f020-doctor-extra
+>     let a-doc-ceitar                           =   &
+>         doc-ceitar                     of f020-doctor-extra
+>     let a-doc-ytdtar                           =   &
+>         doc-ytdtar                     of f020-doctor-extra
+>     let a-billing-via-paper-flag               =   &
+>         billing-via-paper-flag         of f020-doctor-extra
+>     let a-billing-via-diskette-flag            =   &
+>         billing-via-diskette-flag      of f020-doctor-extra
+>     let a-billing-via-web-test-flag            =   &
+>         billing-via-web-test-flag      of f020-doctor-extra
+>     let a-billing-via-web-live-flag            =   &
+>         billing-via-web-live-flag      of f020-doctor-extra
+>     let a-billing-via-rma-data-entry           =   &
+>         billing-via-rma-data-entry     of f020-doctor-extra
+>     let a-date-start-rma-data-entry            =   &
+>         date-start-rma-data-entry      of f020-doctor-extra
+>     let a-date-start-diskette                  =   &
+>         date-start-diskette            of f020-doctor-extra
+>     let a-date-start-paper                     =   &
+>         date-start-paper               of f020-doctor-extra
+>     let a-date-start-web-live                  =   &
+>         date-start-web-live            of f020-doctor-extra
+>     let a-date-start-web-test                  =   &
+>         date-start-web-test            of f020-doctor-extra
+>     let a-leave-description                    =   &
+>         leave-description              of f020-doctor-extra
+>     let a-leave-date-start                     =   &
+>         leave-date-start               of f020-doctor-extra
+>     let a-leave-date-end                       =   &
+>         leave-date-end                 of f020-doctor-extra
+>     let a-web-user-revenue-only-flag           =   &
+>         web-user-revenue-only-flag     of f020-doctor-extra
+>     let a-manager-flag                         =   &
+>         manager-flag                   of f020-doctor-extra
+>     let a-chair-flag                           =   &
+>         chair-flag                     of f020-doctor-extra
+>     let a-abe-user-flag                        =   &
+>         abe-user-flag                  of f020-doctor-extra
+>     let a-cpso-nbr                             =   &
+>         cpso-nbr                       of f020-doctor-extra
+>     let a-cmpa-nbr                             =   &
+>         cmpa-nbr                       of f020-doctor-extra
+>     let a-oma-nbr                              =   &
+>         oma-nbr                        of f020-doctor-extra
+>     let a-cfpc-nbr		             =   &
+>         cfpc-nbr		       of f020-doctor-extra
+>     let a-rcpsc-nbr                            =   &
+>         rcpsc-nbr                      of f020-doctor-extra
+>     let a-doc-med-prof-corp                    =   &
+>         doc-med-prof-corp              of f020-doctor-extra
+>     let a-mcmaster-employee-id                 =   &
+>         mcmaster-employee-id           of f020-doctor-extra
+>     let a-doc-spec-cd-eff-date                 =   &
+>         doc-spec-cd-eff-date           of f020-doctor-extra
+>     let a-doc-spec-cd-2-eff-date               =   &
+>         doc-spec-cd-2-eff-date         of f020-doctor-extra
+>     let a-doc-spec-cd-3-eff-date               =   &
+>         doc-spec-cd-3-eff-date         of f020-doctor-extra
+>     let a-doc-clinic-nbr-status                =   &
+>         doc-clinic-nbr-status          of f020-doctor-extra
+>     let a-doc-clinic-nbr-2-status              =   &
+>         doc-clinic-nbr-2-status        of f020-doctor-extra
+>     let a-doc-clinic-nbr-3-status              =   &
+>         doc-clinic-nbr-3-status        of f020-doctor-extra
+>     let a-doc-clinic-nbr-4-status              =   &
+>         doc-clinic-nbr-4-status        of f020-doctor-extra
+>     let a-doc-clinic-nbr-5-status              =   &
+>         doc-clinic-nbr-5-status        of f020-doctor-extra
+>     let a-doc-clinic-nbr-6-status              =   &
+>         doc-clinic-nbr-6-status        of f020-doctor-extra
+>     let a-factor-gst-income-reg                =   &
+>         factor-gst-income-reg          of f020-doctor-extra
+>     let a-factor-gst-income-misc               =   &
+>         factor-gst-income-misc         of f020-doctor-extra
+>     let a-yellow-pages-flag                    =   &
+>         yellow-pages-flag              of f020-doctor-extra
+>     let a-replaced-by-doc-nbr                  =   &
+>         replaced-by-doc-nbr            of f020-doctor-extra
+>     let a-prior-doc-nbr                        =   &
+>         prior-doc-nbr                  of f020-doctor-extra
+>     let a-cop-nbr                              =   &
+>         cop-nbr                        of f020-doctor-extra
+>     let a-doc-flag-primary                     =   &
+>         doc-flag-primary               of f020-doctor-extra
+>     let a-has-valid-current-payroll-record        =   &
+>         has-valid-current-payroll-record  of f020-doctor-extra
+>     let a-pay-this-doctor-ohip-premium            =   &
+>         pay-this-doctor-ohip-premium      of f020-doctor-extra
+>     let a-doc-fiscal-yr-start-month               =   &
+>         doc-fiscal-yr-start-month         of f020-doctor-extra
+> end
+> 
+> use $use/createf020audit.use
+> procedure internal createf020audit_before
+> begin
+> ; preset from f020-doctor-mstr
+>     let doc-nbr           of f020-doctor-audit =   &
+>         a-doc-nbr
+>     let doc-dept          of f020-doctor-audit =   &
+>         a-doc-dept
+>     let doc-ohip-nbr      of f020-doctor-audit =   &
+>         a-doc-ohip-nbr
+>     let doc-sin-nbr       of f020-doctor-audit =   &
+>         a-doc-sin-nbr
+>     let doc-clinic-nbr    of f020-doctor-audit =   &
+>         a-doc-clinic-nbr
+>     let doc-spec-cd       of f020-doctor-audit =   &
+>         a-doc-spec-cd
+>     let doc-hosp-nbr      of f020-doctor-audit =   &
+>         a-doc-hosp-nbr
+>     let doc-name          of f020-doctor-audit =   &
+>         a-doc-name
+>     let doc-name-soundex  of f020-doctor-audit =   &
+>         a-doc-name-soundex
+>     let doc-inits         of f020-doctor-audit =   &
+>         a-doc-inits
+>     let doc-full-part-ind  of f020-doctor-audit =   &
+>         a-doc-full-part-ind
+>     let doc-bank-nbr       of f020-doctor-audit =   &
+>         a-doc-bank-nbr
+>     let doc-bank-branch    of f020-doctor-audit =   &
+>         a-doc-bank-branch
+>     let doc-bank-acct      of f020-doctor-audit =   &
+>         a-doc-bank-acct
+>     let doc-date-fac-start  of f020-doctor-audit =   &
+>         a-doc-date-fac-start
+>     let doc-date-fac-term   of f020-doctor-audit =   &
+>         a-doc-date-fac-term
+>     let doc-ytdgua          of f020-doctor-audit =   &
+>         a-doc-ytdgua
+>     let doc-ytdgub          of f020-doctor-audit =   &
+>         a-doc-ytdgub
+>     let doc-ytdguc          of f020-doctor-audit =   &
+>         a-doc-ytdguc
+>     let doc-ytdgud          of f020-doctor-audit =   &
+>         a-doc-ytdgud
+>     let doc-ytdcea          of f020-doctor-audit =   &
+>         a-doc-ytdcea
+>     let doc-ytdcex          of f020-doctor-audit =   &
+>         a-doc-ytdcex
+>     let doc-ytdear          of f020-doctor-audit =   &
+>         a-doc-ytdear
+>     let doc-ytdinc          of f020-doctor-audit =   &
+>         a-doc-ytdinc
+>     let doc-ytdeft          of f020-doctor-audit =   &
+>         a-doc-ytdeft
+>     let doc-totinc-g        of f020-doctor-audit =   &
+>         a-doc-totinc-g
+>     let doc-ep-date-deposit   of f020-doctor-audit =   &
+>         a-doc-ep-date-deposit
+>     let doc-totinc            of f020-doctor-audit =   &
+>         a-doc-totinc
+>     let doc-ep-ceiexp         of f020-doctor-audit =   &
+>         a-doc-ep-ceiexp
+>     let doc-adjcea            of f020-doctor-audit =   &
+>         a-doc-adjcea
+>     let doc-adjcex            of f020-doctor-audit =   &
+>         a-doc-adjcex
+>     let doc-ceicea            of f020-doctor-audit =   &
+>         a-doc-ceicea
+>     let doc-ceicex            of f020-doctor-audit =   &
+>         a-doc-ceicex
+>     let doc-clinic-nbr-2      of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-2
+>     let doc-clinic-nbr-3      of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-3
+>     let doc-clinic-nbr-4      of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-4
+>     let doc-clinic-nbr-5      of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-5
+>     let doc-clinic-nbr-6      of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-6
+>     let doc-spec-cd-2         of f020-doctor-audit =   &
+>         a-doc-spec-cd-2
+>     let doc-spec-cd-3         of f020-doctor-audit =   &
+>         a-doc-spec-cd-3
+>     let doc-ytdinc-g          of f020-doctor-audit =   &
+>         a-doc-ytdinc-g
+>     let doc-locations         of f020-doctor-audit =   &
+>         a-doc-locations
+>     let doc-rma-expense-percent-misc   of f020-doctor-audit =   &
+>         a-doc-rma-expense-percent-misc
+>     let doc-afp-paym-group             of f020-doctor-audit =   &
+>         a-doc-afp-paym-group
+>     let doc-dept-2                     of f020-doctor-audit =   &
+>         a-doc-dept-2
+>     let doc-ind-pays-gst               of f020-doctor-audit =   &
+>         a-doc-ind-pays-gst
+>     let doc-nx-avail-batch             of f020-doctor-audit =   &
+>         a-doc-nx-avail-batch
+>     let doc-nx-avail-batch-2           of f020-doctor-audit =   &
+>         a-doc-nx-avail-batch-2
+>     let doc-nx-avail-batch-3           of f020-doctor-audit =   &
+>         a-doc-nx-avail-batch-3
+>     let doc-nx-avail-batch-4           of f020-doctor-audit =   &
+>         a-doc-nx-avail-batch-4
+>     let doc-nx-avail-batch-5           of f020-doctor-audit =   &
+>         a-doc-nx-avail-batch-5
+>     let doc-nx-avail-batch-6           of f020-doctor-audit =   &
+>         a-doc-nx-avail-batch-6
+>     let doc-yrly-ceiling-computed      of f020-doctor-audit =   &
+>         a-doc-yrly-ceiling-computed
+>     let doc-yrly-expense-computed      of f020-doctor-audit =   &
+>         a-doc-yrly-expense-computed
+>     let doc-rma-expense-percent-reg    of f020-doctor-audit =   &
+>         a-doc-rma-expense-percent-reg
+>     let doc-sub-specialty              of f020-doctor-audit =   &
+>         a-doc-sub-specialty
+>     let doc-payeft                     of f020-doctor-audit =   &
+>         a-doc-payeft
+>     let doc-ytdded                     of f020-doctor-audit =   &
+>         a-doc-ytdded
+>     let doc-dept-expense-percent-misc  of f020-doctor-audit =   &
+>         a-doc-dept-expense-percent-misc
+>     let doc-dept-expense-percent-reg   of f020-doctor-audit =   &
+>         a-doc-dept-expense-percent-reg
+>     let doc-ep-ped                     of f020-doctor-audit =   &
+>         a-doc-ep-ped
+>     let doc-ep-pay-code                of f020-doctor-audit =   &
+>         a-doc-ep-pay-code
+>     let doc-ep-pay-sub-code            of f020-doctor-audit =   &
+>         a-doc-ep-pay-sub-code
+>     let doc-partnership                of f020-doctor-audit =   &
+>         a-doc-partnership
+>     let doc-ind-holdback-active        of f020-doctor-audit =   &
+>         a-doc-ind-holdback-active
+>     let group_regular_service          of f020-doctor-audit =   &
+>         a-group_regular_service
+>     let group_over_serviced            of f020-doctor-audit =   &
+>         a-group_over_serviced
+>     let doc-specialties                of f020-doctor-audit =   &
+>         a-doc-specialties
+> ; preset from f020-doctor-extra
+>     let doc-yrly-require-revenue       of f020-doctor-audit =   &
+>         a-doc-yrly-require-revenue
+>     let doc-yrly-target-revenue        of f020-doctor-audit =   &
+>         a-doc-yrly-target-revenue
+>     let doc-ceireq                     of f020-doctor-audit =   &
+>         a-doc-ceireq
+>     let doc-ytdreq                     of f020-doctor-audit =   &
+>         a-doc-ytdreq
+>     let doc-ceitar                     of f020-doctor-audit =   &
+>         a-doc-ceitar
+>     let doc-ytdtar                     of f020-doctor-audit =   &
+>         a-doc-ytdtar
+>     let billing-via-paper-flag         of f020-doctor-audit =   &
+>         a-billing-via-paper-flag
+>     let billing-via-diskette-flag      of f020-doctor-audit =   &
+>         a-billing-via-diskette-flag
+>     let billing-via-web-test-flag      of f020-doctor-audit =   &
+>         a-billing-via-web-test-flag
+>     let billing-via-web-live-flag      of f020-doctor-audit =   &
+>         a-billing-via-web-live-flag
+>     let billing-via-rma-data-entry     of f020-doctor-audit =   &
+>         a-billing-via-rma-data-entry
+>     let date-start-rma-data-entry      of f020-doctor-audit =   &
+>         a-date-start-rma-data-entry
+>     let date-start-diskette            of f020-doctor-audit =   &
+>         a-date-start-diskette
+>     let date-start-paper               of f020-doctor-audit =   &
+>         a-date-start-paper
+>     let date-start-web-live            of f020-doctor-audit =   &
+>         a-date-start-web-live
+>     let date-start-web-test            of f020-doctor-audit =   &
+>         a-date-start-web-test
+>     let leave-description              of f020-doctor-audit =   &
+>         a-leave-description
+>     let leave-date-start               of f020-doctor-audit =   &
+>         a-leave-date-start
+>     let leave-date-end                 of f020-doctor-audit =   &
+>         a-leave-date-end
+>     let web-user-revenue-only-flag     of f020-doctor-audit =   &
+>         a-web-user-revenue-only-flag
+>     let manager-flag                   of f020-doctor-audit =   &
+>         a-manager-flag
+>     let chair-flag                     of f020-doctor-audit =   &
+>         a-chair-flag
+>     let abe-user-flag                  of f020-doctor-audit =   &
+>         a-abe-user-flag
+>     let cpso-nbr                       of f020-doctor-audit =   &
+>         a-cpso-nbr
+>     let cmpa-nbr                       of f020-doctor-audit =   &
+>         a-cmpa-nbr
+>     let oma-nbr                        of f020-doctor-audit =   &
+>         a-oma-nbr
+>     let cfpc-nbr		       of f020-doctor-audit =   &
+>         a-cfpc-nbr
+>     let rcpsc-nbr                      of f020-doctor-audit =   &
+>         a-rcpsc-nbr
+>     let doc-med-prof-corp              of f020-doctor-audit =   &
+>         a-doc-med-prof-corp
+>     let mcmaster-employee-id           of f020-doctor-audit =   &
+>         a-mcmaster-employee-id
+>     let doc-spec-cd-eff-date           of f020-doctor-audit =   &
+>         a-doc-spec-cd-eff-date
+>     let doc-spec-cd-2-eff-date         of f020-doctor-audit =   &
+>         a-doc-spec-cd-2-eff-date
+>     let doc-spec-cd-3-eff-date         of f020-doctor-audit =   &
+>         a-doc-spec-cd-3-eff-date
+>     let doc-clinic-nbr-status          of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-status
+>     let doc-clinic-nbr-2-status        of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-2-status
+>     let doc-clinic-nbr-3-status        of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-3-status
+>     let doc-clinic-nbr-4-status        of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-4-status
+>     let doc-clinic-nbr-5-status        of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-5-status
+>     let doc-clinic-nbr-6-status        of f020-doctor-audit =   &
+>         a-doc-clinic-nbr-6-status
+>     let factor-gst-income-reg          of f020-doctor-audit =   &
+>         a-factor-gst-income-reg
+>     let factor-gst-income-misc         of f020-doctor-audit =   &
+>         a-factor-gst-income-misc
+>     let yellow-pages-flag              of f020-doctor-audit =   &
+>         a-yellow-pages-flag
+>     let replaced-by-doc-nbr            of f020-doctor-audit =   &
+>         a-replaced-by-doc-nbr
+>     let prior-doc-nbr                  of f020-doctor-audit =   &
+>         a-prior-doc-nbr
+>     let cop-nbr                        of f020-doctor-audit =   &
+>         a-cop-nbr
+>     let doc-flag-primary               of f020-doctor-audit =   &
+>         a-doc-flag-primary
+>     let has-valid-current-payroll-record  of f020-doctor-audit =   &
+>         a-has-valid-current-payroll-record
+>     let pay-this-doctor-ohip-premium      of f020-doctor-audit =   &
+>         a-pay-this-doctor-ohip-premium
+>     let doc-fiscal-yr-start-month         of f020-doctor-audit =   &
+>         a-doc-fiscal-yr-start-month
+> end
+> 
+> procedure internal createf020audit_after
+> begin
+> ; preset from f020-doctor-mstr
+>     let doc-nbr           of f020-doctor-audit =   &
+>         doc-nbr           of f020-doctor-mstr
+>     let doc-dept          of f020-doctor-audit =   &
+>         doc-dept          of f020-doctor-mstr
+>     let doc-ohip-nbr      of f020-doctor-audit =   &
+>         doc-ohip-nbr      of f020-doctor-mstr
+>     let doc-sin-nbr       of f020-doctor-audit =   &
+>         doc-sin-nbr       of f020-doctor-mstr
+>     let doc-clinic-nbr    of f020-doctor-audit =   &
+>         doc-clinic-nbr    of f020-doctor-mstr
+>     let doc-spec-cd       of f020-doctor-audit =   &
+>         doc-spec-cd       of f020-doctor-mstr
+>     let doc-hosp-nbr      of f020-doctor-audit =   &
+>         doc-hosp-nbr      of f020-doctor-mstr
+>     let doc-name          of f020-doctor-audit =   &
+>         doc-name          of f020-doctor-mstr
+>     let doc-name-soundex  of f020-doctor-audit =   &
+>         doc-name-soundex  of f020-doctor-mstr
+>     let doc-inits         of f020-doctor-audit =   &
+>         doc-inits         of f020-doctor-mstr
+>     let doc-full-part-ind  of f020-doctor-audit =   &
+>         doc-full-part-ind  of f020-doctor-mstr
+>     let doc-bank-nbr       of f020-doctor-audit =   &
+>         doc-bank-nbr       of f020-doctor-mstr
+>     let doc-bank-branch    of f020-doctor-audit =   &
+>         doc-bank-branch    of f020-doctor-mstr
+>     let doc-bank-acct      of f020-doctor-audit =   &
+>         doc-bank-acct      of f020-doctor-mstr
+>     let doc-date-fac-start  of f020-doctor-audit =   &
+>         doc-date-fac-start  of f020-doctor-mstr
+>     let doc-date-fac-term   of f020-doctor-audit =   &
+>         doc-date-fac-term   of f020-doctor-mstr
+>     let doc-ytdgua          of f020-doctor-audit =   &
+>         doc-ytdgua          of f020-doctor-mstr
+>     let doc-ytdgub          of f020-doctor-audit =   &
+>         doc-ytdgub          of f020-doctor-mstr
+>     let doc-ytdguc          of f020-doctor-audit =   &
+>         doc-ytdguc          of f020-doctor-mstr
+>     let doc-ytdgud          of f020-doctor-audit =   &
+>         doc-ytdgud          of f020-doctor-mstr
+>     let doc-ytdcea          of f020-doctor-audit =   &
+>         doc-ytdcea          of f020-doctor-mstr
+>     let doc-ytdcex          of f020-doctor-audit =   &
+>         doc-ytdcex          of f020-doctor-mstr
+>     let doc-ytdear          of f020-doctor-audit =   &
+>         doc-ytdear          of f020-doctor-mstr
+>     let doc-ytdinc          of f020-doctor-audit =   &
+>         doc-ytdinc          of f020-doctor-mstr
+>     let doc-ytdeft          of f020-doctor-audit =   &
+>         doc-ytdeft          of f020-doctor-mstr
+>     let doc-totinc-g        of f020-doctor-audit =   &
+>         doc-totinc-g        of f020-doctor-mstr
+>     let doc-ep-date-deposit   of f020-doctor-audit =   &
+>         doc-ep-date-deposit   of f020-doctor-mstr
+>     let doc-totinc            of f020-doctor-audit =   &
+>         doc-totinc            of f020-doctor-mstr
+>     let doc-ep-ceiexp         of f020-doctor-audit =   &
+>         doc-ep-ceiexp         of f020-doctor-mstr
+>     let doc-adjcea            of f020-doctor-audit =   &
+>         doc-adjcea            of f020-doctor-mstr
+>     let doc-adjcex            of f020-doctor-audit =   &
+>         doc-adjcex            of f020-doctor-mstr
+>     let doc-ceicea            of f020-doctor-audit =   &
+>         doc-ceicea            of f020-doctor-mstr
+>     let doc-ceicex            of f020-doctor-audit =   &
+>         doc-ceicex            of f020-doctor-mstr
+>     let doc-clinic-nbr-2      of f020-doctor-audit =   &
+>         doc-clinic-nbr-2      of f020-doctor-mstr
+>     let doc-clinic-nbr-3      of f020-doctor-audit =   &
+>         doc-clinic-nbr-3      of f020-doctor-mstr
+>     let doc-clinic-nbr-4      of f020-doctor-audit =   &
+>         doc-clinic-nbr-4      of f020-doctor-mstr
+>     let doc-clinic-nbr-5      of f020-doctor-audit =   &
+>         doc-clinic-nbr-5      of f020-doctor-mstr
+>     let doc-clinic-nbr-6      of f020-doctor-audit =   &
+>         doc-clinic-nbr-6      of f020-doctor-mstr
+>     let doc-spec-cd-2         of f020-doctor-audit =   &
+>         doc-spec-cd-2         of f020-doctor-mstr
+>     let doc-spec-cd-3         of f020-doctor-audit =   &
+>         doc-spec-cd-3         of f020-doctor-mstr
+>     let doc-ytdinc-g          of f020-doctor-audit =   &
+>         doc-ytdinc-g          of f020-doctor-mstr
+>     let doc-locations         of f020-doctor-audit =   &
+>         doc-locations         of f020-doctor-mstr
+>     let doc-rma-expense-percent-misc   of f020-doctor-audit =   &
+>         doc-rma-expense-percent-misc   of f020-doctor-mstr
+>     let doc-afp-paym-group             of f020-doctor-audit =   &
+>         doc-afp-paym-group             of f020-doctor-mstr
+>     let doc-dept-2                     of f020-doctor-audit =   &
+>         doc-dept-2                     of f020-doctor-mstr
+>     let doc-ind-pays-gst               of f020-doctor-audit =   &
+>         doc-ind-pays-gst               of f020-doctor-mstr
+>     let doc-nx-avail-batch             of f020-doctor-audit =   &
+>         doc-nx-avail-batch             of f020-doctor-mstr
+>     let doc-nx-avail-batch-2           of f020-doctor-audit =   &
+>         doc-nx-avail-batch-2           of f020-doctor-mstr
+>     let doc-nx-avail-batch-3           of f020-doctor-audit =   &
+>         doc-nx-avail-batch-3           of f020-doctor-mstr
+>     let doc-nx-avail-batch-4           of f020-doctor-audit =   &
+>         doc-nx-avail-batch-4           of f020-doctor-mstr
+>     let doc-nx-avail-batch-5           of f020-doctor-audit =   &
+>         doc-nx-avail-batch-5           of f020-doctor-mstr
+>     let doc-nx-avail-batch-6           of f020-doctor-audit =   &
+>         doc-nx-avail-batch-6           of f020-doctor-mstr
+>     let doc-yrly-ceiling-computed      of f020-doctor-audit =   &
+>         doc-yrly-ceiling-computed      of f020-doctor-mstr
+>     let doc-yrly-expense-computed      of f020-doctor-audit =   &
+>         doc-yrly-expense-computed      of f020-doctor-mstr
+>     let doc-rma-expense-percent-reg    of f020-doctor-audit =   &
+>         doc-rma-expense-percent-reg    of f020-doctor-mstr
+>     let doc-sub-specialty              of f020-doctor-audit =   &
+>         doc-sub-specialty              of f020-doctor-mstr
+>     let doc-payeft                     of f020-doctor-audit =   &
+>         doc-payeft                     of f020-doctor-mstr
+>     let doc-ytdded                     of f020-doctor-audit =   &
+>         doc-ytdded                     of f020-doctor-mstr
+>     let doc-dept-expense-percent-misc  of f020-doctor-audit =   &
+>         doc-dept-expense-percent-misc  of f020-doctor-mstr
+>     let doc-dept-expense-percent-reg   of f020-doctor-audit =   &
+>         doc-dept-expense-percent-reg   of f020-doctor-mstr
+>     let doc-ep-ped                     of f020-doctor-audit =   &
+>         doc-ep-ped                     of f020-doctor-mstr
+>     let doc-ep-pay-code                of f020-doctor-audit =   &
+>         doc-ep-pay-code                of f020-doctor-mstr
+>     let doc-ep-pay-sub-code            of f020-doctor-audit =   &
+>         doc-ep-pay-sub-code            of f020-doctor-mstr
+>     let doc-partnership                of f020-doctor-audit =   &
+>         doc-partnership                of f020-doctor-mstr
+>     let doc-ind-holdback-active        of f020-doctor-audit =   &
+>         doc-ind-holdback-active        of f020-doctor-mstr
+>     let group_regular_service          of f020-doctor-audit =   &
+>         group_regular_service          of f020-doctor-mstr
+>     let group_over_serviced            of f020-doctor-audit =   &
+>         group_over_serviced            of f020-doctor-mstr
+>     let doc-specialties                of f020-doctor-audit =   &
+>         doc-specialties                of f020-doctor-mstr
+> ; preset from f020-doctor-extra
+>     let doc-yrly-require-revenue       of f020-doctor-audit =   &
+>         doc-yrly-require-revenue       of f020-doctor-extra
+>     let doc-yrly-target-revenue        of f020-doctor-audit =   &
+>         doc-yrly-target-revenue        of f020-doctor-extra
+>     let doc-ceireq                     of f020-doctor-audit =   &
+>         doc-ceireq                     of f020-doctor-extra
+>     let doc-ytdreq                     of f020-doctor-audit =   &
+>         doc-ytdreq                     of f020-doctor-extra
+>     let doc-ceitar                     of f020-doctor-audit =   &
+>         doc-ceitar                     of f020-doctor-extra
+>     let doc-ytdtar                     of f020-doctor-audit =   &
+>         doc-ytdtar                     of f020-doctor-extra
+>     let billing-via-paper-flag         of f020-doctor-audit =   &
+>         billing-via-paper-flag         of f020-doctor-extra
+>     let billing-via-diskette-flag      of f020-doctor-audit =   &
+>         billing-via-diskette-flag      of f020-doctor-extra
+>     let billing-via-web-test-flag      of f020-doctor-audit =   &
+>         billing-via-web-test-flag      of f020-doctor-extra
+>     let billing-via-web-live-flag      of f020-doctor-audit =   &
+>         billing-via-web-live-flag      of f020-doctor-extra
+>     let billing-via-rma-data-entry     of f020-doctor-audit =   &
+>         billing-via-rma-data-entry     of f020-doctor-extra
+>     let date-start-rma-data-entry      of f020-doctor-audit =   &
+>         date-start-rma-data-entry      of f020-doctor-extra
+>     let date-start-diskette            of f020-doctor-audit =   &
+>         date-start-diskette            of f020-doctor-extra
+>     let date-start-paper               of f020-doctor-audit =   &
+>         date-start-paper               of f020-doctor-extra
+>     let date-start-web-live            of f020-doctor-audit =   &
+>         date-start-web-live            of f020-doctor-extra
+>     let date-start-web-test            of f020-doctor-audit =   &
+>         date-start-web-test            of f020-doctor-extra
+>     let leave-description              of f020-doctor-audit =   &
+>         leave-description              of f020-doctor-extra
+>     let leave-date-start               of f020-doctor-audit =   &
+>         leave-date-start               of f020-doctor-extra
+>     let leave-date-end                 of f020-doctor-audit =   &
+>         leave-date-end                 of f020-doctor-extra
+>     let web-user-revenue-only-flag     of f020-doctor-audit =   &
+>         web-user-revenue-only-flag     of f020-doctor-extra
+>     let manager-flag                   of f020-doctor-audit =   &
+>         manager-flag                   of f020-doctor-extra
+>     let chair-flag                     of f020-doctor-audit =   &
+>         chair-flag                     of f020-doctor-extra
+>     let abe-user-flag                  of f020-doctor-audit =   &
+>         abe-user-flag                  of f020-doctor-extra
+>     let cpso-nbr                       of f020-doctor-audit =   &
+>         cpso-nbr                       of f020-doctor-extra
+>     let cmpa-nbr                       of f020-doctor-audit =   &
+>         cmpa-nbr                       of f020-doctor-extra
+>     let oma-nbr                        of f020-doctor-audit =   &
+>         oma-nbr                        of f020-doctor-extra
+>     let cfpc-nbr		       of f020-doctor-audit =   &
+>         cfpc-nbr		       of f020-doctor-extra
+>     let rcpsc-nbr                      of f020-doctor-audit =   &
+>         rcpsc-nbr                      of f020-doctor-extra
+>     let doc-med-prof-corp              of f020-doctor-audit =   &
+>         doc-med-prof-corp              of f020-doctor-extra
+>     let mcmaster-employee-id           of f020-doctor-audit =   &
+>         mcmaster-employee-id           of f020-doctor-extra
+>     let doc-spec-cd-eff-date           of f020-doctor-audit =   &
+>         doc-spec-cd-eff-date           of f020-doctor-extra
+>     let doc-spec-cd-2-eff-date         of f020-doctor-audit =   &
+>         doc-spec-cd-2-eff-date         of f020-doctor-extra
+>     let doc-spec-cd-3-eff-date         of f020-doctor-audit =   &
+>         doc-spec-cd-3-eff-date         of f020-doctor-extra
+>     let doc-clinic-nbr-status          of f020-doctor-audit =   &
+>         doc-clinic-nbr-status          of f020-doctor-extra
+>     let doc-clinic-nbr-2-status        of f020-doctor-audit =   &
+>         doc-clinic-nbr-2-status        of f020-doctor-extra
+>     let doc-clinic-nbr-3-status        of f020-doctor-audit =   &
+>         doc-clinic-nbr-3-status        of f020-doctor-extra
+>     let doc-clinic-nbr-4-status        of f020-doctor-audit =   &
+>         doc-clinic-nbr-4-status        of f020-doctor-extra
+>     let doc-clinic-nbr-5-status        of f020-doctor-audit =   &
+>         doc-clinic-nbr-5-status        of f020-doctor-extra
+>     let doc-clinic-nbr-6-status        of f020-doctor-audit =   &
+>         doc-clinic-nbr-6-status        of f020-doctor-extra
+>     let factor-gst-income-reg          of f020-doctor-audit =   &
+>         factor-gst-income-reg          of f020-doctor-extra
+>     let factor-gst-income-misc         of f020-doctor-audit =   &
+>         factor-gst-income-misc         of f020-doctor-extra
+>     let yellow-pages-flag              of f020-doctor-audit =   &
+>         yellow-pages-flag              of f020-doctor-extra
+>     let replaced-by-doc-nbr            of f020-doctor-audit =   &
+>         replaced-by-doc-nbr            of f020-doctor-extra
+>     let prior-doc-nbr                  of f020-doctor-audit =   &
+>         prior-doc-nbr                  of f020-doctor-extra
+>     let cop-nbr                        of f020-doctor-audit =   &
+>         cop-nbr                        of f020-doctor-extra
+>     let doc-flag-primary               of f020-doctor-audit =   &
+>         doc-flag-primary               of f020-doctor-extra
+>     let has-valid-current-payroll-record  of f020-doctor-audit =   &
+>         has-valid-current-payroll-record  of f020-doctor-extra
+>     let pay-this-doctor-ohip-premium      of f020-doctor-audit =   &
+>         pay-this-doctor-ohip-premium      of f020-doctor-extra
+>     let doc-fiscal-yr-start-month         of f020-doctor-audit =   &
+>         doc-fiscal-yr-start-month         of f020-doctor-extra
+> end
+> ;MC3 - end
+> 
+> 
+> procedure initialize
+> begin
+>   get constants-mstr-rec-6 using 6 optional
+*W* CONSTANTS-MSTR-REC-6 accessed via CONSTANTS-MSTR-REC-6.
+>   if not accessok
+>   then error "Error - Can't read Constants Master record #6!"
+> 
+> ; ??????!!!!!!  this logic should open f??? ep file and do read on current
+> ;                ep record and then read backwards to pickup most previous
+> ;                ep record - then do assignment !!!!!
+> ;
+> ;  let     w-ep-nbr-from = current-ep-nbr
+>    let     w-ep-nbr-from = w-current-ep-nbr-minus-1
+> ;  let     w-ep-nbr-to   = last-ep-nbr-of-fiscal-yr
+>    let     w-ep-nbr-to   = w-current-ep-nbr-minus-1
+> end
+> 
+> 
+> procedure postfind
+> begin
+> 
+> ;MC3
+>   do savef020audit
+> ;MC3 - end
+> 
+> ;  be1
+> ; let w-old-pay-code = doc-pay-code
+> 
+>   display w-ep-nbr-from
+> ; display w-ep-nbr-to
+> 
+> ; (obtain field titles for "PHYSICIAN YTD TOTALS" - value 0/9
+>   get f199-user-defined-fields using "A" optional
+*W* F199-USER-DEFINED-FIELDS accessed via RECORD-ID.
+>   for field-desc of f199-user-defined-fields
+>   begin
+>     display field-desc of f199-user-defined-fields
+>   end
+> 
+> ; (obtain field titles for "PHYSICIAN YTD TOTALS" - value 10/19
+>   get f199-2nd-rec             using "B" optional
+*W* F199-2ND-REC accessed via RECORD-ID.
+>   for field-desc of f199-2nd-rec
+>   begin
+>     display field-desc of f199-2nd-rec
+>   end
+> 
+> ; 2012/04/18 - MC1
+> ; (obtain "PHYSICIAN YTD TOTALS" - totals 0/9)
+>   get f198-user-defined-totals using "A", doc-nbr optional
+*W* F198-USER-DEFINED-TOTALS accessed via USER-DEFINED-TOTALS.
+>   for user-total of f198-user-defined-totals
+>   begin
+>     display user-total of f198-user-defined-totals
+>  end
+> ; 2012/04/18 - end
+> 
+> ; (obtain "PHYSICIAN YTD TOTALS" - totals 10/19)
+>   get f198-2nd-rec             using "B", doc-nbr optional
+*W* F198-2ND-REC accessed via USER-DEFINED-TOTALS.
+>   for user-total of f198-2nd-rec
+>   begin
+>     display user-total of f198-2nd-rec
+>  end
+> 
+> ;  (re-get const mstr due to bug that clears record in initial proc)
+>   get constants-mstr-rec-6 using 6 optional
+> 
+> ; (obtain doctor's CURRENT EP paycode/ceiling)
+>   let bolCurrentCeilingRecordExists ="Y"
+>   get f112-pycdceilings viaindex pycdceilings using doc-nbr, current-ep-nbr optional
+> 
+> ;be1 - if ceiling record for CURRENT EP isn't defined, then try the most recent EP rec
+>   if not accessok
+>   then
+>     begin
+>         let bolCurrentCeilingRecordExists ="N"
+>   	get f112-pycdceilings viaindex pycdceilings using doc-nbr, w-current-ep-nbr-minus-1 optional
+>     end
+> ;be1 this backwards read didn't work - replaced with above logic that read current ep nbr MINUS 1 to get record
+> ;; (if current ep record not found use most recent for the doctor)
+> ;  if not accessok
+> ;  then
+> ;;   get f112-pycdceilings         using doc-nbr, current-ep-nbr backwards optional
+> ;    get f112-pycdceilings viaindex pycdceilings                 backwards optional
+> 
+>   if accessok and doc-nbr of f112-pycdceilings = doc-nbr of f020-doctor-mstr
+>   then
+>     begin
+>       ;be1
+>       ;let w-current-pycode          	= doc-pay-code     of f112-pycdceilings
+>       ;let w-current-pysubcode       	= doc-pay-sub-code of f112-pycdceilings
+>       ;let w-curr-ceil-earn          	= doc-yrly-ceiling of f112-pycdceilings
+>       ;let w-curr-ceil-expn          	= doc-yrly-expense of f112-pycdceilings
+>       do f112RecSave
+>     end
+>   else
+>     begin
+>       let bolCurrentCeilingRecordExists =" "
+>       let w-current-pycode    = "?"
+>       let w-current-pysubcode =" "
+>     end
+> 
+>   display w-current-pycode
+>   display w-current-pysubcode
+>   display doc-yrly-ceiling-computed of f020-doctor-mstr
+>   display doc-yrly-expense-computed of f020-doctor-mstr
+> 
+> ; 2008/06/03 - MC
+>     while retrieving f020-designer via doc-ohip-nbr using doc-ohip-nbr of f020-doctor-mstr
+>     begin
+>         if doc-nbr-1 = ' '
+>         then begin
+> 	   let doc-nbr-1 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-1 = 'T'
+>            end
+>         else if doc-nbr-2 = ' '
+>         then begin
+> 	   let doc-nbr-2 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-2 = 'T'
+>            end
+>         else if doc-nbr-3 = ' '
+>         then begin
+> 	   let doc-nbr-3 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-3 = 'T'
+>            end
+>         else if doc-nbr-4 = ' '
+>         then begin
+> 	   let doc-nbr-4 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-4 = 'T'
+>            end
+>         else if doc-nbr-5 = ' '
+>         then begin
+> 	   let doc-nbr-5 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-5 = 'T'
+>            end
+>         else if doc-nbr-6 = ' '
+>         then begin
+> 	   let doc-nbr-6 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-6 = 'T'
+>            end
+>         else if doc-nbr-7 = ' '
+>         then begin
+> 	   let doc-nbr-7 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-7 = 'T'
+>            end
+>         else if doc-nbr-8 = ' '
+>         then begin
+> 	   let doc-nbr-8 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-8 = 'T'
+>            end
+>         else if doc-nbr-9 = ' '
+>         then begin
+> 	   let doc-nbr-9 = doc-nbr of f020-designer
+> 	   if doc-date-fac-term of f020-designer <> 0
+> 	   then let doc-flag-9 = 'T'
+>            end
+>         else if doc-nbr-10 = ' '
+>         then begin
+> 	   let doc-nbr-10 = '*'
+>            end
+> 	end
+> ; 2008/06/03 - end
+> 
+> end
+> 
+> ;be1
+> procedure edit doc-overage-amt
+> begin
+>   if w-doc-pay-code = "?"
+>     then error "Neither Current nor Previous Ceiling record not found - UNABLE to perform AUTO-Calculation of Overage"
+> end
+> 
+> ;be1 - process 'overage' payment
+> procedure designer over help 'Process OVERAGE payment'
+> begin
+> ;  LOGIC of process
+> ;  calc new ceiling
+> ;  if bolCurrentCeilingRecordExists ="N"
+> ;    write new f112 rec with new ceiling for current Ep
+> ;  else
+> ;    update f112 rec for current Ep with new ceiling amt
+> ;  endif
+> ;  write record for next EP with original ceiling
+> ;  update TOT field with new computer YTD ceiling
+> ;
+> 
+>   ;dd-new-rec-1new ceiling including overage pay
+>   let w-monthly-ceil-earn = w-curr-ceil-earn / 12
+>   let w-new-ceil-earn	  = (w-monthly-ceil-earn + doc-overage-amt) * 12
+> ; TODO - handle pennies so that amount rounded down/up to nearest dollar
+> 
+>   if bolCurrentCeilingRecordExists ="N"
+>   then
+>     begin
+> 	;NEW RECORD for Current EP
+> 	do f112RecRestore
+> 	; create rec for CURRENT EP with overage included
+>         do copyF112ToF112Add-1
+>         let doc-nbr 				of f112-add-new-rec-1 = doc-nbr of f020-doctor-mstr
+>         let ep-nbr				of f112-add-new-rec-1 = current-ep-nbr
+> 	let doc-yrly-ceiling			of f112-add-new-rec-1 = w-new-ceil-earn
+> 	let doc-yrly-ceiling-adjusted		of f112-add-new-rec-1 = w-doc-yrly-ceiling
+> 	let doc-yrly-expense-adjusted		of f112-add-new-rec-1 = w-doc-yrly-expense
+> 	put f112-add-new-rec-1
+>     end
+>   else
+>     begin
+> 	;update CURRENT EP rec with overage now included
+>         get f112-pycdceilings viaindex pycdceilings using doc-nbr, current-ep-nbr optional
+> 	let doc-yrly-ceiling-adjusted		of f112-pycdceilings = doc-yrly-ceiling of f112-pycdceilings
+> 	let doc-yrly-ceiling			of f112-pycdceilings = w-new-ceil-earn
+> 	;record needs both adjusted updated even if not expense not changed
+> 	let doc-yrly-expense-adjusted		of f112-pycdceilings = doc-yrly-expense of f112-pycdceilings
+> 	put f112-pycdceilings
+>    end
+>   ;
+>   ; create rec for NEXT EP returning ceiling to original amount
+>   ;copy content of f112 to 'new record' layout and add new record to file
+>   do copyF112ToF112Add-2
+>   let ep-nbr				of f112-add-new-rec-2 = w-current-ep-nbr-plus-1
+>   let doc-yrly-ceiling-adjusted		of f112-add-new-rec-2 = w-new-ceil-earn
+>   let doc-yrly-ceiling         		of f112-add-new-rec-2 = w-doc-yrly-ceiling
+>   ;record needs both adjusted updated even if not expense not changed
+>   let doc-yrly-expense-adjusted		of f112-add-new-rec-2 = doc-yrly-expense of f112-pycdceilings
+>   put f112-add-new-rec-2
+> 
+>   ;update TOT screen field - note that overage didn't have pennies so the (* 100)
+> ;be2 don't update this field  let DOC-YTDCEA of f020-doctor-mstr = w-new-ceil-earn * 100
+> ;be2  let DOC-YRLY-CEILING-COMPUTED of f020-doctor-mstr = w-new-ceil-earn * 100
+>   let DOC-YRLY-CEILING-COMPUTED of f020-doctor-mstr = DOC-YRLY-CEILING-COMPUTED of f020-doctor-mstr + (doc-overage-amt * 100)
+>   put f020-doctor-mstr
+> 
+>   display doc-yrly-ceiling-computed of f020-doctor-mstr
+> 
+> end
+> 
+> procedure edit doc-nbr
+> begin
+> use $use/pad_doc_nbr.qks
+>   let x-doc-nbr-length  = size(fieldtext)
+>   if x-doc-nbr-length = 1
+>   then
+>         let fieldtext = "00" + fieldtext
+>   else
+>   if x-doc-nbr-length = 2
+>   then
+>         let fieldtext =  "0" + fieldtext
+> end
+> 
+> 
+> procedure process doc-bank-nbr
+> begin
+>   if doc-bank-nbr = 0
+>     then begin
+>       let doc-bank-branch = 0
+>       let doc-bank-acct = ' '
+>       end
+>     end
+> 
+> procedure edit doc-bank-branch
+> begin
+>   get f080-bank-mstr viaindex bank-cd using     &
+>         (ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+>   if not accessok
+>     then error "Error - Invalid BANK/BRANCH."
+>   end
+> 
+> 
+> procedure process doc-date-fac-term
+> begin
+>   if    doc-date-fac-start > doc-date-fac-term  &
+>     and doc-date-fac-term <> 0
+>   then error "INVALID DATE"
+> ;  else let doc-date-fac-term = ascii(w-doc-date-fac-term,6)
+>   end
+> 
+> 
+> procedure designer 91 help 'PAY CODES / CEILINGS'
+> ;91 pay codes / ceilings
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d112 mode same clear lines 7 to 23                 &
+>                 passing w-doc-nbr,                              &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+>   display doc-yrly-ceiling-computed of f020-doctor-mstr
+>   display doc-yrly-expense-computed of f020-doctor-mstr
+> end
+> 
+> 
+> procedure designer hi91 help 'PAY CODES / CEILINGS HISTORY'
+> ;91 pay codes / ceilings history
+> begin
+>   accept w-ep-nbr-yy
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/h112 mode same clear lines 7 to 23                 &
+>                 passing w-doc-nbr, w-ep-nbr-yy,                 &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer 92 help 'REQUIRE/TARGET REVENUE'
+> ;92 require/target revenue
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d112a mode same clear lines 7 to 23                 &
+>                 passing w-doc-nbr,                              &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer hi92 help 'REQUIRE/TARGET REVENUE HISTORY'
+> ;92 require/target revenue history
+> begin
+> ; accept w-ep-nbr-from
+>   accept w-ep-nbr-yy
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/h112a mode same clear lines 7 to 23                 &
+> ;               passing w-doc-nbr, w-ep-nbr-from,               &
+>                 passing w-doc-nbr, w-ep-nbr-yy,                 &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> 
+> procedure designer 93 help 'EARNINGS'
+> ;93 earnings - e/p:
+> begin
+> ;  accept w-password
+>    let w-password = "EARN"
+>    if w-password = 'EARN'
+>    then begin
+>      accept w-ep-nbr-from
+>      let w-ep-nbr-to = w-ep-nbr-from
+> ;    accept w-ep-nbr-to
+>      let w-doc-nbr = doc-nbr
+> ;     get constants-mstr-rec-6 using 6 optional
+> ;     if not accessok
+> ;     then error "Error - Can't read Constants Master record #6!"
+>      run screen $pb_obj/d110 mode same clear lines 6 to 23              &
+>                 passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+>    end
+> end
+> 
+> procedure designer hi93 help 'EARNINGS HISTORY'
+> ;93 earnings - history
+> begin
+>      accept w-ep-nbr-from
+>      let w-doc-nbr = doc-nbr
+>      run screen $pb_obj/h110 mode same clear lines 6 to 23              &
+>                 passing w-doc-nbr, w-ep-nbr-from,               &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer 94 help 'YTD TOTALS'
+> ;94 ytd totals
+> begin
+>   let w-doc-nbr = doc-nbr
+> ; accept w-ep-nbr-from
+> ; let w-ep-nbr-to = w-ep-nbr-from
+> ; accept w-ep-nbr-to
+> ; get constants-mstr-rec-6 using 6 optional
+> ; if not accessok
+> ;   then error "Error - Can't read Constants Master record #6!"
+>   run screen $pb_obj/d119 mode same clear lines 6 to 23         &
+> ;               passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+>                 passing w-doc-nbr,                              &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer hi94 help 'YTD TOTALS HISTORY'
+> ;94 ytd totals history
+> begin
+>   let w-doc-nbr = doc-nbr
+> ; accept w-ep-nbr-yy
+>   accept w-ep-nbr-from
+>   run screen $pb_obj/h119 mode same clear lines 6 to 23         &
+> ;               passing w-doc-nbr, w-ep-nbr-yy,                 &
+>                 passing w-doc-nbr, w-ep-nbr-from,               &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer 95 help 'MESSAGES'
+> ;95 messages - e/p:
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d118 mode same clear lines 6 to 23                 &
+>                 passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+>                                               f020-doctor-mstr
+> end
+> 
+> procedure designer 96 help 'Governance Transactions'
+> ;96 Goverance transactions
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d119gov mode same clear lines 6 to 23         &
+>                 passing w-doc-nbr,                              &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> ; 2008/10/06 - add new designer
+> procedure designer hi96 help 'YTD TOTALS HISTORY - governance'
+> ;96 ytd totals history - governance
+> begin
+>   let w-doc-nbr = doc-nbr
+>   accept w-ep-nbr-from
+>   run screen $pb_obj/h119gov mode same clear lines 6 to 23         &
+>                 passing w-doc-nbr, w-ep-nbr-from,               &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer hi97 help 'YTD TOTALS HISTORY - tithe'
+> ;96 ytd totals history - tithe
+> begin
+>   let w-doc-nbr = doc-nbr
+>   accept w-ep-nbr-from
+>   run screen $pb_obj/h119tithe  mode same clear lines 6 to 23         &
+>                 passing w-doc-nbr, w-ep-nbr-from,               &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> ; 2008/10/08 - end
+> 
+> 
+> ; 2008/05/21 - MC
+> procedure designer 97 help 'Tithe Calculation'
+> ;97 tithe Calculation
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d119tithe mode same clear lines 6 to 23         &
+>                 passing w-doc-nbr,                              &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> ; 2008/05/21 - end
+> 
+> procedure designer 98 help 'DEFAULT COMPENSATION'
+> ;98 default compensation
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d113 mode same clear lines 6 to 23         &
+>                 passing w-doc-nbr,                              &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer hi98 help 'DEFAULT COMPENSATION HISTORY'
+> ;98 default compensation history
+> begin
+>   let w-doc-nbr = doc-nbr
+>   accept w-ep-nbr-yy
+>   run screen $pb_obj/h113 mode same clear lines 6 to 23         &
+>                 passing w-doc-nbr, w-ep-nbr-yy,                     &
+>                         constants-mstr-rec-6, f020-doctor-mstr
+> end
+> 
+> procedure designer 99 help 'NOTES'
+> ;99 notes
+> begin
+>   let w-doc-nbr = doc-nbr
+>   run screen $pb_obj/d199  mode f  clear lines 6 to 23          &
+>                 passing w-doc-nbr
+> end
+> 
+> procedure designer tot help 'DOCTOR TOT SCREEN'
+> ;ytd and ep totals stored in f020 to optimize speed by reducing reads to f110
+> begin
+>   run screen $pb_obj/d020a mode f  clear lines 7 to 23          &
+>                 passing f020-doctor-mstr, f020-doctor-extra
+> end
+> 
+> 
+> procedure designer htot help 'DOCTOR TOT HISTORY SCREEN'
+> begin
+>   let w-doc-nbr = doc-nbr
+> ; accept w-ep-nbr-yy
+>   accept w-ep-nbr-from
+>   run screen $pb_obj/h020a mode f  clear lines 7 to 23          &
+> ;               passing w-doc-nbr, w-ep-nbr-yy
+>                 passing w-doc-nbr, w-ep-nbr-from
+> end
+> 
+> procedure designer adj help 'CURRENT OUTSTANDING CEILING ADJUSTMENT VALUES'
+> ;current outstanding ceiling adjustments values
+> begin
+>   run screen $pb_obj/d020b mode f  clear lines 6 to 23          &
+>                 passing f020-doctor-mstr
+> end
+> 
+> ;MC3
+> procedure preupdate
+> begin
+>    if alteredrecord of f020-doctor-mstr or alteredrecord of f020-doctor-extra
+> ;   if changemode
+>    then begin
+> ;  create before change audit record
+> 	do createf020audit_before
+>         let last-mod-date of f020-doctor-audit = sysdate
+>         let last-mod-time of f020-doctor-audit = systime / 10000
+>         let last-mod-user-id of f020-doctor-audit = trun(logonid) + '-d020-1'
+>         let last-mod-flag of f020-doctor-audit = 'C'
+>         put f020-doctor-audit reset
+> ;  create after  change audit record
+> 	do createf020audit_after
+>         let last-mod-date of f020-doctor-audit = sysdate
+>         let last-mod-time of f020-doctor-audit = systime / 10000
+>         let last-mod-user-id of f020-doctor-audit = trun(logonid) + '-d020-2'
+>         let last-mod-flag of f020-doctor-audit = 'C'
+>         put f020-doctor-audit reset
+>         end
+> end
+> ; MC3 - end
+> 
+> build detail list
+*W* Update on linked screen may bypass PREUPDATE/UPDATE/POSTUPDATE procedures.
+> PROCEDURE ENTRY
+> DISABLE
+> PROCEDURE PATH
+>   BEGIN
+>     REQUEST DOC-NBR OF F020-DOCTOR-MSTR
+>     IF PROMPTOK
+>       THEN LET PATH = 1
+>     IF PATH = 0
+>       THEN BEGIN
+>         REQUEST DOC-OHIP-NBR OF F020-DOCTOR-MSTR
+>         IF PROMPTOK
+>           THEN LET PATH = 2
+>         END
+>     IF PATH = 0
+>       THEN BEGIN
+>         LET PATH = 3
+>         END
+>     END
+> PROCEDURE FIND
+>   BEGIN
+>     IF PATH = 1
+>       THEN GET F020-DOCTOR-MSTR VIA DOC-NBR
+>     IF PATH = 2
+>       THEN GET F020-DOCTOR-MSTR VIA DOC-OHIP-NBR
+>     IF PATH = 3
+>       THEN GET F020-DOCTOR-MSTR SEQUENTIAL
+>     GET F020-DOCTOR-EXTRA OPTIONAL
+>     END
+> PROCEDURE UPDATE
+>   BEGIN
+>     PUT F020-DOCTOR-EXTRA
+>     PUT F020-DOCTOR-MSTR
+>     END
+> PROCEDURE DELETE
+> DISABLE
+> ALLDONE
+MODE:x ACTION:xxxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxx   01 Overage:xxxxxxxxxx
+02 Doctor: xxx Name: xxxxxxxxxxxxxxxxxxxxxxxx Inits : xxx       Ohip/Reg#:xxxxxx
+   Dept : xx   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx Class : x       EARNING/EXPENSE
+   Start: xxxxxxxxxx Term: xxxxxxxxxx Pay Cd: xx    Curr:xxxxxxxx   xxxxxxxx
+03 Bank Nbr:     xxxx         REGULAR/MISC    GST F.Comp:xxxxxxxxxxx xxxxxxxxxx
+   Branch  :    xxxxx 04 RMA :xxxxxxx/xxxxxxx xxxxxx  06 Gst?     :x
+   Acct#:xxxxxxxxxxxx 05 Dept:xxxxxxx/xxxxxxx xxxxxx  07 Holdback?:x 08 Afp:xxxx
+                                    YTD Totals
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx        xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+ 
+             EARNINGS PERIOD (E/P): xxxxxx       EARNINGS YEAR:  xxxx
+91 Pay Codes/Ceilings        92 Require/Target Rev 93 Earnings     94 YTD Totals
+95 Messages  96 Gov(hidden)  97 Tithe Calculations 98 Default Comp 99 Notes
+0 ERRORS  8 WARNINGS. Delete old screen /alpha/rmabill/rmabill101/obj/d020.qkc?
+> 
+Thu Jul 10 16:26:17 EDT 2014

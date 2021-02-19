@@ -1,0 +1,77 @@
+; NAME   : PM18.QZS
+; PURPOSE: Create temporary subfile of timesheet summaries by Employee
+;          for the next program that will create the PWO YTD BREAKDOWN
+;	   Report.  This is the first pass, second pass is PM19.QZS
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD 	By whom      	Why
+; ??/???/?? 	?. ????????  	- original
+; 87/JUN/16 	B. Elliott   	- changed variables to QUICK Standards,
+;				  added documentation
+;
+; 88/FEB/16 	M. SO	 	- have a flexibility to print marketing
+;			   	  activity code (ie MK01 or MK02)
+; 89/SEP/20 	M. CHAN	 	- Modify the program to choose a single
+;			   	  PWO run instead of select
+; 92/FEB/28	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+;				- SET REPORT NOLIMIT
+;				- COMMENT OUT SOME CODES
+
+can clear
+set default
+set report nolimit
+access ftimesht &
+       link  tsht-emp to emp-num of femployees
+
+choose pwo-num parm                  &
+   prompt "Choose PWO # without period (Enter new line to select all): "
+define x-invoice-yymm zoned*4 unsigned = parm &
+        prompt "ENTER               Invoicing month (YYMM): "
+define x-start-yymm zoned*4 unsigned = parm &
+	prompt "      Starting month for YTD totals (YYMM): "
+define x-mark char*1 = parm upshift prompt                      &
+	"Do you want to print MARKETING activity code (Y/N) <CR> = 'Y' "
+
+define x-end-date zoned*6 unsigned = &
+       nconvert (characters(x-invoice-yymm) + "31")
+define x-start-date zoned*6 unsigned = &
+       nconvert (characters(x-start-yymm) + "01")
+
+
+select ftimesht if   (tsht-end > x-start-date  and		&
+                      tsht-end < = x-end-date  and		&
+                      (x-mark = " " or x-mark = "Y"))           &
+                  or (tsht-end > x-start-date  and		&
+                      tsht-end < = x-end-date  and		&
+		      x-mark = "N" 	       and		&
+		      activity of ftimesht <> "MK01" and	&
+		      activity of ftimesht <> "MK02")
+
+;DEFINE X-BILL-HRS NUMERIC*8 =     &
+;      TOT IF (TSHT-YYMM = X-INVOICE-YYMM AND BILLABLE NE "*") &
+;      ELSE 0
+;DEFINE X-NOBILL-HRS NUMERIC*8 =     &
+;      TOT IF (TSHT-YYMM = X-INVOICE-YYMM AND BILLABLE = "*") &
+;      ELSE 0
+
+define x-bill-hrs-ytd numeric*8 =     &
+       tot if billable ne "*" &
+       else 0
+define x-nobill-hrs-ytd numeric*8 =     &
+       tot if billable = "*" &
+       else 0
+
+sort on tsht-emp on pwo-num on activity
+
+set subfile  name tpwoacts     keep at activity
+
+report summary tsht-emp activity pwo-num client &
+       x-invoice-yymm x-start-yymm name         &
+;      X-NOBILL-HRS SUBTOTAL         		&
+;      X-BILL-HRS SUBTOTAL                      &
+       x-nobill-hrs-ytd subtotal		&
+       x-bill-hrs-ytd subtotal
+
+build $pb_obj/pm18
+  

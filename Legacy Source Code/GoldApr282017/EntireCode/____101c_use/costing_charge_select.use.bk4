@@ -1,0 +1,64 @@
+; file: costing_charge_select.use
+; purpose: - contains selection logic for which RAT errors to charge for
+;          - used by pgm u030bb_1 which is run for a selected RAT 
+;	     transactions and by fix_f088_b which will pass through the 
+;	     entire file updating all but user updated transactions
+
+; 00/jul/31 B.E. - original
+; 00/aug/10 B.E. - resequenced into ascending ohip-err-code
+;		 - removed lookup of f086 table
+;
+; (select only details for the current RAT that RMA has decided to charge for)
+; note: 'pgm name' passed to determine is rat date to be tested
+
+def x-clinic-nbr char*2 = ascii(clmhdr-batch-nbr,9)[1:2]
+
+select if   (   (    x-pgm-name = "u030bb_1"		&
+	         and ped        =  x-selected-rat-date 	&
+	         )					&
+	     or (    x-pgm-name = "fix_f088_b"		&
+	        )					& 
+	    )						&
+         and  ohip-err-code <> "  "			&
+         and  ohip-err-code <> "00"     		&
+         and  (   ohip-err-code <> "35"            	&; don't charge for 35
+               or (   (   doc-dept = 5             	&; unless dept = 2 or 5
+                       or doc-dept = 2             	&; and clinic = 22
+	              )					&
+	           and x-clinic-nbr = "22"		&
+                  )                                	&
+              )                                    	&
+         and  (   ohip-err-code <> "D8"                 &
+               or (    ohip-err-code  =  "D8"           &; charge for D8 
+                   and clmhdr-doc-nbr <> 309            &; EXCEPT for doc 309 
+                  )                                     &
+              )                                         &
+         and  (   ohip-err-code <> "DP"                 &
+               or (    ohip-err-code  =  "DP"           &; charge for DP
+                   and clmhdr-doc-nbr <> 977            &; EXCEPT for doc 977
+                   and clmhdr-doc-nbr <> 891            &;    "    "   "  891
+                   and clmhdr-doc-nbr <> 980            &;    "    "   "  980
+                  )                                     &
+              )						&
+         and  ohip-err-code <> "48"			&
+         and  ohip-err-code <> "51"			&
+         and  ohip-err-code <> "55"			&
+         and  ohip-err-code <> "80"			&
+         and  ohip-err-code <> "C7"			&
+         and  ohip-err-code <> "D2"			&
+         and  ohip-err-code <> "EV"			&
+         and  ohip-err-code <> "I2"			&
+         and  ohip-err-code <> "I5"			&
+         and  ohip-err-code <> "V7"			&
+         and  ohip-err-code <> "V1"			&
+; note this last check will only be relevant in a re-run situation. On first
+; RA run the previous passes will have put a blank into this user-id field and
+; so the charge-flag may be set to 'Y'es if the other conditions are met.
+; However on a re-run situation we don't want to 'second guess' what an RMA user
+; has entered (either Y or N to charge-flag) so as soon as a non-blank
+; user-id is found we fail to meet the criteria of this select statement
+; and the charge-flag field won't be altered.
+         and last-mod-user-id = " " 			; don't change if a 
+							; user has manually
+							; altered the record
+

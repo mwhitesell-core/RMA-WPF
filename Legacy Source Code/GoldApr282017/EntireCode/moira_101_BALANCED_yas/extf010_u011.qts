@@ -1,0 +1,83 @@
+cancel clear
+set process limit  100
+set lock record update
+
+request extract_HC	on calculation errors report on edit errors report
+
+access f010-pat-mstr
+
+choose key-pat-mstr 
+
+def col1   char*2	= 'AA'
+def col2   char*24	= pat-surname
+def col3   char*24	= pat-given-name 
+def col4   char*10      = ascii(pat-birth-date,8)[1:4] + '/' +	&
+			  ascii(pat-birth-date,8)[5:2] + '/' +	&
+			  ascii(pat-birth-date,8)[7:2] 
+def col5   char*1	= pat-sex
+
+def col6-1  char*15 	= pat-chart-nbr   if pat-chart-nbr[1:1] = 'M' 		&
+                    else  pat-chart-nbr-2 if pat-chart-nbr-2[1:1] = 'K' 	&
+                    else  pat-chart-nbr-3 if pat-chart-nbr-3[1:1] = 'H' 	&
+                    else  pat-chart-nbr-4 if pat-chart-nbr-4 <> key-pat-mstr[6:10]  &
+        		    and pat-chart-nbr-4 <> ' '   			&
+                    else  pat-chart-nbr-5 if pat-chart-nbr-5[1:1] = 'J'
+
+def col6-2  char*15     = pat-chart-nbr-2 if pat-chart-nbr-2[1:1] = 'K' 
+def col6-3  char*15     = pat-chart-nbr-3 if pat-chart-nbr-3[1:1] = 'H' 
+def col6-4  char*15     = pat-chart-nbr-4 if pat-chart-nbr-4 <> key-pat-mstr[6:10]  &
+        		    and pat-chart-nbr-4 <> ' '   
+def col6-5  char*15     = pat-chart-nbr-5 if pat-chart-nbr-5[1:1] = 'J'
+
+def col7   char*28  	= subscr-addr1
+def col8   char*28 	= subscr-addr2
+def col9   char*18 	= subscr-addr3
+def col10  char*2	= pat-prov-cd
+def col11  char*6	= subscr-postal-cd
+def col12  char*20	= pat-phone-nbr
+def col13  char*8	= ' '
+def col14  char*10	= ascii(pat-health-nbr,10) if pat-health-nbr <> 0
+def col15  char*2	= pat-version-cd
+def col16  char*1	= pat-health-65-ind
+def col17  char*4	= ascii(pat-expiry-date,4)
+def col18  char*1	= ' '
+
+temp seq-nbr zoned*6 unsigned 
+item seq-nbr = seq-nbr + 1 if pat-health-nbr <> 0 or pat-chart-nbr[1:1] = 'M'
+
+def line   char*210 = ascii(seq-nbr,6) + col1  + col2  + col3  + col4  + col5  + col6-1  + col7  + col8  + col9  +  &
+                      col10 + col11 + col12 + col13 + col14 + col15 + col16 + col17 + col18       
+
+def seq-nbr2 zoned*6 unsigned = seq-nbr + 1  if pat-chart-nbr-2[1:1] = 'K'
+
+def line-2 char*210 = ascii(seq-nbr2,6) + col1  + col2  + col3  + col4  + col5  + col6-2  + col7  + col8  + col9  +  &
+                      col10 + col11 + col12 + col13 + col14 + col15 + col16 + col17 + col18       
+
+def seq-nbr3 zoned*6 unsigned = seq-nbr + 1  if pat-chart-nbr-3[1:1] = 'H'
+
+def line-3 char*210 = ascii(seq-nbr3,6) + col1  + col2  + col3  + col4  + col5  + col6-3  + col7  + col8  + col9  +  &
+                      col10 + col11 + col12 + col13 + col14 + col15 + col16 + col17 + col18       
+
+def seq-nbr4 zoned*6 unsigned = seq-nbr + 1  if  pat-chart-nbr-4 <> key-pat-mstr[6:10]  &
+                            and pat-chart-nbr-4 <> ' ' 
+
+def line-4 char*210 = ascii(seq-nbr4,6) + col1  + col2  + col3  + col4  + col5  + col6-4  + col7  + col8  + col9  +  &
+                      col10 + col11 + col12 + col13 + col14 + col15 + col16 + col17 + col18       
+
+def seq-nbr5 zoned*6 unsigned  = seq-nbr + 1  if pat-chart-nbr-5[1:1] = 'J'
+
+def line-5 char*210 = ascii(seq-nbr5,6) + col1  + col2  + col3  + col4  + col5  + col6-5  + col7  + col8  + col9  +  &
+                      col10 + col11 + col12 + col13 + col14 + col15 + col16 + col17 + col18       
+
+subfile extf010 keep portable include line 
+
+subfile extf010 alias extf010_2 keep portable if pat-chart-nbr-2[1:1] = 'K'  include line-2  
+
+subfile extf010 alias extf010_3 keep portable if pat-chart-nbr-3[1:1] = 'H'  include line-3 
+
+subfile extf010 alias extf010_4 keep portable if pat-chart-nbr-4 <> key-pat-mstr[6:10]  &
+	and pat-chart-nbr-4 <> ' ' include line-4 
+
+subfile extf010 alias extf010_5 keep portable if pat-chart-nbr-5[1:1] = 'J'  include line-5
+go
+

@@ -1,0 +1,655 @@
+;#> PROGRAM-ID.     D112.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician PAYCODES / CEILINGS
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;     92/JAN/01  ____   B.E.     - added RETRO EP field and auto gen of ADJCEA trans. ;
+;     92/JUL/08  ____   B.E.     - COMPUTED Ceilings now allow decimals - don't divide calc by 100
+;
+;     94/JAN/20         M.C.     - Modify the selection criteria just
+;                                  to pick up records that have the same
+;                                  year
+;                                - DOC-PAY-SUB-CODE is required if DOC-
+;                                  PAY-CODE is '4'
+;    94/DEC/16          B.E.     - changed calculation of YTDCEA to NOT
+;                                  include the CURRENT EP in the YTD calculation.
+;
+;    95/MAY/25		M.C.	 - MODIFY EDIT PROCEDURE OF DOC-YRLY-CEILING
+;				   AND DOC-YRLY-EXPENSE FOR 0 VALUE
+;    95/MAY/29		M.C.	 - MODIFY THE FORMULA OF T-CEILING-
+;				   COMPUTED IN CALC-FINAL-COMPUTED-
+;				   CEILING PROCEDURE  FOR DOLLAR VALUE
+;				   ONLY AND ROUNDING
+;    95/MAY/30		M.C.	 - IF EXPENSE AMOUNT HAS CHANGED, CHANGE
+;				   THE TRANSACTION 'CEIEXP', 'TOTEXP',
+;				   'INCEXP' IN F119-DOCTOR-YTD
+;    95/JUN/08		M.C.     - ADD THE SILENT FIELD 'T-SILENT-CEILING'
+;				   AS PART OF THE CLUSTER.  IT WILL
+;				   PERFORM THE CALCULATION OF BOTH
+;				   EARNINGS/EXPENSE CEILINGS EITHER THE
+;				   RETRO TO EP NBR HAS ENTERED OR NOT
+;				 - CALCULATE THE MONTHLY COMPUTED ANNUAL
+;				   EARNINGS/EXPENSE CEILINGS OF F112
+;				 - CALCULATE/DISPLAY THE CURRENT ANNUAL
+;				   EARNINGS/EXPENSE CEILINGS IN F020
+;				   PROPERLY
+;				 - CHANGE FROM 14 TO 13 FOR THE CLUSTER
+;				   ON F112 FILE
+;    95/AUG/04		M.C.	 - CALCULATE THE ANNUAL EARNINGS/EXPENSE
+;				   PROPERLY FOR ADVANCE CEILING ENTRIES
+;    95/NOV/07          M.C.     - DO NOT REQUIRE TO RECEIVE EP-NBR
+;				   NO SELECTION IS REQUIRED TO F112 FILE
+;    96/JAN/23		M.C.	 - TAKE OUT MORE DESIGNER PROCEDURE
+;  1999/Jan/20		S.B.	 - FIX DISPLAYS AND ALIGNMENTS FOR Y2K.
+;  1999/Apr/20		S.B.	 - Altered t-yy-ep, t-yy-fiscal, and
+;				   t-yy-retro to use the centuary.
+; 1999/Jun/07 		S.B.     - Altered the call to scrtitle.use and
+;                       	   stdhilite.use to be called from $use
+;                      		   instead of src.
+;                       	 - Removed the call to secfile.use because
+;                        	   it was not doing anything.
+; 2003/nov/10 b.e.      - alpha doctor nbr
+; 2014/sep/15 MC1       - add f112-pycdceilings-audit to capture before change records
+;                       - save f112-pycdceilings records in f112-pycdceilings-audit in postfind in case
+;                         user may change the records
+
+
+can clear
+set default
+
+screen $pb_obj/d112     on line 7 for 17 message on line 24                    &
+        receiving w-doc-nbr,                                           &
+                  constants-mstr-rec-6, f020-doctor-mstr
+
+temp t-yy-ep char*4
+temp t-yy-fiscal char*4
+temp t-yy-retro char*4
+temp t-adjustment
+temp t-counter-recs-f112
+temp t-last-ceiling-ear
+temp t-last-ceiling-exp
+temp h-doc-yrly-ceiling
+temp h-doc-yrly-expense
+temp h-retro-to-ep-nbr
+temp h-current-occurence
+temp h-current-ep
+temp h-ceiling-type char*3
+temp h-allocation-periods
+temp t-alloc-pers
+temp w-doc-nbr char*3
+;TEMP W-EP-NBR-FROM
+;TEMP W-EP-NBR-TO
+temp x-srch-code char*6
+temp t-doc-yrly-ceiling-comp1
+temp t-doc-yrly-ceiling-comp2
+temp t-doc-yrly-ceiling-err
+temp t-doc-yrly-ceiling-computed
+temp t-doc-yrly-expense-computed
+temp t-yearly-ceiling
+temp t-ceiling-computed
+temp t-retro-to-flag char*1
+temp t-last-ep-nbr
+
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query/modify Earnings Period      " &
+"       transactions that specify a doctor's PAY CODE, PAY SUB CODE,   " &
+"       EARNINGS CEILING, EXPENSE CEILING and GUARANTEE INFORMATION.   " &
+"       Entry of and modification to any transaction can be performed  " &
+"       only for CURRENT or FUTURE Earning Periods.                    " &
+"       Also allows RETROACTIVE changes to Earning/Expense Ceilings.   " &
+"                                                                      "
+
+temp t-silent-ceiling
+
+temp t-ytdcex-diff
+
+file  f112-pycdceilings primary  occurs 13
+        access viaindex pycdceilings using w-doc-nbr
+
+; MC1
+file f112-pycdceilings-audit designer  occurs with f112-pycdceilings
+; MC1 - end
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 designer
+
+file f191-earnings-period reference
+     access viaindex ep-nbr using ep-nbr of f112-pycdceilings
+
+file f119-doctor-ytd      designer
+
+;MC1
+use $use/savef112audit_var.use
+;MC1 - end
+
+define x-screen-name char*55 = "PAY CODES, CEILINGS, GUARANTEES"
+use $use/scrtitle.use  nol nod
+
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+"   E/P    BILLING  ---PAY--- --EARNINGS--- -GUARANTEE- ---EXPENSES-- ALLOC RTRO" &
+        at ,1
+skip
+title &
+"   Nbr      PED    CD/FACTOR CEILING/ORIGNL   %  AMOUNT CEILING/ORIGNL PER  TO " &
+         at ,1
+skip
+
+cluster occurs with f112-pycdceilings
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 YYMM YY/MM/DD _X 99.9999 999,999 999,999 999 999,999 999,999 999,999 99  YYMM  YY/MM/DD HH:MM USERID--
+align (1,,4) (,,11) (,,20)(,,21) (,,22) (,,30) (,,38) (,,45) (,,49) (,,57) (,,65) (,,72) (,,75)
+field ep-nbr            of f112-pycdceilings required   &
+                        lookup on f191-earnings-period  &
+                        message "Invalid Earnings Period."
+field iconst-date-period-end of f191-earnings-period display	&
+	pic "^^^^^^^^" sig 8
+field doc-pay-code      of f112-pycdceilings auto
+field doc-pay-sub-code  of f112-pycdceilings auto required if doc-pay-code = "1" or doc-pay-code = "4"
+field factor            of f112-pycdceilings auto            required  &
+                        default 10000
+field doc-yrly-ceiling                  of f112-pycdceilings    &
+                         required if (   doc-pay-code <> "0"     &
+                                     and doc-pay-code <> "2")
+
+field doc-yrly-ceiling-adjusted of f112-pycdceilings display	&
+	pic "^^^^^^"
+field doc-yrly-ceiling-guar-perc        of f112-pycdceilings    &
+                        required if doc-pay-code = "1"          &
+                        default 100
+field doc-yrly-ceil-guar                of f112-pycdceilings    &
+                        required if doc-pay-code = "1"
+field doc-yrly-expense                  of f112-pycdceilings    &
+                        required if doc-pay-code = "4"
+field doc-yrly-expense-adjusted         of f112-pycdceilings    display &
+	pic "^^^^^^"
+field doc-yrly-expn-alloc-pers          of f112-pycdceilings    &
+                        required if doc-yrly-expense > 0
+field retro-to-ep-nbr   of f112-pycdceilings            &
+                        lookup on f191-earnings-period  &
+                        message "Invalid Earnings Period."	
+field t-silent-ceiling silent
+cluster
+
+procedure internal calc-final-computed-ceiling
+begin
+   if h-ceiling-type = "EAR"
+   then let t-alloc-pers = 12
+   else let t-alloc-pers = h-allocation-periods
+   let t-doc-yrly-ceiling-comp1 =                               &
+       t-ceiling-computed                                       &
+     + (round(t-yearly-ceiling / t-alloc-pers                   &
+          )                                                     &
+        * (  12                                                 &
+            - t-counter-recs-f112                               &
+            + t-adjustment                                      &
+          )                                                     &
+       )
+
+;  (If extending this EP's Ceiling until the end of the year
+;   gives a Computed Annual Ceiling with "unit" dollars round up/down
+;   to nearest ten)
+
+   let t-doc-yrly-ceiling-comp2 = mod(t-doc-yrly-ceiling-comp1,100)
+   if t-doc-yrly-ceiling-comp2 >= 50
+   then
+     let t-doc-yrly-ceiling-err =  1
+   else
+     let t-doc-yrly-ceiling-err =  0
+;  (Extract the Dollar value only for the computed ceiling)
+;  LET T-CEILING-COMPUTED = T-DOC-YRLY-CEILING-COMP1 + T-DOC-YRLY-CEILING-ERR
+   let t-ceiling-computed = (floor(t-doc-yrly-ceiling-comp1 / 100)  + t-doc-yrly-ceiling-err) * 100
+
+end
+
+
+procedure internal build-computed-ceiling
+begin
+   if h-ceiling-type = "EAR"
+   then let t-alloc-pers = 12
+   else let t-alloc-pers = h-allocation-periods
+   let t-doc-yrly-ceiling-comp1                                 &
+       = t-ceiling-computed + round(t-yearly-ceiling / t-alloc-pers)
+
+;  (if the "pennies" portion of the COMPUTED ANNUAL CEILING is more than
+;   50 cents THEN assume it falls just short of even dollar amount - add
+;   penny to EP CEILING - otherwise assume it falls just over the dollar
+;   amount and no compensation is required)
+
+   let t-doc-yrly-ceiling-comp2 = mod(t-doc-yrly-ceiling-comp1,100)
+   if t-doc-yrly-ceiling-comp2 >= 50
+   then
+     let t-doc-yrly-ceiling-err =  1
+   else
+     let t-doc-yrly-ceiling-err =  0
+   let t-ceiling-computed                                    &
+                   = (t-doc-yrly-ceiling-comp1               &
+                    + t-doc-yrly-ceiling-err)
+
+end
+
+procedure internal finish-comp-ceiling-to-yearend
+begin
+;  (Finish calculation of Computed EARNINGS Ceiling thru to end of Fiscal Period)
+;  (take dollar value and change to dollars and cents)
+   if   t-retro-to-flag = "C"  &
+     or t-retro-to-flag = "B"
+   then
+   begin
+      let t-yearly-ceiling   = t-last-ceiling-ear
+      let t-ceiling-computed = t-doc-yrly-ceiling-computed
+      let h-ceiling-type = "EAR"
+      do calc-final-computed-ceiling
+      let doc-yrly-ceiling-computed of f020-doctor-mstr  =       &
+		t-ceiling-computed
+   end
+;  (Finish calculation of Computed EXPENSE Ceiling thru to end of Fiscal Period)
+   if   t-retro-to-flag = "E"  &
+     or t-retro-to-flag = "B"
+   then
+   begin
+      let t-yearly-ceiling   = t-last-ceiling-exp
+      let t-ceiling-computed = t-doc-yrly-expense-computed
+      let h-ceiling-type = "EXP"
+      do calc-final-computed-ceiling
+      let doc-yrly-expense-computed of f020-doctor-mstr  =       &
+		t-ceiling-computed
+   end
+end
+
+
+procedure internal retro-ceiling
+begin
+
+;  (reset Computed ceilings which will be re-calculated by this routine)
+   if   t-retro-to-flag = "C" &
+     or t-retro-to-flag = "B"
+   then let doc-yrly-ceiling-computed of f020-doctor-mstr = 0
+   if   t-retro-to-flag = "E" &
+     or t-retro-to-flag = "B"
+   then let doc-yrly-expense-computed of f020-doctor-mstr = 0
+
+   let t-doc-yrly-ceiling-computed = 0
+   let t-doc-yrly-expense-computed = 0
+
+   for f112-pycdceilings
+   begin
+;     (Save the month of the current EP nbr)
+      if ep-nbr of f112-pycdceilings <> 0
+      then let t-counter-recs-f112 = mod(ep-nbr of f112-pycdceilings,100)
+;     (If this occurence of F112 falls within RETRO-TO range, then adjust ceilings)
+      if    ep-nbr     >= h-retro-to-ep-nbr       &
+        and occurrence <  h-current-occurence     &
+        and t-counter-recs-f112 <= 12             ; (allow only 12 ceiling calcs)
+      then
+      begin
+         if   t-retro-to-flag = "C"  &
+           or t-retro-to-flag = "B"
+         then
+         begin
+            let doc-yrly-ceiling-adjusted = doc-yrly-ceiling
+            let doc-yrly-ceiling          = h-doc-yrly-ceiling
+            display  doc-yrly-ceiling
+            display  doc-yrly-ceiling-adjusted
+         end
+         if   t-retro-to-flag = "E"  &
+           or t-retro-to-flag = "B"
+         then
+         begin
+            let     doc-yrly-expense-adjusted = doc-yrly-expense
+            let     doc-yrly-expense          = h-doc-yrly-expense
+            display doc-yrly-expense
+            display doc-yrly-expense-adjusted
+            let     doc-yrly-expn-alloc-pers = h-allocation-periods
+            display doc-yrly-expn-alloc-pers
+         end
+      end
+;     (re-calculate both Computed Ceilings using new ceilings. The calculation
+;      runs from the first EP of year to the "current EP - 1". The current EP
+;      is not included in YTD calcuation since the Earnings Run (U114) will
+;      calculate this EP's ceiling and add to YTD amount).
+;     (Also calculate computed annual ceiling for this EP in F112)
+;     (FIRST - calculate new Computed ANNUAL/EARNINGS Ceilings including
+;              this EP)
+      if    (   t-retro-to-flag = "C"                             &
+             or t-retro-to-flag = "B"                             &
+            )                                                     &
+        and (ep-nbr < current-ep-nbr of constants-mstr-rec-6      &
+            )							  &
+        and (ep-nbr of f112-pycdceilings <> 0)
+      then
+      begin
+         let t-ceiling-computed = t-doc-yrly-ceiling-computed
+         let t-yearly-ceiling   = doc-yrly-ceiling * 100
+         let h-ceiling-type = "EAR"
+         do build-computed-ceiling
+         let t-doc-yrly-ceiling-computed = t-ceiling-computed
+	 let t-adjustment = 0
+   	 do calc-final-computed-ceiling
+         let doc-yrly-ceiling-computed of f112-pycdceilings	&
+		= t-ceiling-computed
+      end
+;     (2ND - calculate new Computed ANNUAL/EXPENSE Ceilings including
+;      this EP.  As with EARning calculation, the current EP is not
+;      counted in YTD calculation)
+      if    (   t-retro-to-flag = "E"                             &
+             or t-retro-to-flag = "B"                             &
+            )                                                     &
+        and (ep-nbr < current-ep-nbr of constants-mstr-rec-6      &
+            )                                 			  &
+        and (ep-nbr of f112-pycdceilings <> 0)
+      then
+      begin
+         let t-ceiling-computed = t-doc-yrly-expense-computed
+         let t-yearly-ceiling   = doc-yrly-expense * 100
+         let h-ceiling-type = "EXP"
+         do build-computed-ceiling
+         let t-doc-yrly-expense-computed = t-ceiling-computed
+	 let t-adjustment = 0
+   	 do calc-final-computed-ceiling
+	 let doc-yrly-expense-computed of f112-pycdceilings =   &
+			t-ceiling-computed
+      end
+
+;     (before processing the occurrence containing the CURRENT EP data the
+;      re-calculated YTD CEILINGS(Earn/Expn) have been made.  Update these into
+;      the Doctor Master record)
+      if ep-nbr = current-ep-nbr
+      then
+      begin
+;        (update Doctor mstr with newly calculated YTD COMPUTED CEILING(EARN/EXPN)
+;         that covers period from start of year to CURRENT EP - 1)
+;	 (Also calculate the current Annual Ceilings(EARN/EXPN)	for the
+;	  current EP in F112)
+
+         if   t-retro-to-flag = "C"  &
+           or t-retro-to-flag = "B"
+         then begin
+              let doc-ytdcea of f020-doctor-mstr                       &
+                                = t-doc-yrly-ceiling-computed
+	      let h-ceiling-type = "EAR"
+	      let t-adjustment = 0
+	      let t-ceiling-computed = t-doc-yrly-ceiling-computed
+	      let t-yearly-ceiling = doc-yrly-ceiling * 100
+	      do calc-final-computed-ceiling
+	      let doc-yrly-ceiling-computed of f112-pycdceilings = &
+				t-ceiling-computed
+	      let t-ceiling-computed = t-doc-yrly-ceiling-computed
+	 end
+
+         if   t-retro-to-flag = "E"  &
+           or t-retro-to-flag = "B"
+         then begin
+;  (If expense has changed, change the transactions in f119-doctor-ytd)
+	      let t-ytdcex-diff = t-doc-yrly-expense-computed	&
+				- doc-ytdcex of f020-doctor-mstr
+              let doc-ytdcex of f020-doctor-mstr                      &
+                                = t-doc-yrly-expense-computed
+	      let h-ceiling-type = "EXP"
+	      let t-adjustment = 0
+	      let t-ceiling-computed = t-doc-yrly-expense-computed
+	      let t-yearly-ceiling = doc-yrly-expense * 100
+	      do calc-final-computed-ceiling
+	      let doc-yrly-expense-computed of f112-pycdceilings = &
+				t-ceiling-computed
+	      let t-ceiling-computed = t-doc-yrly-expense-computed
+
+	 end
+      end
+;     (save month & values from this occurrence in case it's the last
+;      one of FOR statement - the last values are used to extrapolate
+;     to the end of the year to obtain final computed annuall ceilings)
+      if ep-nbr of f112-pycdceilings <> 0
+      then begin
+         let t-counter-recs-f112 = mod(ep-nbr of f112-pycdceilings,100)
+         let t-last-ceiling-ear = doc-yrly-ceiling * 100
+         let t-last-ceiling-exp = doc-yrly-expense * 100
+      end
+   end ;FOR F112
+;  (using the values from the LAST F112 record for the year, extrapolate
+;   to end of year to finish calculation of computed ceilings)
+;  (add 1 more EP to calc to account for current EP)
+    let t-adjustment = 1
+    do finish-comp-ceiling-to-yearend
+end
+
+
+procedure internal calc-true-ceiling
+begin
+
+    let t-doc-yrly-ceiling-computed = 0
+    let t-doc-yrly-expense-computed = 0
+    let t-last-ep-nbr = 1
+    let t-last-ceiling-ear = 0
+    let t-last-ceiling-exp = 0
+    let t-alloc-pers = 0
+
+
+    for f112-pycdceilings
+    begin
+	let t-counter-recs-f112 = mod(ep-nbr of f112-pycdceilings,100)
+    	if 0 < (t-counter-recs-f112 - t-last-ep-nbr)
+	then begin
+	    let t-doc-yrly-ceiling-computed = t-doc-yrly-ceiling-computed &
+		+ ((t-last-ceiling-ear  / 12) * (t-counter-recs-f112 -  &
+		    t-last-ep-nbr))
+	    let t-doc-yrly-expense-computed = t-doc-yrly-expense-computed &
+		+ ((t-last-ceiling-exp / t-alloc-pers) * (t-counter-recs-f112 -  &
+		    t-last-ep-nbr))
+	end
+;    (save the last ceiling, expense, expense period)
+        let t-last-ceiling-ear = doc-yrly-ceiling of f112-pycdceilings * 100
+        let t-last-ceiling-exp = doc-yrly-expense of f112-pycdceilings * 100
+	let t-last-ep-nbr  = t-counter-recs-f112
+	let t-alloc-pers  = doc-yrly-expn-alloc-pers of f112-pycdceilings
+    end
+
+;   (using the values from the LAST F112 record for the year, extropolate
+;    to end of year to finish calculation of computed ceilings/expense)
+
+    let t-doc-yrly-ceiling-computed = t-doc-yrly-ceiling-computed  &
+	+ round((12 - t-last-ep-nbr + 1) * (t-last-ceiling-ear / 12))
+    let doc-yrly-ceiling-computed of f020-doctor-mstr	&
+	= t-doc-yrly-ceiling-computed
+    let t-doc-yrly-expense-computed = t-doc-yrly-expense-computed  &
+	+ round((12 - t-last-ep-nbr + 1) * (t-last-ceiling-exp / t-alloc-pers))
+    let doc-yrly-expense-computed of f020-doctor-mstr	&
+	= t-doc-yrly-expense-computed
+
+end
+
+procedure input ep-nbr
+begin
+  if fieldtext = "."
+  then
+  begin
+    run screen $pb_obj/m191.qkc clear lines 13 to 23 refresh all
+  end
+end
+
+procedure edit ep-nbr
+begin
+  if ep-nbr > last-ep-nbr-of-fiscal-yr
+  then warning "*W* This Earnings Period is NOT within the CURRENT FISCAL Year."
+  if ep-nbr < current-ep-nbr
+  then error   "Error - This Earnings Period is PRIOR to the CURRENT Earnings Period."
+end
+
+procedure process ep-nbr
+begin
+; (this FLAG determines whether Earnings Ceiling and/or Expense Ceiling is
+;  affected by RETRO-TO field: "C"- Earnings, "E"xpense, "B"oth)
+  let t-retro-to-flag = " "
+  let doc-nbr of f112-pycdceilings = w-doc-nbr
+  display iconst-date-period-end of f191-earnings-period
+end
+
+procedure edit    doc-yrly-ceiling
+begin
+  if       oldvalue(doc-yrly-ceiling) <> doc-yrly-ceiling	&
+      or   (newrecord and doc-yrly-ceiling = 0)
+  then
+  begin
+    let t-retro-to-flag = "C"
+    let     doc-yrly-ceiling-adjusted of f112-pycdceilings = oldvalue(doc-yrly-ceiling)
+    display doc-yrly-ceiling-adjusted of f112-pycdceilings
+  end
+end
+
+procedure edit    doc-yrly-expense
+begin
+  if 	   oldvalue(doc-yrly-expense) <> doc-yrly-expense	&
+      or   (newrecord and doc-yrly-expense = 0)
+  then
+  begin
+    if t-retro-to-flag = " "
+    then let t-retro-to-flag = "E"
+    else let t-retro-to-flag = "B"
+    let     doc-yrly-expense-adjusted of f112-pycdceilings = oldvalue(doc-yrly-expense)
+    display doc-yrly-expense-adjusted of f112-pycdceilings
+  end
+end
+
+procedure edit retro-to-ep-nbr
+begin
+
+;   (Retro normally from 'CURRENT EP')
+   if retro-to-ep-nbr > current-ep-nbr
+   then error   "Error -  Can't be Retroactive to FUTURE E/P."
+   if retro-to-ep-nbr < current-ep-nbr
+   then warning "*W* Must be Retroactive from CURRENT EP."
+
+   let t-yy-retro = ascii(retro-to-ep-nbr,6)[1:4]
+   let t-yy-fiscal= ascii(current-ep-nbr ,6)[1:4]
+   if t-yy-retro <> t-yy-fiscal
+   then error "Error -  Must be Retroactive within CURRENT YEAR."
+
+end
+
+
+procedure process t-silent-ceiling
+begin
+;  (Capture what CEILING IS BEING ADJUSTED TO)
+    if ep-nbr of f112-pycdceilings <> 0
+    then begin
+       let h-doc-yrly-ceiling  = doc-yrly-ceiling of f112-pycdceilings
+       let h-doc-yrly-expense  = doc-yrly-expense of f112-pycdceilings
+       let h-allocation-periods= doc-yrly-expn-alloc-pers of f112-pycdceilings
+       let h-current-ep        = ep-nbr           of f112-pycdceilings
+       let h-current-occurence = occurrence
+       if retro-to-ep-nbr of f112-pycdceilings <> 0
+       then let h-retro-to-ep-nbr = retro-to-ep-nbr of f112-pycdceilings
+       else let h-retro-to-ep-nbr = ep-nbr of f112-pycdceilings
+;  (re-calculate COMPUTED ANNUAL CEILINGS)
+       do retro-ceiling
+;      DO CALC-TRUE-CEILING
+    end
+end
+
+;PROCEDURE DESIGNER MORE
+;BEGIN
+;   RUN SCREEN D112A.QKC MODE SAME PASSING F112-PYCDCEILINGS,     &
+;                        F020-DOCTOR-MSTR, CONSTANTS-MSTR-REC-6
+;END
+
+;MC1
+use $use/savef112audit.use
+
+use $use/createf112audit.use
+
+procedure postfind
+begin
+   for f112-pycdceilings
+   begin
+     do savef112audit
+   end
+end
+
+;MC1 - end
+
+procedure preupdate
+begin
+;  (If expense amount has changed, change the amount in the
+;   transactions of 'CEIEXP', 'TOTEXP', 'INCEXP' OF f119-doctor-ytd)
+   if t-ytdcex-diff <> 0
+   then begin
+	get f119-doctor-ytd optional via doc-nbr,comp-code   &
+ 		using doc-nbr of f020-doctor-mstr, 'CEIEXP'
+	if accessok
+	then begin
+		let amt-ytd = amt-ytd + t-ytdcex-diff
+		put f119-doctor-ytd
+	end
+	get f119-doctor-ytd optional via doc-nbr,comp-code   &
+ 		using doc-nbr of f020-doctor-mstr, 'TOTEXP'
+	if accessok
+	then begin
+		let amt-ytd = amt-ytd + t-ytdcex-diff
+		put f119-doctor-ytd
+	end
+	get f119-doctor-ytd optional via doc-nbr,comp-code   &
+ 		using doc-nbr of f020-doctor-mstr, 'INCEXP'
+	if accessok
+	then begin
+		let amt-ytd = amt-ytd - t-ytdcex-diff
+		put f119-doctor-ytd
+	end
+   end
+
+; MC1
+   For f112-pycdceilings
+   begin
+   if newrecord of f112-pycdceilings
+   then begin
+        do createf112audit_add
+        let last-mod-flag of f112-pycdceilings-audit = 'A'
+        let last-mod-date of f112-pycdceilings-audit = sysdate
+        let last-mod-time of f112-pycdceilings-audit = systime / 10000
+        let last-mod-user-id of f112-pycdceilings-audit = trun(logonid) + '-d112-A'
+        put f112-pycdceilings-audit
+        end
+   else
+   if changemode and deletedrecord of f112-pycdceilings
+   then begin
+        do createf112audit
+        let last-mod-flag of f112-pycdceilings-audit = 'D'
+        let last-mod-date of f112-pycdceilings-audit = sysdate
+        let last-mod-time of f112-pycdceilings-audit = systime / 10000
+        let last-mod-user-id of f112-pycdceilings-audit = trun(logonid) + '-d112-D'
+        put f112-pycdceilings-audit
+        end
+   else
+   if changemode and alteredrecord of f112-pycdceilings
+   then begin
+;      create before change audit record
+        do createf112audit
+        let last-mod-flag of f112-pycdceilings-audit = 'C'
+        let last-mod-date of f112-pycdceilings-audit = sysdate
+        let last-mod-time of f112-pycdceilings-audit = systime / 10000
+        let last-mod-user-id of f112-pycdceilings-audit = trun(logonid) + '-d112-1'
+        put f112-pycdceilings-audit reset
+;      create after  change audit record
+        do createf112audit_add
+        let last-mod-flag of f112-pycdceilings-audit = 'C'
+        let last-mod-date of f112-pycdceilings-audit = sysdate
+        let last-mod-time of f112-pycdceilings-audit = systime / 10000
+        let last-mod-user-id of f112-pycdceilings-audit = trun(logonid) + '-d112-2'
+        put f112-pycdceilings-audit
+        end
+   end
+; MC1 - end
+
+end
+build
+
+  

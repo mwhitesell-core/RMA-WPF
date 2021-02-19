@@ -1,0 +1,94 @@
+; Name   : PM30.QZS
+; Purpose: RECURRING INVOICES
+; 	   PRINT RECURRING INVOICES - NO TIMESHEETS GENERATED
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD  	By whom        	Why
+; ??/???/??  	?.?           	-
+; 87/09/21 	M. CHAN     	ORIGINAL
+; 92/02/28	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+;				- SET REPORT NOLIMIT
+
+
+can clear
+set default
+set report device printer
+set page length 63 width 80
+set report nolimit
+
+access fpwos link pwo-num to pwo-num of ftimesht opt	&
+       link emp-num of fpwos to emp-num of femployees   &
+       and  client of fpwos to client of fclients
+
+define temp-yymm zoned*4 unsigned  = parm   &
+   prompt 'ENTER  YYMM  FOR INVOICING: '
+
+
+define year character*2 = characters(temp-yymm)[1:2]
+define month character*9 = &
+ 	"  JANUARY" if characters(temp-yymm)[3:2] = "01" else &
+        " FEBRUARY" if characters(temp-yymm)[3:2] = "02" else &
+        "    MARCH" if characters(temp-yymm)[3:2] = "03" else &
+        "    APRIL" if characters(temp-yymm)[3:2] = "04" else &
+        "      MAY" if characters(temp-yymm)[3:2] = "05" else &
+        "     JUNE" if characters(temp-yymm)[3:2] = "06" else &
+        "     JULY" if characters(temp-yymm)[3:2] = "07" else &
+        "   AUGUST" if characters(temp-yymm)[3:2] = "08" else &
+        "SEPTEMBER" if characters(temp-yymm)[3:2] = "09" else &
+        "  OCTOBER" if characters(temp-yymm)[3:2] = "10" else &
+        " NOVEMBER" if characters(temp-yymm)[3:2] = "11" else &
+        " DECEMBER" if characters(temp-yymm)[3:2] = "12"
+
+def x-invoice-type char*50 = "      RECURRING INVOICE    "    &
+                             if type = "R"                    &
+          else "FIXED PRICE CONTRACT - SEE CONTRACT FOR DETAILS" &
+                             if type = "F"
+
+def x-authorize char*50 = "TO BE AUTHORIZED BY "+ name of femployees
+
+sel fpwos if ((type = 'R' or type = 'F') 			&
+	  and  gen-invoice = 'Y' and pwo-status = 'O')
+
+sel ftimesht if tsht-yymm = temp-yymm
+
+sorted on pwo-num of fpwos
+
+page heading skip 03 						&
+	tab 10 sysdate format yymmmdd  				&
+        tab 25 x-invoice-type  					&
+skip 1  tab 25 x-authorize      				&
+skip 2  tab 10 cl-name 						&
+skip 1  tab 10 addr-l1 						&
+skip 1  tab 10 addr-l2 						&
+skip 1  tab 10 addr-l3 						&
+skip 1  tab 10 postal-code of fclients 				&
+skip 3  tab 10 "ATTN:" billing-person 				&
+skip 1  tab 17         billing-person-title 			&
+skip 2  tab 40 "** I N V O I C E **" 				&
+skip 1  tab 40 "-------------------" 				&
+skip 3  tab 10 "Re: Services for: "  tab 28 month 		&
+	tab 37 "/"  tab 38 year 				&
+skip 1  tab 10 "------------------------------" 		&
+skip 5
+
+report  tab 10 "Invoice Total:  "				 &
+        tab 35 invoice-amt-fixed bwz pic "^^,^^^.^^" float "$"
+
+footing at pwo-num of fpwos         		         	&
+skip 5  tab 10 "Invoice   :" 					&
+skip 1  tab 10 "Agreement :"  					&
+	tab 22 pwo-num of fpwos bwz       			&
+skip 1  tab 10 "Terms     : Net 20 days" 			&
+skip 1  tab 10 "            2% service charge on overdue balances" &
+skip 2  tab 10 "E & OE" 					&
+skip 2  tab 10 "Please Remit Payment to " 			&
+skip 1  tab 10 "our Accounting Department:" 			&
+        tab 38 "3080 Yonge St." 				&
+skip 1  tab 38 "Toronto, Ontario" 				&
+skip 1  tab 38 "M4N 3N1" 					&
+skip page
+
+
+build $pb_obj/pm30
+  

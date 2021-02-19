@@ -1,0 +1,103 @@
+;doc: donfinan_premium.qts
+;doc: report premium revenue and regular rev for each dept 6 physician for 
+;     jul 1 2000 to jun 30 2001.
+
+;For: Don Finan manager obs & gyn
+
+
+;Date           Who             Description
+;2002/03/26     Yasemin         Original
+
+set lock file update
+set process nolimit
+
+request one on calculation errors report	&
+	    on edit errors report
+
+access f002-claims-mstr
+
+;choose all regular 'C'laim batch type
+choose  key-p-clm-type 'P'
+
+select f002-claims-mstr if                             &
+        (      clmhdr-date-period-end >=  20000701     &
+           and clmhdr-date-period-end <=  20010630)    &
+     and       clmhdr-doc-dept = 6
+
+subfile donfinan keep include		&
+	key-clm-type,			&
+	key-clm-batch-nbr,		&
+	key-clm-claim-nbr 
+
+request two on calculation errors report    &
+	    on edit errors report
+
+access  *donfinan link to f002-claims-mstr  &
+  link  (nconvert(clmhdr-claim-id[4:3]))    &
+    to  doc-nbr of f020-doctor-mstr opt
+
+sel if clmdtl-oma-cd <> '0000' and clmdtl-oma-cd <> 'ZZZZ'
+
+
+select f002-claims-mstr if                    &
+               clmdtl-date-period-end >= '20000701'    &
+      and      clmdtl-date-period-end <= '20010630'
+
+sort on doc-nbr
+
+def prem-code char*1 = 'Y'		 &
+	  if  clmdtl-oma-cd = "C989"     &
+          or  clmdtl-oma-cd = "C990"     &
+          or  clmdtl-oma-cd = "C991"     &
+          or  clmdtl-oma-cd = "C992"     &
+          or  clmdtl-oma-cd = "C994"     &
+          or  clmdtl-oma-cd = "C995"     &
+          or  clmdtl-oma-cd = "C996"     &
+          or  clmdtl-oma-cd = "C997"     &
+          or  clmdtl-oma-cd = "C998"     &
+          or  clmdtl-oma-cd = "E400"     &
+          or  clmdtl-oma-cd = "E401"     &
+          or  clmdtl-oma-cd = "E409"     &
+          or  clmdtl-oma-cd = "E410"     &
+          or  clmdtl-oma-cd = "E411"     
+
+
+def x-mm cha*2 = clmdtl-date-period-end[5:2]
+def x-yyyy cha*4 = clmdtl-date-period-end[1:4]
+
+def x-comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+;july 1,2000 to june 30,2001
+
+temp x-2001-p num*7
+item x-2001-p  = x-2001-p + clmdtl-fee-ohip /100   &
+                 if prem-code = 'Y' reset at doc-nbr
+
+temp x-day-2001-p num*7
+item x-day-2001-p  = x-day-2001-p + 1  	 &
+                     if prem-code = 'Y' reset at doc-nbr
+
+temp x-2001-a num*7
+item x-2001-a  = x-2001-a + clmdtl-fee-ohip /100 reset at doc-nbr
+
+subfile donfinan2 portable keep at doc-nbr  include &
+doc-nbr,              &
+x-comma,              &
+doc-name,             &
+x-comma,              &
+doc-inits,            &
+x-comma,              &
+x-2001-p,             &
+x-comma,              &
+x-day-2001-p,	      &
+x-comma,	      &
+x-2001-a,             & 
+x-cr         
+
+build $pb_obj/donfinan_premium
+
+
+
+

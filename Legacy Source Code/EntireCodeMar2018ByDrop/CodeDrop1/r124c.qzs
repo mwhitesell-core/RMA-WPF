@@ -1,0 +1,153 @@
+; program: r124c.qzs
+; purpose: Audit of invoice amounts for paycode 7
+;
+;DATE       BY WHOM      DESCRIPTION
+;2014/apr/15 be           - original
+;2014/apr215 be1          - add printing of doctor's bank info
+
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r124c
+set formfeed
+set noclose
+
+access *u116_paycode_7_a				&
+        link (6) to const-rec-nbr of constants-mstr-rec-6       
+page heading                                            &
+tab 1   "r124c"                                         &
+tab 7   "EP #"                                          &
+tab 12  current-ep-nbr                                  &
+tab 40  "Pay Code 7 Invoice Summary Report"             &
+tab 95  "Run Date:"                                     &
+tab 107  sysdate                                        &
+tab 124 "PAGE:" tab 130 syspage pic "^^^"               &
+skip							&
+tab 40  "Summary Calculations"                          &
+skip 2  						&
+tab  3  "Total Group Income"                            &
+tab 25  "Total Keying Hours"                            &
+tab 46  "Total Group FTE"
+
+rep 								&
+tab 09 w-tot-dept-inc                  pic "^,^^^,^^^.^^ "      &
+tab 33 w-tot-dept-keyhrs               pic "^^^,^^^.^^ "        &
+tab 55 w-tot-dept-fte                  pic "^^^^.^^"
+
+build $obj/r124c_1 
+
+access *u116_paycode_7_b				&
+        link (6) to const-rec-nbr of constants-mstr-rec-6       
+
+page heading                                            &
+tab 1   "r124c"                                         &
+tab 7   "EP #"                                          &
+tab 12  current-ep-nbr                                  &
+tab 40  "Pay Code 7 Invoice Summary Report"             &
+tab 95  "Run Date:"                                     &
+tab 107  sysdate                                        &
+tab 124 "PAGE:" tab 130 syspage pic "^^^"               &
+skip							&
+tab 40  "Detailed Calculations"                         &
+skip 2  						&
+tab  9 "Total Group FTE"				&
+tab 26 "Total Income Charges"				&
+tab 51 "Service Rate"					&
+tab 67 "Total Data Entry Charges"			&
+tab 99 "Total Charges"					&
+tab 115 "1.0 FTE Charge"
+
+rep 								&
+tab 17 w-tot-dept-fte                  pic "^^^^.^^"            &
+tab 34 w-tot-dept-inc-charges          pic "^^^,^^^.^^ "        &
+tab 53 w-svc-rate                      pic "^^^,^^^.^^ "        &       
+tab 79 w-tot-dept-dataentry-charges    pic "^^^,^^^.^^ "        &
+tab 95  w-tot-dept-charges             pic "^^^,^^^.^^ "        & 
+tab 116 w-tot-1-fte-charge	       pic "^^^,^^^.^^ "
+
+build $obj/r124c_2
+
+;         1         2         3         4         5         6         7         8         9         95        110
+;123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 1234567
+
+access *debugu116cd7					&
+        link (6) to const-rec-nbr of constants-mstr-rec-6       
+
+page heading                                            &
+tab 1   "r124c"                                         &
+tab 7   "EP #"                                          &
+tab 12  current-ep-nbr                                  &
+tab 40  "Pay Code 7 Invoice Summary Report"             &
+tab 95  "Run Date:"                                     &
+tab 107  sysdate                                        &
+tab 124 "PAGE:" tab 130 syspage pic "^^^"               &
+skip							&
+tab 40  "Invoice Details"                               &
+skip 2  						&
+tab  1  "Doctor"                	 		&
+tab 14  "FTE"                   	 		&
+tab 22  "Group Total Charges"   	 		&
+tab 44  "1.0 FTE Charge"				&
+tab 61  "This Doctor Charge"		
+
+rep 								&
+tab  3  doc-nbr                               			&
+tab 10  factor            		pic "^^.^^^^"		&
+tab 27  w-tot-dept-charges            	pic "^^^,^^^,^^^.^^ "   &
+tab 49  w-tot-1-fte-charge            	pic "^^,^^^.^^ "     	&
+tab 69  w-doc-charge			pic "^^^,^^^.^^ "
+
+final footing					&
+skip 2						&
+tab  1 "Invoices Grand Total"			&
+tab 69  w-doc-charge subt pic  "^^^,^^^.^^ "
+
+build $obj/r124c_3
+
+; TODO - access f119 and get final value to ensure it matches one from subfile above
+access f119-doctor-ytd                                          &
+        link (6) to const-rec-nbr of constants-mstr-rec-6       &
+        link current-ep-nbr, doc-nbr                            &
+         to  ep-nbr, doc-nbr of f112-pycdceilings		&
+	link	doc-nbr to doc-nbr of f020-doctor-mstr   opt		&
+;	link	doc-nbr to doc-nbr of f020-doctor-extra  opt		&
+	link	doc-dept of f020-doctor-mstr		&
+	to	dept-nbr of f070-dept-mstr opt		&
+	link	(  ascii(doc-bank-nbr    of f020-doctor-mstr,4)		&
+		+ ascii(doc-bank-branch of f020-doctor-mstr,5)	)	&
+	to	bank-cd of f080-bank-mstr opt		
+
+choose doc-nbr, comp-code 'DOCCHG', rec-type 'A'
+
+select if doc-pay-code = "7"
+
+page heading                                            &
+tab 1   "r124c"                                         &
+tab 7   "EP #"                                          &
+tab 12  current-ep-nbr                                  &
+tab 40  "Pay Code 7 Invoice Summary Report"             &
+tab 95  "Run Date:"                                     &
+tab 107  sysdate                                        &
+tab 124 "PAGE:" tab 130 syspage pic "^^^"               &
+skip							&
+tab 40  "DOCCHG Details from F119 - Should match above" &
+skip 2  						&
+tab  1  "Doctor"                	 		&
+tab 61  "This Doctor Charge"				&
+tab 84  "Bank"						&
+tab 91  "Branch"      					&
+tab 100 "Account" 
+
+rep 							&
+tab  3  doc-nbr                          		&
+tab 69  amt-mtd     		pic "^^^,^^^.^^ "	&
+tab 84  doc-bank-nbr 		pic "^^^^"		&
+tab 90  doc-bank-branch	 	pic "^^^^^"		&
+tab 100 doc-bank-acct
+
+final footing						&
+skip 2							&
+tab  1 "Invoices Grand Total"				&
+tab 69  amt-mtd      subt pic  "^^^,^^^.^^ "
+
+build $obj/r124c_4

@@ -1,0 +1,62 @@
+;#> PROGRAM-ID.     U030B_PART3_A_last_request.QTS
+
+; 2011/Dec/06	MC1 	- Kathy has reported a batch over $99,999.99
+;			- copy this program into production/moira_agep1
+;			- change the x-batch-count below
+
+cancel clear
+set proces nolimit
+set lock record update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request calculate_batch_nbr  on calculation errors report on edit errors report
+
+access *r031a_running_amt
+
+sorted on x-clinic
+
+temp x-batch-count-before
+temp x-batch-count-after
+temp x-count
+temp x-claim-count
+temp x-batch-count
+temp x-batch-amount zoned*7 numeric
+
+item x-batch-count-before  = x-batch-count
+
+temp change-batch-flag char*1
+;item change-batch-flag = "N" if x-batch-amount <= 9500000     	& ; MC1
+item change-batch-flag = "N" if x-batch-amount <= 9300000     	& ;highest -8881.56 - MC1
+				and x-claim-count < 99		&
+				and x-batch-count <> 0		&
+                else	"Y"
+
+item x-batch-amount = x-batch-amount + x-total-paid-amt	&
+	if change-batch-flag = "N"			&
+	else x-total-paid-amt				&		
+		reset at x-clinic      
+
+item x-claim-count = x-claim-count + 1 			&
+			if change-batch-flag = "N"	&	
+		else 1
+
+item x-batch-count = 					&
+        x-batch-count + 1 if change-batch-flag = "Y"	&
+   else x-batch-count-before				&
+        reset at x-clinic
+
+item x-count  count reset at x-clinic
+
+item x-batch-count-after  = x-batch-count
+
+
+subfile r031a_batch_nbr keep include            &
+        r031a_running_amt, x-count, x-batch-count, x-claim-count
+
+subfile r031a_debug_batch_nbr keep include		&
+	r031a_running_amt, x-count, x-batch-count-before , x-batch-count, x-claim-count, x-batch-amount, x-batch-count-after 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+build $pb_obj/u030b_part3_a_last_request

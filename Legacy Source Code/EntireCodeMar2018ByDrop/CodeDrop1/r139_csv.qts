@@ -1,0 +1,70 @@
+; DOC: R139_CSV.QTS
+; DOC: INCEXP minus TOTDED <> PAYEFT for pay code 2 only
+; DOC: SORT BY COMPANY/DEPT
+; DOC: RUN FOR: Ross  
+;
+;PROGRAM PURPOSE : The difference between ( (Total Revenue - Total Expense ) - Total Deduction)
+;		   and PAYEFT Amount  for pay code 2 doctors 
+;
+;DATE           WHO       DESCRIPTION
+;2015/Aug/12	MC	  ORIGINAL - this program will be run in $cmd/teb3; thus ep nbr has changed (+1)  
+;			  this is the first pass of the program, second pass is r139_csv.qzs
+;2016/Mar/14	MC1	  Brad suggested to include pay code 0 as well, show terminated date
+
+can clear
+set process nolimit
+set lock record update
+
+access f119-doctor-ytd     			&
+        link  6              			&
+	 to   const-rec-nbr of constants-mstr-rec-6 &
+	link  (current-ep-nbr - 1), doc-nbr	&
+	 to   ep-nbr, doc-nbr of f112-pycdceilings opt &
+	link  doc-nbr				&
+	 to   doc-nbr of f020-doctor-mstr opt  	&
+	link  doc-dept				&
+	 to   dept-nbr of f070-dept-mstr opt
+
+choose doc-nbr, comp-code 'ADVOUT', 'INCEXP', 'TOTDED', 'PAYEFT', 'PAYPOT', rec-type 'A'
+
+; MC1
+;sel if doc-ep-pay-code = '2'
+sel if doc-ep-pay-code = '2' or doc-ep-pay-code = '0'
+; MC1 - end
+
+sort on doc-nbr
+
+temp amt-advout zoned*8 numeric 
+item amt-advout = amt-advout + amt-mtd if comp-code = 'ADVOUT' reset at doc-nbr
+
+temp amt-incexp zoned*8 numeric 
+item amt-incexp = amt-incexp + amt-mtd if comp-code = 'INCEXP' reset at doc-nbr
+
+temp amt-totded zoned*8 numeric 
+item amt-totded = amt-totded + amt-mtd if comp-code = 'TOTDED' reset at doc-nbr
+
+temp amt-payeft zoned*8 numeric 
+item amt-payeft = amt-payeft + amt-mtd if comp-code = 'PAYEFT' reset at doc-nbr
+
+temp amt-paypot zoned*8 numeric 
+item amt-paypot = amt-paypot + amt-mtd if comp-code = 'PAYPOT' reset at doc-nbr
+
+subfile r139_csv keep at doc-nbr include	&
+	dept-company,				&
+	doc-dept, 				&
+	doc-nbr of f119-doctor-ytd,		&
+	doc-name,				&
+; MC1
+	doc-ep-pay-code,			&
+	doc-date-fac-term,			&
+; MC1 - end
+	ep-nbr,					&
+	amt-incexp,				&
+	amt-totded, 				&
+	amt-paypot,				&
+	amt-payeft, 				&
+	amt-advout
+
+
+build $pb_obj/r139_csv   
+

@@ -1,0 +1,89 @@
+;doc     : emergency_payroll_clmhdrid.qts         
+;purpose : report by doc Value in payroll field in f002 for dept 41, 42, 43 or 75
+;        ; THIS report is by clmhdrid - there are two other programs one by doc by dept and one by month by location
+;who     : department head
+
+;
+; *************************************************************
+
+;Date           Who            Description
+;2010/10/28     Yasemin
+;2016/08/29     Yasemin        modify dates for 20160701 - 20170630
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'             &
+                          and (    clmhdr-doc-dept = 41                &
+                                or clmhdr-doc-dept = 42                &
+                                or clmhdr-doc-dept = 43                &
+                                or clmhdr-doc-dept = 75)
+;;;;;;;;;;;;;;             and (      clmhdr-serv-date   >= 20100701  &
+;;;;;;;;;;;;;;                   and  clmhdr-serv-date   <= 20110630)
+
+def x-claim cha*10 = clmhdr-claim-id[1:10]
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile payroll     keep include      &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+x-claim                              ,&
+x-clinic                             ,&
+clmhdr-payroll                       ,&
+clmhdr-doc-dept                      ,&
+clmhdr-loc                           ,&
+clmhdr-serv-date                     ,&
+doc-nbr                              ,&
+doc-name                             ,&
+doc-inits
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *payroll
+
+select if      clmhdr-serv-date   >= 20160701  &
+          and  clmhdr-serv-date   <= 20170630
+
+sort on doc-name on clmhdr-payroll of payroll
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile payroll2_clmid portable keep include    &
+x-claim                                             ,&
+comma                                               ,&
+x-clinic                                            ,&
+comma                                               ,&
+clmhdr-doc-dept of payroll                          ,&
+comma                                               ,&
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+;doc-inits                                           ,&
+;comma                                               ,&
+clmhdr-serv-date                                    ,&
+comma                                               ,&
+clmhdr-loc of payroll                               ,&
+comma                                               ,&
+clmhdr-payroll of payroll                           ,&
+comma                                               ,&
+x-cr
+
+build $pb_obj/emergency_payroll_clmhdrid

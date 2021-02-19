@@ -1,0 +1,374 @@
+;#> PROGRAM-ID.     R022E.QZS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SUMMARY OF CLAIMS SUBMITTED TO OHIP
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/APR/04 D.B.         - CLONE FROM R020E.QZS
+;     91/AUG/22 M.C.         - PDR 514
+;			     - CORRECT LOGIC TO USE F002 AND NOT F001
+;     91/OCT/09 M.C.	     - PDR 527 - OPTIMIZATION SIMILIAR TO U020
+;     91/JAN/10 Y.B.         - ADD EXTRA DIGIT TO TOTAL NBR OF CLMS
+;     97/AUG/21 Y.B.         - CHANGE R020E5 FROM SORTED TO SORT
+;                            - BECAUSE OF GROUP SORT REPORT ARE INCORRECT
+;     03/dec/12 A.A.	     - alpha doctor nbr
+;
+
+can clear
+set default
+set report nolim
+
+access *u020a1						&
+;!	link ("B", nconvert(clmhdr-claim-id[1:9]),      &
+;!	      nconvert(clmhdr-claim-id[10:2]),		&
+;!	      clmhdr-claim-id[12:5], clmhdr-claim-id[17:1]) &
+	link ("B", clmhdr-claim-id[1:8],      &
+	      nconvert(clmhdr-claim-id[9:2]),		&
+	      clmhdr-claim-id[11:5], clmhdr-claim-id[16:1]) &
+	 to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+	    key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+
+def batctrl-adj-cd char*1 = clmhdr-adj-cd
+
+def w-agent char*1	&
+	   = "T" if (batctrl-agent-cd = 0 or batctrl-agent-cd = 2) &
+		and batctrl-batch-type = "C"			&
+	else ascii(batctrl-agent-cd,1)
+
+def w-batch-type char*1	&
+	     = "A" if batctrl-batch-type = "C"	&
+	else   "B" if batctrl-batch-type = "A"	&
+	else   "P" if batctrl-batch-type = "P"	
+
+def w-adj-code char*1 = " " if w-batch-type = "A"	&
+	else clmhdr-adj-cd
+
+def batctrl-calc-ar-due zoned*7 signed = clmhdr-tot-claim-ar-ohip
+def batctrl-calc-tot-rev zoned*7 signed = clmhdr-tot-claim-ar-ohip
+def batctrl-manual-pay-tot zoned*7 signed = clmhdr-manual-and-tape-payments
+def batctrl-nbr-claims-in-batch zoned*2 unsigned = 1
+
+set subfile name u022e1 keep
+rep summary			&
+  clmhdr-claim-id		&
+  w-adj-code                    &
+  iconst-clinic-nbr-1-2		&
+  iconst-clinic-cycle-nbr	&
+;y2k
+  iconst-date-period-end	&
+  w-batch-type			&
+  batctrl-adj-cd		&
+  w-agent			&
+  batctrl-calc-ar-due  	&
+  batctrl-calc-tot-rev 			&
+  batctrl-manual-pay-tot 		&
+  batctrl-nbr-claims-in-batch 	
+
+build $pb_obj/r022e1
+set report nolimit
+
+access *u022e1
+	
+define first-key char*4 = ascii(iconst-clinic-nbr-1-2,2) + &
+			  w-batch-type + w-adj-code
+
+sort on first-key, w-agent, clmhdr-claim-id
+
+set subfile name u022e2 keep at w-agent
+report summary			&
+  iconst-clinic-nbr-1-2		&
+  iconst-clinic-cycle-nbr	&
+;y2k
+  iconst-date-period-end	&
+  w-batch-type			&
+  batctrl-adj-cd		&
+  w-agent			&
+  batctrl-calc-ar-due  subtotal	&
+	at clmhdr-claim-id   reset at w-agent	&
+  batctrl-calc-tot-rev subtotal			&
+	at clmhdr-claim-id   reset at w-agent	&
+  batctrl-manual-pay-tot subtotal		&
+	at clmhdr-claim-id   reset at w-agent	&
+  batctrl-nbr-claims-in-batch subtotal		&
+	at clmhdr-claim-id   reset at w-agent
+
+build $pb_obj/r022e2
+
+set report nolimit
+
+access *u022e2
+
+def w-batctrl-manual-pay-tot =	&
+	     batctrl-manual-pay-tot * -1	&
+	if w-batch-type = "P" and batctrl-adj-cd = "C"	&
+	else batctrl-manual-pay-tot
+
+set subfile name u022e3 keep
+report summary			&
+  iconst-clinic-nbr-1-2		&
+  iconst-clinic-cycle-nbr	&
+;y2k
+  iconst-date-period-end	&
+  w-batch-type			&
+  batctrl-adj-cd		&
+  w-agent			&
+  batctrl-calc-ar-due		&
+  batctrl-calc-tot-rev		&
+  w-batctrl-manual-pay-tot	&
+  batctrl-nbr-claims-in-batch
+
+build $pb_obj/r022e3
+
+set report nolimit
+
+access *u022e2
+
+def w-adj-code char*1 = " "
+
+sort on iconst-clinic-nbr-1-2, w-adj-code, w-agent
+
+def w-batctrl-manual-pay-tot =	&
+	     batctrl-manual-pay-tot * -1	&
+	if w-batch-type = "P" and batctrl-adj-cd = "C"	&
+	else batctrl-manual-pay-tot
+
+def w-batch-type-z char*1 = "Z"
+
+set subfile name u022e3 append at w-agent
+report summary			&
+  iconst-clinic-nbr-1-2		&
+  iconst-clinic-cycle-nbr	&
+;y2k
+  iconst-date-period-end	&
+  w-batch-type-z		&
+  w-adj-code			&
+  w-agent			&
+  batctrl-calc-ar-due subtotal	&
+  batctrl-calc-tot-rev subtotal	&
+  w-batctrl-manual-pay-tot subtotal	&
+  batctrl-nbr-claims-in-batch subtotal
+
+build $pb_obj/r022e4
+set report nolimit
+
+set rep dev disc name ru022b
+set page length 63 width 132
+set formfeed
+set noclose
+
+access *u020a1						&
+	link ("B" , batctrl-batch-nbr , clmhdr-claim-nbr)	&
+	to key-clm-type, key-clm-batch-nbr,		&
+	key-clm-claim-nbr of f002-claims-mstr		&
+	link iconst-clinic-nbr-1-2 to iconst-mstr-rec
+
+select u020a1 if batctrl-batch-type = "C"			&
+            and (batctrl-agent-cd = 0 or batctrl-agent-cd = 2)
+
+select f002-claims-mstr if clmhdr-adj-oma-cd <> "0000"	&
+	               and clmhdr-adj-oma-cd <> "ZZZZ"
+
+sort   on iconst-clinic-nbr-1-2, batctrl-batch-nbr, clmhdr-claim-id of u020a1
+
+def w-address-cnt = 1 if pat-health-nbr = 0 and pat-prov-cd = "ON"
+;! def w-batch-nbr char*6 = clmhdr-claim-id[4:6]
+def w-batch-nbr char*6 = clmhdr-claim-id[3:6]
+
+page heading	&
+  tab   1 "RU022B/"		&
+  tab   8 iconst-clinic-nbr-1-2	&
+  tab  40 "OHIP RESUBMITTAL TAPE"	&
+  tab  99 "RUN DATE"		&
+;y2k
+  tab 108 sysdate		&
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 1	&
+  tab  42 iconst-clinic-name	&
+skip 1	&
+  tab  44 "CLINIC #"		&
+  tab  56 iconst-clinic-nbr-1-2	&
+  tab  70 "CYCLE ="		&
+  tab  79 iconst-clinic-cycle-nbr	&
+  tab  97 "FOR THE PERIOD ENDING:"	&
+;y2k
+  tab 120 iconst-date-period-end pic "^^^^/^^/^^"	&
+skip 2	&
+  tab  10 "SEQUENCE"			&
+  tab  25 "DEPT NBR"			&
+  tab  40 "BATCH NBR"			&
+  tab  55 "NBR OF HEADERS"		&
+  tab  70 "NBR OF ITEMS"		&
+  tab  85 "NBR 0F ADDRESSES"		&
+  tab 104 "AMOUNT REQUESTED"		&
+skip 1	&
+  tab  40 "DOC WK DAY"			&
+skip 2
+
+footing at batctrl-batch-nbr		&
+  tab  10 count at batctrl-batch-nbr noreset	&
+  tab  27 clmhdr-doc-dept			&
+  tab  40 w-batch-nbr pic "^^^ ^^ ^^"	&
+  tab  59 count at clmhdr-claim-id	&
+  tab  70 count				&
+  tab  87 w-address-cnt subtotal at clmhdr-claim-id	&
+  tab 107 clmhdr-tot-claim-ar-ohip of u020a1	&
+	subtotal at clmhdr-claim-id	&
+	reset at batctrl-batch-nbr	&
+	pic "^^^^,^^^.^^ " trailing sign "-"
+
+footing at iconst-clinic-nbr-1-2	&
+skip 2	&
+  tab  59 count at clmhdr-claim-id	&
+  tab  70 count				&
+  tab  87 w-address-cnt subtotal at clmhdr-claim-id	&
+  tab 107 clmhdr-tot-claim-ar-ohip of u020a1		&
+	subtotal at clmhdr-claim-id pic "^^^^,^^^.^^ "	&
+	trailing sign "-"				&
+skip page
+
+build $pb_obj/r022e5
+set report nolimit
+
+access *u022e3						&
+	link iconst-clinic-nbr-1-2 to iconst-clinic-nbr-1-2	&
+	of iconst-mstr-rec
+
+def w-adj-code char*1 = " " if w-batch-type = "A"	&
+	else batctrl-adj-cd
+
+def w-adj-agent char*2 = w-adj-code + w-agent
+ 
+sort on iconst-clinic-nbr-1-2, w-batch-type, w-adj-code, w-agent
+
+def w-claim-type char*14 = case of w-batch-type	&
+	when "A" then "CLAIMS"			&
+	when "B" then "ADJUSTMENTS"		&
+	when "P" then "PAYMENTS"		&
+	when "Z" then "GRAND TOTALS"
+
+def w-batctrl-calc-ar-due = batctrl-calc-ar-due		&
+	if w-batch-type <> "Z"
+def w-batctrl-calc-tot-rev = batctrl-calc-tot-rev	&
+	if w-batch-type <> "Z"
+def w-w-batctrl-manual-pay-tot = w-batctrl-manual-pay-tot	&
+	if w-batch-type <> "Z"
+def w-batctrl-nbr-claims-in-batch = batctrl-nbr-claims-in-batch	&
+	if w-batch-type <> "Z"
+
+def w-type-name char*1 = batctrl-adj-cd	&
+	if w-batch-type = "B" or w-batch-type = "P"
+
+page heading	&
+  tab   1 "RU022B/"		&
+  tab   8 iconst-clinic-nbr-1-2	&
+  tab  42 "OHIP SUBMITTAL TAPE"	&
+  tab  99 "RUN DATE"		&
+;y2k
+  tab 108 sysdate		&
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 1	&
+  tab  42 iconst-clinic-name	&
+skip 1	&
+  tab  44 "CLINIC #"		&
+  tab  56 iconst-clinic-nbr-1-2	&
+  tab  70 "CYCLE ="		&
+  tab  79 iconst-clinic-cycle-nbr	&
+  tab  97 "FOR THE PERIOD ENDING:"	&
+;y2k
+  tab 120 iconst-date-period-end pic "^^^^/^^/^^"	&
+skip 2	&
+  tab  21 "AGENT"		&
+  tab  38 "NET A/R"		&
+  tab  53 "NET REV"		&
+  tab  68 "NET CASH"		&
+  tab  80 "# CLAIMS"		&
+skip 2
+
+footing at w-agent		&
+  tab   1 w-claim-type print at w-batch-type	&
+  tab  17 w-type-name		&
+  tab  20 "-"			&
+  tab  22 w-agent		&
+  tab  34 batctrl-calc-ar-due	pic "^^^^,^^^.^^ " &
+	trailing sign "-"			&
+  tab  49 batctrl-calc-tot-rev	pic "^^^^,^^^.^^ " &
+	trailing sign "-"			&
+  tab  63 w-batctrl-manual-pay-tot	&
+		pic "^^^^,^^^.^^ "	&
+	trailing sign "-"			&
+  tab  81 batctrl-nbr-claims-in-batch pic "^^^^^"
+
+;FOOTING AT W-ADJ-CODE		&
+; TAB  10 "TOTAL"		&
+; TAB  34 BATCTRL-CALC-AR-DUE SUBTOTAL	&
+;	PIC "^^^^,^^^.^^ " TRAILING SIGN "-"	&
+; TAB  49 BATCTRL-CALC-TOT-REV SUBTOTAL	&
+;	PIC "^^^^,^^^.^^ " TRAILING SIGN "-"	&
+; TAB  63 W-BATCTRL-MANUAL-PAY-TOT SUBTOTAL	&
+;	PIC "^^^^,^^^.^^ " TRAILING SIGN "-"	&
+; TAB  82 BATCTRL-NBR-CLAIMS-IN-BATCH SUBTOTAL PIC "^^^^"	&
+;SKIP 2
+
+footing at w-batch-type		&
+  tab   5 "TOTALS"		&
+  tab  34 batctrl-calc-ar-due subtotal		&
+		pic "^^^^,^^^.^^ " trailing sign "-"	&
+  tab  49 batctrl-calc-tot-rev subtotal		&
+		pic "^^^^,^^^.^^ " trailing sign "-"	&
+  tab  63 w-batctrl-manual-pay-tot subtotal	&
+		pic "^^^^,^^^.^^ " trailing sign "-"	&
+  tab  81 batctrl-nbr-claims-in-batch subtotal pic "^^^^^"   &
+skip 2
+
+footing at iconst-clinic-nbr-1-2		&
+; TAB   5 "TOTALS"				&
+; TAB  34 W-BATCTRL-CALC-AR-DUE SUBTOTAL	&
+;	PIC "^^^^,^^^.^^ " TRAILING SIGN "-"	&
+; TAB  49 W-BATCTRL-CALC-TOT-REV SUBTOTAL	&
+;	PIC "^^^^,^^^.^^ " TRAILING SIGN "-"	&
+; TAB  63 W-W-BATCTRL-MANUAL-PAY-TOT SUBTOTAL	&
+;	PIC "^^^^,^^^.^^ " TRAILING SIGN "-"	&
+; TAB  82 W-BATCTRL-NBR-CLAIMS-IN-BATCH SUBTOTAL PIC "^^^^"	&
+skip page
+
+final footing			&
+  tab   1 "RU022B/"		&		
+  tab   8 iconst-clinic-nbr-1-2	&
+  tab  40 "OHIP RESUBMITTAL TAPE"	&
+  tab  97 "RUN DATE"		&
+;y2k
+  tab 107 sysdate		&
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 1	&
+  tab  42 iconst-clinic-name	&
+skip 1	&
+  tab  44 "CLINIC #"		&
+  tab  56 iconst-clinic-nbr-1-2	&
+  tab  70 "CYCLE ="		&
+  tab  79 iconst-clinic-cycle-nbr	&
+  tab  97 "FOR THE PERIOD ENDING:"	&
+;y2k
+  tab 120 iconst-date-period-end pic "^^^^/^^/^^"	&
+skip 2	&
+  tab  21 "AGENT"		&
+  tab  38 "NET A/R"		&
+  tab  53 "NET REV"		&
+  tab  68 "NET CASH"		&
+  tab  80 "# CLAIMS"		&
+skip 2	&
+  tab  10 "FINAL TOTAL"		&
+  tab  35 w-batctrl-calc-ar-due subtotal	&
+		pic " ^^^^,^^^.^^"		&
+  tab  50 w-batctrl-calc-tot-rev subtotal	&
+		pic " ^^^^,^^^.^^"		&
+  tab  64 w-w-batctrl-manual-pay-tot subtotal	&
+		pic " ^^^^,^^^.^^"		&
+  tab  81 w-batctrl-nbr-claims-in-batch subtotal pic "^^^^^"
+
+build $pb_obj/r022e6

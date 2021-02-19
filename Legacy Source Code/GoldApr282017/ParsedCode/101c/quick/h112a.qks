@@ -1,0 +1,108 @@
+;#> PROGRAM-ID.     H112A.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician PAYCODES / REVENUES
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     96/JAN/22  ____   M.C.     - original (CLONE FROM D112A.QKS)
+;   1999/Apr/09		S.B.	 - Fixed size and alignments for Y2K.
+;				 - Altered t-ep-nbr-yy to use the full year.
+;   1999/Jun/07         S.B.     - Altered the call to scrtitle.use and
+;                                  stdhilite.use to be called from $use
+;                                  instead of src.
+;                                - Removed the call to secfile.use because
+;                                  it was not doing anything.
+; 2003/nov/10 b.e.    	- alpha doctor nbr
+; 2004/sep/02 b.e.      - made all fields display so that data can't be
+;                         accidently changed
+;                       - added new designer procedcure FIX to allow change
+;                         of each field only after a 'secret' password has
+;                         been entered
+; 2006/apr/17 b.e.	- adjust display to allow ceiling/revenue to be $1M
+
+can clear
+set default
+
+screen $pb_obj/h112a    on line 7 for 17 message on line 24                    &
+	activities find                       			       &
+        receiving w-doc-nbr, w-ep-nbr-yy,                              &
+                  constants-mstr-rec-6, f020-doctor-mstr
+
+temp w-doc-nbr char*3
+temp w-ep-nbr-yy
+temp t-ep-nbr-yy char*4 reset at startup initial ascii(w-ep-nbr-yy,4)
+temp w-password  date
+temp w-sysdate date
+
+file  f112-pycdceilings-history primary  occurs 12
+        access viaindex pycdceilings-history-key using w-doc-nbr
+
+select if t-ep-nbr-yy  = (ascii(ep-nbr of f112-pycdceilings-history,6)[1:4])
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 designer
+
+file f191-earnings-period reference
+     access viaindex ep-nbr using ep-nbr of f112-pycdceilings-history
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to querY Earnings Period transactions" &
+"       that specify a doctor's PAY CODE, PAY SUB CODE, REQUIRED and   " &
+"       REVENUE.                                                       " &
+"                                                                      "
+
+define x-screen-name char*55 = "PAY CODES, REQUIRE/TARGET REVENUE"
+use $use/scrtitle.use  nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+"   E/P    BILLING   PAY     ---REVENUES----   RETRO     ---REVENUES----   RETRO" &
+        at ,1
+skip
+title &
+"   Nbr      PED     CODE    REQUIRE/ORIGINL    TO       TARGET /ORIGINL    TO " &
+
+         at ,1
+skip
+
+cluster occurs with f112-pycdceilings-history
+align (1,,4) (,,11) (,,22)(,,23) (,,29) (,,37) (,,47) (,,57) (,,65) (,,74)
+
+field ep-nbr            of f112-pycdceilings-history  
+field iconst-date-period-end of f191-earnings-period  
+field doc-pay-code      of f112-pycdceilings-history  
+field doc-pay-sub-code  of f112-pycdceilings-history  
+field doc-yrly-reqrev   of f112-pycdceilings-history pic "^^^^^^^"
+field doc-yrly-reqrev-adjusted of f112-pycdceilings-history  pic "^^^^^^^"
+field retro-to-ep-nbr-req      of f112-pycdceilings-history		
+field doc-yrly-tarrev   of f112-pycdceilings-history pic "^^^^^^^"
+field doc-yrly-tarrev-adjusted   of f112-pycdceilings-history  pic "^^^^^^^"
+field retro-to-ep-nbr-tar of f112-pycdceilings-history
+cluster
+field w-password noid noecho
+
+procedure designer fix help "Use this 'secret' function to make corrections to data"
+begin
+  let w-sysdate = sysdate
+  accept w-password
+  if w-password = w-sysdate
+  then begin
+    accept ep-nbr
+    accept iconst-date-period-end 
+    accept doc-pay-code     
+    accept doc-pay-sub-code  
+    accept doc-yrly-reqrev 
+    accept doc-yrly-reqrev-adjusted 
+    accept retro-to-ep-nbr-req    
+    accept doc-yrly-tarrev
+    accept doc-yrly-tarrev-adjusted
+    accept retro-to-ep-nbr-tar
+  end
+end
+
+build

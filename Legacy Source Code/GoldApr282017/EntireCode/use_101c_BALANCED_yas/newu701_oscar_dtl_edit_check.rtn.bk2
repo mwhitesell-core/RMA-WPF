@@ -1,0 +1,1931 @@
+*  $use/newu701_oscar_dtl_edit_check.rtn  - used in newu701.cbl & u701oscar.cbl
+
+* 2011/05/18 - MC15
+ha12-check-for-sli-oma.
+
+    move hold-oma-cd (ss-clmdtl-oma)		to sli-oma-code.
+    move hold-oma-suff(ss-clmdtl-oma)		to sli-oma-suff.
+    move loc-service-location-indicator		to sli-code.
+
+    read  sli-oma-code-suff-mstr
+	invalid key
+	    go to ha12-99-exit.
+
+    if sli-admit-ind = 'Y' and (hdr-admit-date = spaces or zeroes)
+    then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 118                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+    if sli-admit-ind = 'N' and (hdr-admit-date not = spaces and not = zeroes)
+    then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 119                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+ha12-99-exit.
+   exit.
+* 2011/05/18 - end
+
+
+
+hb0-build-susp-dtl-rec-dtl.
+
+*   (THIS ROUTINE CALLED PASSING SS-WRITE-DTL AS SUBSCRIPT OF PRICED HOLD AREA) 
+ 
+    move spaces                         to   suspend-dtl-rec. 
+
+*   (keep BI and OP flags by moving them into consecutives services area)
+    move hold-sv-day(ss-write-dtl,1)	to clmdtl-sv-day(1).
+    move hold-sv-day(ss-write-dtl,2)	to clmdtl-sv-day(2).
+    move hold-sv-day(ss-write-dtl,3)	to clmdtl-sv-day(3).
+*   (00/sep/12 B.E. repetitive services were not initialized)
+    move 0				to clmdtl-sv-nbr(1)
+					   clmdtl-sv-nbr(2)
+					   clmdtl-sv-nbr(3).
+
+*   ## CHECK IF CLMHDR-STILL AVAILABLE - MIGHT HAVE BEEN READ INTO BY 
+*   ## NEW HAEADER??? 
+    move clmhdr-batch-nbr               to   clmdtl-batch-nbr. 
+ 
+    move hold-oma-cd(ss-write-dtl)      to   clmdtl-oma-cd
+                                             fee-oma-cd.
+    move hold-oma-suff(ss-write-dtl)    to   clmdtl-oma-suff. 
+    move 0                              to   clmdtl-adj-nbr. 
+    move 0                              to   clmdtl-rev-group-cd. 
+    move clmhdr-agent-cd                to   clmdtl-agent-cd. 
+    move clmhdr-adj-cd                  to   clmdtl-adj-cd. 
+
+*2001/02/28 - MC - default clmhdr-status into clmdtl-status
+*2001/03/30 - BE - if not 'I'gnore status, then if claim details have been
+*	           altered due to tech/prof/suffix rule processing,
+*		   then update detail/header status to "U"pdated
+    if     tech-prof-suff-rule-applied
+       and clmhdr-status <> "I"
+    then
+* 2005/08/17 - MC
+*	move "U"  			to   clmdtl-status
+	move "U"  			to   clmdtl-status of suspend-dtl-rec
+					     clmhdr-status
+    else
+*	move clmhdr-status		to   clmdtl-status.
+	move clmhdr-status		to   clmdtl-status of suspend-dtl-rec.
+* 2005/08/17 - end
+*   endif
+
+    perform gb1-verify-dtl-diag-cd thru gb1-99-exit. 
+ 
+    if    hold-sv-nbr-serv(ss-write-dtl) = 0 
+      and not price-only-claim
+    then 
+   	move ws-error-literal		to   err-warn-msg
+        perform xb0-print-warning-line thru xb0-99-exit 
+        move 1                          to   ws-carriage-ctrl 
+        move 38                         to   err-ind 
+        move hold-sv-nbr-serv(ss-write-dtl) 
+                                        to   err-nbr-of-serv 
+        perform zb0-build-write-err-rpt-line thru zb0-99-exit 
+*       MOVE '??'                       TO   CLMDTL-NBR-SERV-ALPHA 
+    else 
+*       (91/MAR/13 B.E.) 
+*       (SUM NBR SERVICES FOR AUDIT TOTALS) 
+*       ADD  DTL-NBR-OF-SERV            TO   CTR-TOT-SVCS-READ 
+        add  hold-sv-nbr-serv(ss-write-dtl) 
+                                        to   ctr-tot-svcs-read 
+*       MOVE DTL-NBR-OF-SERV            TO   CLMDTL-NBR-SERV 
+        move hold-sv-nbr-serv(ss-write-dtl) 
+                                        to   clmdtl-nbr-serv. 
+*   endif 
+ 
+    if    hold-fee-ohip     (ss-write-dtl)  = 0 
+      and not price-only-claim
+    then 
+	move ws-error-literal		to	err-warn-msg
+        perform xb0-print-warning-line thru xb0-99-exit 
+        move 1                          to   ws-carriage-ctrl 
+        move 39                         to   err-ind 
+*       MOVE DTL-FEE-BILLED             TO   ERR-FEE-BILLED 
+        move hold-fee-ohip (ss-write-dtl) 
+                                        to   err-fee-billed 
+        perform zb0-build-write-err-rpt-line thru zb0-99-exit. 
+ 
+ 
+*    (2000/03/20 - MC - check the two prices)
+*    if  hold-fee-incoming(ss-write-dtl) not = 0  and
+*	hold-fee-incoming(ss-write-dtl) not = hold-fee-ohip(ss-write-dtl) 
+*    then 
+*	move ws-warning-literal		to	err-warn-msg
+*        perform xb0-print-warning-line  thru    xb0-99-exit 
+*        move 1                          to      ws-carriage-ctrl 
+*        move 52                         to      err-ind 
+*        move hold-fee-incoming(ss-write-dtl) to err-52-incoming-fee
+*        move hold-fee-ohip    (ss-write-dtl) to err-52-ohip-fee
+*        perform zb0-build-write-err-rpt-line    thru    zb0-99-exit. 
+*   endif 
+
+
+*   (ya0- pricing logic has determined correction price to use and therefore
+*	  this routine can use the hold-fee-ohip)
+*	    if  hold-fee-incoming(ss-write-dtl) not = 0 
+*	    then
+*		move hold-fee-incoming(ss-write-dtl)to clmdtl-fee-oma 
+*		                                       clmdtl-fee-ohip 
+*	    else
+
+*   (00/sep/08 B.E. - don't automatically use ohip fees for both)
+*	     move hold-fee-ohip(ss-write-dtl)      to clmdtl-fee-oma 
+*	                                              clmdtl-fee-ohip. 
+     move hold-fee-oma (ss-write-dtl)    to clmdtl-fee-oma.
+     move hold-fee-ohip(ss-write-dtl)    to clmdtl-fee-ohip.
+
+*   (2000/jun/05 B.E. correct pricing of tech portion of fee)
+    move hold-priced-tech(ss-write-dtl)	      to clmdtl-amt-tech-billed
+
+*   (Perform a second read to oma-fee-mstr for each detail
+*    before any edit checks.)
+    perform xc0-check-oma-code          thru xc0-99-exit.
+ 
+*   (verify specialty against ohip code in header rec) 
+    if    (   fee-spec-fr < batch-specialty 
+           or fee-spec-fr = batch-specialty) 
+      and (   fee-spec-to = batch-specialty 
+           or fee-spec-to > batch-specialty) 
+    then 
+        move batch-specialty           to      clmhdr-doc-spec-cd 
+    else 
+        if not price-only-claim
+	then
+	    move ws-error-literal	    to	err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit 
+            move 1                          to      ws-carriage-ctrl 
+            move 21                         to      err-ind 
+            move batch-specialty           to      err-21-value-1 
+            move hold-oma-cd(ss-write-dtl)  to      err-21-value-2 
+            move fee-spec-fr                to      err-21-value-3 
+            move fee-spec-to                to      err-21-value-4 
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit 
+            move batch-specialty           to      clmhdr-doc-spec-cd. 
+*   endif 
+ 
+*   (DETERMINE IF REFERRING PHY. NBR REQUIRED, AND IF SO THAT THE NBR IS VALID) 
+    if hdr-refer-pract-nbr =   spaces 
+                            or zeros 
+    then 
+* 2013/06/18 - MC26 - set referring doc nbr = batch-provider-nbr if
+*		      oma codes = 'GnnnA' and fee-phy-ind = 'Y'
+* 2013/10/16 - MC28/MC34 - include 'J' & 'X' oma code but do not need to check suffix
+*	if    hold-oma-cd-alpha (ss-write-dtl) = 'G'
+	if    hold-oma-cd-alpha (ss-write-dtl) = 'G' or 'J' or 'X'
+* 	  and hold-oma-suff (ss-write-dtl) = 'A'
+* 2013/10/16 - end
+	  and fee-phy-ind = 'Y'
+	  and not price-only-claim
+	then
+	    move batch-provider-nbr		to clmhdr-refer-doc-nbr
+	else
+* 2013/06/18 - end
+        if    fee-phy-ind = "Y" 
+	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 22                     to      err-ind 
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-22-oma-cd 
+            move "REFERRING PHYSICIAN"  to      err-22-msg 
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit. 
+*       endif 
+*       endif
+ 
+*   (DETERMINE IF DIAGNOSTIC CODE IS REQUIRED, AND IF SO THAT THE CODE IS VALID) 
+    if hold-diag-cd(ss-write-dtl) =   spaces 
+                                     or zeros 
+    then 
+        if    fee-diag-ind = "Y" 
+          and hold-oma-suff (ss-write-dtl)  = "A" or "M"
+	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 22                     to      err-ind 
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-22-oma-cd 
+            move "DIAGNOSTIC CODE"      to      err-22-msg 
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit. 
+*       endif 
+*   endif 
+
+*    (00/sep/14 B.E. - this edit no longer required)
+*    if hdr-hosp-nbr =   spaces 
+*                     or zeros 
+*    then 
+*        if fee-hosp-nbr-ind = "Y" 
+*	  and not price-only-claim
+*        then 
+*	    move ws-error-literal	to	err-warn-msg
+*            perform xb0-print-warning-line 
+*                                        thru    xb0-99-exit 
+*            move 1                      to      ws-carriage-ctrl 
+*            move 22                     to      err-ind 
+*            move hold-oma-cd(ss-write-dtl) 
+*                                        to      err-22-oma-cd 
+*            move "HOSPITAL NUMBER"      to      err-22-msg 
+*            perform zb0-build-write-err-rpt-line 
+*                                        thru    zb0-99-exit. 
+**           MOVE "?"                    TO      CLMHDR-HOSP. 
+**       endif 
+**   endif 
+ 
+*   (DETERMINE IF IN/OUT INDICATOR IS REQUIRED, AND IF SO THAT IT IS VALID) 
+    if hdr-i-o-ind =   spaces 
+                    or zeros 
+    then 
+        if   (   fee-i-o-ind = "I"
+              or fee-i-o-ind = "O"
+              or fee-i-o-ind = "B"
+	     )
+ 	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 22                     to      err-ind 
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-22-oma-cd 
+            move "IN/OUT PATIENT INDICATOR" 
+                                        to      err-22-msg 
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit 
+        else next sentence
+    else
+        if   (   (     hdr-i-o-ind = "I"
+                   and fee-i-o-ind <> "I"
+                   and fee-i-o-ind <> "B"
+	         )
+              or (    hdr-i-o-ind = "O"
+                  and fee-i-o-ind <> "O"
+                  and fee-i-o-ind <> "B"
+	         )
+	     )
+ 	  and not price-only-claim
+        then
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line
+                                        thru    xb0-99-exit
+            move 1                      to      ws-carriage-ctrl
+            move 49                     to      err-ind
+            move fee-i-o-ind            to      err-49-oma-cd
+            move hdr-i-o-ind            to      err-49-hdr-cd
+            perform zb0-build-write-err-rpt-line
+                                        thru    zb0-99-exit.
+*       endif 
+*   endif 
+ 
+* 2002/06/12 - MC
+
+    if (hdr-hosp-nbr = spaces or zero) and
+* 2002/08/12 - MC
+*      (hold-oma-cd(ss-write-dtl) >= 'K994' and hold-oma-cd(ss-write-dtl) <= 'K997')
+      (hold-oma-cd(ss-write-dtl) >= 'K990' and hold-oma-cd(ss-write-dtl) <= 'K997')
+* 2002/08/12 - end
+ 	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 54                     to      err-ind 
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-54-prem-code
+            perform zb0-build-write-err-rpt-line
+                                        thru    zb0-99-exit.
+*    endif
+
+* 2002/06/12 - end
+
+* 2002/08/21 - MC
+
+    if (hdr-hosp-nbr = 'G000' or 'M200' or 'H000' or 'J000') and
+      (hold-oma-cd(ss-write-dtl) >= 'K990' and hold-oma-cd(ss-write-dtl) <= 'K997')
+ 	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 55                     to      err-ind 
+            move hdr-hosp-nbr		to      err-55-hosp-code
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-55-prem-code
+            perform zb0-build-write-err-rpt-line
+                                        thru    zb0-99-exit.
+*    endif
+
+* 2002/08/21 - end
+
+* 2003/06/11 - MC
+
+    if (hdr-loc-nbr not = '112' ) and
+* 2004/01/20 - MC
+       (hdr-loc-nbr not = '153' ) and
+       (hdr-loc-nbr not = '400' ) and
+       (hdr-loc-nbr not = '250' ) and
+       (hdr-loc-nbr not = '422' ) and
+* 2004/01/20 - end
+* 2004/09/27 - MC 
+       (hdr-loc-nbr not = '401' ) and
+* 2004/09/27 - end
+* 2007/10/24 - MC
+       (hdr-loc-nbr not = '055' ) and
+* 2007/10/24 - end
+* 2007/11/22 - MC
+       (hdr-loc-nbr not = '326' ) and
+* 2008/01/03 - Yas
+       (hdr-loc-nbr not = '122' ) and
+* 2007/11/22 - end
+
+* 2008/02/19 - MC 
+       (hdr-loc-nbr not = '344' ) and
+* 2008/02/19 - end
+* 2008/02/28 - MC 
+       (hdr-loc-nbr not = '111' ) and
+       (hdr-loc-nbr not = '354' ) and
+* 2008/02/28 - end
+* 2008/03/18 - MC 
+       (hdr-loc-nbr not = '333' ) and
+* 2008/03/18 - end
+* 2008/10/22 - MC 
+       (hdr-loc-nbr not = '777' ) and
+* 2008/10/22 - end
+   
+      (hold-oma-cd(ss-write-dtl) >= 'K990' and hold-oma-cd(ss-write-dtl) <= 'K997')
+ 	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 56                     to      err-ind 
+            move hdr-loc-code		to      err-56-loc-code 
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-56-prem-code
+            perform zb0-build-write-err-rpt-line
+                                        thru    zb0-99-exit.
+*    endif
+
+* 2003/06/11 - end
+
+
+*       
+*   (CHECK IF ADMIT DATE IS REQUIRED, AND IF SO VERIFY THAT DATE IS VALID) 
+    if hdr-admit-date =   spaces 
+                       or zeros 
+    then 
+        if    fee-admit-ind = "Y" 
+ 	  and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 22                     to      err-ind 
+            move hold-oma-cd(ss-write-dtl) 
+                                        to      err-22-oma-cd 
+            move "ADMIT DATE"           to      err-22-msg 
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit. 
+*       endif 
+*   endif 
+
+
+*  (2006/12/13 - MC - Yasemin requested to have the following 3 edit checks 
+*	with respect to date-of-admission and service-dates)
+
+   If 	  hold-oma-cd(ss-write-dtl) = 'C122' or 'C123' or 'C124'
+      and hold-sv-date(ss-write-dtl) >= hdr-admit-date
+      and not price-only-claim
+   then 
+      move hdr-admit-date 		to ws-date-yymmdd
+      compute date-difference-in-days
+                    =   (  (hold-sv-date-yy(ss-write-dtl) * 365) 
+                	 + (hold-sv-date-mm(ss-write-dtl) *  30) 
+                	 +  hold-sv-date-dd(ss-write-dtl) 	
+			)
+	              - (  (ws-date-yy                    * 365) 
+			 + (ws-date-mm                    *  30) 
+			 +  ws-date-dd
+			)                      
+*     CASE
+*       (if billing code is C122 and the service date < 1 day or > 1 day from the
+*	admit date, then report on ru701 (newu701) with message "Check C122")
+      if      hold-oma-cd(ss-write-dtl) = 'C122'
+        and  (date-difference-in-days < 1	
+           or date-difference-in-days > 1	
+	     )
+      then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 66                     	  to      err-ind
+          perform zb0-build-write-err-rpt-line
+              	                          thru    zb0-99-exit
+      else
+*        (If billing code is C123 and the service date < 2 days or > 2 days from the
+*	  admit date, then report on ru701 (newu701) with message "Check C123")
+      if      hold-oma-cd(ss-write-dtl) = 'C123'
+        and  (date-difference-in-days < 2	
+           or date-difference-in-days > 2	
+	     )
+      then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 67                     	  to      err-ind
+          perform zb0-build-write-err-rpt-line
+              	                          thru    zb0-99-exit
+      else
+*        (If billing code is C124 and the service date <= 1 day from the admit date,
+*         then report on ru701 (newu701) with message "Check C124")
+       if     hold-oma-cd(ss-write-dtl) = 'C124'
+          and date-difference-in-days <= 1
+       then
+	   move ws-error-literal	   to	   err-warn-msg
+           perform xb0-print-warning-line  thru    xb0-99-exit
+           move 1                          to      ws-carriage-ctrl
+           move 68                         to      err-ind
+           perform zb0-build-write-err-rpt-line
+             	                           thru    zb0-99-exit.
+*	ENDCASE
+* 2006/12/13 - end
+
+*   (VERIFY SERVICE DATE IS VALID) 
+    move hold-sv-date-dd(ss-write-dtl) to   ws-date-dd. 
+    move hold-sv-date-mm(ss-write-dtl) to   ws-date-mm. 
+    move hold-sv-date-yy(ss-write-dtl) to   ws-date-yy. 
+    perform xd0-verify-date              thru xd0-99-exit. 
+    if    invalid-date 
+      and not price-only-claim
+    then 
+	move ws-error-literal		to	err-warn-msg
+        perform xb0-print-warning-line  thru    xb0-99-exit 
+        move 1                          to      ws-carriage-ctrl 
+        move 27                         to      err-ind 
+        move hold-sv-date(ss-write-dtl) 
+                                        to      err-27-service-date 
+        perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit 
+    else 
+*       (service is a real date - ensure that it is not greater than the
+*        run date.)
+        if    hold-sv-date(ss-write-dtl) > sys-date
+          and not price-only-claim
+        then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 48                         to      err-ind
+          move hold-sv-date(ss-write-dtl)
+                                          to      err-msg-svr-date
+          move sys-date                   to      err-msg-sys-date
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit
+          move "????????"                 to      clmdtl-sv-date
+* MC35/MC40 - check  for terminated doctor + 6 months
+        else
+         if   (   (hold-sv-date-yy(ss-write-dtl) * 365) 
+                + (hold-sv-date-mm(ss-write-dtl) *  30) 
+                +  hold-sv-date-dd(ss-write-dtl) 
+                   > (doc-date-fac-term-yy * 365) + (doc-date-fac-term-mm * 30) + doc-date-fac-term-dd + 180
+	      )
+	  and doc-date-fac-term not = zeroes
+          and not price-only-claim
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 128                    to      err-ind 
+            move doc-date-fac-term          
+                                        to      err-128-term-date   
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit 
+            move hold-sv-date-dd(ss-write-dtl) to      clmdtl-sv-dd 
+            move hold-sv-date-mm(ss-write-dtl) to      clmdtl-sv-mm 
+            move hold-sv-date-yy(ss-write-dtl) to      clmdtl-sv-yy 
+* MC35/MC40 - end
+        else
+*         (service is valid - ensure it is not stale-dated ie. not 
+*	   within 6 months of current system date) 
+         if   (   (hold-sv-date-yy(ss-write-dtl) * 365) 
+                + (hold-sv-date-mm(ss-write-dtl) *  30) 
+*                 (+ 6 MONTHS TIMES 30 DAYS = 180) 
+* 2011/01/26 - MC12  - change to 6 months + 20 days per Yasemin
+*               +  190
+* 2013/07/10 - 2712  - change to 7 months per Linda O & Yasemin
+*               +  200
+                +  210
+* 2013/07/10 - end
+* 2011/01/26 - end
+
+                + hold-sv-date-dd(ss-write-dtl) 
+                   < (sys-yy * 365) + (SYS-MM * 30) + SYS-DD 
+	      )
+          and not price-only-claim
+* 	        (02/08/21 - MC - Yas requests to bypass the edit check on 
+*	         stale date for clinic 80 or 95)
+*               (2006/05/16 b.e. - re apply this check for 80/95)
+*          and   bt-clinic-nbr-1-2 not = 80
+*          and   bt-clinic-nbr-1-2 not = 95
+* 2002/05/03 - MC - temporary edit check (ie error if svc date < 20010901)
+*	  and hold-sv-date(ss-write-dtl) < 20010901
+* 2002/05/03 - end
+*	  and hold-sv-date(ss-write-dtl) < 20120701
+        then 
+	    move ws-error-literal	to	err-warn-msg
+            perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+            move 1                      to      ws-carriage-ctrl 
+            move 24                     to      err-ind 
+            move hold-sv-date(ss-write-dtl) 
+                                        to      err-24-service-date 
+            perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit 
+            move "????????"             to      clmdtl-sv-date 
+        else 
+*	    (VERIFY SERVICE DATE IS NOT BEFORE ADMIT DATE IF SPECIFIED) 
+	    if    hdr-admit-date  not = spaces 
+	      and hold-sv-date(ss-write-dtl) < hdr-admit-date 
+              and not price-only-claim
+	    then 
+	        move ws-error-literal	to	err-warn-msg
+                perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+                move 1                  to      ws-carriage-ctrl 
+                move 44                 to      err-ind 
+                move hold-sv-date(ss-write-dtl) 
+                                        to      err-44-service-date 
+                move hdr-admit-date     to     err-44-admit-date 
+                perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit 
+*2001/03/08 - MC
+*               move "????????"         to      clmdtl-sv-date 
+                move "????????"         to      clmhdr-date-admit
+                move hold-sv-date-dd(ss-write-dtl) to      clmdtl-sv-dd 
+                move hold-sv-date-mm(ss-write-dtl) to      clmdtl-sv-mm 
+                move hold-sv-date-yy(ss-write-dtl) to      clmdtl-sv-yy 
+***
+	    else 
+*              (INITIAL SERVICE DATE IS VALID AND WITHIN 6 MONTHS OF CURRENT DATE) 
+                move hold-sv-date-dd(ss-write-dtl) to      clmdtl-sv-dd 
+                move hold-sv-date-mm(ss-write-dtl) to      clmdtl-sv-mm 
+                move hold-sv-date-yy(ss-write-dtl) to      clmdtl-sv-yy. 
+*           endif
+*           endif 
+*       endif 
+*   endif 
+
+* 2005/03/03 - MC -add two more edit check  - edit 34
+    if    clmhdr-doc-spec-cd = 7  
+*	    (check the patient's age ) 
+    then
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+ 	compute date-difference-in-days = (ws-sv-date - ws-birth-date) / 10000 
+ 	if       (hold-oma-cd(ss-write-dtl) = 'A775' or 'W775' or 'C775')
+* 2010/04/01 - MC4 - change to check less than 65 and diagnostic code <> 290
+*	      and date-difference-in-days < 75                              
+	      and date-difference-in-days < 65                              
+	      and hold-diag-cd (ss-write-dtl) not = 290
+* 2010/04/01 - end
+              and not price-only-claim
+	    then 
+	        move ws-error-literal	to	err-warn-msg
+                perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+                move 1                  to      ws-carriage-ctrl 
+                move 60                 to      err-ind 
+                move clmhdr-doc-spec-cd to      err-60-doc-spec     
+                move hdr-birth-date-long to      err-60-birth-date   
+                perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit
+        else
+	if      date-difference-in-days < 60                              
+              and not price-only-claim
+	    then 
+	        move ws-error-literal	to	err-warn-msg
+                perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+                move 1                  to      ws-carriage-ctrl 
+                move 59                 to      err-ind 
+                move clmhdr-doc-spec-cd to      err-59-doc-spec     
+                move hdr-birth-date-long to     err-59-birth-date   
+                perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit.
+*	endif
+*   endif
+
+*2005/03/03 - end
+
+
+* 2011/12/05 - MC19- add edit 65 check - use the error message 60 as edit 34 above
+    if    clmhdr-doc-spec-cd = 19 
+*	    (check the patient's age ) 
+    then
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+ 	compute date-difference-in-days = (ws-sv-date - ws-birth-date) / 10000 
+	if       (hold-oma-cd(ss-write-dtl) = 'A191' or 'A192')
+	      and date-difference-in-days < 65                              
+	      and hold-diag-cd (ss-write-dtl) not = 290
+              and not price-only-claim
+	    then 
+	        move ws-error-literal	to	err-warn-msg
+                perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+                move 1                  to      ws-carriage-ctrl 
+                move 60                 to      err-ind 
+                move clmhdr-doc-spec-cd to      err-60-doc-spec     
+                move hdr-birth-date-long to      err-60-birth-date   
+                perform zb0-build-write-err-rpt-line 
+                                        thru    zb0-99-exit.
+*	endif
+*   endif
+* 2011/12/05 - end
+
+
+* 2005/05/05 - MC
+*    service date - ensure that it is greater than the
+*    birth  date.)
+     if    hold-sv-date(ss-write-dtl) < hdr-birth-date-long
+       and not price-only-claim
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 61                         to      err-ind
+          move hold-sv-date(ss-write-dtl)
+                                          to      err-61-serv-date
+          move hdr-birth-date-long        to      err-61-birth-date
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit
+          move "????????"                 to      clmdtl-sv-date.
+*   endif
+* 2005/05/05 - end
+
+* 2005/11/01 - MC -add three  more edit check 
+    if    hold-oma-cd (ss-write-dtl) = 'E420'
+    then
+	move ws-error-literal	to	err-warn-msg
+        perform xb0-print-warning-line 
+                                thru    xb0-99-exit 
+        move 1                  to      ws-carriage-ctrl 
+        move 63                 to      err-ind 
+        perform zb0-build-write-err-rpt-line 
+        			thru    zb0-99-exit.
+*   endif
+
+
+     if    hold-oma-cd (ss-write-dtl) = 'Z425'             
+       and clmhdr-doc-nbr = '049'
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 64                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+* MC39 remove 16 oma codes for checking     
+*    if    hold-oma-cd (ss-write-dtl) = 'A073' or 'A074' or 'A071' or 'A078' or 'A133'         
+*       			     or 'A134' or 'A131' or 'A138' or 'A183' or 'A184'             
+     if    hold-oma-cd (ss-write-dtl) = 'A073' or 'A074' or 'A071' or 'A078' 
+        			     or 'A183' or 'A184'             
+        			     or 'A181' or 'A188' or 'A263' or 'A264' or 'A661'             
+        			     or 'A283' or 'A284' or 'A313' or 'A310' or 'A311'             
+*       			     or 'A318' or 'A413' or 'A414' or 'A411' or 'A418'             
+        			     or 'A318' 
+        			     or 'A473' or 'A474' or 'A471' or 'A478' or 'A483'             
+*       			     or 'A484' or 'A481' or 'A488' or 'A603' or 'A604'             
+*       			     or 'A601' or 'A608' or 'A613' or 'A614' or 'A611'             
+        			     or 'A484' or 'A481' or 'A488' 
+        			     or 'A613' or 'A614' or 'A611'             
+        			     or 'A618' or 'A623' or 'A624' or 'A621' or 'A628'             
+* 2005/12/14 - include A340, A341, A343, and A348
+				     or 'A340' or 'A341' or 'A343' or 'A348'
+* 2005/12/14 - end
+* 2008/01/17 - include A262 as requested by Yas/Thekla
+				     or 'A262'
+* 2008/01/17 - end
+* 2011/03/31 - MC13 - include 16 more oma codes    
+*       			     or 'A153' or 'A154' or 'A151' or 'A158' or 'A163'             
+*       			     or 'A164' or 'A161' or 'A168' or 'A443' or 'A444'             
+        			     or 'A153' or 'A154' or 'A151' or 'A158' 
+        			     or 'A443' or 'A444'             
+* MC39 - end
+        			     or 'A441' or 'A448' or 'A463' or 'A464' or 'A461'             
+				     or 'A468'
+* 2011/03/31 - end
+     then
+	  if  (	     (    (hold-diag-cd (ss-write-dtl) =    42 or  43 or  44 or 250 or 286 or 287 or 290
+		 				 	or 332 or 340 or 343 or 345 or 402 or 428 or 491
+					 		or 492 or 493 or 515 or 555 or 556 or 571 or 585
+* 2008/01/09 - MC -Thekla requested to include 299, 313, 315, 765 & 902
+*					 		or 710 or 714 or 720 or 721 or 758 )
+					 		or 710 or 714 or 720 or 721 or 758 
+                                         		or 299 or 313 or 315 or 765 or 902
+		          )
+* 2008/01/09 - end
+       	              and  ws-e078-premium = 'N'
+		     )
+	        or   (    (hold-diag-cd (ss-write-dtl)      not =  42 and not =  43 and not =  44 and not = 250 
+							and not = 286 and not = 287 and not = 290 and not = 332 
+							and not = 340 and not = 343 and not = 345 and not = 402 
+							and not = 428 and not = 491 and not = 492 and not = 493 
+							and not = 515 and not = 555 and not = 556 and not = 571 
+							and not = 585 and not = 710 and not = 714 and not = 720 
+							and not = 721 and not = 758 
+* 2008/01/09 - MC -Thekla requested to include 299, 313, 315, 765 & 902
+							and not = 299 and not = 313 and not = 315 and not = 765 
+							and not = 902
+			  )
+* 2008/01/09 - end
+       	              and  ws-e078-premium = 'Y'  
+		     )
+	      )
+	  then
+	  	move ws-error-literal		  to	  err-warn-msg
+          	perform xb0-print-warning-line  thru    xb0-99-exit
+          	move 1                          to      ws-carriage-ctrl
+          	move 65                     	  to      err-ind
+          	perform zb0-build-write-err-rpt-line
+                	                          thru    zb0-99-exit.
+*	   endif
+
+* 2011/04/04 - end
+
+*   endif
+
+* 2005/11/01 - end
+
+* 2008/04/23 - MC - more edit checks for error 69 to 84
+
+* 2010/03/31 - MC4 - do not include E007C
+*     if   ( 	(     (   hold-oma-cd (ss-write-dtl) = 'E007'
+*		       or hold-oma-cd (ss-write-dtl) = 'E505'            
+
+* 2011/03/31 - MC13 - do not include E505C, E721C, E757C, E787C or E955C
+*     if   ( 	(     (   hold-oma-cd (ss-write-dtl) = 'E505'
+     if   ( 	(     (   hold-oma-cd (ss-write-dtl) = 'E722' 
+* 2010/03/31 - end
+*                      or hold-oma-cd (ss-write-dtl) = 'E721' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E722'            
+*		       or hold-oma-cd (ss-write-dtl) = 'E757'            
+*                      or hold-oma-cd (ss-write-dtl) = 'E787' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E955'            
+* 2011/03/31 - end
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 1
+                )
+            or 
+* 2010/03/31 - MC4 - do not include E019C
+*              	(     (   hold-oma-cd (ss-write-dtl) = 'E019'
+*		       or hold-oma-cd (ss-write-dtl) = 'E010'            
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E010'
+* 2010/03/31 - end
+* 2011/03/31 - MC13 - do not include E556C, E632C, E622C, E618C, E546C, E725C, E726C, E731C, E739C, E756C or E981C 
+*                       or hold-oma-cd (ss-write-dtl) = 'E556' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E632'            
+*		       or hold-oma-cd (ss-write-dtl) = 'E622'            
+                       or hold-oma-cd (ss-write-dtl) = 'E604' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E618'            
+*		       or hold-oma-cd (ss-write-dtl) = 'E546'            
+*                      or hold-oma-cd (ss-write-dtl) = 'E725' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E726'            
+*		       or hold-oma-cd (ss-write-dtl) = 'E731'            
+*                      or hold-oma-cd (ss-write-dtl) = 'E739' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E756'            
+                       or hold-oma-cd (ss-write-dtl) = 'E956' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E981'            
+* 2011/03/31- end
+* 2013/04/11 - MC25 - include E022C
+                       or hold-oma-cd (ss-write-dtl) = 'E022' 
+* 2013/04/11- end
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 2
+                )
+            or 
+* 2010/03/31 - MC4 - do not include E018C
+*            	(     (   hold-oma-cd (ss-write-dtl) = 'E018'
+*		       or hold-oma-cd (ss-write-dtl) = 'E667'            
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E667'
+* 2010/03/31 - end
+* 2011/03/31 - MC13 - do not include E627C, E693C, E694C, E733C, E734C, E735C, E736C or E723C
+*                      or hold-oma-cd (ss-write-dtl) = 'E627' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E693'            
+*		       or hold-oma-cd (ss-write-dtl) = 'E694'            
+*                      or hold-oma-cd (ss-write-dtl) = 'E733' 
+*	               or hold-oma-cd (ss-write-dtl) = 'E734'            
+*		       or hold-oma-cd (ss-write-dtl) = 'E735'            
+*                      or hold-oma-cd (ss-write-dtl) = 'E736' 
+*       	       or hold-oma-cd (ss-write-dtl) = 'E723'            
+* 2011/03/31- end
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 3
+                )
+            or 
+* 2010/03/31 - MC4 - do not include E009C
+*            	(     (   hold-oma-cd (ss-write-dtl) = 'E009'
+*		       or hold-oma-cd (ss-write-dtl) = 'E011'            
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E011'
+* 2010/03/31 - end
+* 2012/07/04 - MC21 - temporary remove the edit check on E022
+*                      or hold-oma-cd (ss-write-dtl) = 'E022' 
+* 2012/07/04 - end
+	               or hold-oma-cd (ss-write-dtl) = 'E020'            
+* 2011/03/31 - MC13 - include E024C
+	               or hold-oma-cd (ss-write-dtl) = 'E024'            
+* 2011/03/31 - end
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 4
+                )
+            or 
+* 2010/03/31 - do not include E014C
+*            	(     (   hold-oma-cd (ss-write-dtl) = 'E014'
+*		       or hold-oma-cd (ss-write-dtl) = 'E012'            
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E012'
+* 2010/03/31 - end
+* 2013/04/16 - MC25 - include E137C to E141C, E143C to E147C, E149C, Z606C, Z607C, Z491C to Z499C, Z555C, Z580C
+                        or (     hold-oma-cd (ss-write-dtl) >= 'E137'
+                             and hold-oma-cd (ss-write-dtl) <= 'E141'
+                           )
+                        or (     hold-oma-cd (ss-write-dtl) >= 'E143'
+                             and hold-oma-cd (ss-write-dtl) <= 'E147'
+                           )
+                        or hold-oma-cd (ss-write-dtl) = 'E149'
+                        or hold-oma-cd (ss-write-dtl) = 'Z606'
+                        or hold-oma-cd (ss-write-dtl) = 'Z607'
+                        or (     hold-oma-cd (ss-write-dtl) >= 'Z491'
+                             and hold-oma-cd (ss-write-dtl) <= 'Z499'
+                           )
+                        or hold-oma-cd (ss-write-dtl) = 'Z555'
+                        or hold-oma-cd (ss-write-dtl) = 'Z580'
+* 2013/04/10 - end
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 5
+                )
+            or 
+            	(     (   hold-oma-cd (ss-write-dtl) = 'P014'
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 6
+                )
+* 2011/11/23 - MC - edit 1 to include the check of E676B
+            or 
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E676'
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'B'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 6
+                )
+* 2011/11/23 - end
+            or 
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E021'
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 4
+                )
+            or 
+* 2011/03/31 - MC13 - do not include E004C
+*           	(     (   hold-oma-cd (ss-write-dtl) = 'E004'
+*		       or hold-oma-cd (ss-write-dtl) = 'E017'            
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E017'
+* 2011/11/23 - MC19 - edit 1 to include the check of E025C
+ 		       or hold-oma-cd (ss-write-dtl) = 'E025'
+* 2011/12/23 - end
+* 2011/03/31 - end   
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 10
+                )
+            or 
+            	(     (   hold-oma-cd (ss-write-dtl) = 'E016'
+		      )
+		 and  hold-oma-suff  (ss-write-dtl) = 'C'
+		 and  hold-sv-nbr-serv (ss-write-dtl) not = 20
+                )
+         ) 
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 69                         to      err-ind
+* 2013/06/10 - MC - debug purpose    
+	  move hold-oma-cd (ss-write-dtl) to      err-oma-cd
+	  move hold-oma-suff (ss-write-dtl) to    err-oma-suff
+          move hold-sv-nbr-serv (ss-write-dtl) to err-nbr-serv
+          move hold-sv-nbr-serv-incoming (ss-write-dtl) to err-nbr-serv-incoming
+* 2013/06/10 - end
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+    if    ws-e020 = "Y"                                   
+       and ws-e022-e017-e016 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 70                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-e719 = "Y"                                   
+       and ws-z570 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 71                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     
+     if    ws-e720 = "Y"                                   
+       and ws-z571 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 72                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-e717 = "Y"                                   
+       and ws-z555-z580 = "N"                
+* 2013/04/16 - MC25  
+       and ws-z491-to-z499 = "N"
+* 2013/04/16 - end
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 73                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-e702 = "Y"                                   
+       and ws-z515-z760 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 74                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g123 = "Y"                                   
+       and ws-g228 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 75                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g223 = "Y"                                   
+       and ws-g231 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 76                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g265 = "Y"                                   
+       and ws-g264 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 77                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g385 = "Y"                                   
+       and ws-g384 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 78                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g281 = "Y"                                   
+       and ws-g381 = "N"                
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 79                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+
+* 2010/03/31 - MC4 - include G060 and G061
+*     if   ( 	(    (hold-oma-cd (ss-write-dtl) = 'G123'  or  hold-oma-cd (ss-write-dtl) = 'E719')            
+     if   ( 	(    (    hold-oma-cd (ss-write-dtl) = 'G123' 
+                       or hold-oma-cd (ss-write-dtl) = 'E719'            
+                       or hold-oma-cd (ss-write-dtl) = 'G060'            
+                       or hold-oma-cd (ss-write-dtl) = 'G061'            
+* 2013/04/16 - MC25 - include J022 
+                       or hold-oma-cd (ss-write-dtl) = 'J022'            
+* 2013/04/16 - end
+		     )
+* 2010/03/31 - end
+		 and  hold-sv-nbr-serv (ss-write-dtl) > 4
+                )
+            or 
+* 2010/03/31 - MC4 - include G292
+*            	(    (hold-oma-cd (ss-write-dtl) = 'G265')  
+            	(    (   hold-oma-cd (ss-write-dtl) = 'G265'  
+            	      or hold-oma-cd (ss-write-dtl) = 'G292'  
+* 2011/11/23 - MC19 - edit 12 to include check of E837 and G285
+            	      or hold-oma-cd (ss-write-dtl) = 'E837'  
+            	      or hold-oma-cd (ss-write-dtl) = 'G285'  
+* 2011/11/23 - end
+		     )
+* 2010/03/31 - end
+		 and  hold-sv-nbr-serv (ss-write-dtl) > 3
+                )
+            or 
+* 2010/03/31 - MC4 - include G218, G219, H104, H134, H124, H154
+*            	(    (hold-oma-cd (ss-write-dtl) = 'G385'  or  hold-oma-cd (ss-write-dtl) = 'E720')            
+               	(    (   hold-oma-cd (ss-write-dtl) = 'G385'
+		      or hold-oma-cd (ss-write-dtl) = 'E720'            
+		      or hold-oma-cd (ss-write-dtl) = 'G218'            
+		      or hold-oma-cd (ss-write-dtl) = 'G219'            
+		      or hold-oma-cd (ss-write-dtl) = 'H104'            
+		      or hold-oma-cd (ss-write-dtl) = 'H134'            
+		      or hold-oma-cd (ss-write-dtl) = 'H124'            
+		      or hold-oma-cd (ss-write-dtl) = 'H154'            
+* 2011/03/31 - MC13 - include G480, G482, G483, G372, G379, G215 or E542
+		      or hold-oma-cd (ss-write-dtl) = 'G480'            
+		      or hold-oma-cd (ss-write-dtl) = 'G482'            
+		      or hold-oma-cd (ss-write-dtl) = 'G483'            
+		      or hold-oma-cd (ss-write-dtl) = 'G372'            
+		      or hold-oma-cd (ss-write-dtl) = 'G379'            
+* 2011/11/23 - MC19 - edit 12 to exclude the check of G215 
+*	      	      or hold-oma-cd (ss-write-dtl) = 'G215'            
+* 2011/11/23 - end  
+		      or hold-oma-cd (ss-write-dtl) = 'E542'            
+* 2011/03/31 - end
+		     )
+* 2010/03/31 - end
+		 and  hold-sv-nbr-serv (ss-write-dtl) > 2
+                )
+            or 
+* 2010/03/31 - MC4 - include G223, G220, G291, G237, Z316, G395, G523, G443, G530
+*            	(    (hold-oma-cd (ss-write-dtl) = 'E702'  or  hold-oma-cd (ss-write-dtl) = 'E717')            
+               	(    (   hold-oma-cd (ss-write-dtl) = 'E702'
+		      or hold-oma-cd (ss-write-dtl) = 'E717'            
+		      or hold-oma-cd (ss-write-dtl) = 'G223'            
+		      or hold-oma-cd (ss-write-dtl) = 'G220'            
+		      or hold-oma-cd (ss-write-dtl) = 'G291'            
+* 2011/11/23 - MC19 - edit 12 to exclude the check of G237 but include the check of G286, G700, Z546, Z566
+*		      or hold-oma-cd (ss-write-dtl) = 'G237'            
+		      or hold-oma-cd (ss-write-dtl) = 'G286' 
+		      or hold-oma-cd (ss-write-dtl) = 'G700'            
+		      or hold-oma-cd (ss-write-dtl) = 'Z546'            
+		      or hold-oma-cd (ss-write-dtl) = 'Z566'            
+* 2011/11/23 - end
+
+* MC30/MC36 - edit 12 to exclude the check of Z316
+*		      or hold-oma-cd (ss-write-dtl) = 'Z316'            
+* MC30 - end	
+		      or hold-oma-cd (ss-write-dtl) = 'G395'            
+		      or hold-oma-cd (ss-write-dtl) = 'G523'            
+		      or hold-oma-cd (ss-write-dtl) = 'G443'            
+		      or hold-oma-cd (ss-write-dtl) = 'G530'            
+* 2011/03/31 - MC13 - include E082, E083, E409, E410, Z441, G370, G328, G420, E158, E159, J025, G521
+		      or hold-oma-cd (ss-write-dtl) = 'E082'            
+		      or hold-oma-cd (ss-write-dtl) = 'E083'            
+		      or hold-oma-cd (ss-write-dtl) = 'E409'            
+		      or hold-oma-cd (ss-write-dtl) = 'E410'            
+		      or hold-oma-cd (ss-write-dtl) = 'Z441'            
+		      or hold-oma-cd (ss-write-dtl) = 'G370'            
+		      or hold-oma-cd (ss-write-dtl) = 'G328'            
+		      or hold-oma-cd (ss-write-dtl) = 'G420'            
+* 2011/05/18 - MC15 - include suffix A for E158 or E159
+*		      or hold-oma-cd (ss-write-dtl) = 'E158'            
+*		      or hold-oma-cd (ss-write-dtl) = 'E159'            
+		      or (    hold-oma-cd (ss-write-dtl) = 'E158'            
+			  and hold-oma-suff(ss-write-dtl) = 'A'
+			 )
+		      or (    hold-oma-cd (ss-write-dtl) = 'E159'            
+			  and hold-oma-suff(ss-write-dtl) = 'A'
+			 )
+* 2011/05/18 - end
+* 2013/04/16 - MC25 - include J021 
+                      or hold-oma-cd (ss-write-dtl) = 'J021'            
+* 2013/04/16 - end
+	    	      or hold-oma-cd (ss-write-dtl) = 'J025'            
+		      or hold-oma-cd (ss-write-dtl) = 'G521'            
+* 2011/03/31 - end
+		     )
+* 2010/03/31 - end
+		 and  hold-sv-nbr-serv (ss-write-dtl) > 1
+                )
+* 2010/03/31 - MC4 - include new condition
+            or 
+            	(    (   hold-oma-cd (ss-write-dtl) = 'G221'  
+* 2011/03/31 - MC13 - include G489
+            	      or hold-oma-cd (ss-write-dtl) = 'G489'  
+* 2011/03/31 - end
+		     )
+		 and  hold-sv-nbr-serv (ss-write-dtl) > 5
+                )
+* 2010/03/31 - end
+* 2011/11/23 - MC19 - edit 12 to add new condition
+            or 
+            	(    (   hold-oma-cd (ss-write-dtl) = 'K630'  
+		     )
+		 and  hold-sv-nbr-serv (ss-write-dtl) > 6
+                )
+* 2011/11/23 - end
+         ) 
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 80                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+* 2011/11/23 - MC19 - remove edit 13 for error 81 is no longer needed 
+*			This can be deleted as it is captured in "fee value of zero found" edit
+
+*     if    ws-e793 = "Y"                                   
+* 2010/03/31 - MC4 - add 18 more oma codes in ws-r905-s800
+* 2011/03/31 - MC13 - add 3 more oma codes in ws-r905-s800
+*       and ws-r905-s800 = "N"                
+*     then 
+*	  move ws-error-literal		  to	  err-warn-msg
+*          perform xb0-print-warning-line  thru    xb0-99-exit
+*          move 1                          to      ws-carriage-ctrl
+*          move 81                         to      err-ind
+*          perform zb0-build-write-err-rpt-line
+*                                          thru    zb0-99-exit.
+*   endif
+* 2011/11/23 - end
+
+    
+* 2010/03/31 - MC4 - error 82 & 83 are no longer needed 
+*    if    hold-oma-cd (ss-write-dtl) = 'P022'             
+*      and hold-sv-date (ss-write-dtl) > 20080131
+*    then 
+*  	  move ws-error-literal		  to	  err-warn-msg
+*         perform xb0-print-warning-line  thru    xb0-99-exit
+*         move 1                          to      ws-carriage-ctrl
+*         move 82                         to      err-ind
+*         perform zb0-build-write-err-rpt-line
+*                                         thru    zb0-99-exit.
+*   endif
+     
+*    if    hold-oma-cd (ss-write-dtl) = 'K120'             
+*      and hold-sv-date (ss-write-dtl) > 20080131
+*    then 
+*	  move ws-error-literal		  to	  err-warn-msg
+*          perform xb0-print-warning-line  thru    xb0-99-exit
+*          move 1                          to      ws-carriage-ctrl
+*          move 83                         to      err-ind
+*          perform zb0-build-write-err-rpt-line
+*                                          thru    zb0-99-exit.
+*   endif
+* 2010/03/31 - end     
+
+     if    hold-oma-cd (ss-write-dtl) = 'A007'             
+* 2011/08/22 - MC18
+*      and clmhdr-doc-spec-cd not = 00  
+       and clmhdr-doc-spec-cd = 26  
+* 2011/08/22 - end
+
+* 2010/03/31 - MC4 - no check on date       
+*      and hold-sv-date (ss-write-dtl) > 20071231
+* 2010/03/31 - end
+     then 
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 84                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+* 2008/04/23 - end
+
+* 2009/05/06 - MC1
+     if    ws-c998 = "Y"
+* 2010/03/31 - MC4 - include C985
+        or ws-c985 = 'Y'
+* 2010/03/31 - end
+* 2011/03/31 - MC13 - include C983
+        or ws-c983 = 'Y'
+* 2011/03/31 - end
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 85                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+     if    ws-c999 = "Y"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 86                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+     if    ws-e798 = "Y"
+       and ws-z400 = "N"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 87                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+
+* 2011/04/07 - MC13 - edit 17 & 49 share the same error message 'Check fee of E409/E410'
+*    if    ws-g400-other-codes = "Y"
+     if    (   ws-g400-other-codes = "Y"
+            or ws-g489-g376         = "Y"
+	   )
+* 2011/04/07 - end
+       and ws-e409-e410  = "Y"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 88                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+
+* 2010/03/31 - MC4 - add 7 more oma codes
+     if    ws-c990-to-c997 = "Y"
+       and ws-cnnn = "Y"
+* 2010/09/23 - MC9 - if two dates are the same
+       and ws-sv-date-c1 = ws-sv-date-c2
+* 2010/09/23 - end
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 89                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+     if    ws-e450 = "Y"
+       and ws-j315 = "N"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 90                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+* 2009/05/06 - end
+
+* 2010/03/31 - MC4 - add for message 91 to whatever
+
+     if    ws-g222 = "Y"
+       and ws-g248-g062 = "Y"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 91                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-X9nn = "Y"
+       and ws-a770-a775 = "Y"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 92                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+    
+* 2011/03/31 - MC13 -comment out - no longer needed 
+*    if    hold-oma-cd (ss-write-dtl) = "Z432"             
+*      and hold-oma-suff (ss-write-dtl) = "C"
+*      and hold-sv-date (ss-write-dtl) > 20090930
+*    then 
+*   	   move ws-error-literal	   to	  err-warn-msg
+*          perform xb0-print-warning-line  thru    xb0-99-exit
+*          move 1                          to      ws-carriage-ctrl
+*          move 93                         to      err-ind
+*          perform zb0-build-write-err-rpt-line
+*                                          thru    zb0-99-exit.
+*    endif
+* 2011/03/31 - end
+    
+* 2014/06/05 - MC - user decided to comment out the edit 
+*    if    ws-hnnn = "Y"
+*      and ws-h112-h113 = "Y"
+*    then
+*	  move ws-error-literal		  to	  err-warn-msg
+*         perform xb0-print-warning-line  thru    xb0-99-exit
+*         move 1                          to      ws-carriage-ctrl
+*         move 94                         to      err-ind
+*         perform zb0-build-write-err-rpt-line
+*                                         thru    zb0-99-exit.
+*   endif
+* 2014/06/05 - end
+     
+*    if    ws-g489-s323 = 'Y'                              
+     if    hold-oma-cd (ss-write-dtl) = "G489" or "S323"            
+    then
+*	    (check the patient's age ) 
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+ 	compute date-difference-in-days = (ws-sv-date - ws-birth-date) / 10000 
+	if    date-difference-in-days < 16                              
+              and not price-only-claim
+	then 
+	     move ws-error-literal	to	err-warn-msg
+             perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+             move 1                  to      ws-carriage-ctrl 
+             move 95                 to      err-ind 
+             perform zb0-build-write-err-rpt-line
+                                           thru    zb0-99-exit.
+*    endif
+
+     if    ws-g222-z805 = 'Y'
+       and ws-p014-p016 = "Y"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 96                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+    
+* 2011/03/31 - MC13 - comment out 
+**     if    hold-oma-cd-alpha(ss-write-dtl) =   "H"
+**       and hdr-agent-cd not = "2"
+*  2010/09/21 - MC8
+**       and hdr-agent-cd not = "9"
+*  2010/09/21 - end
+**       and bt-clinic-nbr-1-2 = 22    
+* 2010/12/08 - MC11 - change to H1xx or H055 or H065
+* 2010/05/18 - MC5 - add except if code is H007 or H001 o H002 or H003
+*      and hold-oma-cd (ss-write-dtl) not = "H007"
+*      and hold-oma-cd (ss-write-dtl) not = "H001"
+*      and hold-oma-cd (ss-write-dtl) not = "H002"
+*      and hold-oma-cd (ss-write-dtl) not = "H003"
+* 2010/05/18 - end
+**     and (     hold-oma-cd (ss-write-dtl) = 'H055'
+**	     or  hold-oma-cd (ss-write-dtl) = 'H065'
+**	     or (    hold-oma-cd (ss-write-dtl) >= 'H100'
+**	         and hold-oma-cd (ss-write-dtl) <= 'H199'
+**		)
+**	   )
+* 2010/12/08 - end
+**    then
+**	  move ws-error-literal		  to	  err-warn-msg
+**        perform xb0-print-warning-line  thru    xb0-99-exit
+**          move 1                          to      ws-carriage-ctrl
+**          move 97                         to      err-ind
+**          perform zb0-build-write-err-rpt-line
+****************                                          thru    zb0-99-exit.
+*   endif
+* 2011/03/31 - end
+     
+     if    ws-g221 = 'Y'
+       and ws-g220 = "N"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 98                         to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+
+    if    ws-s322-a198 = 'Y'                              
+    then
+*	    (check the patient's age ) 
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+ 	compute date-difference-in-days = (ws-sv-date - ws-birth-date) / 10000 
+	if    date-difference-in-days > 15                              
+              and not price-only-claim
+	then 
+	     move ws-error-literal	to	err-warn-msg
+             perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+             move 1                  to      ws-carriage-ctrl 
+             move 99                 to      err-ind 
+             perform zb0-build-write-err-rpt-line
+                                           thru    zb0-99-exit.
+*    endif
+
+    if  hold-oma-cd(ss-write-dtl) = 'H267'
+    then
+*	    (check the patient's age ) 
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+	if    ws-sv-date not = ws-birth-date                            
+	then 
+	     move ws-error-literal	to	err-warn-msg
+             perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+             move 1                  to      ws-carriage-ctrl 
+             move 100                to      err-ind 
+             perform zb0-build-write-err-rpt-line
+                                           thru    zb0-99-exit.
+*    endif
+
+     if    ws-g521-g395 = 'Y'
+       and ws-h104-h124 = "Y"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 101                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g345-g339 = 'Y'
+*      and hold-oma-cd-alpha(ss-clmdtl-oma) =   "A"
+       and ws-annn = "Y" 
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 102                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-g431-g479 = "N"
+* 2011/03/31 - MC13 - include E409, E410, E111
+*      and hold-oma-cd-alpha(ss-clmdtl-oma) =   "G"
+       and (   hold-oma-cd-alpha(ss-write-dtl)  =   "G"
+            or hold-oma-cd(ss-write-dtl) = 'E409'
+            or hold-oma-cd(ss-write-dtl) = 'E410'
+            or hold-oma-cd(ss-write-dtl) = 'E111'
+	    )  
+* 2011/03/31 - end
+       and hold-oma-suff  (ss-write-dtl) =   "C"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 103                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+* 2013/04/16 - MC25 -add edit 66     
+     if    hold-oma-cd-alpha(ss-write-dtl) = "K"
+       and hold-oma-suff  (ss-write-dtl) =   "C"
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 124                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+    if    ws-a765-c765 = 'Y'                              
+    then
+*	    (check the patient's age ) 
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+    if    ws-a765-c765 = 'Y'                              
+    then
+*	    (check the patient's age ) 
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+ 	compute date-difference-in-days = (ws-sv-date - ws-birth-date) / 10000 
+	if    date-difference-in-days > 16                              
+              and not price-only-claim
+	then 
+	     move ws-error-literal	to	err-warn-msg
+             perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+             move 1                  to      ws-carriage-ctrl 
+             move 104                to      err-ind 
+             perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+*  2010/03/31 - end     
+
+* 2011/04/06 - MC13
+     if    ws-j025 = 'Y'
+       and (ws-j021 = 'Y' or ws-j022 = 'Y')
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 105                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+* endif
+
+     if    hold-oma-cd(ss-write-dtl) = 'A253'
+        or hold-oma-cd(ss-write-dtl) = 'A256'
+     then 
+	 move hdr-refer-pract-nbr 		to ws-chk-nbr       
+         if ws-chk-nbr-3  not = 8  
+         then
+	    move ws-error-literal		  to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 106                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+*    endif
+
+     if    hold-oma-cd(ss-write-dtl) = 'A813'
+        or hold-oma-cd(ss-write-dtl) = 'A815'
+        or hold-oma-cd(ss-write-dtl) = 'C813'
+        or hold-oma-cd(ss-write-dtl) = 'C815'
+* 2011/11/23 - MC19 - edit 40 to include the check of A800, C800, A801, C801, A802, C802, K224, A816, C816
+        or hold-oma-cd(ss-write-dtl) = 'A800'
+        or hold-oma-cd(ss-write-dtl) = 'C800'
+        or hold-oma-cd(ss-write-dtl) = 'A801'
+        or hold-oma-cd(ss-write-dtl) = 'C801'
+        or hold-oma-cd(ss-write-dtl) = 'A802'
+        or hold-oma-cd(ss-write-dtl) = 'C802'
+        or hold-oma-cd(ss-write-dtl) = 'K224'
+        or hold-oma-cd(ss-write-dtl) = 'A816'
+        or hold-oma-cd(ss-write-dtl) = 'C816'
+* 2011/11/23 - end
+     then 
+	 move hdr-refer-pract-nbr 		to ws-chk-nbr       
+         if ws-chk-nbr-3  not = 7  
+         then
+	    move ws-error-literal		  to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 107                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+*    endif
+
+** 2013/06/20 - MC25 - after implementation on Jun 11, 2013, now users complained problem with this edit
+**	               and this one is similar to edit 39 which has removed on 2011/May/18
+**	       	     - now that they agree to remove this edit as well. (comment out for reference)
+
+* 2013/04/16 - MC25 - add edit 69
+**     if     hold-oma-cd(ss-write-dtl) not = 'A813'
+**        and hold-oma-cd(ss-write-dtl) not = 'A815'
+**        and hold-oma-cd(ss-write-dtl) not = 'C813'
+**        and hold-oma-cd(ss-write-dtl) not = 'C815'
+**        and hold-oma-cd(ss-write-dtl) not = 'A800'
+**        and hold-oma-cd(ss-write-dtl) not = 'C800'
+**        and hold-oma-cd(ss-write-dtl) not = 'A801'
+**        and hold-oma-cd(ss-write-dtl) not = 'C801'
+**        and hold-oma-cd(ss-write-dtl) not = 'A802'
+**        and hold-oma-cd(ss-write-dtl) not = 'C802'
+**        and hold-oma-cd(ss-write-dtl) not = 'K224'
+**        and hold-oma-cd(ss-write-dtl) not = 'A816'
+**        and hold-oma-cd(ss-write-dtl) not = 'C816'
+**     then 
+**	 move hdr-refer-pract-nbr 		to ws-chk-nbr       
+**         if ws-chk-nbr-3 = 7  
+**         then
+**	    move ws-error-literal		  to	  err-warn-msg
+**            perform xb0-print-warning-line  thru    xb0-99-exit
+**            move 1                          to      ws-carriage-ctrl
+**            move 127                        to      err-ind
+**            perform zb0-build-write-err-rpt-line
+**                                          thru    zb0-99-exit.
+*        endif
+*    endif
+* 2013/04/16 - end
+
+
+* 2011/05/18 - MC18 - user requested to remove the edit
+*     if    hold-oma-cd(ss-write-dtl) not = 'A253'
+*       and hold-oma-cd(ss-write-dtl) not = 'A256'
+*     then 
+*	 move hdr-refer-pract-nbr 		to ws-chk-nbr       
+*         if ws-chk-nbr-3  = 8  
+*         then
+*	    move ws-error-literal		  to	  err-warn-msg
+*            perform xb0-print-warning-line  thru    xb0-99-exit
+*            move 1                          to      ws-carriage-ctrl
+*            move 108                        to      err-ind
+*            perform zb0-build-write-err-rpt-line
+*                                          thru    zb0-99-exit.
+*        endif
+*    endif
+* 2011/05/18 - end
+
+     if    ws-z608 = 'Y'
+       and ws-z611-z602 = 'Y' 
+     then
+	  move ws-error-literal		  to	  err-warn-msg
+          perform xb0-print-warning-line  thru    xb0-99-exit
+          move 1                          to      ws-carriage-ctrl
+          move 109                        to      err-ind
+          perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+* endif
+
+     if   (    hold-oma-cd(ss-write-dtl) = 'Z176'
+            or hold-oma-cd(ss-write-dtl) = 'Z154'
+	  )
+      and  hold-oma-suff(ss-write-dtl) = 'A'
+      and  hdr-manual-review not = 'Y'  
+      and  hold-sv-nbr-serv (ss-write-dtl) > 5      
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 110                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+     if   (    hold-oma-cd(ss-write-dtl) = 'Z175'
+            or hold-oma-cd(ss-write-dtl) = 'Z177'
+            or hold-oma-cd(ss-write-dtl) = 'Z179'
+            or hold-oma-cd(ss-write-dtl) = 'Z190'
+            or hold-oma-cd(ss-write-dtl) = 'Z191'
+            or hold-oma-cd(ss-write-dtl) = 'Z192'
+	  )
+      and  hold-oma-suff(ss-write-dtl) = 'A'
+      and  hdr-manual-review not = 'Y'  
+      and  hold-sv-nbr-serv (ss-write-dtl) > 1      
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 111                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+     if    ws-z403 = 'Y'
+       and ws-z408 = 'Y' 
+       and hdr-manual-review not = 'Y'  
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 112                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+* 2011/11/23 - MC19 - remove the edit 45 for error 113
+*			this can be deleted as new billing guidelines have replaced this scenario
+
+*     if    ws-a195 = 'Y'
+*       and ws-k002 = 'Y' 
+*       and hdr-manual-review not = 'Y'  
+*     then 
+*            move ws-error-literal	    to	  err-warn-msg
+*            perform xb0-print-warning-line  thru    xb0-99-exit
+*            move 1                          to      ws-carriage-ctrl
+*            move 113                        to      err-ind
+*            perform zb0-build-write-err-rpt-line
+*                                          thru    zb0-99-exit.
+*        endif
+* 2011/11/23 - end
+
+     if    ws-c122-c143 = 'Y'
+       and ws-e083 not = 'Y' 
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 114                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+     if    ws-c122-c982 not = 'Y'
+       and ws-e083 = 'Y' 
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 115                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+     if    ws-j021 not = 'Y'
+       and ws-j022 = 'Y' 
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 116                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+* 2011/11/23 - MC19 - edit 50 to exclude the check of G567 but include the check of G571, G584
+*    if   (    hold-oma-cd(ss-write-dtl) = 'G567'
+     if   (    hold-oma-cd(ss-write-dtl) = 'G571'
+            or hold-oma-cd(ss-write-dtl) = 'G578'
+            or hold-oma-cd(ss-write-dtl) = 'G581'
+            or hold-oma-cd(ss-write-dtl) = 'G584'
+* 2011/11/23 - end
+	  )
+      and  hdr-loc-code = 'G430'         
+      and  hdr-admit-date = zeros or spaces
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 117                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+* 2011/04/06 - end
+
+* 2011/11/23 - MC19 - new edit check 52 to 63  
+
+    if    ws-a197-a198 = 'Y'                              
+    then
+*	    (check the patient's age ) 
+ 	move    hold-sv-date(ss-write-dtl)      to ws-sv-date     
+	move    hdr-birth-date-long		to ws-birth-date
+ 	compute date-difference-in-days = (ws-sv-date - ws-birth-date) / 10000 
+	if    date-difference-in-days > 21
+              and not price-only-claim
+	then 
+	     move ws-error-literal	to	err-warn-msg
+             perform xb0-print-warning-line 
+                                        thru    xb0-99-exit 
+             move 1                  to      ws-carriage-ctrl 
+             move 120                to      err-ind 
+             perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+     
+     if    ws-k189 = 'Y'
+       and ws-a190-a795 not = 'Y'
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 121                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+* edit 54 to 63
+     if    (	ws-k960 = 'Y'
+       	    and ws-k990 not = 'Y'
+           ) 
+       or  (	ws-k961 = 'Y'
+       	    and ws-k992 not = 'Y'
+           ) 
+       or  (	ws-k962 = 'Y'
+       	    and ws-k994 not = 'Y'
+           ) 
+       or  (	ws-k963 = 'Y'
+       	    and ws-k998 not = 'Y'
+           ) 
+       or  (	ws-k964 = 'Y'
+       	    and ws-k996 not = 'Y'
+           ) 
+       or  (	ws-c960 = 'Y'
+       	    and ws-c990 not = 'Y'
+           ) 
+       or  (	ws-c961 = 'Y'
+       	    and ws-c992 not = 'Y'
+           ) 
+       or  (	ws-c962 = 'Y'
+       	    and ws-c994 not = 'Y'
+           ) 
+       or  (	ws-c963 = 'Y'
+       	    and ws-c986 not = 'Y'
+           ) 
+       or  (	ws-c964 = 'Y'
+       	    and ws-c996 not = 'Y'
+           ) 
+     then 
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 122                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*        endif
+
+* 2012/10/22 - MC23 - comment out the below if condition since the pricing of E676B is now corrected
+*     if    ws-e676 = 'Y'
+*     then 
+*	    move ws-error-literal	    to	  err-warn-msg
+*            perform xb0-print-warning-line  thru    xb0-99-exit
+*            move 1                          to      ws-carriage-ctrl
+*            move 123                        to      err-ind
+*            perform zb0-build-write-err-rpt-line
+*                                          thru    zb0-99-exit.
+*        endif
+* 2012/10/22 - end
+*
+* 2011/11/23 - end
+*  
+
+* 2013/04/16 - MC25 - add edit 67 to 68
+* edit 67
+     if    ws-g556 = "Y"
+       and ws-g400-g620 = "N"
+     then
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 125                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+* edit 68
+     if    ws-a120 = "Y"
+       and ws-z491-to-z499 = "N"
+     then
+	    move ws-error-literal	    to	  err-warn-msg
+            perform xb0-print-warning-line  thru    xb0-99-exit
+            move 1                          to      ws-carriage-ctrl
+            move 126                        to      err-ind
+            perform zb0-build-write-err-rpt-line
+                                          thru    zb0-99-exit.
+*   endif
+
+* 2013/04/16 -end
+
+* 2005/08/17 - MC
+*    move clmhdr-doc-pract-nbr to clmdtl-doc-pract-nbr. 
+*    move clmhdr-accounting-nbr to clmdtl-accounting-nbr. 
+    move clmhdr-doc-pract-nbr to clmdtl-doc-pract-nbr  of suspend-dtl-rec. 
+    move clmhdr-accounting-nbr to clmdtl-accounting-nbr of suspend-dtl-rec. 
+* 2005/08/17 - end
+ 
+hb0-99-exit. 
+    exit. 
+ 

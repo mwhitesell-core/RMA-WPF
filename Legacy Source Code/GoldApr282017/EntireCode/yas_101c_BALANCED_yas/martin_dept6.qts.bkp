@@ -1,0 +1,149 @@
+;doc     : martin_dept6
+;purpose : rep by service date Jul 2002 to June 30th 2003 inc "B" adj
+;          select if a claim has any of the codes starts with "E"
+;          and fee-icc-code = SP0980 or CP0000 or SP0990
+;          or any code ends with "990A to 996A"          
+;                            
+;who     : Debbie Martin - O&G manager
+
+
+;Date		Who		Description
+;2003/11/11	Yasemin		Original
+
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                 &
+  link (nconvert(clmhdr-claim-id[4:3])) &
+    to doc-nbr of f020-doctor-mstr      &
+  link clmdtl-oma-cd to fee-oma-cd      &
+    of f040-oma-fee-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220652000 to 220652999,   &
+                                              220198000 to 220198999,   &
+                                              220683000 to 220683999,   &
+                                              220605000 to 220605999,   &
+                                              220608000 to 220608999,   &
+                                              220190000 to 220190999,   &
+                                              220189000 to 220189999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                    &
+      (     clmdtl-sv-date     >= "20020701"  &
+       and  clmdtl-sv-date     <= "20030630") &
+       and  clmdtl-oma-cd      <> "0000"      & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"      & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"      & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"      & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"      & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+
+def x-cd cha*5 = clmdtl-id[12:5]
+
+def x-code cha*1 = "Y"                                              & 
+             if     ( x-cd[2:4] >= "990A" and x-cd[2:4] <= "996A")  &
+                 or (     x-cd[1:1] = "E"                           &
+                      and (    fee-icc-code = "SP0980"              &
+                            or fee-icc-code = "CP0000"              &
+                            or fee-icc-code = "SP0990")             &
+                    )                                               &
+  else "N"
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+subfile martin keep include                &
+clmdtl-id              of f002-claims-mstr,&
+key-clm-batch-nbr      of f002-claims-mstr,&
+key-clm-claim-nbr      of f002-claims-mstr,&
+x-doc-nbr                                 ,&
+x-code					  ,&
+clmdtl-fee-ohip	                                  
+
+
+request two
+
+access *martin				                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&	
+	key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr  &
+   link x-doc-nbr to doc-nbr of f020-doctor-mstr opt            
+
+select if  clmhdr-batch-type = 'C'                           
+sort on key-clm-batch-nbr on key-clm-claim-nbr
+
+temp x-oncall zoned*7 signed
+item x-oncall  = x-oncall + clmdtl-fee-ohip of martin /100  & 
+               if x-code = "Y"                              &
+               reset at key-clm-claim-nbr
+
+temp x-nocall zoned*7 signed
+item x-nocall  = x-nocall + clmdtl-fee-ohip of martin /100  &
+               if x-code = "N"                              &
+               reset at key-clm-claim-nbr
+
+subfile martin1 keep at key-clm-claim-nbr include   &
+doc-dept                                           ,&
+doc-nbr                                            ,&
+doc-name                                           ,&
+doc-inits                                          ,& 
+x-oncall                                           ,& 
+x-nocall                                           ,& 
+x-code                                             ,& 
+clmhdr-tot-claim-ar-ohip                     
+
+request three
+
+access *martin1
+
+sort on doc-nbr 
+
+temp x-doc-oncall  zoned*7 signed
+item x-doc-oncall  = x-doc-oncall + x-oncall reset at doc-nbr            
+
+temp x-doc-nocall num*7
+item x-doc-nocall  = x-doc-nocall + clmhdr-tot-claim-ar-ohip of martin1 /100  &
+                   if x-code = "N"                                            &
+                   reset at doc-nbr 
+
+temp x-doc-all    num*7
+item x-doc-all     = x-doc-all    + clmhdr-tot-claim-ar-ohip of martin1 /100  &
+                   reset at doc-nbr 
+
+def comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile martin2 keep at doc-nbr include       &
+doc-dept                                     ,&
+comma                                        ,&
+doc-nbr                                      ,&
+comma                                        ,&
+doc-name                                     ,&
+comma                                        ,&
+doc-inits                                    ,&
+comma                                        ,&
+x-doc-oncall                                 ,&
+comma                                        ,&
+x-doc-nocall                                 ,&
+comma                                        ,&
+x-doc-all                                    ,&
+x-cr
+
+build $obj/martindept6
+

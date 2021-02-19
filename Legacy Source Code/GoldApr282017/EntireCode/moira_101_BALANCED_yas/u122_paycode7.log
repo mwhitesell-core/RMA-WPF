@@ -1,0 +1,149 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Tue Jan 17 15:33:53 EST 2017
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/u122_paycode7.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ;#> PROGRAM-ID.     u122_paycode7.qts
+> ;
+> ;       ((C)) Dyad Infosys LTD
+> ;
+> ;    PURPOSE: sub-process within "earnings generation" process.
+> ;             calculate 'PAYEFT' transactions for pay codes 7 only
+> ;	      PAYEFT = FINCHG - TOTDED
+> ;	      This program now is primary for MP
+> ;
+> ;
+> ;    MODIFICATION HISTORY
+> ;        DATE    SAF #  WHO      DESCRIPTION
+> ;   2017/JAN/17         M.C.     - original
+> ;                                - clone from u119.qts and transfer the last part of $use/u116_paycode7.use to here
+> ;
+> 
+> cancel clear
+> set default
+> set stacksize 1000
+> set process limit 100000
+> set lock record update
+> 
+> run u122
+> 
+> global temp payeft-seq     zoned*2 unsigned
+> global temp payeft-group   char*1
+> 
+> ;
+> ; DETERMINE THE 'PROCESS-SEQ' AND 'COMP-CODE-GROUP'
+> ; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+> 
+> request u122_a_get_payeft                    &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "PAYEFT"
+Choose viaindex COMP-CODE.
+> item payeft-seq     =  process-seq
+> item payeft-group   =  comp-code-group
+> 
+> ;-------------------------------------------------------------------------------
+> ;
+> request u122_b on edit        errors report &
+>                on calculation errors report
+> 
+> access constants-mstr-rec-6                             	      &
+>         link current-ep-nbr                             	      &
+>         viaindex f112-ep-doc-nbr                        	      &
+>         to   ep-nbr of f112-pycdceilings                	      &
+>         link doc-nbr of f112-pycdceilings,                            &
+>              "FINCHG", "A"                                            &
+>         to   doc-nbr,                                                 &
+>              comp-code, rec-type    of f119-doctor-ytd                &
+>                        		 alias f119-finchg                    &
+>         link doc-nbr of f112-pycdceilings,                            &
+>              "TOTDED", "A"                                            &
+>         to   doc-nbr,                                                 &
+>              comp-code, rec-type    of f119-doctor-ytd                &
+>                        		 alias f119-totded       optional     &
+>         link doc-nbr of f112-pycdceilings,                            &
+>              "PAYEFT", "A"                                            &
+>         to   doc-nbr,                                                 &
+>              comp-code, rec-type    of f119-doctor-ytd                &
+>                        		 alias f119-payeft       optional     &
+>         link doc-nbr of f112-pycdceilings                             &
+>         to   doc-nbr of f020-doctor-mstr       		 optional
+> 
+> choose const-rec-nbr 6
+*W* Item (CONST-REC-NBR) is stored by the file system as a character type.
+Choose viaindex CONSTANTS-MSTR-REC-6.
+> 
+> select if doc-pay-code of f112-pycdceilings = "7"
+> 
+> ; (subtract  Total Deductions(TOTDED) from Final Charge (FINCHG)
+> def w-payeft-amt-1 integer*10 signed                                   &
+>      =   amt-mtd   of f119-finchg                             	       &
+>        - amt-mtd   of f119-totded
+> 
+> ; (Don't allow negative EFT if Deductions have exceeded Final Charge (FINCHG)
+> def w-payeft-amt-n integer*10 signed                                    &
+>         = w-payeft-amt-1						&
+> 		if w-payeft-amt-1 >= 0                        		&
+>      else 0
+> 
+> 
+> define w-amt-mtd-finchg  integer*10 signed = amt-mtd   of f119-finchg
+> define w-amt-mtd-totded  integer*10 signed = amt-mtd   of f119-totded
+> 
+> define w-amt-ytd-payeft  integer*10 signed = amt-ytd   of f119-payeft	&
+> 					   + w-payeft-amt-n
+> 
+> subfile u122_paycode7_payeft keep     include &
+>      doc-nbr of f112-pycdceilings           , &
+>      doc-dept				    , &
+>      w-amt-mtd-finchg			    , &
+>      w-amt-mtd-totded			    , &
+>      w-payeft-amt-1                         , &
+>      w-payeft-amt-n  			    , &
+>      w-amt-ytd-payeft
+> 
+> ; ------------- U 1 1 9 _ P A Y E F T -----------------------------------------
+> 
+> subfile u119_chgeft portable keep          &
+>       include                              &
+>          doc-nbr  of f112-pycdceilings   , &
+>          doc-dept of f020-doctor-mstr    , &
+>          w-payeft-amt-n
+> 
+> 
+> ; ------------- F 0 2 0 -------------------------------------------------------
+> ; update doctor master with the invoice amount (store in PAYEFT so that
+> ; it can be printed on Invoice - r124a/b_paycode7.qzs)
+> 
+> output f020-doctor-mstr update  on errors report
+>     item doc-payeft final w-payeft-amt-n
+> 
+> ; ------------- F 1 1 9 -------------------------------------------------------
+> output f119-payeft                       update                 &
+>     if     record f119-payeft  exists on errors report
+>   item amt-mtd final w-payeft-amt-n
+>   item amt-ytd final w-amt-ytd-payeft
+> 
+> output f119-doctor-ytd  alias f119-add  add                     &
+>     if not record f119-payeft  exists on errors report
+>   item doc-nbr         final doc-nbr  of f112-pycdceilings
+>   item comp-code       final 'PAYEFT'
+>   item rec-type        final 'A'
+>   item process-seq     final payeft-seq
+>   item comp-code-group final payeft-group
+>   item amt-mtd         final w-payeft-amt-n
+>   item amt-ytd         final w-amt-ytd-payeft
+>   item doc-ohip-nbr    final doc-ohip-nbr of f020-doctor-mstr
+> 
+> build $pb_obj/u122_paycode7
+0 ERRORS  1 WARNINGS.
+Item TEXT OF F119-ADD initial TEXT OF F119-FINCHG.
+Item LAST-MOD-DATE OF F119-ADD initial LAST-MOD-DATE OF F112-PYCDCEILINGS.
+Item LAST-MOD-TIME OF F119-ADD initial LAST-MOD-TIME OF F112-PYCDCEILINGS.
+Item LAST-MOD-USER-ID OF F119-ADD initial LAST-MOD-USER-ID OF F112-PYCDCEILINGS.
+> 
+Tue Jan 17 15:33:59 EST 2017

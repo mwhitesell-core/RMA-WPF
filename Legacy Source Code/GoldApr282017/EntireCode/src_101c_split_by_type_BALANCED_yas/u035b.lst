@@ -1,0 +1,311 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   1
+*                      u035b.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. u035b.
+author. dyad computer systems inc.
+installation. rma.
+date-written. 85/11.
+date-compiled. 18-May-06 15:42.
+security.
+*
+*    files      : work file
+*               : sorted work file
+*
+*
+*    program purpose : to print the direct billing invoices
+*                      this pgm is the second series of the 3 pgms.
+*                      it will sort the claim shadow work file produced
+*                      by u035a.
+*
+*
+*
+*    date       programmer          modification
+*    ----       ----------          ------------
+*
+*
+*   feb/89      s.fader           -sms 113
+*                                 -increase size of u035-work-file and
+*                                                   u035-sort-work-file
+*                                  to allow for agent to be added to the
+*                                  sort
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*  1999/jan/31 B.E.     - y2k
+*  2003/dec/10 M.C.     - alpha doc-nbr - reduce work size
+*
+environment division.
+input-output section.
+file-control.
+
+*
+    select u035-work-file
+        assign to "u035wf"
+        organization is sequential.
+
+    select u035-sort-work-file
+        assign to work-file-out-name
+        organization is sequential.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   2
+*                      u035b.cbl
+    select u035-sort-work
+        assign to "u035_sort_work"
+        organization  is sequential.
+data division.
+file section.
+
+fd  u035-work-file
+*!  record contains 58 characters.
+    record contains 57 characters.
+
+*!01  work-in-rec                                       pic x(58).
+01  work-in-rec                                 pic x(57).
+
+
+fd  u035-sort-work-file
+*!  record contains 58 characters.
+    record contains 57 characters.
+
+*!01  work-out-rec                      pic x(58).
+01  work-out-rec                        pic x(57).
+
+
+    copy "u035_clm_shdw_work_mstr.sd".
+*
+*SD  U035-SORT-WORK
+*   BLOCK CONTAINS 57 CHARACTERS.
+*
+*01 WF-SHADOW-REC.
+*   05  WF-SHADOW-KEY.
+*       10  WF-SHADOW-CLINIC            PIC 99.
+*       10  WF-SHADOW-SUBDIVISION       PIC X.
+*       10  WF-SHADOW-PAT-SURNAME       PIC X(15).
+*       10  WF-SHADOW-PAT-GIV-NAME      PIC X(12).
+*       10  WF-SHADOW-PATIENT           PIC X(16).
+*       10  WF-SHADOW-BATCH-NBR         PIC 9(09).
+*       10  WF-SHADOW-CLAIM-NBR         PIC 9(02).
+
+sd  u035-sort-work
+*!    block contains 58 characters.
+    block contains 57 characters.
+
+01  wf-shadow-sort-key.
+    05  wf-shadow-agent                         pic 9.
+    05  wf-shadow-rec.
+        10  wf-shadow-key.
+             20  wf-shadow-clinic               pic 99.
+             20  wf-shadow-subdivision          pic X.
+             20  wf-shadow-pat-surname          pic X(15).
+             20  wf-shadow-pat-giv-name         pic X(12).
+             20  wf-shadow-patient              pic X(16).
+*!           20  wf-shadow-batch-nbr            pic 9(09).
+             20  wf-shadow-batch-nbr            pic x(08).
+             20  wf-shadow-claim-nbr            pic 9(02).
+
+
+working-storage section.
+
+77  work-file-out-name                          pic x(19) value
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   3
+*                      u035b.cbl                                     )
+                                                "u035_sort_work_mstr".
+*
+77  err-ind                                     pic 99.
+
+
+01  counters.
+    05  ctr-work-file-reads                     pic 9(7).
+    05  ctr-work-file-writes                    pic 9(7).
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                "INVALID READ ON WORK FILE".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs 01 times.
+
+01  err-msg-comment                             pic x(60).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                        "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   4
+*                      u035b.cbl (/alpha/rmabill/rmabill101c/use/sysd)
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+
+screen section.
+
+
+01  confirm.
+    05 line 23 col 01  value " ".
+
+01  blank-line-24.
+    05  line 24 col 1   blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+
+01  program-in-progress.
+    05  blank screen.
+    05  line 16 col 28 value "PROGRAM U035B IN PROGRESS".
+
+01  scr-closing-screen.
+    05  line 21 col 20  value "PROGRAM U035B ENDING".
+* (y2k - auto fix)
+*   05  line 21 col 40  pic 99  from sys-yy.
+    05  line 21 col 40  pic 9(4)        from sys-yy.
+    05  line 21 col 44  value "/".
+    05  line 21 col 45  pic 99  from sys-mm.
+    05  line 21 col 47  value "/".
+    05  line 21 col 48  pic 99  from sys-dd.
+    05  line 21 col 52  pic 99  from sys-hrs.
+    05  line 21 col 54  value ":".
+    05  line 21 col 55  pic 99  from sys-min.
+    05  line 23 col 20  value "RUN PGM U035C TO PRINT INVOICES".
+
+procedure division.
+
+main-line section.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   5
+*                      u035b.cbl                                     )
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+
+*mf    sort u035-sort-work        "COBSORT"  save
+    sort u035-sort-work
+        on ascending key        wf-shadow-sort-key
+                using           u035-work-file
+                giving          u035-sort-work-file.
+
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+    move sys-mm                         to run-mm.
+    move sys-dd                         to run-dd.
+    move sys-yy                         to run-yy.
+
+    accept sys-time                     from time.
+    move sys-hrs                        to run-hrs.
+    move sys-min                        to run-min.
+    move sys-sec                        to run-sec.
+
+*    expunge u035-sort-work
+*mf            u035-sort-work-file.
+
+*   display program-in-progress.
+
+
+aa0-99-exit.
+    exit.
+az0-end-of-job.
+
+
+*   display blank-screen.
+*   accept sys-time                     from time.
+*   display scr-closing-screen.
+*   display confirm.
+
+    stop run.
+
+az0-99-exit.
+    exit.
+
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   6
+*                      u035b.cbl (/alpha/rmabill/rmabill101c/use/y2k_)
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        1952     Code:         558

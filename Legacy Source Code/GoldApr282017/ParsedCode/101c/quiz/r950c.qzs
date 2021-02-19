@@ -1,0 +1,116 @@
+;doc: r950c.qzs
+;
+;program purpose : list of negative adjusts for doctor
+;
+;  modification history
+;date          by whom   description
+;2010/aug/17   brad	 orig
+;
+
+can clear
+set default
+set rep nolimit
+
+set rep dev disk name r950c
+set page width 160
+set page length 0
+
+access *r950b
+;access *r950b  							  &
+;  link ("B" , key-clm-batch-nbr, key-clm-claim-nbr)		  &
+;    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr 	  &
+;					 of f002-claims-mstr      &
+;  link clmhdr-doc-dept of r950b   				  &
+;    to dept-nbr of  f070-dept-mstr   opt
+
+
+;select if batctrl-date-period-end = "20100824"
+;select f002-claims-mstr					 	     &
+;   if    clmdtl-oma-cd <> "0000"			             &
+;     and clmdtl-oma-cd <> "ZZZZ"				;     &
+;;     and (clmdtl-orig-batch-nbr = key-clm-batch-nbr)
+
+
+;; -------------------------------------------------------------------------
+;def x-adj-A      zoned*7 signed = clmdtl-fee-ohip            &
+;                                   if clmdtl-adj-cd  = 'A' 
+;def x-adj-B      zoned*7 signed = clmdtl-fee-ohip            &
+;                                   if clmdtl-adj-cd  = 'B'
+;def x-adj-R        zoned*7 signed = clmdtl-fee-ohip            &
+;if 1=2
+;;                                   if    clmdtl-adj-cd  <> 'A'     &
+;;                                     and clmdtl-adj-cd  <> 'B'
+def x-tot-adj	zoned*7 signed = clmdtl-fee-ohip
+def x-tot-rmachg zoned*7 signed = clmdtl-fee-ohip * .05
+; -------------------------------------------------------------------------
+
+;def x-nbr-svcs num*2 =  clmdtl-nbr-serv			&
+;		      + sum(clmdtl-sv-nbr,1,3)
+;
+;def x-source cha*2 =  ("/" + clmhdr-adj-cd-sub-type)  &
+;               if     (clmhdr-adj-cd-sub-type ne "0"   &
+;                  and   clmhdr-adj-cd-sub-type ne "S"   &
+;                  and   clmhdr-adj-cd-sub-type ne " ")  &
+;		else  " "
+
+sort	on clmhdr-doc-dept 		  &
+	on x-doc-nbr
+
+page  heading	              	&
+		tab 27 "Doctor"		&
+		tab 53 "A-adjustments"	&
+		tab 68 "B-adjustments"	&
+		tab 83 "R-adjustments"  &	
+		tab 98  "Total adjustments" &
+		tab 118 "RMA Chrge"	&
+		skip 2
+
+heading at clmhdr-doc-dept 					&
+	skip 3 "PED:" batctrl-date-period-end   "      Department:"  clmhdr-doc-dept skip 2
+footing at clmhdr-doc-dept                 			&	
+	skip 1							&
+	tab 01 "Totals - Dept" print at clmhdr-doc-dept        	&
+	tab 10 batctrl-date-period-end          			&
+	tab 25 clmhdr-doc-dept  &
+	tab 55 x-adj-A subtotal picture "^^^^,^^^.^^ " 		&
+	tab 70 x-adj-B subtotal picture "^^^^,^^^.^^ " 		&
+	tab 85 x-adj-R subtotal picture "^^^^,^^^.^^ " 		& 
+	tab 100 x-tot-adj    subtotal picture "^^^^,^^^.^^ "	&
+	tab 115 x-tot-rmachg subtotal picture "^^^^,^^^.^^ "	&
+	skip 2
+; -------------------------------------------------------------------------
+footing at x-doc-nbr						&
+	tab 01 "Totals - for doc:" print at x-doc-nbr              	&
+	tab 30 x-doc-nbr	 				&
+	tab 55 x-adj-A subtotal picture "^^^^,^^^.^^ " 		&
+	tab 70 x-adj-B subtotal picture "^^^^,^^^.^^ " 		&
+	tab 85 x-adj-R subtotal picture "^^^^,^^^.^^ " 		& 
+	tab 100 x-tot-adj    subtotal picture "^^^^,^^^.^^ "	&
+	tab 115 x-tot-rmachg subtotal picture "^^^^,^^^.^^ "	&
+	skip 2
+
+final footing 						&
+	skip 3						&
+	tab 50 "----------------------------------------------" &
+	skip 1							&
+	tab 55 x-adj-A subtotal picture "^^^^,^^^.^^ " 		&
+	tab 70 x-adj-B subtotal picture "^^^^,^^^.^^ " 		&
+	tab 85 x-adj-R subtotal picture "^^^^,^^^.^^ " 		& 
+	tab 100 x-tot-adj    subtotal picture "^^^^,^^^.^^ "	&
+	tab 115 x-tot-rmachg subtotal picture "^^^^,^^^.^^ "	
+
+rep                 						&
+	tab 30 x-doc-nbr	 				&
+        tab 37 clmdtl-oma-cd					&
+	tab 42  clmdtl-fee-ohip 				&
+	tab 55 x-adj-A subtotal picture "^^^^,^^^.^^ " 		&
+	tab 70 x-adj-B subtotal picture "^^^^,^^^.^^ " 		&
+	tab 85 x-adj-R subtotal picture "^^^^,^^^.^^ " 		& 
+	tab 100 x-tot-adj    subtotal picture "^^^^,^^^.^^ "	&
+	tab 115 x-tot-rmachg subtotal picture "^^^^,^^^.^^ "	&
+	tab 130 x-claim-dtl-id 
+
+
+build $obj/r950c
+go
+!vi r950c.txt

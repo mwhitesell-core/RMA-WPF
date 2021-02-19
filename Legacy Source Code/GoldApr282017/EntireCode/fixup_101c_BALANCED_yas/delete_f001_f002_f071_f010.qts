@@ -1,0 +1,141 @@
+; this program is delete either web or diskette batches/claims via create_claims_from_suspense
+
+; 2012/Mar/28 -  delete the batch & claims records for newly created claims via suspense claims
+; 2014/Nov/27 -  Delete the batch & claims records for batches 2238H006 & 2238H007
+
+cancel clear
+set lock record update
+
+request delete_f001_f002
+
+access f001-batch-control-file		&
+       link 'B', batctrl-batch-nbr	&
+	to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; select one or more random batch nbr
+;choose batctrl-batch-nbr parm prompt 'Enter batch nbr: '
+
+; select a range of consecutive batch nbr
+choose batctrl-batch-nbr '2238H006' to '2238H007'
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+sorted on batctrl-batch-nbr
+
+subfile save_delete_f002_hdr  keep   if key-clm-serv-code of f002-claims-mstr[1:4] = '0000' &
+include	clmhdr-claim-id,			&
+	clmhdr-batch-type,			&
+	clmhdr-adj-cd-sub-type,			&
+	clmhdr-doc-nbr-ohip,			&
+	clmhdr-doc-spec-cd,			&
+	clmhdr-refer-doc-nbr,			&
+	clmhdr-diag-cd,				&
+	clmhdr-loc,				&
+	clmhdr-hosp,				&
+	clmhdr-agent-cd,			&
+	clmhdr-adj-cd,				&
+	clmhdr-tape-submit-ind,			&
+	clmhdr-i-o-pat-ind,			&
+	clmhdr-pat-ohip-id-or-chart,		&
+	clmhdr-pat-acronym,			&
+	clmhdr-reference,			&
+	clmhdr-date-admit,			&
+	clmhdr-doc-dept,			&
+	clmhdr-date-cash-tape-payment,		&
+	clmhdr-curr-payment,			&
+	clmhdr-date-period-end,			&
+	clmhdr-cycle-nbr,			&
+	clmhdr-date-sys,			&
+	clmhdr-amt-tech-billed,			&
+	clmhdr-amt-tech-paid,			&
+	clmhdr-tot-claim-ar-oma,		&
+	clmhdr-tot-claim-ar-ohip,		&
+	clmhdr-manual-and-tape-payments,	&
+	clmhdr-status-ohip,			&
+	clmhdr-orig-batch-id,			&
+	clmhdr-manual-review,			&
+	clmhdr-submit-date,			&
+	clmhdr-confidential-flag,		&	; Only RMA
+	clmhdr-serv-date,			&	; Only RMA
+	key-clm-type of f002-claims-mstr, 	&
+	key-clm-batch-nbr of f002-claims-mstr,  &
+	key-clm-claim-nbr of f002-claims-mstr,	&
+	key-clm-serv-code of f002-claims-mstr,	&
+	key-clm-adj-nbr of f002-claims-mstr,    &
+	key-p-clm-type of f002-claims-mstr, 	&
+        key-p-clm-data of f002-claims-mstr
+
+subfile save_delete_f002_dtl  keep   if key-clm-serv-code of f002-claims-mstr[1:4] <> '0000' &
+				         and key-clm-serv-code of f002-claims-mstr[1:4] <> 'ZZZZ' &
+include	clmdtl-id, 			&
+	clmdtl-rev-group-cd,		&
+	clmdtl-agent-cd,		&	
+	clmdtl-adj-cd,			&
+	clmdtl-nbr-serv,	 	&
+	clmdtl-sv-date,			&
+	clmdtl-consec-dates-r,		&
+	clmdtl-amt-tech-billed,		&
+	clmdtl-fee-oma,			&
+	clmdtl-fee-ohip,		&
+	clmdtl-date-period-end,		&
+	clmdtl-cycle-nbr,		&
+	clmdtl-diag-cd,			&
+	clmdtl-line-no,			&
+	clmdtl-orig-batch-id of f002-claims-mstr,		&
+	key-clm-type of f002-claims-mstr, &
+	key-clm-batch-nbr of f002-claims-mstr, &
+	key-clm-claim-nbr of f002-claims-mstr,	&
+	key-clm-serv-code of f002-claims-mstr,	&
+	key-clm-adj-nbr of f002-claims-mstr,	&
+	key-p-clm-type of f002-claims-mstr, &
+        key-p-clm-data of f002-claims-mstr
+
+
+subfile save_delete_f002_desc keep   if key-clm-serv-code of f002-claims-mstr[1:4] = 'ZZZZ'  &
+include	clmdtl-id of f002-claims-mstr,	&
+	clmdtl-desc-rec,		&
+	clmdtl-orig-batch-id of f002-claims-mstr,		&
+	key-clm-type of f002-claims-mstr, &
+	key-clm-batch-nbr of f002-claims-mstr, &
+	key-clm-claim-nbr of f002-claims-mstr,	&
+	key-clm-serv-code of f002-claims-mstr,	&
+	key-clm-adj-nbr of f002-claims-mstr,&
+	key-p-clm-type of f002-claims-mstr, &
+        key-p-clm-data of f002-claims-mstr
+
+output f002-claims-mstr delete on errors report
+
+subfile save_delete_f001 keep   at batctrl-batch-nbr include f001-batch-control-file
+
+output f001-batch-control-file delete at batctrl-batch-nbr on errors report
+
+request delete_f071
+
+access f071-client-rma-claim-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+choose clinic-nbr 22, claim-nbr-rma '38H006@', '38H007@'
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+subfile savef071 keep include f071-client-rma-claim-nbr
+
+output f071-client-rma-claim-nbr delete on errors report
+
+
+request reverse_update_pat_clm-nbr
+
+access *save_delete_f002_hdr		&
+   link clmhdr-pat-ohip-id-or-chart       &
+        to key-pat-mstr of f010-pat-mstr
+
+sort on clmhdr-pat-ohip-id-or-chart
+
+temp x-claim-count
+   item x-claim-count = x-claim-count + 1 reset at clmhdr-pat-ohip-id-or-chart
+
+output f010-pat-mstr update at clmhdr-pat-ohip-id-or-chart on errors report
+   item pat-nbr-outstanding-claims final pat-nbr-outstanding-claims - x-claim-count
+   item pat-total-nbr-claims final pat-total-nbr-claims - x-claim-count
+
+

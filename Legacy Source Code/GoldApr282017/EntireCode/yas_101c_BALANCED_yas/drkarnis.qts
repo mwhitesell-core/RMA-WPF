@@ -1,0 +1,78 @@
+;doc     : drkarnis.qts
+;purpose : ohip billings from march 25/02 to sept 27/02                
+;          just total amount no misc 
+;who     : Dr. Karnis
+;
+; *************************************************************
+
+;Date		Who		Description
+;2002/10/03	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one
+
+access f002-claims-mstr     
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220330000 to 220330999,     &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                                                     &
+                        ((clmhdr-agent-cd = 0 or clmhdr-agent-cd = 4           &
+                                              or clmhdr-agent-cd = 1)          &
+                     and (clmhdr-batch-type  = 'C' or                          &
+                         (clmhdr-batch-type = 'A' and clmhdr-adj-cd = 'B'))    &
+                        )
+
+subfile karnis   keep include                    &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+Access *karnis                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+              
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20020325' & 
+       and  clmdtl-sv-date     <= '20020927' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+;       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+sort on x-doc-nbr    
+
+temp x-amount    num*7
+item x-amount     = x-amount    + clmdtl-fee-ohip   
+
+
+subfile karnis1  keep at x-doc-nbr include          &
+x-doc-nbr                                          ,&
+x-amount                                            
+
+build $obj/karnis

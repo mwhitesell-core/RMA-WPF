@@ -1,0 +1,54 @@
+can clear
+set verify errors
+set default
+set proces nolimit
+set lock record update
+
+request update_claims
+
+; subfile is from checkf002_hold.qzs
+;access *checkf002_hold   &
+; link  'B', key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0'			& 
+;  to   key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr 
+
+; subfile is from check_f087.qzs
+access *f087_resubmit_claims							&
+ link  'B', submitted-rejected-claim[1:8], nconvert(submitted-rejected-claim[9:2]), '00000', '0'     & 
+  to   key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr 
+
+def bal-due zoned*8 numeric = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+sel if clmhdr-tape-submit-ind = 'H'
+
+def run-date date = sysdate
+
+subfile savef002_VH8 keep append if bal-due <> 0 include key-clm-batch-nbr, key-clm-claim-nbr , run-date
+
+output f002-claims-mstr update if bal-due <> 0 on errors report
+   item clmhdr-tape-submit-ind final "X"
+
+request update_patients
+
+;access *checkf002_hold  			& 
+; link  key-pat-mstr to key-pat-mstr of f010-pat-mstr
+
+access *f087_resubmit_claims            &
+  link submitted-rejected-claim         &
+   to claim-nbr of rejected-claims      &
+  link  clmhdr-pat-ohip-id-or-chart 	&
+   to key-pat-mstr of f010-pat-mstr
+
+def run-date date = sysdate
+
+sort on key-pat-mstr
+
+subfile savef085_VH8 keep append include rejected-claims, run-date
+
+output rejected-claims delete on errors report
+
+subfile savef010_VH8 keep append at key-pat-mstr include key-pat-mstr, pat-health-nbr, run-date
+
+output f010-pat-mstr update at key-pat-mstr on errors report
+   item pat-mess-code final ' '
+
+build $pb_obj/update_f002_f010_resubmit

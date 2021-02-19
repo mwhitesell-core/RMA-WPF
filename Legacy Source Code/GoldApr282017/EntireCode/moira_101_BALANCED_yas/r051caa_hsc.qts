@@ -1,0 +1,83 @@
+; DOC: R051CAA_HSC.QTS
+; DOC: PHYSICIAN REVENUE ANALYSIS (RUN FOR 22/80/81)
+; DOC: RUN FOR:
+;
+;PROGRAM PURPOSE : PHYSICIAN REVENUEE ANALYSIS
+;                  R051A/B/C.CB CONVERSTION TO POWERHOUSE
+;                  FIRST PASS R051A SUBFILE KEETP AT DOC NBR
+;                  TO CALCULATE DOCTOR TOTAL PERCENT AMT
+;
+;DATE       BY WHOM   DESCRIPTION
+;95/10/11   YASEMIN   ORIGINAL
+;
+;
+can clear
+set process nolimit
+set lock file update
+
+;----------------------------------------
+request create-dept-totals
+
+access f050-doc-revenue-mstr link docrev-doc-nbr to doc-nbr of f020-doctor-mstr
+
+choose docrev-key parm promp "Enter (22@) or (99@)  for clinic then hit newline twice: "
+
+sort on docrev-clinic-1-2 &
+     on docrev-dept	  &
+     on doc-full-part-ind &
+     on docrev-doc-nbr	  &
+     on docrev-oma-cd
+
+def x-doc-amt-mtd zoned*8 signed = docrev-mtd-in-rec + docrev-mtd-out-rec
+def x-doc-amt-ytd zoned*8 signed = docrev-ytd-in-rec + docrev-ytd-out-rec
+def x-doc-svc-mtd zoned*8 unsigned = docrev-mtd-in-svc + docrev-mtd-out-svc
+def x-doc-svc-ytd zoned*8 unsigned = docrev-ytd-in-svc + docrev-ytd-out-svc
+
+temp t-tmprev-class-amt-mtd zoned*8 unsigned
+    item t-tmprev-class-amt-mtd subtotal x-doc-amt-mtd  &
+    reset at doc-full-part-ind
+
+temp t-tmprev-class-amt-ytd zoned*8 unsigned
+    item t-tmprev-class-amt-ytd subtotal x-doc-amt-ytd  &
+    reset at doc-full-part-ind
+
+output tmp-doc-revenue add at docrev-doc-nbr 		&
+	of f050-doc-revenue-mstr noitem
+       item tmprev-clinic final docrev-clinic-1-2
+       item tmprev-class final doc-full-part-ind
+       item tmprev-doc-nbr final docrev-doc-nbr of f050-doc-revenue-mstr
+       item tmprev-doc-amt-mtd = tmprev-doc-amt-mtd + x-doc-amt-mtd
+       item tmprev-doc-amt-ytd = tmprev-doc-amt-ytd + x-doc-amt-ytd
+       item tmprev-doc-svc-mtd = tmprev-doc-svc-mtd + x-doc-svc-mtd
+       item tmprev-doc-svc-ytd = tmprev-doc-svc-ytd + x-doc-svc-ytd
+
+output tmp-doc-revenue alias b-doc-rev add at docrev-dept	 &
+	of f050-doc-revenue-mstr noitem
+       item tmprev-clinic final docrev-clinic-1-2
+       item tmprev-dept final docrev-dept of f050-doc-revenue-mstr
+       item tmprev-dept-amt-mtd = tmprev-dept-amt-mtd + x-doc-amt-mtd
+       item tmprev-dept-amt-ytd = tmprev-dept-amt-ytd + x-doc-amt-ytd
+       item tmprev-dept-svc-mtd = tmprev-dept-svc-mtd + x-doc-svc-mtd
+       item tmprev-dept-svc-ytd = tmprev-dept-svc-ytd + x-doc-svc-ytd
+
+subfile tmp-doc-rev at doc-full-part-ind include	&
+      docrev-clinic-1-2,	&
+      docrev-dept,		&
+      doc-full-part-ind,	&
+      t-tmprev-class-amt-mtd,	&
+      t-tmprev-class-amt-ytd
+
+;----------------------
+request update_doc_rev
+
+access *tmp-doc-rev link docrev-clinic-1-2, 0, doc-full-part-ind  &
+	              to tmprev-clinic, tmprev-dept, tmprev-class & 
+			   of tmp-doc-revenue
+
+output tmp-doc-revenue update  
+       item tmprev-class-amt-mtd = t-tmprev-class-amt-mtd
+       item tmprev-class-amt-ytd = t-tmprev-class-amt-ytd
+
+build r051caa_hsc
+
+

@@ -1,0 +1,62 @@
+;#> PROGRAM-ID.    u095.qts
+;
+;       ((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE : DELETE THE "CLAIMS" BATCH CONTROL RECORDS IN THE
+;                   BATCH CONTROL FILE (F001) FOR ALL "CLAIMS" BATCHES THAT
+;                   HAVE BEEN PROCESSED INTO THE CLAIMS AUDIT
+;                   SECTION (IE. THEIR STATUS = '4') WHOSE P.E.D. FALLS
+;                   WITH RANGE AS INPUT BY OPERATOR.
+;                   AN AUDIT REPORT IS PRINTED OF ALL BATCHES DELETED
+;                   AND WITH TOTALS BY TYPE OF BATCH.
+;
+;    MODIFICATION HISTORY
+;    DATE      WHO        DESCRIPTION
+; 2000/04/28   B.Annis    Originally converted from u072.cbl
+;
+; 2003/dec/15  A.A.	  alpha doctor nbr
+;
+
+cancel clear
+set process nolimit
+set lock file update
+
+request delete_claim-batches    
+
+access f001-batch-control-file				&
+;!      link nconv(ascii(batctrl-batch-nbr,9)[1:2])		&
+      link nconv(batctrl-batch-nbr[1:2])			&
+        to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+				
+choose batctrl-batch-nbr parm prompt "Enter From Batch Number: " &
+  1 time range toprompt "Enter To Batch Number: "
+
+define d-date date = parm prompt & 
+  "Enter NEW date now if constant-mstr P.E.D is not acceptable: "
+
+define d-cut-off-date date = iconst-date-period-end if  &
+       d-date = 0 else d-date
+
+define d-batctrl-date-period-end date = nconv(batctrl-date-period-end)
+
+define d-delete-flag char*1 = 'Y' if batctrl-batch-type = 'C'	&
+      and batctrl-batch-status = '4'                            &
+      and d-batctrl-date-period-end <= d-cut-off-date           &
+		else 'N'
+
+subfile u095-delete-batch keep append if d-delete-flag = 'Y'	&
+	     include 						&
+        f001-batch-control-file,                                &
+        iconst-clinic-nbr-1-2 of iconst-mstr-rec,               &
+        d-cut-off-date
+
+subfile u095-retain-batch keep append if d-delete-flag = 'N'	&
+             include 						&
+        f001-batch-control-file,                                &
+        iconst-clinic-nbr-1-2 of iconst-mstr-rec,               &
+        d-cut-off-date
+
+output f001-batch-control-file delete if d-delete-flag = 'Y'	&
+       on errors report
+
+build $obj/u095

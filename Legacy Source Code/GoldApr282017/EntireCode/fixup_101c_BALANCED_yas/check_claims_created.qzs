@@ -1,0 +1,77 @@
+; 2015/Mar/02	MC 	- check what has created from u706a_claims_keys in web10, Yasemin was trying to create claims 
+;			  from web10 but she got disconnected half way, need to undo (delete records created in f001, f002, f071) 
+;			- Yasemin asked to make a copy of this program into fixup directory, note that you must copy from fixup
+;			  to the appropriate web/disk directory before running this program as it is using u706a_claims_key
+;			  as the driver file from the local directory
+
+cancel clear
+set rep nolimit
+
+; check how many claims created in f071 file
+
+access *u706a_claims_keys  			&
+ 	link (nconvert(w-key-claims-mstr[2:2]), &
+	      w-key-claims-mstr[4:8])		&
+	 to  clinic-nbr, claim-nbr-rma of f071-client-rma-claim-nbr
+
+set subfile name savef071 keep
+
+rep summ w-key-claims-mstr w-p-key-claims-mstr clinic-nbr claim-nbr-rma claim-nbr-client
+
+go 
+
+;------------------------
+
+; check how many claim header records are created
+
+access *savef071				&
+	link ('B', w-key-claims-mstr[2:8],	&
+	      ncon(w-key-claims-mstr[10:2]),	&
+	      '00000', '0')			&
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+sorted on key-clm-batch-nbr on	w-key-claims-mstr
+
+set subfile name savebatch keep at key-clm-batch-nbr
+
+rep summ key-clm-batch-nbr
+
+go
+
+;------------------------
+
+; Check how many batch records are missing ( not created)
+
+access *savebatch link key-clm-batch-nbr to batctrl-batch-nbr of f001-batch-control-file opt
+
+sel if not record f001-batch-control-file exists
+
+rep key-clm-batch-nbr  
+
+go
+
+;------------------------
+
+; check if claims created belong to the f002 suspend header
+
+access *savef071                                &
+        link (nconvert(claim-nbr-client[1:6]) , &
+              claim-nbr-client[7:8])            &
+         to  clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr of f002-suspend-hdr
+
+
+go
+
+;------------------------
+
+; check how many records created in f002-claim-shadow
+
+access *savef071 		&
+	link ('B', w-key-claims-mstr[2:8], nconv(w-key-claims-mstr[10:2]), '00000', '0')	&
+	to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr  of f002-claims-mstr &
+	link (key-clm-batch-nbr[1:2]+clmhdr-sub-nbr+clmhdr-pat-ohip-id-or-chart+w-key-claims-mstr[2:10])	&
+	 to clm-shadow-key of f002-claim-shadow
+
+
+
+go

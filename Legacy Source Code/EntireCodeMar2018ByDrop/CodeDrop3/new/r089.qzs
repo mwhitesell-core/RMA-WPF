@@ -1,0 +1,146 @@
+;DOC:   REPORT CHANGE OF PATIENT INFORMATION TO DOCTOR'S OFFICES
+;
+;	93/04/21	AGK       SMS 141 (ORIGINAL)
+;       93/04/22        Y.B.      MODIFY
+;       93/07/05        Y.B.      ADD LOC CODE
+;       93/07/13        Y.B.      DEF DOC-NAME PRINT AT PAT ID
+;       93/10/05        Y.B.      MODIFY EXT.
+;       93/11/29        Y.B.      MODIFY HEADING
+;       02/12/18        Y.B.      sort on dept by doc# (for mailout)
+;                                 add doc-dept and number to page heading
+; 	03/10/03	MC	  concatenate the address lines
+; 	03/dec/15	A.A.	  alpha doctor nbr
+;	04/dec/09 	MC	  write each patient once under each doctor
+;				  transfer 'Please Update...' to the first line
+;				  of the report
+;       05/jun/21       MC	  change 'VR YY/MM/DD'  to 'VR YYYY/MM/DD' to
+;				  the right to match the columns 'CD BIRTH DATE'
+cancel clear
+
+set def
+set rep dev disc name r089
+set report nolimit
+set nohead
+set rep page length 60
+set formfeed
+set page width 132
+
+access f086-pat-id     		                      &
+  link clmhdr-pat-ohip-id-or-chart 		      &
+   to clmhdr-pat-ohip-id-or-chart of rejected-claims  &
+  link clmhdr-pat-ohip-id-or-chart                    &
+   to key-pat-mstr of f010-pat-mstr		      &
+  link doc-nbr					      &
+   to doc-nbr of f020-doctor-mstr
+
+select if clmhdr-loc[1:1] <> 'M' and clmhdr-loc[1:1] <> 'C'
+
+def x-doc-name cha*20 = truncate(pack(doc-inits)) + " " + truncate(pack(doc-name))
+
+sort on doc-dept                        &
+     on doc-nbr                         &
+     on x-doc-name                      &
+     on pat-old-surname of f086-pat-id  &
+     on clmhdr-pat-ohip-id-or-chart
+
+def d-old-name char*23 = pack(pat-old-given-name of f086-pat-id     &
+	+ ' ' + pat-old-surname of f086-pat-id)
+
+def d-new-name char*23 = pack(pat-given-name of f010-pat-mstr       &
+        + ' ' + pat-surname of f010-pat-mstr)
+
+
+; 2003/10/03 - MC
+def d-old-addr char*65 = pack(pat-old-addr1 of f086-pat-id + ', ' +    &
+                              pat-old-addr2 of f086-pat-id + ', ' +    &
+                              pat-old-addr3 of f086-pat-id)
+
+def d-new-addr char*65 = pack(subscr-addr1 + ', ' +                 &
+                              subscr-addr2 + ', ' +		    &
+			      subscr-addr3)
+; 2003/10/03 - end
+
+page heading                                    &
+skip 4  tab   1  'R089' 			&
+skip 2  tab   1  'DATE:'			&
+	tab  10  sysdate			&
+; 2004/12/09 - MC - transfer from below
+        tab  25  'PLEASE UPDATE YOUR PATIENT RECORDS WITH CHANGES NOTED.'&
+; 2004/12/09 - end
+skip 2  tab   1  'TO:'                          &
+        tab  10  doc-dept                       &
+        tab  14  "/"                            &
+        tab  16  doc-nbr                        &
+        tab  20  doc-inits                      &
+        tab  25  doc-name    		        &
+skip 2  tab   1  'From:'                        &
+        tab  10  'Mrs. Maria Costa'             &
+        tab  52  'Phone 525-9140  Ext. 22240 / 22104'      &
+; 2004/12/09 - MC - transfer to above
+;skip 2  tab  10  'PLEASE UPDATE YOUR PATIENT RECORDS WITH CHANGES NOTED.'&
+; 2004/12/09 - end
+; 2005/06/21 - MC
+;skip 2  tab  41  'VR'                           &
+;     	tab  44  'YY/MM/DD'                     &
+skip 2  tab  51  'VR'                           &
+     	tab  54  'YYYY/MM/DD'                   &
+; 2005/06/21 - end
+skip    tab   6  'PATIENT NAME'                 &
+        tab  31  'LOCATION'                     &
+        tab  40  'HEALTH NBR'                   &
+        tab  51  'CD'  	                        &
+     	tab  54  'BIRTH DATE'                   &
+     	tab  67  'ADDRESS 1'			&
+    	tab  89  'ADDRESS 2'			&
+        tab 111  'ADDRESS 3'			&
+skip    tab   6  '------------'                 &
+        tab  31  '--------'                     &
+        tab  40  '----------'                   &
+        tab  51  '--'                           &
+     	tab  54  '----------'                   &
+     	tab  67  '---------'			&
+    	tab  89  '---------'			&
+        tab 111  '---------' 			&
+skip 2
+
+heading at x-doc-name skip page
+
+; 2004/12/09 - MC
+;report                                 	        &
+footing at clmhdr-pat-ohip-id-or-chart 	        &
+; 2004/12/09 - end
+        tab   1  'OLD:'				&
+; 2004/12/09 - MC
+;	tab   6  d-old-name print at clmhdr-pat-ohip-id-or-chart &
+	tab   6  d-old-name 			&
+; 2004/12/09 - end
+        tab  33  clmhdr-loc                     &
+        tab  40  pat-old-health-nbr pic '^^^^^^^^^^' &
+        tab  51  pat-last-version-cd            &
+     	tab  54  pat-last-birth-date            &
+; 2003/10/03 - MC
+;     	tab  67  pat-old-addr1			&
+;    	tab  89  pat-old-addr2			&
+;       tab 111  pat-old-addr3                  &
+     	tab  67  d-old-addr    			&
+; 2003/10/03 - end
+skip    tab   1  'NEW:'				&
+; 2004/12/09 - MC
+;	tab   6  d-new-name print at clmhdr-pat-ohip-id-or-chart &
+	tab   6  d-new-name 			&
+; 2004/12/09 - end
+        tab  33  clmhdr-loc                     &
+        tab  40  pat-health-nbr pic '^^^^^^^^^^' &
+        tab  51  pat-version-cd                 &
+     	tab  54  pat-birth-date                 &
+; 2003/10/03 - MC
+;     	tab  67  subscr-addr1			&
+;    	tab  89  subscr-addr2			&
+;       tab 111  subscr-addr3                   &
+     	tab  67  d-new-addr  			&
+; 2003/10/03 - end
+skip 2
+
+build $pb_obj/r089
+
+  

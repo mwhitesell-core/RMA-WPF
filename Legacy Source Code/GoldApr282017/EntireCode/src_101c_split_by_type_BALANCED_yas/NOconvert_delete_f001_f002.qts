@@ -1,0 +1,49 @@
+
+
+; 2012/Mar/28 -  delete the batch & claims records for newly created claims via suspense claims
+;choose batctrl-batch-nbr '34K81247' to '34K81253'
+; 2012/Apr/24 -  delete the batch & claims records for newly created claims via suspense claims
+;choose batctrl-batch-nbr '42780000' from web3
+; 2013/May/14 -  delete miscellaneous payment batch 22X95593 that Sue wants to cancel     
+;choose batctrl-batch-nbr '22X95593' 
+; 2013/OCt/22 -  delete miscellaneous payment claim 22X9389102 that Sue wants to cancel because it was
+; applied to the wrong doctor 55F which was created by Helena that should not be created, it should apply to E84 instad.
+
+cancel clear
+set lock record update
+
+access f001-batch-control-file		&
+       link 'B', batctrl-batch-nbr	&
+	to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+; select one or more random batch nbr
+;choose batctrl-batch-nbr parm prompt 'Enter batch nbr: '
+choose batctrl-batch-nbr '22X93891' 
+
+sel if key-clm-claim-nbr of f002-claims-mstr = 02
+
+; select a range of consecutive batch nbr
+;choose batctrl-batch-nbr '34K81247' to '34K81253'
+
+sorted on batctrl-batch-nbr
+
+subfile save_delete_f002_hdr  keep if key-clm-serv-code of f002-claims-mstr[1:4] = '0000' &
+	include f002-claims-mstr
+subfile save_delete_f002_dtl  keep if key-clm-serv-code of f002-claims-mstr[1:4] <> '0000' &
+				  and key-clm-serv-code of f002-claims-mstr[1:4] <> 'ZZZZ' &
+	include f002-claims-mstr
+subfile save_delete_f002_desc keep if key-clm-serv-code of f002-claims-mstr[1:4] = 'ZZZZ'  &
+	include f002-claims-mstr
+
+subfile save_fixf001 keep at batctrl-batch-nbr include f001-batch-control-file
+
+output f002-claims-mstr delete on errors report
+
+;output f001-batch-control-file delete at batctrl-batch-nbr on errors report
+
+output f001-batch-control-file update at batctrl-batch-nbr on errors report
+     item batctrl-amt-act final batctrl-amt-act - 9597
+     item batctrl-calc-tot-rev final batctrl-calc-tot-rev - 9597
+     item batctrl-manual-pay-tot final batctrl-manual-pay-tot - 9597
+     item batctrl-nbr-claims-in-batch final batctrl-nbr-claims-in-batch - 1
+     item batctrl-batch-status final '1'

@@ -1,0 +1,1471 @@
+;#> PROGRAM-ID.     M020.QKS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : MAINTENANCE OF F020-DOCTOR-MSTR
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/JAN/09 D.B.         - ORIGINAL (SMS 137)
+;     91/JAN/25 M.C.	     - CEILING DATE1 MUST BE WITHIN THE YEAREND
+;			       DATE (IE AFTER JUNE 31)
+;     91/MAR/19 D.B.         - ALLOW TO ENTER 0 INTO CEILING DATE2 & 3
+;     91/MAY/23 D.B.         - EXPENSE-1 REQUIRED ONLY IN ENTRYMODE
+;     91/JUN/11 D.B.         - CHANGE CHECK OF DOC-OHIP-NBR
+;     91/JAN/14 D.B.         - ALLOW TO CHANGE DOC-OHIP-NBR
+;     91/JUL/18 K.Z.	     - ADD "ITEM...INITIAL..."s FOR F060 CHQ REG
+;     92/JUL/06 B.E.	     - REMOVED PAYROLL INFORMATION - NOW IN D020
+;     92/APR/07	M.C.	     - ALLOW USER TO ACCESS DOCTOR MSTR BY
+;			       DOCTOR NAME SOUNDEX USING DOCTOR NAME
+;     92/JUN/10 M.C.	     - SMS 139 - ADD 5 MORE CLINICS AND 2 MORE
+;					 SPECIALTY CODES
+;     92/SEP/14 M.C.	     - PDR 557 - USE F002-CLAIMS-MSTR-M020
+;					 INSTEAD OF F002-CLAIMS-MSTR
+;     95/APR/26 M.C.	     - PDR 612 - WHEN A DOCTOR IS DELETED, ADD A
+;					 RECORD TO F022-DELETED-DOC-MSTR
+;					 & F021-AVAIL-DOCTOR-MSTR.
+;			     - PDR 605 - IF DOC OHIP NBR IS DOES NOT
+;				         PASS MOD 10 CHECK, DISPLAY AS
+;					 WARNING INSTEAD OF ERROR
+;     95/NOV/09 M.C.	     - DO NOT ALLOW USER TO CHANGE ITEMS ON ID
+;			       2,3,4 & 6 BUT ALLOW TO CHANGE VIA LIN2,
+;			       LIN3, LIN4 & LIN6 DESIGNER PROCEDURES
+;     97/May/27 K. M.        - Added two fields: GROUP-REGULAR-SERVICE
+;                              and GROUP-OVER-SERVICED and 3 specialty
+;                              fields per location
+;     98/aug/18 B.E.	      - added 'using 4' for const mstr read of rec #4
+;   1999/jan/15 B.E.		- y2k - 
+;   1999/Jan/18 S.B.	     - Fixed the 'start' and 'terminate' dates for
+;			       Y2K compliance.
+;   1999/Apr/22 S.B.	     - Commented out the w-year, w-mth, and
+;			       w-comp-date defines because the are not used.
+;   1999/Oct/20 M.C.	     - change BATCH_UPDATE_F050_F051_F060 into
+;			        $cmd/batch_update_f050_f051_f060
+;   2000/jan/18 B.E.	- changed activities to not allow delete
+;   			- if termination date set, then f021 added to
+;   2000/feb/16 M.C.	- comment any codes related to  f022-deleted-doc-mstr 
+;			  because file f022-deleted-doc-mstr is no longer used
+;   2000/mar/03 M.C.	- prompt for w-start-date when user makes dept change
+;			  in preupdate procedure
+;   2000/apr/19 B.A.	- added extra hsc code with conditional compiles
+;   2000/may/30 M.C.	- Only allow System Administrator can change doctor department
+; 2000/oct/20 B.E. - added EXPort/IMPort functions to allow some of the doctor
+;		     information to be transferred into another system. Data
+;		     is transferred via files into the 
+;		     /temp/transfer_area/rmabill directory
+; 2000/nov/09 B.E. - added close of transfer-file after data read so that if
+;		     user does another import the program re-reads file 
+;		     from the beginning
+; 2000/nov/20 B.E. - added warning msg if not running in the current 'live'
+;                    or 'production' directory
+; 2001/sep/18 B.E. - added call to OPTions designer routine to maintain doctor
+;                   options files
+; 2002/jul/16 M.C. - added 5 more doc-nx-avail-batch for the additional clinics
+;		     so that there will be unique set of batch number for each
+;		     clinic for each doctor		     
+; 03/nov/05 b.e. - alpha doctor nbr
+;		 - forced 3 charcter doctor number by padding with lj zero's
+;		 - restriced doctor number to not be '000' or contain '*'
+; 03/nov/20 b.e. - forced UPSHIFT on doc-nbr field to ensure doctor 'nbr' has
+;		   has no lowercase letters
+
+can clear
+
+screen $pb_obj/m020 activities entry,find, change
+
+;S.B. - The following three def's are not used anywhere in this program.
+;def w-year = nconvert(ascii(sysdate,6)[1:2])
+;def w-mth = nconvert(ascii(sysdate,6)[3:2])
+;def w-comp-date = nconvert(ascii((w-year - 1),2) + '0701') if w-mth < 7 &
+;    else          nconvert(ascii(w-year,2) + '0701')
+
+;use $use/versions.def 
+def version-live char*10 = "101c"
+
+;!temp x-doc-nbr
+temp x-doc-nbr			char*3
+temp x-doc-nbr-length
+temp x-doc-dept
+Temp x-doc-clinic-nbr
+temp x-doc-name			char*30
+temp x-doc-inits		char*30
+temp x-doc-sin-nbr		
+temp x-doc-sub-specialty	char*30
+temp x-doc-full-part-ind	char*30
+temp x-doc-addr-home-1		char*30
+temp x-doc-addr-home-2		char*30
+temp x-doc-addr-home-3		char*30
+temp x-doc-addr-home-pc		char*30
+temp x-doc-addr-office-1	char*30
+temp x-doc-addr-office-2	char*30
+temp x-doc-addr-office-3	char*30
+temp x-doc-addr-office-pc	char*30
+temp x-doc-bank-nbr
+temp x-doc-bank-branch
+temp x-doc-bank-acct		char*30
+temp x-doc-date-fac-start date
+temp x-doc-date-fac-term  date
+temp comline char*256
+temp x-rec-count 
+temp tmp-nbr
+temp x-doc-terminated-flag char*1
+temp w-delete-flag char*1
+temp x-doc-dept-flag char*1
+temp w-count
+temp w-password char*7
+;temp x-doc-full-part-ind char*1
+temp w-loc-nbr char*4
+temp x-doc-ohip-nbr
+temp x-doc-ohip-nbr-1
+temp x-doc-ohip-nbr-2
+temp x-doc-ohip-nbr-3
+temp x-doc-ohip-nbr-4
+temp x-doc-ohip-nbr-5
+temp x-doc-ohip-nbr-6
+
+file f020-doctor-mstr
+	access viaindex doc-nbr request doc-nbr
+	access viaindex doc-name-soundex using soundex(doc-name) &
+			request doc-name
+	access viaindex doc-ohip-nbr request doc-ohip-nbr
+	access sequential
+
+
+file f030-locations-mstr reference
+	access viaindex loc-nbr using w-loc-nbr
+
+;FILE F002-CLAIMS-MSTR DESIGNER
+;	ACCESS VIAINDEX KEY-CLAIMS-MSTR	&
+;	USING ('B' + ASCII(DOC-CLINIC-NBR,2) + ASCII(DOC-NBR,4) + '@')
+
+file f002-claims-mstr-m020 designer
+	access via key-clm-type, key-clm-batch-nbr-red		&
+;!	using ('B'), (ascii(doc-clinic-nbr,2) + ascii(doc-nbr,4) + '@')
+	using ('B'), (ascii(doc-clinic-nbr,2) + doc-nbr + '@')
+
+
+file f070-dept-mstr reference
+	access viaindex dept-nbr using doc-dept
+
+file f080-bank-mstr reference
+	access viaindex bank-cd using	&
+	(ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+
+file constants-mstr-rec-4 designer
+
+file iconst-mstr-rec reference
+	access viaindex iconst-clinic-nbr-1-2 using doc-clinic-nbr
+
+file transfer-file designer close
+
+; 2000/02/16 - MC 
+;file f022-deleted-doc-mstr designer
+
+file f021-avail-doctor-mstr designer
+
+; TEMP W-DOC-DATE-FAC-START DATE
+; TEMP W-DOC-DATE-FAC-TERM  DATE
+temp w-date date initial sysdate
+
+; 2000/03/03 - MC 
+temp w-start-date date 
+temp app-version char*10
+temp app-msg char*15
+
+hilite error audible
+
+title 'M020 DOCTOR MASTER MAINTENANCE' at 1,25
+align (,,70)
+field w-date display predisplay
+skip to 2
+align (1,4,21)
+field doc-nbr of f020-doctor-mstr required nochange lookup noton &
+      f020-doctor-mstr viaindex doc-nbr label 'DOCTOR#'
+skip to 2
+align (,,65)
+hilite display blinking
+field app-msg   display predisplay
+hilite display default
+
+align (1,4,9) (,34,42) (,46,58) (,65,69)
+field doc-name of f020-doctor-mstr label 'NAME' required
+field doc-name-soundex of f020-doctor-mstr silent
+field doc-inits of f020-doctor-mstr label 'INITS'
+field doc-ohip-nbr of f020-doctor-mstr required		&
+	label 'OHIP/REG#'
+field doc-sin-nbr of f020-doctor-mstr pic '^^^-^^^-^^^' label 'SIN'
+align (,34,50)
+field doc-sub-specialty of f020-doctor-mstr label 'SUB-SPECIALTY'
+align (1,4,9) (,16,23) (,34,42)
+field doc-dept of f020-doctor-mstr lookup on f070-dept-mstr	&
+	label 'DEPT' required
+field doc-clinic-nbr of f020-doctor-mstr lookup on iconst-mstr-rec &
+	label 'CLINIC' required
+field doc-full-part-ind of f020-doctor-mstr label 'CLASS' required
+
+;2000/04/19 - B.A. begin
+@if      rma
+@elseif  hsc
+  align (,46,55) (,61,73) (,,74)
+  field doc-partnership      of f020-doctor-mstr label "PARTNER? "
+  field doc-ep-pay-code of f020-doctor-mstr label 'PAY CD'
+  field doc-ep-pay-sub-code  of f020-doctor-mstr
+@else
+** error ** conditional compile required for this program
+@endif
+;2000/04/19 end
+
+align (1,4,6)
+field doc-addr-home-1 of f020-doctor-mstr label 'H'
+align (,4,6)
+field doc-addr-home-2 of f020-doctor-mstr label 'O'
+field doc-addr-home-3 of f020-doctor-mstr label 'M'
+align (,,6)
+field doc-addr-home-pc of f020-doctor-mstr pic '^^^ ^^^'
+skip to 6
+align (,32,34)
+field doc-addr-office-1 of f020-doctor-mstr label 'O'
+field doc-addr-office-2 of f020-doctor-mstr label 'F'
+field doc-addr-office-3 of f020-doctor-mstr label 'F'
+align (,,34)
+field doc-addr-office-pc of f020-doctor-mstr pic '^^^ ^^^'
+skip to 6
+align (,61,71)
+field doc-bank-nbr of f020-doctor-mstr label 'BANK NBR' pic '^^^^'
+align (,61,70)
+field doc-bank-branch of f020-doctor-mstr if doc-bank-nbr <> 0	&
+	label 'BRANCH' pic '^^^^^'
+;FIELD DOC-HOSP-NBR OF F020-DOCTOR-MSTR
+align (,61,68)
+field doc-bank-acct of f020-doctor-mstr label 'ACCT #' if doc-bank-nbr <> 0
+align (,,6) (,,34)
+skip to 10
+;Y2K changes - (next 4 lines)
+;align (1,4,25) (,35,45)
+align  (1,4,25) (,39,49)
+field doc-date-fac-start pic '^^^^/^^/^^' label 'FACULTY DATES: START'
+field doc-date-fac-term pic '^^^^/^^/^^' label 'TERMINATE' id same
+
+;2000/04/19 - B.A. begin
+@if      rma
+@elseif  hsc
+  align (,61,70)
+  field doc-cspo of f020-doctor-mstr label "CPSO "
+@endif
+
+skip 1
+align (1,4,34) (,40,55)
+field group_regular_service label 'SERVICE AREAS/SITES- REGULAR:'
+field group_over_serviced label 'OVER SERVICED:' id same
+title 'ACCEPTED LOCATIONS and BY SPECIALTY - " " (REGULAR)/"O"(OVER) serviced areas'
+skip 1
+title '1/2/3' at ,9
+title '1/2/3' at ,21
+title '1/2/3' at ,33
+title '1/2/3' at ,45
+title '1/2/3' at ,57
+title '1/2/3' at ,69
+align (1,,4) (,8,9) (,10,11) (,12,13) (,,16) (,20,21) (,22,23) (,24,25) (,,28) (,32,33) (,34,35) (,36,37) (,,40) (,44,45) (,46,47) (,48,49) (,,52) (,56,57) (,58,59) (,60,61)
+field doc-loc-1 of f020-doctor-mstr
+field doc-loc-1-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-1-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-1-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-2 of f020-doctor-mstr              id same
+field doc-loc-2-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-2-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-2-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-3 of f020-doctor-mstr              id same
+field doc-loc-3-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-3-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-3-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-4 of f020-doctor-mstr              id same
+field doc-loc-4-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-4-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-4-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-5 of f020-doctor-mstr              id same
+field doc-loc-5-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-5-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-5-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-6 of f020-doctor-mstr id same nolabel data at ,64 display
+field doc-loc-6-s1 of f020-doctor-mstr label '-' at ,68 id same data at ,69 display
+field doc-loc-6-s2 of f020-doctor-mstr label '/' at ,70 id same data at ,71 display
+field doc-loc-6-s3 of f020-doctor-mstr label '/' at ,72 id same data at ,73 display
+align (,,4) (,8,9) (,10,11) (,12,13) (,,16) (,20,21) (,22,23) (,24,25) (,,28) (,32,33) (,34,35) (,36,37) (,,40) (,44,45) (,46,47) (,48,49) (,,52) (,56,57) (,58,59) (,60,61)
+field doc-loc-7 of f020-doctor-mstr              id same
+field doc-loc-7-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-7-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-7-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-8 of f020-doctor-mstr              id same
+field doc-loc-8-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-8-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-8-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-9 of f020-doctor-mstr              id same
+field doc-loc-9-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-9-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-9-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-10 of f020-doctor-mstr                id same
+field doc-loc-10-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-10-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-10-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-11 of f020-doctor-mstr              id same
+field doc-loc-11-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-11-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-11-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-12 of f020-doctor-mstr id same nolabel data at ,64 display
+field doc-loc-12-s1 of f020-doctor-mstr id same label '-' at ,68 data at ,69 display
+field doc-loc-12-s2 of f020-doctor-mstr id same label '/' at ,70 data at ,71 display
+field doc-loc-12-s3 of f020-doctor-mstr id same label '/' at ,72 data at ,73 display
+field doc-loc-13 of f020-doctor-mstr              id same
+field doc-loc-13-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-13-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-13-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-14 of f020-doctor-mstr              id same
+field doc-loc-14-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-14-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-14-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-15 of f020-doctor-mstr              id same
+field doc-loc-15-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-15-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-15-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-16 of f020-doctor-mstr              id same
+field doc-loc-16-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-16-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-16-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-17 of f020-doctor-mstr              id same
+field doc-loc-17-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-17-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-17-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-18 of f020-doctor-mstr id same nolabel data at ,64 display
+field doc-loc-18-s1 of f020-doctor-mstr id same label '-' at ,68 data at ,69 display
+field doc-loc-18-s2 of f020-doctor-mstr id same label '/' at ,70 data at ,71 display
+field doc-loc-18-s3 of f020-doctor-mstr id same label '/' at ,72 data at ,73 display
+field doc-loc-19 of f020-doctor-mstr              id same
+field doc-loc-19-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-19-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-19-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-20 of f020-doctor-mstr              id same
+field doc-loc-20-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-20-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-20-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-21 of f020-doctor-mstr              id same
+field doc-loc-21-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-21-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-21-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-22 of f020-doctor-mstr              id same
+field doc-loc-22-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-22-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-22-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-23 of f020-doctor-mstr              id same
+field doc-loc-23-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-23-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-23-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-24 of f020-doctor-mstr id same nolabel data at ,64 display
+field doc-loc-24-s1 of f020-doctor-mstr id same label '-' at ,68 data at ,69 display
+field doc-loc-24-s2 of f020-doctor-mstr id same label '/' at ,70 data at ,71 display
+field doc-loc-24-s3 of f020-doctor-mstr id same label '/' at ,72 data at ,73 display
+field doc-loc-25 of f020-doctor-mstr              id same
+field doc-loc-25-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-25-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-25-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-26 of f020-doctor-mstr              id same
+field doc-loc-26-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-26-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-26-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-27 of f020-doctor-mstr              id same
+field doc-loc-27-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-27-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-27-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-28 of f020-doctor-mstr              id same
+field doc-loc-28-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-28-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-28-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-29 of f020-doctor-mstr              id same
+field doc-loc-29-s1 of f020-doctor-mstr label '-' id same
+field doc-loc-29-s2 of f020-doctor-mstr label '/' id same
+field doc-loc-29-s3 of f020-doctor-mstr label '/' id same
+field doc-loc-30 of f020-doctor-mstr id same nolabel data at ,64 display
+field doc-loc-30-s1 of f020-doctor-mstr id same label '-' at ,68 data at ,69 display
+field doc-loc-30-s2 of f020-doctor-mstr id same label '/' at ,70 data at ,71 display
+field doc-loc-30-s3 of f020-doctor-mstr id same label '/' at ,72 data at ,73 display
+skip to 22
+; 2002/07/16 - MC - include the corresponding next batch nbr besides each clinic
+;align (1,4,18) (,,22) (,,26) (,,30) (,,34) (,57,74)
+align (1,4,18) (,20,21) (,,26) (,28,29) (,,34) (,36,37) (,,42) (,44,45) (,,50) (,52,53) (,58,75)
+field doc-clinic-nbr-2 of f020-doctor-mstr 	&
+	lookup on iconst-mstr-rec		&
+	message 'CLINIC NBR NOT DEFINED'	&
+	label 'OTHER CLINICS'
+field doc-nx-avail-batch-2 of f020-doctor-mstr 	&
+	label '/' display
+field doc-clinic-nbr-3 of f020-doctor-mstr 	&
+	lookup on iconst-mstr-rec		&
+	message 'CLINIC NBR NOT DEFINED' id same
+field doc-nx-avail-batch-3 of f020-doctor-mstr 	&
+	label '/' display
+field doc-clinic-nbr-4 of f020-doctor-mstr 	&
+	lookup on iconst-mstr-rec		&
+	message 'CLINIC NBR NOT DEFINED' id same
+field doc-nx-avail-batch-4 of f020-doctor-mstr 	&
+	label '/' display
+field doc-clinic-nbr-5 of f020-doctor-mstr 	&
+	lookup on iconst-mstr-rec		&
+	message 'CLINIC NBR NOT DEFINED' id same
+field doc-nx-avail-batch-5 of f020-doctor-mstr 	&
+	label '/' display
+field doc-clinic-nbr-6 of f020-doctor-mstr 	&
+	lookup on iconst-mstr-rec		&
+	message 'CLINIC NBR NOT DEFINED' id same
+field doc-nx-avail-batch-6 of f020-doctor-mstr 	&
+	label '/' display
+; 2002/07/16 - end
+field doc-nx-avail-batch of f020-doctor-mstr pic '^^^)' noid display &
+	label 'LAST BATCH NBR  ('
+align (1,4,21) (,24,26) (,29,31)
+field doc-spec-cd of f020-doctor-mstr label 'SPECIALTY-1/2/3:'
+field doc-spec-cd-2 of f020-doctor-mstr label '/' id same
+field doc-spec-cd-3 of f020-doctor-mstr label '/' id same
+
+skip to 23
+; 2000/030/03 - MC  include w-start-date for dept change
+;align (,,50)
+align (,,50) (,,60)
+field w-password noid display noecho
+field w-start-date noid display 
+
+
+procedure process doc-bank-nbr
+begin
+  if doc-bank-nbr = 0
+    then begin
+      let doc-bank-branch = 0
+      let doc-bank-acct = ' '
+      end
+    end
+
+;! (ensure nbr is 3 characters long - pad with zeros if needed)
+procedure edit doc-nbr
+begin
+
+use $use/pad_doc_nbr.qks 
+  let tmp-nbr = index(fieldtext,"*")
+  if fieldtext = "000" or tmp-nbr > 0
+  then 
+    then error "INVALID Doctor Number - can't be '000' or contain '*'"
+  let fieldtext = upshift(fieldtext)
+end
+
+procedure edit doc-bank-branch
+begin
+  get f080-bank-mstr viaindex bank-cd using	&
+	(ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+  if not accessok
+    then error "INVALID BANK NBR"
+  end
+
+procedure edit doc-dept
+begin
+  if oldvalue(doc-dept) <> doc-dept and oldvalue(doc-dept) <> 0
+    then begin
+      let x-doc-dept-flag = 'Y'
+      end
+    end
+
+procedure process doc-name
+begin
+  let doc-name-soundex = soundex(doc-name)
+  end
+
+
+procedure process doc-ohip-nbr
+begin
+  if doc-ohip-nbr <> 0
+  then begin
+    let x-doc-ohip-nbr				&
+    = (floor(doc-ohip-nbr / 100000) * 2)
+    if x-doc-ohip-nbr >= 10
+    then begin
+      let x-doc-ohip-nbr-1			&
+      = floor(x-doc-ohip-nbr / 10)		&
+      + mod(x-doc-ohip-nbr,10)
+      end
+    else let x-doc-ohip-nbr-1 = x-doc-ohip-nbr
+    let x-doc-ohip-nbr				&
+    = (floor(mod(doc-ohip-nbr,10000) / 1000)*2)
+    if x-doc-ohip-nbr >= 10
+    then begin
+      let x-doc-ohip-nbr-3			&
+      = floor(x-doc-ohip-nbr / 10)		&
+      + mod(x-doc-ohip-nbr,10)
+      end
+    else let x-doc-ohip-nbr-3 = x-doc-ohip-nbr
+    let x-doc-ohip-nbr				&
+    = (floor(mod(doc-ohip-nbr,100) / 10) * 2)
+    if x-doc-ohip-nbr >= 10
+    then begin
+      let x-doc-ohip-nbr-5			&
+      = floor(x-doc-ohip-nbr / 10)		&
+      + mod(x-doc-ohip-nbr,10)
+      end
+    else let x-doc-ohip-nbr-5 = x-doc-ohip-nbr
+
+    let x-doc-ohip-nbr-6			&
+    = x-doc-ohip-nbr-1				&
+    + (floor(mod(doc-ohip-nbr,100000) / 10000))	&
+    + x-doc-ohip-nbr-3				&
+    + (floor(mod(doc-ohip-nbr,1000) / 100))	&
+    + x-doc-ohip-nbr-5
+
+    if x-doc-ohip-nbr-6 > 10
+      then let x-doc-ohip-nbr = mod(x-doc-ohip-nbr-6,10)
+      else let x-doc-ohip-nbr = x-doc-ohip-nbr-6
+    let x-doc-ohip-nbr = 10 - x-doc-ohip-nbr
+    if x-doc-ohip-nbr >= 10
+      then let x-doc-ohip-nbr = mod(x-doc-ohip-nbr,10)
+    if x-doc-ohip-nbr <> (mod(doc-ohip-nbr,10))
+      then begin
+        let x-doc-ohip-nbr-1 = (mod(doc-ohip-nbr,10))
+        if x-doc-ohip-nbr-1 = 1 or x-doc-ohip-nbr-1 = 2
+        then begin
+          let x-doc-ohip-nbr = abs(10 - x-doc-ohip-nbr-6)
+          if x-doc-ohip-nbr-1 <> mod(x-doc-ohip-nbr,10)
+;         THEN ERROR "INVALID DOCTOR OHIP NUMBER"
+          then warning "INVALID DOCTOR OHIP NUMBER"
+          end
+;       ELSE ERROR "INVALID DOCTOR OHIP NUMBER"
+        else warning "INVALID DOCTOR OHIP NUMBER"
+        end
+      end
+    end
+
+procedure process doc-full-part-ind
+begin
+  get constants-mstr-rec-4 using 4
+  if not accessok 
+     then error "SERIOUS ERROR! - Can't read Const Mstr Rec #4"
+
+  let x-doc-full-part-ind = 'N'
+  for const-class-data
+    begin
+    if const-class-ltr = doc-full-part-ind
+      then let x-doc-full-part-ind = 'Y'
+    end
+  if x-doc-full-part-ind <> 'Y'
+    then error "WRONG CLASS CODE, PLEASE REENTER"
+  end
+ 
+
+procedure internal check-location
+begin
+  if w-loc-nbr <> ' '
+    then begin
+      get f030-locations-mstr viaindex loc-nbr using w-loc-nbr opt
+      if not accessok
+        then error "LOCATION IS NOT ON LOCATIONS MASTER, PLEASE REENTER"
+      end
+  end
+
+procedure edit doc-loc-1
+begin
+  let w-loc-nbr = doc-loc-1
+  do internal check-location
+  end
+
+procedure edit doc-loc-2
+begin
+  let w-loc-nbr = doc-loc-2
+  do internal check-location
+  end
+
+procedure edit doc-loc-3
+begin
+  let w-loc-nbr = doc-loc-3
+  do internal check-location
+  end
+
+procedure edit doc-loc-4
+begin
+  let w-loc-nbr = doc-loc-4
+  do internal check-location
+  end
+
+procedure edit doc-loc-5
+begin
+  let w-loc-nbr = doc-loc-5
+  do internal check-location
+  end
+
+procedure edit doc-loc-6
+begin
+  let w-loc-nbr = doc-loc-6
+  do internal check-location
+  end
+
+procedure edit doc-loc-7
+begin
+  let w-loc-nbr = doc-loc-7
+  do internal check-location
+  end
+
+procedure edit doc-loc-8
+begin
+  let w-loc-nbr = doc-loc-8
+  do internal check-location
+  end
+
+procedure edit doc-loc-9
+begin
+  let w-loc-nbr = doc-loc-9
+  do internal check-location
+  end
+
+procedure edit doc-loc-10
+begin
+  let w-loc-nbr = doc-loc-10
+  do internal check-location
+  end
+
+procedure edit doc-loc-11
+begin
+  let w-loc-nbr = doc-loc-11
+  do internal check-location
+  end
+
+procedure edit doc-loc-12
+begin
+  let w-loc-nbr = doc-loc-12
+  do internal check-location
+  end
+
+procedure edit doc-loc-13
+begin
+  let w-loc-nbr = doc-loc-13
+  do internal check-location
+  end
+
+procedure edit doc-loc-14
+begin
+  let w-loc-nbr = doc-loc-14
+  do internal check-location
+  end
+
+procedure edit doc-loc-15
+begin
+  let w-loc-nbr = doc-loc-15
+  do internal check-location
+  end
+
+procedure edit doc-loc-16
+begin
+  let w-loc-nbr = doc-loc-16
+  do internal check-location
+  end
+
+procedure edit doc-loc-17
+begin
+  let w-loc-nbr = doc-loc-17
+  do internal check-location
+  end
+
+procedure edit doc-loc-18
+begin
+  let w-loc-nbr = doc-loc-18
+  do internal check-location
+  end
+
+procedure edit doc-loc-19
+begin
+  let w-loc-nbr = doc-loc-19
+  do internal check-location
+  end
+
+procedure edit doc-loc-20
+begin
+  let w-loc-nbr = doc-loc-20
+  do internal check-location
+  end
+
+procedure edit doc-loc-21
+begin
+  let w-loc-nbr = doc-loc-21
+  do internal check-location
+  end
+
+procedure edit doc-loc-22
+begin
+  let w-loc-nbr = doc-loc-22
+  do internal check-location
+  end
+
+procedure edit doc-loc-23
+begin
+  let w-loc-nbr = doc-loc-23
+  do internal check-location
+  end
+
+procedure edit doc-loc-24
+begin
+  let w-loc-nbr = doc-loc-24
+  do internal check-location
+  end
+
+procedure edit doc-loc-25
+begin
+  let w-loc-nbr = doc-loc-25
+  do internal check-location
+  end
+
+procedure edit doc-loc-26
+begin
+  let w-loc-nbr = doc-loc-26
+  do internal check-location
+  end
+
+procedure edit doc-loc-27
+begin
+  let w-loc-nbr = doc-loc-27
+  do internal check-location
+  end
+
+procedure edit doc-loc-28
+begin
+  let w-loc-nbr = doc-loc-28
+  do internal check-location
+  end
+
+procedure edit doc-loc-29
+begin
+  let w-loc-nbr = doc-loc-29
+  do internal check-location
+  end
+
+procedure edit doc-loc-30
+begin
+  let w-loc-nbr = doc-loc-30
+  do internal check-location
+  end
+
+procedure designer pass
+begin
+  accept w-password
+  if w-password = 'RMAPR'
+  then begin
+    accept doc-nx-avail-batch
+    display doc-nx-avail-batch
+; 2002/07/16 - MC -include 5 additional batch nbrs
+    accept doc-nx-avail-batch-2
+    display doc-nx-avail-batch-2
+    accept doc-nx-avail-batch-3
+    display doc-nx-avail-batch-3
+    accept doc-nx-avail-batch-4
+    display doc-nx-avail-batch-4
+    accept doc-nx-avail-batch-5
+    display doc-nx-avail-batch-5
+    accept doc-nx-avail-batch-6
+    display doc-nx-avail-batch-6
+; 2002/07/16 - end
+    end
+  end
+
+procedure designer alt
+begin
+  let x-doc-nbr = doc-nbr
+  let x-doc-dept = doc-dept
+  run screen $pb_obj/m021 passing x-doc-nbr, x-doc-dept
+  end
+ 
+procedure designer 2
+disable
+
+procedure designer 3
+disable
+
+procedure designer 4
+disable
+
+procedure designer 5
+disable
+
+procedure designer 6
+disable
+
+procedure designer 7
+begin
+    accept doc-loc-1
+    accept doc-loc-1-s1
+    accept doc-loc-1-s2
+    accept doc-loc-1-s3
+    accept doc-loc-2
+    accept doc-loc-2-s1
+    accept doc-loc-2-s2
+    accept doc-loc-2-s3
+    accept doc-loc-3
+    accept doc-loc-3-s1
+    accept doc-loc-3-s2
+    accept doc-loc-3-s3
+    accept doc-loc-4
+    accept doc-loc-4-s1
+    accept doc-loc-4-s2
+    accept doc-loc-4-s3
+    accept doc-loc-5
+    accept doc-loc-5-s1
+    accept doc-loc-5-s2
+    accept doc-loc-5-s3
+    accept doc-loc-6
+    accept doc-loc-6-s1
+    accept doc-loc-6-s2
+    accept doc-loc-6-s3
+    accept doc-loc-7
+    accept doc-loc-7-s1
+    accept doc-loc-7-s2
+    accept doc-loc-7-s3
+    accept doc-loc-8
+    accept doc-loc-8-s1
+    accept doc-loc-8-s2
+    accept doc-loc-8-s3
+    accept doc-loc-9
+    accept doc-loc-9-s1
+    accept doc-loc-9-s2
+    accept doc-loc-9-s3
+    accept doc-loc-10
+    accept doc-loc-10-s1
+    accept doc-loc-10-s2
+    accept doc-loc-10-s3
+    accept doc-loc-11
+    accept doc-loc-11-s1
+    accept doc-loc-11-s2
+    accept doc-loc-11-s3
+    accept doc-loc-12
+    accept doc-loc-12-s1
+    accept doc-loc-12-s2
+    accept doc-loc-12-s3
+    accept doc-loc-13
+    accept doc-loc-13-s1
+    accept doc-loc-13-s2
+    accept doc-loc-13-s3
+    accept doc-loc-14
+    accept doc-loc-14-s1
+    accept doc-loc-14-s2
+    accept doc-loc-14-s3
+    accept doc-loc-15
+    accept doc-loc-15-s1
+    accept doc-loc-15-s2
+    accept doc-loc-15-s3
+    accept doc-loc-16
+    accept doc-loc-16-s1
+    accept doc-loc-16-s2
+    accept doc-loc-16-s3
+    accept doc-loc-17
+    accept doc-loc-17-s1
+    accept doc-loc-17-s2
+    accept doc-loc-17-s3
+    accept doc-loc-18
+    accept doc-loc-18-s1
+    accept doc-loc-18-s2
+    accept doc-loc-18-s3
+    accept doc-loc-19
+    accept doc-loc-19-s1
+    accept doc-loc-19-s2
+    accept doc-loc-19-s3
+    accept doc-loc-20
+    accept doc-loc-20-s1
+    accept doc-loc-20-s2
+    accept doc-loc-20-s3
+    accept doc-loc-21
+    accept doc-loc-21-s1
+    accept doc-loc-21-s2
+    accept doc-loc-21-s3
+    accept doc-loc-22
+    accept doc-loc-22-s1
+    accept doc-loc-22-s2
+    accept doc-loc-22-s3
+    accept doc-loc-23
+    accept doc-loc-23-s1
+    accept doc-loc-23-s2
+    accept doc-loc-23-s3
+    accept doc-loc-24
+    accept doc-loc-24-s1
+    accept doc-loc-24-s2
+    accept doc-loc-24-s3
+    accept doc-loc-25
+    accept doc-loc-25-s1
+    accept doc-loc-25-s2
+    accept doc-loc-25-s3
+    accept doc-loc-26
+    accept doc-loc-26-s1
+    accept doc-loc-26-s2
+    accept doc-loc-26-s3
+    accept doc-loc-27
+    accept doc-loc-27-s1
+    accept doc-loc-27-s2
+    accept doc-loc-27-s3
+    accept doc-loc-28
+    accept doc-loc-28-s1
+    accept doc-loc-28-s2
+    accept doc-loc-28-s3
+    accept doc-loc-29
+    accept doc-loc-29-s1
+    accept doc-loc-29-s2
+    accept doc-loc-29-s3
+    accept doc-loc-30
+    accept doc-loc-30-s1
+    accept doc-loc-30-s2
+    accept doc-loc-30-s3
+end
+
+procedure designer lin2 help 'CHANGE ITEMS ON LINE 2'
+begin
+   accept doc-name
+   accept doc-inits
+   accept doc-ohip-nbr
+   accept doc-sin-nbr
+   accept doc-sub-specialty
+end
+
+procedure designer lin3 help 'CHANGE ITEMS ON LINE 3'
+begin
+  accept doc-dept
+  get f070-dept-mstr optional
+  if not accessok
+  then error='DEPT NOT DEFINED'
+  accept doc-clinic-nbr
+  get iconst-mstr-rec optional
+  if not accessok
+  then error 'CLINIC NOT DEFINED'
+  accept doc-full-part-ind
+
+;2000/04/19 - B.A. begin
+@if      rma
+@elseif  hsc
+  accept doc-partnership
+  accept doc-ep-pay-code
+  accept doc-ep-pay-sub-code
+@else
+** error ** conditional compile required for this program
+@endif
+;2000/04/19 end
+
+  end
+
+procedure designer lin4 help 'CHANGE ITEMS ON LINE 4'
+begin
+   accept doc-addr-home-1
+   accept doc-addr-home-2
+   accept doc-addr-home-3
+   accept doc-addr-home-pc
+   accept doc-addr-office-1
+   accept doc-addr-office-2
+   accept doc-addr-office-3
+   accept doc-addr-office-pc
+   accept doc-bank-nbr
+   if doc-bank-nbr <> 0
+   then begin
+   	accept doc-bank-branch
+   	accept doc-bank-acct
+   end
+end
+
+procedure designer lin5 help 'CHANGE ITEMS ON LINE 5'
+begin
+    accept   doc-date-fac-start
+    accept   doc-date-fac-term
+;    if fieldtext <> ascii(doc-date-fac-term)
+;    then begin
+;        info  fieldtext         now response
+;        info  ascii(doc-date-fac-term) now response 
+;    end
+;   (if no termination date, ensure that doctor number NOT in available list)
+    if   doc-date-fac-term = 0
+    then
+      begin
+        get f021-avail-doctor-mstr  optional viaindex doc-no using doc-nbr
+        if accessok
+          then 
+	    begin
+	      warning "Doctor had been reactived-s/he will be deleted from Available Doctor Nbr file"
+	      let x-doc-terminated-flag = "Y"
+	    end
+      end
+    else
+	let x-doc-terminated-flag = "N"
+      	
+; doctor terminated - place his number into "available" file
+    if   doc-date-fac-term <> 0
+    then 
+      begin
+;       (determine if nbr was already in f021)
+        get f021-avail-doctor-mstr  optional viaindex doc-no using doc-nbr
+        if accessok
+          then 
+	    begin
+;	      (update doctor's available date within f021)
+;              let date-available of f021-avail-doctor-mstr = sysdate
+              let date-available of f021-avail-doctor-mstr = doc-date-fac-term
+              put f021-avail-doctor-mstr
+	    end
+	 else
+	     begin
+;	        (add doctor's nbr to available numbers table)
+               let doc-no         of f021-avail-doctor-mstr = doc-nbr
+               let date-available of f021-avail-doctor-mstr = doc-date-fac-term
+               put f021-avail-doctor-mstr
+	     end
+      end
+end
+
+procedure designer lin6 help 'CHANGE ITEMS ON LINE 6'
+begin
+    accept   group_regular_service
+    accept   group_over_serviced
+end
+
+procedure designer exp
+; EXPort function to copy bank info to another system.
+; file always contains id of user and the info type as first 2 fields
+begin
+  if doc-name = " " 
+  then
+    let x-doc-name = "|"
+  else 
+    let x-doc-name =  truncate(lj(doc-name)) 
+
+  if doc-inits = " "
+  then
+    let x-doc-inits = "|"
+  else
+    let x-doc-inits = truncate(lj(doc-inits))
+  if doc-sub-specialty = " "
+  then
+    let x-doc-sub-specialty = "|"
+  else
+    let x-doc-sub-specialty = truncate(lj(doc-sub-specialty))
+
+  if doc-full-part-ind = " "
+  then
+    let x-doc-full-part-ind = "|"
+  else
+    let x-doc-full-part-ind =  doc-full-part-ind
+
+  if doc-addr-home-1 = " "
+  then
+    let x-doc-addr-home-1 = "|"
+  else
+    let x-doc-addr-home-1 = truncate(lj(doc-addr-home-1))
+
+  if doc-addr-home-2 = " "
+  then
+    let x-doc-addr-home-2 = "|"
+  else
+    let x-doc-addr-home-2 = truncate(lj(doc-addr-home-2)) 
+
+  if doc-addr-home-3 = " "
+  then
+    let x-doc-addr-home-3 = "|"
+  else
+    let x-doc-addr-home-3 = truncate(lj(doc-addr-home-3)) 
+
+  if doc-addr-home-pc = " "
+  then
+    let x-doc-addr-home-pc = "|"
+  else
+    let x-doc-addr-home-pc = truncate(lj(doc-addr-home-pc)) 
+
+  if doc-addr-office-1 = " "
+  then
+    let x-doc-addr-office-1 = "|"
+  else
+    let x-doc-addr-office-1 = truncate(lj(doc-addr-office-1)) 
+
+  if doc-addr-office-2 = " "
+  then
+    let x-doc-addr-office-2 = "|"
+  else
+    let x-doc-addr-office-2 = truncate(lj(doc-addr-office-2)) 
+
+  if doc-addr-office-3 = " "
+  then
+    let x-doc-addr-office-3 = "|"
+  else
+    let x-doc-addr-office-3 = truncate(lj(doc-addr-office-3)) 
+
+  if doc-addr-office-pc = " "
+  then
+    let x-doc-addr-office-pc = "|"
+  else
+    let x-doc-addr-office-pc = truncate(lj(doc-addr-office-pc)) 
+
+  if doc-bank-acct = " "
+  then
+    let x-doc-bank-acct = "|"
+  else
+    let x-doc-bank-acct = truncate(lj(doc-bank-acct)) 
+  let comline = '$cmd/batch_copy_bank_info_out '		&	
+		+ truncate(lj(logonid))				&
+		+ ' '						&
+		+ 'f020'					&
+		+ ' '						&
+;		+ ascii(doc-nbr,3)				&
+		+ doc-nbr					&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-name)) + '"'		&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-inits)) + '"'		&
+		+ ' '						&
+		+ ascii(doc-ohip-nbr,6)				& 
+		+ ' '						&
+		+ ascii(doc-sin-nbr,9)				&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-sub-specialty)) + '"'&
+		+ ' '						&
+		+ ascii(doc-dept,2)				&
+		+ ' '						&
+		+ ascii(doc-clinic-nbr,2)			&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-full-part-ind)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-home-1)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-home-2)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-home-3)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-home-pc)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-office-1)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-office-2)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-office-3)) + '"'	&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-addr-office-pc)) + '"'&
+		+ ' '						&
+		+ ascii(doc-bank-nbr,4)				&
+		+ ' '						&
+		+ ascii(doc-bank-branch,5) 			&
+		+ ' '						&
+		+ '"' + truncate(lj(x-doc-bank-acct)) + '"'	&
+		+ ' '						&
+		+ '"' + ascii(doc-date-fac-start,8) + '"'	&
+		+ ' '						&
+		+ '"' + ascii(doc-date-fac-term ,8) + '"'
+
+   run command comline clear all
+   information = "Payroll information has now been EXPORTED into Transfer Area" now
+end
+
+procedure designer imp
+; IMPort function - reads data that was EXPorted 
+begin
+  let x-rec-count = 0
+  while retrieving transfer-file sequential
+  begin
+    let x-rec-count = x-rec-count  + 1
+;   (1st record contains user-id - no need to use this data unless some
+;    kind of security needs to be put place on who can use this proc)
+
+    if x-rec-count = 2
+    then 
+      begin
+        if transfer-buffer <> "f020"
+        then
+          error "The transfer file doesn't contain doctor(f020) info - re-EXPort!"
+      end
+    if x-rec-count = 3 
+    then
+      begin
+;!        let  x-doc-nbr = nconvert(transfer-buffer) 
+        let  x-doc-nbr = transfer-buffer 
+        if x-doc-nbr <> doc-nbr
+        then
+	  error "The data in the import transfer area DOESN'T BELONG to the Current doctor!"
+      end
+    if x-rec-count = 4 
+    then
+      begin
+        let      x-doc-name = truncate(lj(transfer-buffer)) 
+        if       x-doc-name = "|"
+        then let x-doc-name = " "
+      end
+    if x-rec-count = 5 
+    then
+      begin
+        let      x-doc-inits = truncate(lj(transfer-buffer)) 
+        if       x-doc-inits = "|"
+        then let x-doc-inits = " "
+      end
+    if x-rec-count = 6
+    then
+      begin
+        let      x-doc-ohip-nbr = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 7
+    then
+      begin
+        let      x-doc-sin-nbr = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 8
+    then
+      begin
+        let      x-doc-sub-specialty = truncate(lj(transfer-buffer)) 
+        if       x-doc-sub-specialty = "|"
+        then let x-doc-sub-specialty = " "
+      end
+    if x-rec-count = 9
+    then
+      begin
+        let      x-doc-dept = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 10
+    then
+      begin
+        let      x-doc-clinic-nbr = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 11
+    then
+      begin
+        let      x-doc-full-part-ind = truncate(lj(transfer-buffer)) 
+        if       x-doc-full-part-ind = "|"
+        then let x-doc-full-part-ind = " "
+      end
+    if x-rec-count = 12
+    then
+      begin
+        let      x-doc-addr-home-1 = truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-home-1 = "|"
+        then let x-doc-addr-home-1 = " "
+      end
+    if x-rec-count = 13
+    then
+      begin
+        let      x-doc-addr-home-2 = truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-home-2 = "|"
+        then let x-doc-addr-home-2 = " "
+      end
+    if x-rec-count = 14
+    then
+      begin
+        let      x-doc-addr-home-3 = truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-home-3 = "|"
+        then let x-doc-addr-home-3 = " "
+      end
+    if x-rec-count = 15
+    then
+      begin
+        let      x-doc-addr-home-pc= truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-home-pc= "|"
+        then let x-doc-addr-home-pc= " "
+      end
+    if x-rec-count = 16
+    then
+      begin
+        let      x-doc-addr-office-1 = truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-office-1 = "|"
+        then let x-doc-addr-office-1 = " "
+      end
+    if x-rec-count = 17
+    then
+      begin
+        let      x-doc-addr-office-2 = truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-office-2 = "|"
+        then let x-doc-addr-office-2 = " "
+      end
+    if x-rec-count = 18
+    then
+      begin
+        let      x-doc-addr-office-3 = truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-office-3 = "|"
+        then let x-doc-addr-office-3 = " "
+      end
+    if x-rec-count = 19
+    then
+      begin
+        let      x-doc-addr-office-pc= truncate(lj(transfer-buffer)) 
+        if       x-doc-addr-office-pc= "|"
+        then let x-doc-addr-office-pc= " "
+      end
+    if x-rec-count = 20
+    then
+      begin
+        let      x-doc-bank-nbr = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 21
+    then
+      begin
+        let      x-doc-bank-branch = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 22
+    then
+      begin
+        let      x-doc-bank-acct = truncate(lj(transfer-buffer))
+        if       x-doc-bank-acct = "|"
+        then let x-doc-bank-acct = " "
+     end
+    if x-rec-count = 23
+    then
+      begin
+        let      x-doc-date-fac-start = nconvert(transfer-buffer)
+      end
+    if x-rec-count = 24
+    then
+      begin
+        let      x-doc-date-fac-term  = nconvert(transfer-buffer)
+      end
+
+  end
+  close transfer-file
+
+; (check for errors in file)
+  if x-rec-count < 1
+  then error "Can't find the transfer file - Re-EXPort!"
+
+; (no errors - transfer data from temp variables into f020 record)
+  let doc-name		= x-doc-name
+  let doc-inits		= x-doc-inits
+  let doc-sin-nbr	= x-doc-sin-nbr
+  let doc-ohip-nbr	= x-doc-ohip-nbr
+  let doc-sub-specialty = x-doc-sub-specialty 
+  let doc-dept		= x-doc-dept
+  let doc-clinic-nbr	= x-doc-clinic-nbr
+  let doc-full-part-ind = x-doc-full-part-ind 
+  let doc-addr-home-1	= x-doc-addr-home-1 
+  let doc-addr-home-2	= x-doc-addr-home-2 
+  let doc-addr-home-3	= x-doc-addr-home-3 
+  let doc-addr-home-pc	= x-doc-addr-home-pc
+  let doc-addr-office-1	= x-doc-addr-office-1 
+  let doc-addr-office-2	= x-doc-addr-office-2 
+  let doc-addr-office-3	= x-doc-addr-office-3 
+  let doc-addr-office-pc= x-doc-addr-office-pc
+  let doc-bank-nbr 	= x-doc-bank-nbr
+  let doc-bank-branch	= x-doc-bank-branch
+  let doc-bank-acct	= x-doc-bank-acct 
+  let doc-date-fac-start= x-doc-date-fac-start
+  let doc-date-fac-term = x-doc-date-fac-term
+  run command comline clear all
+  display doc-name
+  display doc-inits
+  display doc-sin-nbr
+  display doc-ohip-nbr	
+  display doc-sub-specialty
+  display doc-dept
+  display doc-clinic-nbr
+  display doc-full-part-ind 
+  display doc-addr-home-1
+  display doc-addr-home-2
+  display doc-addr-home-3
+  display doc-addr-home-pc
+  display doc-addr-office-1
+  display doc-addr-office-2
+  display doc-addr-office-3
+  display doc-addr-office-pc
+  display doc-bank-nbr
+  display doc-bank-branch
+  display doc-bank-acct
+  display doc-date-fac-start
+  display doc-date-fac-term
+  information = "Payroll information has now been EXPORTED into Transfer Area" now 
+    
+
+end
+
+procedure designer opt help 'Maintain Doctor OPTIONS'
+; OPTions function - call to program to maintain doctor's options
+begin
+    let x-doc-nbr = doc-nbr
+    run screen $pb_obj/m920 passing x-doc-nbr  mode f
+end
+
+procedure preupdate
+begin
+  if x-doc-terminated-flag = "Y"
+  then
+    begin
+      delete f021-avail-doctor-mstr ;using doc-nbr viaindex doc-no
+      put    f021-avail-doctor-mstr
+    end
+
+  if x-doc-dept-flag = "Y"
+    then begin
+; 2000/03/03 - MC prompt of start period end date
+;      let comline = "$cmd/batch_update_f050_f051_f060 " + ascii(doc-nbr,3) + " " + ascii(doc-dept,2) 
+
+; 2000/05/30 - MC only allow system administrator (yas) can change doctor dept
+      if logonid <> "yas"
+	then error "Only System Administrator can change doctor department"
+      else begin
+;;;
+        accept w-start-date
+;!        let comline = "$cmd/batch_update_f050_f051_f060 " + ascii(doc-nbr,3) + " " + ascii(doc-dept,2)  + " " + ascii(w-start-date,8)
+        let comline = "$cmd/batch_update_f050_f051_f060 " + doc-nbr + " " + ascii(doc-dept,2)  + " " + ascii(w-start-date,8)
+        run command comline clear all response
+        information = "F050/F051 WILL BE UPDATED IN BATCH AT NIGHT" now response
+      end
+    end
+  if deletedrecord of f020-doctor-mstr
+    then begin
+      if   doc-date-fac-term = 0
+;     IF W-DOC-DATE-FAC-TERM = 0
+        then error "FACULTY TERMINATE DATE CAN'T BE ZERO"
+;     GET F002-CLAIMS-MSTR VIAINDEX KEY-CLAIMS-MSTR	&
+;	USING ("B" + ASCII(DOC-CLINIC-NBR,2) + ASCII(DOC-NBR,4) + "@") OPTIONAL
+      get f002-claims-mstr-m020 optional
+      if accessok
+        then error "This doctor has claims, can't be deleted"
+; 2000/02/16 - MC 
+;      else
+;      	let doc-no of f022-deleted-doc-mstr = doc-nbr of f020-doctor-mstr
+;      	let date-terminated of f022-deleted-doc-mstr = doc-date-fac-term
+;      	put f022-deleted-doc-mstr
+; 2000/02/16 - END
+;      	let doc-no of f021-avail-doctor-mstr = doc-nbr of f020-doctor-mstr
+;      	let date-added of f021-avail-doctor-mstr = sysdate
+;      	put f021-avail-doctor-mstr
+
+      end
+end
+
+procedure postfind
+begin
+  let app-version = getsystemval("RMABILL_VERSION")
+  if app-version = version-live
+  then
+    let app-msg = " "
+  else
+    let app-msg = rj(truncate(lj(app-version)) + " VERSION!")
+
+  display app-msg
+end
+procedure path
+  begin
+    request doc-nbr of f020-doctor-mstr
+    if promptok
+      then 
+	begin
+	  let path = 1
+	  let x-doc-nbr-length = size(truncate(lj(doc-nbr of f020-doctor-mstr)))
+	  if x-doc-nbr-length = 1
+	  then
+	    let doc-nbr of f020-doctor-mstr	&
+			= "00" + doc-nbr of f020-doctor-mstr
+	  else
+	  if x-doc-nbr-length = 2
+	  then
+	    let doc-nbr of f020-doctor-mstr	&
+			=  "0" + doc-nbr of f020-doctor-mstr
+	end
+    if path = 0
+      then begin
+        request doc-name of f020-doctor-mstr
+        if promptok
+          then let path = 2
+        end
+    if path = 0
+      then begin
+        request doc-ohip-nbr of f020-doctor-mstr
+        if promptok
+          then let path = 3
+        end
+    if path = 0
+      then begin
+        let path = 4
+        end
+    end
+build 

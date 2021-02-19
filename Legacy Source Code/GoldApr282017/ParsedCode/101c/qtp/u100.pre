@@ -1,0 +1,120 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U100.QTS
+COMMENT "#> PROGRAM         U100.QTS  "
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: Verify there is a primary doctor assigned either for a single or multliple doctor"
+COMMENT "that belong to the same doc ohip nbr  "
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "2008/jun/18 M.C.      - original  "
+COMMENT "2009/may/19 MC1 - set doc-count to include the doctor is active in criteria"
+COMMENT "2009/oct/05 MC2     - add the second request to check for blank doc-paym-group"
+COMMENT "2011/nov/29 MC3     - add the third  request to check for blank record in f112-pycdceilings"
+COMMENT "- modify select in second request"
+COMMENT "2012/Feb/13 MC4       - add the 'optional' to the access statement in the first request, so that"
+COMMENT "if f020-doctor-extra record does not exist will be included"
+COMMENT "2012/Dec/20 MC5 - pass the payroll flag as part of the selection, payroll A = 101c, payroll C = solo"
+COMMENT "2013/Dec/11 MC6 - include clinic 23, 24 & 25 in the selection - same as in u110_rma_1.qts"
+COMMENT "2014/Feb/11 MC7       - include dept and term date in the subfile"
+COMMENT "2014/Oct/14 MC8 - comment out the first request for checking primary flag because it has transferred to u100_b.qzs"
+COMMENT "2013/Dec/11 MC9 - include clinic 26 in the selection - same as in u110_rma_1.qts"
+CANCEL CLEAR
+RUN U100
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "MC8"
+COMMENT ";request u100_search_primary_doctor      &"
+COMMENT ";  on edit        errors report &"
+COMMENT ";                on calculation errors report"
+COMMENT ";access f020-doctor-mstr    &"
+COMMENT "; link doc-nbr     &"
+COMMENT "2012/02/13 - MC4"
+COMMENT "to  doc-nbr of f020-doctor-extra "
+COMMENT ";   to  doc-nbr of f020-doctor-extra  optional"
+COMMENT "2012/02/13 -end"
+COMMENT ";choose doc-ohip-nbr"
+COMMENT "2012/12/20 - MC5"
+COMMENT ";def payroll-flag char*1 = parm prompt 'Enter Payroll (A = 101c, C = solo): '"
+COMMENT "2012/12/20 - end"
+COMMENT ";sorted on doc-ohip-nbr"
+COMMENT "select active doctors only"
+COMMENT "sel if   doc-date-fac-term = 0  &"
+COMMENT "2012/12/20 - MC5 - add the payroll-flag check with selection condition"
+COMMENT ";sel if                           &"
+COMMENT ";      (    (   (doc-dept = 4)   &"
+COMMENT ";     or (    (    doc-dept = 14          &"
+COMMENT ";        or doc-dept = 15  &"
+COMMENT ";      )    &"
+COMMENT ";          and doc-afp-paym-group = 'H111' &"
+COMMENT ";        )    &"
+COMMENT ";           )     &"
+COMMENT ";       and payroll-flag = 'A'   &"
+COMMENT ";      )      &"
+COMMENT ";   or (    (    doc-dept = 31   &"
+COMMENT ";     and doc-afp-paym-group = 'H132'  &"
+COMMENT ";           )      &"
+COMMENT ";       and payroll-flag = 'C'   &"
+COMMENT ";      ) "
+COMMENT "2012/12/20 - end"
+COMMENT ";temp doc-count "
+COMMENT "2009/may/19 - MC1"
+COMMENT "item doc-count = doc-count + 1 if doc-flag-primary = 'Y'  reset at doc-ohip-nbr"
+COMMENT ";item doc-count = doc-count + 1 if doc-flag-primary = 'Y' &"
+COMMENT ";               and  doc-date-fac-term = 0  &"
+COMMENT ";   reset at doc-ohip-nbr"
+COMMENT "2009/may/19 - end"
+COMMENT ";subfile u100_prim_doc keep at doc-ohip-nbr include &"
+COMMENT "2012/12/20 - MC5 - include payroll-flag"
+COMMENT "doc-ohip-nbr, doc-count"
+COMMENT "; doc-ohip-nbr, doc-count, payroll-flag          "
+COMMENT "2012/12/20 - end"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "2009/10/05 - MC2 - add new request"
+REQUEST U100_SEARCH_BLANK_PAYM_GROUP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F050-DOC-REVENUE-MSTR LINK DOCREV-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK NCONVERT(DOCREV-CLINIC-1-2) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC
+COMMENT "'regular' payroll (ie.BILL type transaction use only clinic 22 however"
+COMMENT "'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the"
+COMMENT "clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the"
+COMMENT "doctor belongs to an AFP group"
+COMMENT "select if   docrev-clinic-1-2 =  22                             &"
+COMMENT "or (     iconst-clinic-card-colour =  Y                &"
+COMMENT "and  doc-afp-paym-group of f020-doctor-mstr <>     &"
+COMMENT "and  (   docrev-clinic-1-2 <   71                  &"
+COMMENT "or docrev-clinic-1-2 >   75                  &"
+COMMENT ")                                             &"
+COMMENT "check if there is any doctor who has blank afp-paym-group in f020"
+COMMENT "for any clinics other than 22 & 70's"
+COMMENT "2011/11/29 - MC3"
+SELECT IF ICONST-CLINIC-CARD-COLOUR = "Y" AND DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR = " " AND ( DOCREV-CLINIC-1-2 < "71" OR DOCREV-CLINIC-1-2 > "75" ) AND ( DOCREV-MTD-IN-REC <> 0 OR DOCREV-MTD-OUT-REC <> 0 )
+COMMENT "2011/11/29 - end"
+COMMENT "MC7 "
+COMMENT "MC7 - end"
+SUBFILE U100_BLANK_PAYM_GRP KEEP INCLUDE DOC-NBR, DOC-OHIP-NBR, DOC-DEPT, DOC-NAME, DOC-DATE-FAC-TERM, DOCREV-KEY, DOCREV-MTD-IN-REC, DOCREV-MTD-OUT-REC
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "2011/11/29 - MC3 - add new request"
+REQUEST U100_SEARCH_BLANK_F112_RECORD ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F050-DOC-REVENUE-MSTR LINK DOCREV-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK NCONVERT(DOCREV-CLINIC-1-2) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC LINK DOCREV-DOC-NBR TO DOC-NBR OF F112-PYCDCEILINGS OPT
+COMMENT "'regular' payroll (ie.BILL type transaction use only clinic 22 however"
+COMMENT "'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the"
+COMMENT "clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the"
+COMMENT "doctor belongs to an AFP group"
+COMMENT "2013/12/11 - MC6 - include clinic 23 to 25"
+COMMENT "MC9 - include clinic 26 "
+COMMENT "MC9 - end"
+COMMENT "2013/12/11 - end"
+SELECT IF ( DOCREV-CLINIC-1-2 = "22" OR DOCREV-CLINIC-1-2 = "23" OR DOCREV-CLINIC-1-2 = "24" OR DOCREV-CLINIC-1-2 = "25" OR DOCREV-CLINIC-1-2 = "26" OR ( ICONST-CLINIC-CARD-COLOUR = "Y" AND DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR <> " " AND ( DOCREV-CLINIC-1-2 < "71" OR DOCREV-CLINIC-1-2 > "75" ) ) ) AND ( DOCREV-MTD-IN-REC <> 0 OR DOCREV-MTD-OUT-REC <> 0 ) AND NOT RECORD F112-PYCDCEILINGS EXISTS
+SORT ON DOCREV-DOC-NBR
+COMMENT "MC7 "
+COMMENT "docrev-doc-nbr, doc-ohip-nbr, doc-dept, doc-name "
+SUBFILE U100_BLANK_F112_REC KEEP AT DOCREV-DOC-NBR INCLUDE DOCREV-DOC-NBR, DOC-OHIP-NBR, DOC-DEPT, DOC-NAME, DOC-DATE-FAC-TERM
+COMMENT "MC7 - end"
+BUILD $PB_OBJ/U100
+ENDMODULE U100.QTS

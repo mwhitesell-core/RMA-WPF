@@ -1,0 +1,409 @@
+; NAME: U116_PAYCODE7.USE  (INCLUDED IN PGM U116.QTS)
+; THIS COPYBOOK IS USED BY THE FOLLOWING PROGRAMS:
+;  	u116.qts
+;
+;   MODIFICATION HISTORY
+;  DATE     WHO        DESCRIPTION
+; 2014-feb-20 be      - original
+; 2014-Apr-15 MC1     - correct the formula with decimal alignment
+; 2014-Apr-16 be2     - update f020 TOT screen - field doc-payeft with the invoice amount
+; 2014-apr-21 be3     - added calc of HST
+; 2014-apr-27 be4     - with additional of HST, the FINCHG  put into doctor's tot screen instead of DOCCHG
+; 2014-may-13 be5     - add new subfile u119_chgeft to hold data for upload via eft to bank
+; 2014-may-14 MC2     - add hst charge and doctor total charge in the subfile of debugu116cd7 so that can show in r124c.txt
+;-------------------------------------------------------------------------------
+; PAY CODE 7
+; special calc for dept 'x' and payroll
+; step 1a) sum all doctor total income 
+; step 1b) sum all doctor total keying charges 
+; step 1c) count all included doctors total FTE (factor on paycode record
+; step 2) calc dept total charges = (total billings * dept rate ) + (total hours keying * hourly rate) and then
+;	  individual doctor (FTE=1.0) charge
+; step 3) read each doctor and create transactions using doctor's FTE to factor charges
+;
+
+request u116_run_paycodes_7_step_1              &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access constants-mstr-rec-6                            		      &
+        link current-ep-nbr                             	      &
+        viaindex f112-ep-doc-nbr                        	      &
+        to   ep-nbr of f112-pycdceilings                	      &
+        link doc-nbr	of f112-pycdceilings                          &
+        to   doc-nbr	of f020-doctor-mstr			  opt &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             totinc-seq,                                              &
+             "TOTINC"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation alias f110-totinc opt  &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             keyhrs-seq,                                              &
+             "KEYHRS"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation alias f110-keyhrs opt
+
+choose const-rec-nbr 6
+
+; MC2 - comment out
+;select f020-doctor-mstr         if doc-dept = 08					      
+; MC2 - end
+
+select f112-pycdceilings 	if doc-pay-code of f112-pycdceilings = "7"      
+
+;sum up total dept income
+temp w-tot-dept-inc   integer*10 signed                                   
+item w-tot-dept-inc = w-tot-dept-inc  + amt-gross of f110-totinc
+
+;sum up total dept keying hours
+temp w-tot-dept-keyhrs   integer*10 signed                                   
+item w-tot-dept-keyhrs = w-tot-dept-keyhrs + amt-gross of f110-keyhrs
+
+;sum up total dept FTE using factor of each doctor where factor with 4 decimals as 1.0000
+temp w-tot-dept-fte   integer*10 signed                                   
+item w-tot-dept-fte = w-tot-dept-fte + (factor of f112-pycdceilings / 100)
+
+; store these 2 calcs in tmp-doctor file so they can be easily access in later requests
+subfile u116_paycode_7_a keep at final include 	&	
+	w-tot-dept-inc, 			&
+	w-tot-dept-keyhrs,			&	
+	w-tot-dept-fte
+
+request u116_run_paycodes_7_step_2              &
+                on edit        errors report    &
+                on calculation errors report
+
+access *u116_paycode_7_a				&
+        link "SVCRTE"                                                 &
+        to   comp-code    of f190-comp-codes alias f190-svcrte opt    &
+        link "KEYRTE"                                                 &
+        to   comp-code    of f190-comp-codes alias f190-keyrte opt    & 
+;	be3							      &
+        link "HSTRTE"                                                 &
+        to   comp-code    of f190-comp-codes alias f190-hstrte opt  	
+
+; service rate with 4 decimals ie 0.0200
+def  w-svc-rate integer*10 signed  = amt-per-unit of f190-svcrte / 100
+
+; total revenue @ currently  2 percent
+def  w-tot-dept-inc-charges   integer*10 signed  = w-tot-dept-inc * w-svc-rate / 100
+
+; keying rate with 4 decimals ie 39.0000
+def  w-key-rate integer*10 signed  =  amt-per-unit of f190-keyrte / 100
+
+; total hours billing data entry @ keying rate/ hr
+def w-tot-dept-dataentry-charges   integer*10 signed = w-tot-dept-keyhrs * w-key-rate / 100
+ 
+; total dept charges (2% of income + hourly keying total charge)
+def  w-tot-dept-charges   integer*10 signed  = w-tot-dept-inc-charges + w-tot-dept-dataentry-charges
+
+; final FTE 1.0 charge (total charges / nbr doctor fte)
+def  w-tot-1-fte-charge   integer*10 signed = w-tot-dept-charges / w-tot-dept-fte * 100
+
+;be3
+; hst rate with 4 decimals ie 0.1300
+def  w-hst-rate integer*10 signed  = amt-per-unit of f190-hstrte / 100
+
+; total revenue @ currently  2 percent
+subfile u116_paycode_7_b keep at final include 	&
+	w-tot-dept-inc, 			&
+	w-tot-dept-keyhrs,			&	
+	w-key-rate,				&
+	w-tot-dept-inc-charges,			&
+        w-svc-rate,  				&
+	w-tot-dept-dataentry-charges,		&
+	w-tot-dept-fte,				&
+	w-tot-dept-charges, 			&
+	w-tot-1-fte-charge,			&
+;	be3					&
+	w-hst-rate
+
+request u116_run_paycodes_7_step_3              &
+                on edit        errors report    &
+                on calculation errors report
+
+access *u116_paycode_7_b                                 		&
+	link (6)							&
+	to const-rec-nbr of constants-mstr-rec-6        		&
+        link current-ep-nbr                             	 	&
+        viaindex f112-ep-doc-nbr                        	 	&
+        to   ep-nbr of f112-pycdceilings                		&
+        link doc-nbr	of f112-pycdceilings                          	&
+        to   doc-nbr	of f020-doctor-mstr			
+             
+; MC2 
+;select f020-doctor-mstr         if doc-dept = 08					      
+; MC2 - end
+
+select f112-pycdceilings 	if doc-pay-code of f112-pycdceilings = "7"      
+
+; nbr doctor charge
+def  w-doc-charge integer*10 = round((w-tot-1-fte-charge * (factor of f112-pycdceilings / 10000)),0,near)
+
+;MC2
+; doctor HST charge
+def w-hst-charge integer*10 = round(( w-doc-charge * (w-hst-rate / 100)),0,near)
+
+def w-doc-tot-charge integer*10 = round((w-doc-charge + w-hst-charge),0,near)
+; MC2 - end
+
+subfile debugu116cd7 keep include                                     &
+        ep-nbr of f112-pycdceilings,                                  &
+        doc-nbr of f112-pycdceilings,                                 &
+        doc-pay-code of f112-pycdceilings,                            &
+        doc-pay-sub-code of f112-pycdceilings,                        &
+        factor of f112-pycdceilings,                                  &
+	w-tot-dept-inc, 			&
+	w-tot-dept-keyhrs,			&	
+	w-tot-dept-fte,				&
+	w-tot-dept-inc-charges,			&
+	w-tot-dept-dataentry-charges,		&
+	w-tot-dept-charges, 			&
+	w-tot-1-fte-charge,			&
+	w-doc-charge,				&
+	w-hst-charge,				&
+	w-doc-tot-charge
+
+
+def x-not-needed integer*10 signed        = 0
+def x-rec-type  char*1 = "A"
+temp x-amount    integer*10 signed       
+temp x-comp-code char*6
+
+
+;-------------------------------------------------
+item x-comp-code  = "DEPINC"
+item x-amount = w-tot-dept-inc of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 keep include 		&
+	doc-nbr of f112-pycdceilings,			&
+	x-comp-code,					&
+	x-amount
+; IF ever re-running just paycode 7 payroll, then change the below line to be KEEP instead of APPEND
+subfile f119 append               include &
+;subfile  f119 keep                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         depinc-seq-rpt                 , &
+         depinc-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;---------------------------------------------
+item x-comp-code  = "SVCRTE"
+item x-amount = w-svc-rate 
+
+subfile u116_paycode_7_f119 alias u116_svcrte append include 		&
+	doc-nbr of f112-pycdceilings,					&
+	x-comp-code,							&
+	x-amount
+
+subfile f119 append alias f119-svcrte                           include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         svcrte-seq-rpt                 , &
+         svcrte-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+;---------------------------------------------
+item x-comp-code  = "SVCCHG"
+item x-amount = w-tot-dept-inc-charges of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 alias u116_svcchg append include 		&
+	doc-nbr of f112-pycdceilings,					&
+	x-comp-code,							&
+	x-amount
+
+subfile f119 append alias f119-svcchg                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         svcchg-seq-rpt                 , &
+         svcchg-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+item x-comp-code  = "KEYHRS"
+item x-amount = w-tot-dept-keyhrs of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 alias u116_keyhrs append include 		&
+	doc-nbr of f112-pycdceilings,					&
+	x-comp-code,							&
+	x-amount
+
+subfile f119 append alias f119-keyhrs                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         keyhrs-seq-rpt                 , &
+         keyhrs-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+item x-comp-code  = "KEYRTE"
+item x-amount = w-key-rate        of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 alias u116_keyrte append include 		&
+	doc-nbr of f112-pycdceilings,					&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-keyrte                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         keyrte-seq-rpt                 , &
+         keyrte-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+item x-comp-code  = "KEYCHG"
+item x-amount = w-tot-dept-dataentry-charges of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 alias u116_keychg append include 		&
+	doc-nbr of f112-pycdceilings,					&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-keychg                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         keychg-seq-rpt                 , &
+         keychg-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+item x-comp-code  = "DEPCHG" ; (total dept charge for PP)
+item x-amount = w-tot-dept-charges of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 alias u116_depchg append include 		&
+	doc-nbr of f112-pycdceilings,			&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-depchg                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         depchg-seq-rpt                 , &
+         depchg-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+item x-comp-code  = "DEPFTE"
+item x-amount = w-tot-dept-fte of u116_paycode_7_b
+
+subfile u116_paycode_7_f119 alias u116_depfte append include 		&
+	doc-nbr of f112-pycdceilings,			&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-depfte                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         depfte-seq-rpt                 , &
+         depfte-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+item x-comp-code  = "DOCCHG"
+item x-amount = w-doc-charge      
+subfile u116_paycode_7_f119 alias u116_docchg append include 		&
+	doc-nbr of f112-pycdceilings,			&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-docchg                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         docchg-seq-rpt                 , &
+         docchg-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;--------------------------------------------------
+;be3
+item x-comp-code  = "PY7HST"
+;be3a
+;item x-amount = w-doc-charge * w-hst-rate 
+; MC2
+;item x-amount = w-doc-charge * (w-hst-rate / 100)
+item x-amount = w-hst-charge 
+; MC2 - end
+
+subfile u116_paycode_7_f119 alias u116_py7hst append include 		&
+	doc-nbr of f112-pycdceilings,			&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-py7hst                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         py7hst-seq-rpt                 , &
+         py7hst-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+;--------------------------------------------------
+;be3
+item x-comp-code  = "FINCHG"
+; MC2 
+;item x-amount       = w-doc-charge + (w-doc-charge * (w-hst-rate / 100) )
+item x-amount  = w-doc-tot-charge  
+;be4
+;def  w-final-charge = x-amount
+; MC2 - end
+
+subfile u116_paycode_7_f119 alias u116_finchg append include 		&
+	doc-nbr of f112-pycdceilings,			&
+	x-comp-code,					&
+	x-amount
+
+subfile f119 append alias f119-finchg                 include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         finchg-seq-rpt                 , &
+         finchg-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amount
+
+;be5
+; ------------- U 1 1 9 _ P A Y E F T -----------------------------------------
+def w-payeft-amt-n integer*10 signed = x-amount
+subfile u119_chgeft portable keep               &
+      include                                   &
+         doc-nbr  of f112-pycdceilings   , &
+         doc-dept of f020-doctor-mstr    , &
+         w-payeft-amt-n
+
+
+;be2
+; ------------- F 0 2 0 -------------------------------------------------------
+; update doctor master with the invoice amount (store in PAYEFT so that ;
+; it can be printed on Invoice - r124a/b_paycode7.qzs)
+output f020-doctor-mstr update 
+;be4
+;   item doc-payeft final  w-doc-charge
+; MC2
+;    item doc-payeft final  w-final-charge 
+    item doc-payeft final  w-doc-tot-charge 
+; MC2 - end

@@ -1,0 +1,136 @@
+;PROGRAM: u110b_rma.qts
+;
+;PROGRAM PURPOSE: 
+;                new diagnostic clinics - take 'professional' values from
+;                revenue (originally reported on from utl0007.qzs and entered 
+;                into f002) and merge these with values picked up by u110
+;                into AFPOUT transactions, creating a single AFPOUT transaction
+;                for doctors to upload via u111 to payroll subsystem
+;
+;DATE       WHO       DESCRIPTION
+;1992/02/25   Y.B.      ORIGINAL
+;2007/mar/28 b.e.	- clone from yas's utl0007 
+;2007/mar/28 b.e.	- clinic's changed from 60 to 70 range
+;			- since payroll run after 70 ME changed program
+;			  to access f050tp history instead of f050tp
+;2007/may/29 b.e.	- change in select to pick if AGENT <> 6
+;2007/jul/23 b.e.	- use PED of payroll system to select f050tp records
+;			  rather than PED of clinic
+;2012/jul/09 MC1	- modify to use yearend PED as yyyy0630 if ep-nbr = yyyy13
+
+cancel clear
+set stacksize 10000
+
+run u110b_rma
+
+set default
+set process nolimit
+
+; define globals for this run
+use $use/get_const_rec_7_values_globals.qts
+
+global temp   afpin-seq    zoned*2
+global temp   afpin-type   char*1
+global temp   afpin-factor zoned*6
+
+request run_u110b_get_afpin                      &
+                on edit        errors report 	&	
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "AFPIN"
+item   afpin-seq   final  process-seq
+item   afpin-type  final  comp-type
+item   afpin-factor final  factor
+
+
+
+;-------------------------------------------------------------------------------
+;
+
+request u110b_process                           &
+                on edit        errors report	&
+                on calculation errors report
+
+;use PED of payroll system to select f050tp records
+access f050tp-doc-revenue-mstr-history                 	&
+   link docrevtp-doc-nbr                         	&
+   to 	doc-nbr of f020-doctor-mstr opt               	&
+;   link docrevtp-clinic-nbr                      	&
+;   to 	iconst-clinic-nbr-1-2 of iconst-mstr-rec 	
+   link (6) to const-rec-nbr of constants-mstr-rec-6 	&
+   link current-ep-nbr of constants-mstr-rec-6		&
+   to   ep-nbr of f191-earnings-period
+
+; 2012/07/09 - MC1 -define ep-mm
+def ep-mm = mod(current-ep-nbr,100)
+; 2012/07/09 - end
+
+def x-iconst-date-period-end =                                  	  &
+     nconvert(                                               		  &
+                 ascii (                                                  &
+;( iconst-date-period-end of iconst-mstr-rec     &
+                        ( iconst-date-period-end  of f191-earnings-period &
+                         /100                                             &
+                        )                                                 &
+                       ,6)                                                &
+               + '01'                                                     &
+             )								  &
+; 2012/07/09 - MC1 - add if condition - to check if monthend or yearend
+	if ep-mm <> 13                        				  &
+    else   iconst-date-period-end  of f191-earnings-period
+; 2012/07/09 - end
+
+select if    docrevtp-clinic-nbr >= 71				&
+	 and docrevtp-clinic-nbr <= 75				&
+	 and docrevtp-agent-cd <> "6"				&
+ 	 and iconst-date-period-end = x-iconst-date-period-end 
+
+sort 	on docrevtp-doc-nbr 	&
+	on docrevtp-clinic-nbr  &
+	on docrevtp-oma-cd
+
+temp mtd-afpin-prof zoned*8 signed 
+item       mtd-afpin-prof 			&
+ 	=  mtd-afpin-prof			&
+	 + docrevtp-in-prof-amt-billed(1)	&
+	 + docrevtp-out-prof-amt-billed(1)	&
+	 + docrevtp-in-prof-amt-adjusts(1)	&
+	 + docrevtp-out-prof-amt-adjusts(1)	&
+	reset at docrevtp-doc-nbr 
+
+;def        mtd-afpin-prof-this-rec		&
+;	=  docrevtp-in-prof-amt-billed(1)	&
+;	 + docrevtp-out-prof-amt-billed(1)	&
+;	 + docrevtp-in-prof-amt-adjusts(1)	&
+;	 + docrevtp-out-prof-amt-adjusts(1)	
+
+temp comp-code   char*6
+temp comp-type   char*1
+temp process-seq zoned*2 unsigned
+temp factor      zoned*6 unsigned
+temp mtd-afpining zoned*8   signed
+
+item comp-code 		= "AFPIN"
+item comp-type		= afpin-type
+item process-seq	= afpin-seq
+item factor		= afpin-factor
+item mtd-afpining        = mtd-afpin-prof
+
+subfile u110_audit      keep  append                      	&
+  include							&
+	docrevtp-doc-nbr, doc-afp-paym-group, mtd-afpining ,	&
+	comp-code , factor, process-seq, comp-type
+
+
+subfile u110_audit_doc keep  append at docrevtp-doc-nbr 	&
+  include							&
+	docrevtp-doc-nbr of f050tp-doc-revenue-mstr-history,	&
+	doc-afp-paym-group of f020-doctor-mstr , mtd-afpining , 	&
+	comp-code, factor, process-seq, comp-type
+
+subfile u110             keep  append at docrevtp-doc-nbr	&
+  include							&
+     docrevtp-doc-nbr of f050tp-doc-revenue-mstr-history,	&
+     comp-code,comp-type,process-seq,factor,mtd-afpining 
+
+build $pb_obj/u110b_rma

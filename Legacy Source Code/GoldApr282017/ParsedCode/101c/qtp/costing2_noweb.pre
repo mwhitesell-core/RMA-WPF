@@ -1,0 +1,117 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE COSTING2_NOWEB.QTS
+COMMENT "Program: costing2_noweb.qts"
+COMMENT "Purpose: - creates files for costing the RAT REJECTION Charges"
+COMMENT "Note that MANUAL rejections are processed in costing3.qts"
+COMMENT "DATE     BY WHOM     DESCRIPTION"
+COMMENT "99/mar/28  YASEMIN     ORIGINAL"
+COMMENT "00/feb/03  B.E. - rat error '40' now charged against doctor"
+COMMENT "00/aug/08  B.E. - select now based upon being within current costing period and"
+COMMENT "having the 'charge flag' field set to  Y es"
+COMMENT "**   CHANGE COSTING.COM MACRO AND run this program FOR DOCTORS WHO DOES BOTH"
+COMMENT "WEB AND MANUAL BILLING this will report only the manual billing so Leena"
+COMMENT "can charge them differently"
+COMMENT "03/dec/19  A.A. - alpha doctor nbr"
+COMMENT "15/Jul/16  MC1         - correct select if with select file if"
+COMMENT "- change from select  on  clmhdr-date-period-end to select on ped"
+COMMENT "as clmhdr-date-period-end = clmhdr-date-period-end of the claim,"
+COMMENT "ped = clmhdr-date-period-end of the current run"
+COMMENT "costing is selected for the current  fiscal period  range"
+COMMENT "16/Nov/28  MC2  - use set lock record update"
+CANCEL CLEAR
+RUN COSTING2
+SET DEFAULT
+SET PROCESS NOLIMIT
+COMMENT "MC2"
+COMMENT "set lock file update"
+SET LOCK RECORD UPDATE
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+COMMENT "File: globals_get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+GLOBAL TEMP W-CURRENT-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-CUTOFF-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED-YYMM ZONED*6
+GLOBAL TEMP W-PREVIOUS-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-PREVIOUS-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-EP-YR NUM*2
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+COMMENT "File: get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+REQUEST COSTING1_GET_REC_7 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-7
+CHOOSE CONST-REC-NBR 7
+ITEM W-CURRENT-FISCAL-START-YYMMDD = CURRENT-FISCAL-START-YYMMDD
+ITEM W-CURRENT-FISCAL-END-YYMMDD = CURRENT-FISCAL-END-YYMMDD
+ITEM W-CURRENT-COSTING-CUTOFF-YYMMDD = CURRENT-COSTING-CUTOFF-YYMMDD
+ITEM W-CURRENT-COSTING-PED = CURRENT-COSTING-PED
+ITEM W-CURRENT-COSTING-PED-YYMM = CURRENT-COSTING-PED / 100
+ITEM W-PREVIOUS-FISCAL-START-YYMMDD = PREVIOUS-FISCAL-START-YYMMDD
+ITEM W-PREVIOUS-FISCAL-END-YYMMDD = PREVIOUS-FISCAL-END-YYMMDD
+ITEM W-EP-YR = EP-YR
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+REQUEST COSTING2_1 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F088-RAT-REJECTED-CLAIMS-HIST-HDR LINK CLMHDR-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK "B", CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR, "00000", "0" TO KEY-CLM-TYPE , KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR LINK OHIP-ERR-CODE TO RAT-CODE OF F096-OHIP-PAY-CODE OPT
+COMMENT "yasemin"
+COMMENT "select physician non web/diskette rejects"
+COMMENT "MC1"
+COMMENT "select              &"
+COMMENT "if     clmhdr-date-period-end >= w-current-fiscal-start-yymmdd   &"
+COMMENT "and  clmhdr-date-period-end <= w-current-costing-cutoff-yymmdd   &"
+COMMENT "and  charge-status =  Y                                              &"
+COMMENT "and  clmhdr-adj-cd-sub-type <>  W                                    &"
+COMMENT "and  clmhdr-adj-cd-sub-type <>  D                                    &"
+COMMENT "and  clmhdr-adj-cd-sub-type <>  C "
+SELECT F088-RAT-REJECTED-CLAIMS-HIST-HDR IF PED >= W-CURRENT-FISCAL-START-YYMMDD AND PED <= W-CURRENT-COSTING-CUTOFF-YYMMDD AND CHARGE-STATUS = "Y"
+SELECT F002-CLAIMS-MSTR IF CLMHDR-ADJ-CD-SUB-TYPE <> "W" AND CLMHDR-ADJ-CD-SUB-TYPE <> "D" AND CLMHDR-ADJ-CD-SUB-TYPE <> "C"
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "MC1 - end"
+COMMENT "(select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm)"
+COMMENT "File: select_f020_active_for_costing_analysis_period.use "
+COMMENT "Purpose: "
+COMMENT "select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm"
+DEF DOC-START-YYMM ZONED*6 = DOC-DATE-FAC-START / 100
+SELECT F020-DOCTOR-MSTR IF ( DOC-DATE-FAC-START = 0000000 OR DOC-START-YYMM <= W-CURRENT-COSTING-PED-YYMM ) AND ( DOC-DATE-FAC-TERM = 00000000 OR DOC-DATE-FAC-TERM >= W-CURRENT-FISCAL-START-YYMMDD )
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "def x-claim-id char*11 = clmhdr-claim-id[1:11] "
+COMMENT "!def x-claim-id char*11    &"
+COMMENT "!     =  ascii(clmhdr-batch-nbr)   &"
+COMMENT "!     + ascii(clmhdr-claim-nbr)   &"
+COMMENT "!  if clmhdr-claim-nbr > 9  &"
+COMMENT "!else   ascii(clmhdr-batch-nbr)   &"
+COMMENT "!   +  0      &"
+COMMENT "!   + ascii(clmhdr-claim-nbr) "
+DEF X-CLAIM-ID CHAR*10=CLMHDR-BATCH-NBR + ASCII(CLMHDR-CLAIM-NBR)
+SUBFILE COSTING2A KEEP INCLUDE CLMHDR-BATCH-NBR OF F088-RAT-REJECTED-CLAIMS-HIST-HDR, CLMHDR-CLAIM-NBR OF F088-RAT-REJECTED-CLAIMS-HIST-HDR, PED , CLMHDR-DATE-PERIOD-END OF F088-RAT-REJECTED-CLAIMS-HIST-HDR , W-CURRENT-FISCAL-START-YYMMDD , W-CURRENT-COSTING-CUTOFF-YYMMDD , DOC-NBR, DOC-NAME, DOC-INITS, DOC-DEPT, DOC-CLINIC-NBR, X-CLAIM-ID , OHIP-ERR-CODE
+REQUEST COSTING2_2 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *COSTING2A
+DEF NBR-SVC ZONED*6 UNSIGNED = 0
+DEF NBR-CLM ZONED*6 UNSIGNED = 0
+DEF NBR-DTL ZONED*6 UNSIGNED = 0
+SORT ON DOC-NBR ON X-CLAIM-ID
+TEMP NBR-REJECT ZONED*4 UNSIGNED
+ITEM NBR-REJECT = NBR-REJECT + 1 RESET AT DOC-NBR
+DEF AMT-YTD ZONED*8 SIGNED = 0
+DEF MISC-AMT-YTD ZONED*8 SIGNED = 0
+DEF MOHR-AMT-YTD ZONED*8 SIGNED = 0
+DEF TOTAL-AMT-YTD ZONED*8 SIGNED = 0
+DEF MAN-REJECT ZONED*6 UNSIGNED = 0
+SUBFILE COSTING2 KEEP APPEND AT DOC-NBR INCLUDE DOC-NBR, DOC-NAME, DOC-INITS, DOC-DEPT, DOC-CLINIC-NBR, NBR-SVC, NBR-CLM, NBR-DTL, NBR-REJECT, AMT-YTD, MISC-AMT-YTD, MOHR-AMT-YTD, TOTAL-AMT-YTD, MAN-REJECT
+BUILD $OBJ/COSTING2_NOWEB
+ENDMODULE COSTING2_NOWEB.QTS

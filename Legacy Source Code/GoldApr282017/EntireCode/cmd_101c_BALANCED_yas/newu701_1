@@ -1,0 +1,105 @@
+#   NAME: newu701
+# 
+#   PURPOSE: OHIP DISKETTE INPUT INTO RMA SYSTEM
+#            THIS MACRO WILL TAKE A FILE FOR A SPECIFIED DOCTOR
+# 		  AND MOVE ALL CLAIMS INTO THE SUSPENSE FILES, APPLY
+# 		  THE PATIENTS WITHIN BATCH AGAINST THE PATIENT/SUBSCRIBER
+# 		  MASTERS, AND FINALLY UPDATE THE SUSPENSE RECORDS WITH THE
+# 		  ID's OF THE PATIENTS.
+#   MODIFICATION HISTORY
+#      DATE   PERSON        DESCRIPTION (PDR/SMS #)
+#   90/JUL/01 B. ELLIOTT    ORIGINAL
+#   90/OCT/31 Y. BOCCIA     ADD QPRINT R707.TXT
+#   98/JAN/21 KEVIN MILES   MODIFIED FOR UNIX
+
+
+if [ "$1" = "" ]
+then
+	echo 
+	echo 
+	echo "**ERROR**"
+	echo You must supply the 6 digit Doctor OHIP number for the batch to be processed!
+	echo
+	echo Valid Format:	newu701	bx999999
+	exit
+else
+	if [ ! -f f002_submit_disk_${1}.in ]
+	then
+		echo  
+		echo  "**ERROR** No such batch found!"
+		echo 
+		exit
+	else
+	if [ -f submit_disk_susp.in ]
+	then
+		echo  
+		echo 
+		echo  "**ERROR** Unprocessed suspense batch found !"
+		echo            You must manually re-process the batch submit_disk_susp.in
+		echo            before re-running newu701
+		echo 
+		exit
+	else
+       		mv f002_submit_disk_${1}.in submit_disk_susp.in
+		echo 
+		echo 
+		echo  Place claims into suspense files ...
+		cobrun $obj/newu701
+		echo 
+		echo  print status report ...
+		ls -laF ru701
+#		lp ru701
+		cat ru701_cycle ru701 >/usr/tmp/ru701_cycle.tmp  
+		mv /usr/tmp/ru701_cycle.tmp  ru701_cycle
+		printf "Continue ? "
+		read garbage
+		echo 
+		echo 
+		echo  Select resubmit claims
+		echo 
+		qtp auto=$obj/u714.qtc
+		echo 
+		echo  Report selected resubmit claims
+		echo 
+		rm r715.txt 1>/dev/null 2>&1
+		quiz auto=$obj/r715.qzc
+#		lp r715.txt
+		echo 
+		echo  Select special oma codes
+		qtp auto=$obj/u710.qtc
+		echo 
+		echo  Report selected special oma codes
+		rm r711.txt 1>/dev/null 2>&1
+		quiz auto=$obj/r711.qzc
+		echo 
+		ls -laF r711.txt
+#		lp r711.txt
+		echo 
+		echo 
+		echo  Report duplicate claims
+		rm r712.txt 1>/dev/null 2>&1
+		quiz auto=$obj/r712.qzc
+		echo 
+		ls -laF r712.txt
+#		lp r712.txt
+		echo 
+		echo 
+		echo  Extract batch\'s Patient data
+		rm submit_disk_pat_in.sf* 1>/dev/null 2>&1
+		quiz auto=$obj/r702.qzc
+		echo 
+		echo  Extracted patient data file:
+		ls -laF submit_disk_pat_in.sf*
+		printf "Continue ? "
+		read garbage
+		echo 
+		echo Now run newu701_2
+		fi
+	fi
+fi
+echo 
+echo 
+printf "Continue ? "
+read garbage
+echo 
+echo 

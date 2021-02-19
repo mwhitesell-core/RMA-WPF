@@ -1,0 +1,387 @@
+;> PROGRAM-ID.     u050.qts  
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :update doc revenue/cash mstr from f002-dtl-before (reverse)
+;			and f002-dtl-after
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2002/Mar/06 M.C.         - ORIGINAL (clone from u010dailyreverse.qts)
+;			     'C'ash type 'P'ayments, update cash only
+;			     'M'isc type 'P'ayments, update cash and revenue
+;			     and all others update revenue only
+;			     - exclude Adjustment A type records
+;			     - translated clinic only for f050/f050tp
+;   2002/May/24 M.C.	     - update f050 history if batch status = 4
+;   2003/dec/23 A.A.	     - alpha doctor nbr
+;   2004/jul/11 b.e.	- clmhdr-payroll field replaced with hard coded "A"
+;			  when ICU payroll (payroll "B") dropped
+;
+can clear
+
+set process nolimit
+set lock file update
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_rev_cash_reverse on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash   (reverse)
+
+access f002-dtl-before				&
+   link clmhdr-doc-nbr, 			&
+	clmhdr-clinic-nbr-1-2,			&	
+;	clmhdr-payroll	 			&
+	"A"		 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt
+
+
+sel  if   batctrl-batch-type <> 'A' or batctrl-adj-cd     <> 'A'  
+
+sort on clmhdr-batch-nbr on clmhdr-claim-nbr 
+
+def x-suff char*1 						&
+      = clmhdr-adj-cd-sub-type					&
+		if     clmhdr-adj-cd-sub-type <= '9' 		&
+	   	   and batctrl-adj-cd = 'M'			&
+  else '0' 	if batctrl-adj-cd = 'M'				&
+  else clmdtl-oma-suff
+			
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-prof-fee zoned*8 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+def x-clmdtl-nbr-serv zoned*4 signed = 0 if batctrl-batch-type = 'A'	&
+	else clmdtl-nbr-serv
+
+def x-payments zoned*8 signed = 0 - clmhdr-manual-and-tape-payments	&
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-manual-and-tape-payments if batctrl-batch-type = 'P'
+
+def x-tech-paid zoned*8 signed = 0 - clmhdr-amt-tech-paid               & 
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-amt-tech-paid     if batctrl-batch-type = 'P'
+
+def x-prof-paid zoned*8 signed = x-payments - x-tech-paid  		&	 
+	if batctrl-batch-type = 'P' 
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else ascii(clmhdr-clinic-nbr-1-2,2)
+
+def x-clinic-nbr   char*2 = ascii(clmhdr-clinic-nbr-1-2,2)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;'C'laims, 'A'djustment and 'M'isc type 'P'ayments, update 'revenue' records
+output f050-doc-revenue-mstr  update		&
+    if  batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')  &
+	via docrev-key				&
+	using  (x-translated-clinic +     	&
+		ascii(clmhdr-doc-dept,2) +	&
+;!		ascii(clmhdr-doc-nbr,3) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff)				&
+	on errors report
+
+   item docrev-mtd-in-svc  subtotal x-clmdtl-nbr-serv       negative if x-i-o-ind = 'I'	&
+		and batctrl-batch-status < '4'
+   item docrev-mtd-in-rec  subtotal clmdtl-fee-ohip negative if x-i-o-ind = 'I'		&
+		and batctrl-batch-status < '4'
+   item docrev-mtd-out-svc subtotal x-clmdtl-nbr-serv       negative if x-i-o-ind = 'O'	&
+		and batctrl-batch-status < '4'
+   item docrev-mtd-out-rec subtotal clmdtl-fee-ohip negative if x-i-o-ind = 'O'		&	
+		and batctrl-batch-status < '4'
+   item docrev-ytd-in-svc  subtotal x-clmdtl-nbr-serv       negative if x-i-o-ind = 'I'
+   item docrev-ytd-in-rec  subtotal clmdtl-fee-ohip negative if x-i-o-ind = 'I'
+   item docrev-ytd-out-svc subtotal x-clmdtl-nbr-serv       negative if x-i-o-ind = 'O'
+   item docrev-ytd-out-rec subtotal clmdtl-fee-ohip negative if x-i-o-ind = 'O'
+
+
+;For clinic 60's, 'C'laims, 'A'djustment and 'M'isc type 'P'ayments, 
+;update 'revenue' records
+output f050tp-doc-revenue-mstr update		&
+    if  x-translated-clinic[1:1] = '6'	and	&
+       (batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')) &
+	via docrevtp-key			&
+	using  (x-translated-clinic  +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff +			&
+;!		ascii(clmhdr-doc-nbr,3)) 	&
+		clmhdr-doc-nbr)		 	&
+	on errors report
+   item docrevtp-out-tech-nbr-svc(1) subtotal x-clmdtl-nbr-serv		&
+	 negative if clmdtl-amt-tech-billed <> 0  			&
+		and batctrl-batch-status < '4'
+   item docrevtp-out-prof-nbr-svc(1) subtotal x-clmdtl-nbr-serv		&
+	 negative if x-prof-fee  <> 0 					& 
+		and batctrl-batch-status < '4'
+   item docrevtp-out-tech-amt-billed(1) subtotal clmdtl-amt-tech-billed 	&
+	negative if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'	&
+		and batctrl-batch-status < '4'
+   item docrevtp-out-prof-amt-billed(1) subtotal x-prof-fee 			&
+	negative if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'	&
+		and batctrl-batch-status < '4'
+   item docrevtp-out-tech-amt-adjusts(1) subtotal clmdtl-amt-tech-billed 	&
+	negative if batctrl-batch-type = 'A'					&   	
+		and batctrl-batch-status < '4'
+   item docrevtp-out-prof-amt-adjusts(1) subtotal x-prof-fee 			&
+	negative if batctrl-batch-type = 'A'					&
+		and batctrl-batch-status < '4'
+   item docrevtp-out-tech-nbr-svc(2) subtotal x-clmdtl-nbr-serv		&
+	 negative if clmdtl-amt-tech-billed <> 0  
+   item docrevtp-out-prof-nbr-svc(2) subtotal x-clmdtl-nbr-serv		&
+	 negative if x-prof-fee  <> 0  
+   item docrevtp-out-tech-amt-billed(2) subtotal clmdtl-amt-tech-billed 	&
+	negative if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-prof-amt-billed(2) subtotal x-prof-fee 			&
+	negative if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-tech-amt-adjusts(2) subtotal clmdtl-amt-tech-billed 	&
+	negative if batctrl-batch-type = 'A'
+   item docrevtp-out-prof-amt-adjusts(2) subtotal x-prof-fee 			&
+	negative if batctrl-batch-type = 'A'
+
+;'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051-doc-cash-mstr    update at clmhdr-claim-nbr		&
+    if  batctrl-batch-type = 'P'	  	&
+	via docash-key				&
+	using  (x-clinic-nbr	  +		&
+		ascii(clmhdr-doc-dept,2) +	&
+;!		ascii(clmhdr-doc-nbr,3) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		ascii(clmhdr-agent-cd,1))	&
+	on errors report
+   item docash-mtd-in-rec  subtotal x-payments  negative	&
+   	if batctrl-batch-status < '4'
+   item docash-ytd-in-rec  subtotal x-payments  negative
+
+;for clinic 60's, 'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051tp-doc-cash-mstr    update at clmhdr-claim-nbr	&
+    if  x-clinic-nbr[1:1] = '6'	and		&
+        batctrl-batch-type = 'P'	  	&
+	via docashtp-key			&
+	using  (x-clinic-nbr   +      		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+;!		ascii(clmhdr-doc-nbr,3)) 	&
+		clmhdr-doc-nbr) 		&
+	on errors report
+   item docashtp-tech-out-mtd   subtotal  x-tech-paid negative	 &
+   	if batctrl-batch-status < '4'
+   item docashtp-prof-out-mtd   subtotal  x-prof-paid negative	&
+   	if batctrl-batch-status < '4'
+   item docashtp-tech-out-ytd   subtotal  x-tech-paid negative
+   item docashtp-prof-out-ytd   subtotal  x-prof-paid negative
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+request update_rev_cash on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash  
+
+access f002-dtl-after   			&
+   link clmhdr-doc-nbr, 			&
+	Clmhdr-clinic-nbr-1-2,			&	
+;	clmhdr-payroll	 			&
+	"A"		 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt
+
+
+sel  if   batctrl-batch-type <> 'A' or batctrl-adj-cd     <> 'A'  
+
+sort on clmhdr-batch-nbr on clmhdr-claim-nbr 
+
+def x-suff char*1 						&
+      = clmhdr-adj-cd-sub-type					&
+		if     clmhdr-adj-cd-sub-type <= '9' 		&
+	   	   and batctrl-adj-cd = 'M'			&
+  else '0' 	if batctrl-adj-cd = 'M'				&
+  else clmdtl-oma-suff
+			
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-prof-fee zoned*8 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+def x-clmdtl-nbr-serv zoned*4 signed = 0 if batctrl-batch-type = 'A'	&
+	else clmdtl-nbr-serv
+
+def x-payments zoned*8 signed = 0 - clmhdr-manual-and-tape-payments	&
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-manual-and-tape-payments if batctrl-batch-type = 'P'
+
+def x-tech-paid zoned*8 signed = 0 - clmhdr-amt-tech-paid               & 
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-amt-tech-paid     if batctrl-batch-type = 'P'
+
+def x-prof-paid zoned*8 signed = x-payments - x-tech-paid  		&	 
+	if batctrl-batch-type = 'P' 
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else ascii(clmhdr-clinic-nbr-1-2,2)
+
+def x-clinic-nbr   char*2 = ascii(clmhdr-clinic-nbr-1-2,2)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;'C'laims, 'A'djustment and 'M'isc type 'P'ayments, update 'revenue' records
+output f050-doc-revenue-mstr  update add	&
+    if  batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')  &
+	via docrev-key				&
+	using  (x-translated-clinic +     	&
+		ascii(clmhdr-doc-dept,2) +	&
+;!		ascii(clmhdr-doc-nbr,3) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff)				&
+	on errors report
+   item docrev-clinic-1-2 initial x-translated-clinic
+   item docrev-dept initial clmhdr-doc-dept
+   item docrev-doc-nbr initial clmhdr-doc-nbr
+   item docrev-location initial clmhdr-loc
+   item docrev-oma-cd initial clmdtl-oma-cd
+   item docrev-oma-suff initial x-suff
+
+   item docrev-mtd-in-svc  subtotal x-clmdtl-nbr-serv         if x-i-o-ind = 'I'	&
+   	and  batctrl-batch-status < '4'
+   item docrev-mtd-in-rec  subtotal clmdtl-fee-ohip   if x-i-o-ind = 'I'	&
+   	and  batctrl-batch-status < '4'
+   item docrev-mtd-out-svc subtotal x-clmdtl-nbr-serv         if x-i-o-ind = 'O'  &
+   	and  batctrl-batch-status < '4'
+   item docrev-mtd-out-rec subtotal clmdtl-fee-ohip   if x-i-o-ind = 'O'	&
+   	and  batctrl-batch-status < '4'
+   item docrev-ytd-in-svc  subtotal x-clmdtl-nbr-serv         if x-i-o-ind = 'I'
+   item docrev-ytd-in-rec  subtotal clmdtl-fee-ohip   if x-i-o-ind = 'I'
+   item docrev-ytd-out-svc subtotal x-clmdtl-nbr-serv         if x-i-o-ind = 'O'
+   item docrev-ytd-out-rec subtotal clmdtl-fee-ohip   if x-i-o-ind = 'O'
+
+
+;For clinic 60's, 'C'laims, 'A'djustment and 'M'isc type 'P'ayments, 
+;update 'revenue' records
+output f050tp-doc-revenue-mstr update	add	&
+    if  x-translated-clinic[1:1] = '6'	and	&
+       (batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')) &
+	via docrevtp-key			&
+	using  (x-translated-clinic  +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff +			&
+;!		ascii(clmhdr-doc-nbr,3)) 	&
+		clmhdr-doc-nbr) 	&
+	on errors report
+   item docrevtp-clinic-nbr initial nconvert(x-translated-clinic)
+   item docrevtp-agent-cd initial ascii(clmhdr-agent-cd,1)
+   item docrevtp-loc-cd initial clmhdr-loc
+   item docrevtp-oma-cd initial (clmdtl-oma-cd + x-suff)
+   item docrevtp-doc-nbr initial clmhdr-doc-nbr
+
+   item docrevtp-out-tech-nbr-svc(1) subtotal x-clmdtl-nbr-serv		&
+	   if clmdtl-amt-tech-billed <> 0  				&
+   	and  batctrl-batch-status < '4'
+   item docrevtp-out-prof-nbr-svc(1) subtotal x-clmdtl-nbr-serv		&
+	   if x-prof-fee  <> 0 						& 
+   	and  batctrl-batch-status < '4'
+   item docrevtp-out-tech-amt-billed(1) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'		&
+   	and  batctrl-batch-status < '4'
+   item docrevtp-out-prof-amt-billed(1) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'		&
+   	and  batctrl-batch-status < '4'
+   item docrevtp-out-tech-amt-adjusts(1) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'A'						&
+   	and  batctrl-batch-status < '4'
+   item docrevtp-out-prof-amt-adjusts(1) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'A'						&
+   	and  batctrl-batch-status < '4'
+   item docrevtp-out-tech-nbr-svc(2) subtotal x-clmdtl-nbr-serv		&
+	   if clmdtl-amt-tech-billed <> 0  
+   item docrevtp-out-prof-nbr-svc(2) subtotal x-clmdtl-nbr-serv		&
+	   if x-prof-fee  <> 0  
+   item docrevtp-out-tech-amt-billed(2) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-prof-amt-billed(2) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-tech-amt-adjusts(2) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'A'
+   item docrevtp-out-prof-amt-adjusts(2) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'A'
+
+;'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051-doc-cash-mstr    update add  at clmhdr-claim-nbr		&
+    if  batctrl-batch-type = 'P'	  	&
+	via docash-key				&
+	using  (x-clinic-nbr	  +		&
+		ascii(clmhdr-doc-dept,2) +	&
+;!		ascii(clmhdr-doc-nbr,3) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		ascii(clmhdr-agent-cd,1))	&
+	on errors report
+   item docash-clinic-1-2 initial x-clinic-nbr
+   item docash-dept initial clmhdr-doc-dept  
+   item docash-doc-nbr initial clmhdr-doc-nbr
+   item docash-location initial clmhdr-loc
+   item docash-agency-type initial ascii(clmhdr-agent-cd,1)
+
+   item docash-mtd-in-rec  subtotal x-payments   &
+   	if   batctrl-batch-status < '4'
+   item docash-ytd-in-rec  subtotal x-payments   
+
+;for clinic 60's, 'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051tp-doc-cash-mstr    update add at clmhdr-claim-nbr	&
+    if  x-clinic-nbr[1:1] = '6'	and		&
+        batctrl-batch-type = 'P'	  	&
+	via docashtp-key			&
+	using  (x-clinic-nbr   +      		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+;!		ascii(clmhdr-doc-nbr,3)) 	&
+		clmhdr-doc-nbr) 		&
+	on errors report
+   item docashtp-clinic-nbr initial nconvert(x-clinic-nbr)
+   item docashtp-agent-cd initial ascii(clmhdr-agent-cd,1)
+   item docashtp-loc-cd initial clmhdr-loc
+   item docashtp-doc-nbr initial clmhdr-doc-nbr
+
+   item docashtp-tech-out-mtd   subtotal  x-tech-paid   &
+   	if   batctrl-batch-status < '4'
+   item docashtp-prof-out-mtd   subtotal  x-prof-paid  	&
+   	if   batctrl-batch-status < '4'
+   item docashtp-tech-out-ytd   subtotal  x-tech-paid  
+   item docashtp-prof-out-ytd   subtotal  x-prof-paid  
+
+
+build $pb_obj/u050

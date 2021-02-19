@@ -1,0 +1,118 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE M027.QKS
+COMMENT "#> program-id.     m027.qks"
+COMMENT "program purpose : entry of a doctor's contacts including their own address/phone etc"
+COMMENT "modification historY"
+COMMENT "date   who     description"
+COMMENT "2005/jan/19   b.e. - original"
+COMMENT "2005/mar/17   M.C.    - include web user name"
+COMMENT "2006/apr/04   M.C. - if user update contacts-surname for doctor type in f027, also update doc-name in f020"
+COMMENT "- include f020-doctor-mstr "
+COMMENT "2006/aug/08   M.C.    - define & pass x-doc-ohip-nbr when calling to m028"
+COMMENT "2006/oct/19   M.C. - extend the size of x-contacts-name from 40 to 60   "
+COMMENT "2006/oct/23   M.C. - Upshift x-contacts-name "
+COMMENT "2006/oct/26   M.C. - passing f027-contacts-mstr when calling m028 "
+COMMENT "2016/Apr/18   MC1 - do not update  f020-doctor-mstr here so that it forces the update in the higher screen,"
+COMMENT "this will update audit file correctly in the higher screen"
+CAN CLEAR
+COMMENT "2006/06/06 - MC"
+COMMENT "screen $pb_obj/m027 receiving x-doc-nbr, x-doc-name  "
+SCREEN $PB_OBJ/M027 RECEIVING F020-DOCTOR-MSTR, X-DOC-NBR, X-DOC-NAME
+COMMENT "2006/06/06 - end"
+COMMENT "2006/08/08 - MC"
+TEMP X-DOC-OHIP-NBR ZONED*6 UNSIGNED
+COMMENT "2006/08/08 - end"
+TEMP X-DOC-NBR CHAR*3
+TEMP X-CONTACTS-TYPE CHAR*1
+TEMP X-DOC-NAME CHAR*30
+COMMENT "temp x-contacts-name char*40"
+TEMP X-CONTACTS-NAME CHAR*60
+COMMENT "2006/04/04 - MC"
+COMMENT "file f020-doctor-mstr designer"
+COMMENT "access viaindex doc-nbr using x-doc-nbr"
+COMMENT "2006/04/04 - end"
+COMMENT "2006/06/06 - MC"
+FILE F020-DOCTOR-MSTR MASTER
+COMMENT "2006/06/06 - end"
+FILE F027-CONTACTS-MSTR OCCURS 4
+ACCESS VIAINDEX CONTACTS-KEY USING FILLER , X-DOC-NBR
+ITEM FILLER INITIAL " "
+ITEM DOC-NBR INITIAL X-DOC-NBR
+TITLE "Contacts for: " AT 1,30
+ALIGN (,,50)
+FIELD X-DOC-NAME DISPLAY PREDISPLAY
+TITLE "Type" AT 3,3
+SKIP
+ALIGN (1,,5) (,9,22)
+CLUSTER OCCURS WITH F027-CONTACTS-MSTR
+FIELD CONTACTS-TYPE OF F027-CONTACTS-MSTR REQUIRED NOCHANGE LOOKUP NOTON F027-CONTACTS-MSTR VIA FILLER, DOC-NBR, CONTACTS-TYPE USING FILLER OF F027-CONTACTS-MSTR, DOC-NBR OF F027-CONTACTS-MSTR, CONTACTS-TYPE OF F027-CONTACTS-MSTR
+FIELD CONTACTS-SURNAME LABEL "Surname    :"
+SKIP
+ALIGN (,9,22) (,54,61) (,69,74)
+FIELD CONTACTS-GIVEN-NAMES LABEL "Given Names:"
+FIELD CONTACTS-INITS LABEL "Inits:"
+FIELD CONTACTS-SEX LABEL "Sex:"
+SKIP
+ALIGN (,9,22) (,54,74)
+FIELD CONTACTS-TITLE LABEL "Title      :"
+FIELD BILLING-ENTRY-FLAG LABEL "Billing data entry?"
+COMMENT "2005/03/17 - -MC"
+FIELD LOGON-USERNAME LABEL "Web username:"
+COMMENT "2005/03/17 - end"
+SKIP 1
+PROCEDURE DESIGNER MORE
+BEGIN
+COMMENT "MC1"
+COMMENT ";  let x-doc-nbr = doc-nbr of f027-contacts-mstr"
+COMMENT "MC1 - end"
+COMMENT "2006/08/08 - MC"
+LET X-DOC-OHIP-NBR = DOC-OHIP-NBR OF F020-DOCTOR-MSTR
+COMMENT "2006/08/08 - end"
+LET X-CONTACTS-TYPE = CONTACTS-TYPE
+LET X-CONTACTS-NAME = UPSHIFT( TRUNCATE(LJ(CONTACTS-SURNAME)) + "," + TRUNCATE(LJ(CONTACTS-GIVEN-NAMES)))
+COMMENT "2006/08/08 - MC - add in the passing parameter"
+COMMENT "2006/08/08 - end"
+COMMENT "2006/10/26 - MC"
+COMMENT "x-contacts-name       mode same"
+RUN SCREEN $PB_OBJ/M028 PASSING X-DOC-NBR, X-DOC-OHIP-NBR, X-CONTACTS-TYPE, X-CONTACTS-NAME, F027-CONTACTS-MSTR MODE SAME
+COMMENT "2006/10/26 - end"
+END
+COMMENT "2006/04/04 - MC"
+PROCEDURE PREUPDATE
+BEGIN
+IF ALTEREDRECORD
+THEN BEGIN
+FOR F027-CONTACTS-MSTR
+BEGIN
+LET X-CONTACTS-NAME = CONTACTS-SURNAME + ',' + CONTACTS-INITS
+IF X-DOC-NAME <> X-CONTACTS-NAME AND CONTACTS-TYPE = 'D'
+THEN BEGIN
+LET DOC-NAME = CONTACTS-SURNAME
+LET DOC-INITS= CONTACTS-INITS
+LET DOC-NAME-SOUNDEX = SOUNDEX(DOC-NAME)
+COMMENT "MC1 - do not update here"
+COMMENT "put f020-doctor-mstr"
+COMMENT "MC1 - end"
+END
+END
+END
+END
+COMMENT "2006/04/04 - end"
+PROCEDURE UPDATE
+BEGIN
+FOR F027-CONTACTS-MSTR
+BEGIN
+PUT F027-CONTACTS-MSTR
+END
+COMMENT "MC1 - do not update here"
+COMMENT "PUT F020-DOCTOR-MSTR"
+COMMENT "MC1 - end"
+END
+BUILD DETAIL LIST
+ENDMODULE M027.QKS

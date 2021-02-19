@@ -1,0 +1,51 @@
+; program: costing11.qzs
+; formerly:costing8.qzs
+
+; purpose: dump chargeable items from f088 so that user has hard copy
+;	   of doctor charges for answering phone calls
+
+; 00/jul/00 B.E. - original
+; 00/jul/31 B.E. - added link to const rec 7 to obtain select dates
+;		   for f088 recs - modified select statement to list only
+;		   current costing period claims
+
+set process nolimit
+set lock file update
+
+access f088-rat-rejected-claims-hist-dtl		&
+		alias f088-dtl				&
+       link rat-rejected-claim-dtl[1:11],		&
+	    ped						&
+         to rat-rejected-claim,				&
+	    ped			                  	&
+		of f088-rat-rejected-claims-hist-hdr	&
+			alias f088-hdr	opt		&
+	link clmhdr-doc-nbr				&
+	  to doc-nbr of f020-doctor-mstr opt		&
+	link 7						&
+	  to const-rec-nbr of constants-mstr-rec-7
+
+select if    charge-status = "Y"					&
+	 and clmhdr-date-period-end >= current-fiscal-start-yymmdd	&
+         and clmhdr-date-period-end <= current-costing-cutoff-yymmdd	
+
+;select if RAT-REJECTED-CLAIM = "22000469109"
+
+def nbr-errors zoned*2 = 1
+
+def x-oma-cd char*5 = CLMHDR-ADJ-OMA-CD  + CLMHDR-ADJ-OMA-SUFF
+
+subfile costing11 keep portable include			&
+CLMHDR-DOC-NBR of f088-hdr			,&
+doc-dept					,&
+ped  	of f088-hdr				,&
+RAT-REJECTED-CLAIM  		,&
+OHIP-ERR-CODE of f088-hdr 	,&
+CLMHDR-DATE-PERIOD-END		,&
+CLMHDR-SERV-DATE      		,&
+CHARGE-STATUS         		,&
+ENTRY-USER-ID     of f088-hdr 	,&
+nbr-errors
+
+
+build $obj/costing11

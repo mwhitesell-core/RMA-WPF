@@ -1,0 +1,78 @@
+; Program: r123d1a
+; Purpose: audit report for CIBC EFT transfer 
+; 2004/09/13    Yas -  sort by dep/by doc name footintg at dept
+;                   -  copied by r123d 
+; 2006/01/24    MC  - display w-doctor-name properly even there is no inits defined 
+; 2010/10/26    Yas - expend the pic w-payeft-amt-n subtotal pic "^^,^^^,^^^.^^" 
+
+set rep nolimit
+set rep dev disc name r123d1a
+set page length 60 width 132
+set formfeed
+
+access *u119_payeft			       			&
+       link doc-nbr						&
+       to   doc-nbr of f020-doctor-mstr 	opt 		&
+       link doc-dept of f020-doctor-mstr                        &
+       to   dept-nbr of f070-dept-mstr 		opt             &
+       link (  ascii(doc-bank-nbr    of f020-doctor-mstr,4)     &
+             + ascii(doc-bank-branch of f020-doctor-mstr,5) )   &
+       to   bank-cd of f080-bank-mstr opt           
+
+sel u119_payeft if w-payeft-amt-n <> 0
+ 
+sort	on doc-dept  	&
+	on doc-name   	&
+	on doc-inits
+
+def w-doctor-name char*25 =                                     &
+        truncate(doc-name) + ', ' +                             &
+        doc-init1 + '.' + doc-init2 + '.' + doc-init3 + '.'     &
+if doc-init1 <> ' ' and doc-init2 <> ' ' and doc-init3 <> ' '   &
+  else  truncate(doc-name) + ', ' +                             &
+        doc-init1 + '.' + doc-init2 + '.'                       &
+if doc-init1 <> ' ' and doc-init2 <> ' '                        &
+  else  truncate(doc-name) + ', ' +                             &
+        doc-init1 + '.'                                         &
+if doc-init1 <> ' '						&
+; 2006/01/19 - MC
+  else  truncate(doc-name)	
+; 2006/01/19 - end
+
+page heading                                                    &
+        tab  1  "R123d1a P.E.D."                                &
+        tab 30 "Bank EFT Audit Report- by Dept." 		&
+        tab 65 "RUN DATE"                                       &
+        tab 75 sysdate                                          &
+        tab 90 "PAGE"                                           &
+        tab 99 syspage pic "^^^"                                &
+skip 2  tab  3 "BANK"                                           &
+        tab 35 "ACCOUNT"					&
+	tab 47 "DEPT"						&
+     	tab 53 "DOCTOR NBR / NAME"				&
+	tab 89  "DEPOSIT"					&
+skip 3
+
+rep bank-name	                         		&
+    doc-bank-acct	  				&
+    doc-dept 						&
+    doc-nbr						&
+    w-doctor-name					&
+    W-PAYEFT-AMT-N pic "^,^^^,^^^.^^"
+
+footing at doc-dept 				&
+  skip 1					&
+    tab 87  "----------"			&
+  skip 1					&
+    tab  65 "Dept. Total .....: "			&
+    tab 85  w-payeft-amt-n subtotal pic "^,^^^,^^^.^^"	&
+  skip 3
+
+final footing					&
+  skip 2					&
+    tab 87  "=========="			&
+  skip 1					&
+    tab  65 "Payroll run total: "		&
+    tab 85  w-payeft-amt-n subtotal pic "^^,^^^,^^^.^^"
+
+build $obj/r123d1a

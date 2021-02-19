@@ -1,0 +1,175 @@
+;#> PROGRAM-ID.     D119.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician YTD Audit/Statements File
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/NOV/31  ____   B.E.     - original
+;     95/NOV/08  ----   M.C.     - COMMENT W-EP-NBR-FROM & W-EP-NBR-TO
+;   1999/Jun/07         S.B.     - Altered the call to scrtitle.use and
+;                                  stdhilite.use to be called from $use
+;                                  instead of src.
+;                                - Removed the call to secfile.use because
+;                                  it was not doing anything.
+; 2003/nov/05 b.e.	- alpha doctor nbr
+; 2011/may/04 MC1     - do not allow delete
+; 2014/Sep/15 MC2       - add f119-doctor-ytd-audit to capture before change records
+;                       - save f119-doctor-ytd-audit records in f119-doctor-ytd-audit in postfind in case
+;                         user may change the records
+;
+
+can clear
+screen $pb_obj/d119.qkc on line 6 for 18 message on line 24             &
+; 2011/05/04 - add activities
+       activities find, change                                 &
+; 2011/05/04 - end
+        receiving w-doc-nbr,                                    &
+                  constants-mstr-rec-6, f020-doctor-mstr
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 master
+
+temp w-doc-nbr char*3
+temp x-srch-code char*6
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query the Physician  YTD  Audit/  " &
+"       History File.                                                  " &
+"                                                                      "
+
+;use $pb_src/secfile.use   nol nod
+
+file  f119-doctor-ytd  primary  occurs 15
+        access  viaindex f119-doctor-ytd-seq  using w-doc-nbr
+select if rec-type        = "A"
+item      rec-type initial  "A"
+
+file f190-comp-codes      reference
+     access viaindex comp-code using comp-code of f119-doctor-ytd
+
+; MC2
+file f119-doctor-ytd-audit designer  occurs with f119-doctor-ytd
+
+use $use/savef119audit_var.use
+; MC2 - end
+
+define x-screen-name char*55 = "Earnings - YTD History File"
+use $use/scrtitle.use  nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+"    -------COMP---------- GROUP STMNT  -------AMOUNT--------                   " &
+        at ,1
+skip
+title &
+"   --CODE/DESCRIPTION---- CODE   SEQ           MTD        YTD                  " &
+        at ,1
+
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 XXXXXX-xxxxxxxxxxxxxxx  X      99   999,999.99- 999,999.99-
+align (1,,4) (,10,11) (,,28) (,,35) (,,40) (,,52)
+cluster occurs with f119-doctor-ytd
+field comp-code         of f119-doctor-ytd                      &
+      lookup on f190-comp-codes                                 &
+      message "Error -  Invalid COMPENSATION Code."
+field desc-short        of f190-comp-codes label "-" display
+
+field comp-code-group   of f119-doctor-ytd
+field process-seq       of f119-doctor-ytd
+
+field amt-mtd           of f119-doctor-ytd
+field amt-ytd           of f119-doctor-ytd
+
+procedure input comp-code
+begin
+  if fieldtext = "."
+  then begin
+    let x-srch-code = " "
+    run screen $pb_obj/sy033.qkc clear lines 13 to 23 passing x-srch-code mode f
+    if x-srch-code ne " "
+    then let fieldtext = x-srch-code
+    else error "Error - A Compensation Code is required."
+  end
+end
+
+
+procedure process comp-code
+begin
+  display desc-short      of f190-comp-codes
+  let     process-seq     of f119-doctor-ytd = reporting-seq    of f190-comp-codes
+  display process-seq     of f119-doctor-ytd
+  let comp-code-group     of f119-doctor-ytd = comp-code-group  of f190-comp-codes
+  display comp-code-group of f119-doctor-ytd
+end
+
+;MC2
+use $use/savef119audit_mp.use
+
+use $use/createf119audit_mp.use
+
+procedure postfind
+begin
+   for f119-doctor-ytd
+   begin
+     do savef119audit
+   end
+end
+
+;MC2 - end
+
+procedure preupdate
+begin
+  let rec-type = "A"
+
+; MC2
+   For f119-doctor-ytd
+   begin
+   if newrecord of f119-doctor-ytd
+   then begin
+        do createf119audit_add
+        let last-mod-flag of f119-doctor-ytd-audit = 'A'
+        let last-mod-date of f119-doctor-ytd-audit = sysdate
+        let last-mod-time of f119-doctor-ytd-audit = systime / 10000
+        let last-mod-user-id of f119-doctor-ytd-audit = trun(logonid) + '-d119-A'
+        put f119-doctor-ytd-audit
+        end
+   else
+   if changemode and deletedrecord of f119-doctor-ytd
+   then begin
+        do createf119audit
+        let last-mod-flag of f119-doctor-ytd-audit = 'D'
+        let last-mod-date of f119-doctor-ytd-audit = sysdate
+        let last-mod-time of f119-doctor-ytd-audit = systime / 10000
+        let last-mod-user-id of f119-doctor-ytd-audit = trun(logonid) + '-d119-D'
+        put f119-doctor-ytd-audit
+        end
+   else
+   if changemode and alteredrecord of f119-doctor-ytd
+   then begin
+;      create before change audit record
+        do createf119audit
+        let last-mod-flag of f119-doctor-ytd-audit = 'C'
+        let last-mod-date of f119-doctor-ytd-audit = sysdate
+        let last-mod-time of f119-doctor-ytd-audit = systime / 10000
+        let last-mod-user-id of f119-doctor-ytd-audit = trun(logonid) + '-d119-1'
+        put f119-doctor-ytd-audit reset
+;      create after  change audit record
+        do createf119audit_add
+        let last-mod-flag of f119-doctor-ytd-audit = 'C'
+        let last-mod-date of f119-doctor-ytd-audit = sysdate
+        let last-mod-time of f119-doctor-ytd-audit = systime / 10000
+        let last-mod-user-id of f119-doctor-ytd-audit = trun(logonid) + '-d119-2'
+        put f119-doctor-ytd-audit
+        end
+   end
+; MC2 - end
+
+end
+build
+  

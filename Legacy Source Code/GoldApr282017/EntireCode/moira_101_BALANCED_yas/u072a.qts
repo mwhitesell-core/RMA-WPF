@@ -1,0 +1,142 @@
+;#> PROGRAM-ID.    U072A.QTS
+;
+;       ((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE : to reload the non-deleted claims placed into subfile
+;		    by u072.qts
+;
+;    MODIFICATION HISTORY
+;    DATE     WHO    DESCRIPTION
+; 2000/07/18  B.A.   - original
+; 2002/07/05  M.C.   - add on errors report on output statements and
+;                      add calculation/edit on errors report
+;                      on request statements
+; 2002/07/08  M.C.   - include agent 4 when creating f002-claim-shadow
+; 2003/dec/23 A.A.   - alpha doctor nbr
+; 2004/feb/04 M.C.   - add new request to delete purged claims records
+;		       from rejected-claims
+; 2009/Dec/02 M.C.   - add new request to delete purged claims records
+;		       from f002-claims-extra
+; 2011/Jun/06 M.C.   - add new 2 requests to delete purged claims record
+;		       from f071 & f099 files 
+; 2014/Apr/10 MC1    - add to rebuild f002-outstanding only for the outstanding claims
+; 2017/Apr/24 MC2    - change the condition for calculating balance due; use oma amt if direct bill (agent 6);
+;		       otherwise, use ohip amt
+
+cancel clear
+set process nolimit
+set lock file update
+
+; ------------------------------------------------
+request load_u072_retain_claim_hdr  on calculation errors report &
+                                   on edit errors report
+
+
+access *u072-retain-claim-hdr
+
+;MC1 - defined outstanding balance
+; MC2
+;def bal-due zoned*10 numeric = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+def bal-due zoned*10 numeric = clmhdr-tot-claim-ar-oma  + clmhdr-manual-and-tape-payments	&
+				if clmhdr-agent-cd = 6                          		&
+                          else clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+; MC2 - end
+;MC1 -  end
+
+output f002-claims-mstr add on errors report
+
+;2002/07/08 - MC
+;output f002-claim-shadow add if clmhdr-agent-cd = 6 &
+; MC2
+;output f002-claim-shadow add if (clmhdr-agent-cd = 6 or clmhdr-agent-cd = 4) &
+output f002-claim-shadow add if clmhdr-agent-cd = 6                         &
+; MC2 - end
+;2002/07/08 - end
+       and clmhdr-batch-type = 'C' on errors report
+
+item clm-shadow-clinic final            &
+;!        nconv(ascii(clmhdr-batch-nbr of u072-retain-claim-hdr)[1:2])
+        nconv(clmhdr-batch-nbr of u072-retain-claim-hdr[1:2])
+item clm-shadow-subdivision final       &
+        (clmhdr-date-cash-tape-payment of u072-retain-claim-hdr[4:1])
+item clm-shadow-patient final clmhdr-pat-ohip-id-or-chart &
+        of u072-retain-claim-hdr
+item clm-shadow-batch-nbr final clmhdr-batch-nbr of u072-retain-claim-hdr
+item clm-shadow-claim-nbr final clmhdr-claim-nbr of u072-retain-claim-hdr
+
+; MC1
+output f002-outstanding add if bal-due <> 0 on errors report
+; MC1 - end
+
+;------------------------------------------------
+request load_u072_retain_claim_dtl on calculation errors report &
+                                   on edit errors report
+
+access *u072-retain-claim-dtl
+
+output f002-claims-mstr add on errors report
+
+;------------------------------------------------
+request load_u072_retain_claim_desc on calculation errors report &
+                                   on edit errors report
+
+access *u072-retain-claim-desc
+
+output f002-claims-mstr add on errors report
+
+;------------------------------------------------
+; 2004/02/04 - MC - add the new request
+
+request delete_purged_f085_claims    on calculation errors report &
+                                     on edit errors report
+
+access *u072-delete-claim-hdr 		&
+	link (clmhdr-batch-nbr + ascii(clmhdr-claim-nbr,02) )	&
+	 to  claim-nbr of rejected-claims
+
+output rejected-claims delete on errors report
+
+; 2004/02/04 - end
+
+;------------------------------------------------
+; 2009/12/02 - MC - add the new request
+
+request delete_purged_f002extra_claims  on calculation errors report &
+                                        on edit errors report
+
+access *u072-delete-claim-hdr 		&
+	link (clmhdr-batch-nbr + ascii(clmhdr-claim-nbr,2) )	&
+	 to  clmhdr-rma-clm-nbr of f002-claims-extra
+
+output f002-claims-extra delete on errors report
+
+; 2009/12/02 - end
+
+;------------------------------------------------
+; 2011/06/06 - MC - add the new  2 requests below 
+
+request delete_purged_f071_claims    on calculation errors report &
+                                     on edit errors report
+
+access *u072-delete-claim-hdr 						&
+	link  nconvert(clmhdr-batch-nbr[1:2]),				&
+	      clmhdr-batch-nbr[3:6] + ascii(clmhdr-claim-nbr,2)  	&
+         to   clinic-nbr, claim-nbr-rma of  f071-client-rma-claim-nbr  
+
+output f071-client-rma-claim-nbr  delete on errors report
+
+;------------------------------------------------
+
+request delete_purged_f099_claims     on calculation errors report &
+                                      on edit errors report
+
+access *u072-delete-claim-hdr 				&
+	link clmhdr-batch-nbr, clmhdr-claim-nbr		&
+	 to  clmhdr-batch-nbr, clmhdr-claim-nbr of   f099-group-claim-mstr
+
+output f099-group-claim-mstr delete on errors report
+
+; 2011/06/06 - end
+
+
+build $obj/u072a

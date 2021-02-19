@@ -1,0 +1,202 @@
+>>From Dan
+
+----------------------------------------------------------------------------
+--
+The CALL "SOCKET" in the example COBOL code from HP takes three
+parameters: AF-INET, SOCK-STREAM, and PROTO.  The DG/UX "socket"
+function (documented on the DG/UX "socket" man page) also takes three
+parameters of the same general description, thus we see a similarity
+here.
+
+The similarity hints that DG/UX probably provides the whole standard set
+of socket functions, similar to those that the HP COBOL code was
+designed to call.  No doubt these are provided in the
+/usr/lib/libsocket*.* system libraries; the same place as in most
+versions of UNIX.
+
+You have to keep in mind this isn't COBOL functionality here.  COBOL is
+just making calls to the sockets functions in the same way that a C
+program would call them, or any other language for that matter.
+
+In the COBOL program, AF-INET is declared in a way making it identical
+to an "int" in C, and is given the value 2:
+
+        01     AF-INET             PIC S9(9)   BINARY VALUE 2.
+
+The sockets man page says the first argument is supposed to be an int,
+and might take one of several values, all beginning with AF_.  A UNIX or
+C programmer soon realizes these AF_ values are constants established in
+the header file /usr/include/sys/sockets.h.  Looking in that header
+file, we see (among other things):
+
+#define AF_UNSPEC       0
+        /*
+         * unspecified
+         */
+
+#define AF_UNIX         1
+        /*
+         * local to host
+         */
+
+#define AF_INET         2
+        /*
+         * internetwork: UDP, TCP, etc.
+         */
+
+Now, in the COBOL, AF-INET was given the value 2, which seems to jive
+with what we're seeing in this header file.  Good.
+
+In the COBOL, SOCK-STREAM is 1.  This value apparently worked on HP.
+However, in the DG/UX sockets.h header file, SOCK_STREAM could be either
+1 or 2, depending on ifdefs.  Looking at the ifdefs, it seems
+_IX86_ANY_DG is the way to go (as opposed to _M88K_ANY) since we're on
+an Intel not Motorola platform, so this better be a 2 not a 1.  We'll
+have to change the COBOL in this area.
+
+For PROTO, the man page says it's usually zero, and that's how the
+original COBOL has it, so we'll leave it that way.
+
+Actually, the DG "socket" function is not spelled with uppercase
+letters, nor are the other functions being called in the COBOL:
+     CALL "SOCKET"
+     CALL "BIND"
+     CALL "LISTEN"
+     CALL "ACCEPT"
+     CALL "SCLOSE"
+     CALL "SEND"
+     CALL "RECV"
+So we'd better change all these to lowercase.  In fact, it wouldn't hurt
+to change the whole COBOL program to lowercase, so we'll just do that
+(using the UNIX command dd conv=lcase).
+
+By the way, I don't know where the backslashes in the COBOL source code
+came from, but they're not legal COBOL syntax, so just cut them all out.
+Now, our COBOL source is looking kind of like this example (lowercase,
+no backslashes):
+
+           call "bind" using   sd-1
+                               server-addr
+                               size-addr
+                       giving  rc.
+           if rc < 0 then
+               display "error on bind"
+               perform error-quit.
+
+Next, we'll have to make sure the DG/UX libraries actually contain all
+of these socket-related function calls (bind, listen, accept, sclose,
+send, recv), and that the parameters the COBOL program is trying to pass
+actually make sense according to the way the DG functions are written.
+For example, we have this function "bind".  Look at the man page for
+"bind".  It says the synopsis in C syntax is:
+
+       int    bind (s, name, namelen)
+       int    s;
+       const struct sockaddr * name;
+       int    namelen;
+
+OK, in COBOL, the first argument to "bind" is an int, OK.  The next is a
+structure.  We'll have to look in the header file for the definition of
+the structure.  It says:
+
+        struct    sockaddr
+        {
+        unsigned short  sa_family;
+        char            sa_data [14];
+        };
+
+In COBOL, we've got:
+
+        01 server-addr.
+          05  sin-family-server   pic s9(4)   binary value 2.
+          05  sin-port-server     pic s9(4)   binary value 0.
+          05  s-addr-server       pic s9(9)   binary value 0.
+          05  filler              pic x(8)    value spaces.
+
+Sixteen bytes altogether for the structure, both in C and COBOL.  Looks
+like these match.
+
+As an exercise to the reader, go through each of the calls in the COBOL
+program, and find out whether they exist under DG/UX, and what their
+parameters are supposed to look like, and whether the COBOL seems to be
+calling them with the right parameters.  Hint: looks like trouble with
+the calls to "sclose".  It doesn't seem to be implemented under DG/UX.
+But it looks like the equivalent call is "shutdown", which you can see
+documented by entering the command
+
+     man 2 shutdown | pg
+
+Finally, when you've got the calls and parameters matched up, it's time
+to read the chapters in the COBOL documentation about Mixed-language
+programming, where it says how C functions can be linked into the COBOL
+runtime system so COBOL has visibility to them.  If we had implemented
+our own batch of C functions, and created our own library of them, then
+we'd have to tell COBOL to look in that library to resolve the symbols,
+kind of like this:
+
+    cob -x <my-cobol-program.cbl>  -lmylib
+
+But, since we're calling symbols in the system sockets library, it's not
+necessary to tell COBOL to look in -lsocket because COBOL already looks
+there when it makes an executable.  So, it's not necessary to "link in"
+or bind these sockets functions to COBOL because they're already bound.
+Given that the test COBOL program is named "mycobtest.cbl", you can
+compile and run it with the commands:
+
+          cob mycobtest.cbl
+          cobrun mycobtest
+
+or, to make and run an executable:
+
+          cob -x mycobtest.cbl
+          ./mycobtest
+
+Not too hard, huh?
+
+The "cob" command invokes the system linker "ld" behind the scenes to
+create executables.  If you want to see what the "cob" command is doing
+
+mxdb serv
+
+dbx serv 
+   help
+	list lineFrom, lineTo
+	stop at lineNbr
+	cont
+	next
+	print variableName
+	quit
+
+cc monday.c -lsocket -lnsl
+cc serv.c -g -lsocket -lnsl -oserv  
+cc client.c -g -lsocket -lnsl -oclient
+cc cpi.c -g -lsocket -lnsl -ocpi
+
+cob -xvDD cmain.c account.cbl 
+cob -xvDD cpi.c webstarcpi.cbl 
+
+
+ANIM COBOL no C debugging
+-------------------------
+cob -ao crts cpi.c cpirma.cbl -d cpirma -d validate -d cpi_rma
+COBSW=+A
+export COBSW
+./crts cpi
+
+DEBUG C - NO cobol debugging
+---------------------------
+cob -gx cpi.c cpirma.cbl
+dbx cpi
+
+ *To sdb C program and animate Cobol use:
+ *      cob -go crts cmain.c account.cbl -d account -d tally
+ *              -d showaccount -d validate
+cob -go crts cpi.c cpirma.cbl -d cpirma -d validate -d cpi_rma
+COBSW=+A
+export COBSW
+./crts cpi
+
+RUNTIME
+cob -x cpi.c cpirma.cbl
+cob -x cpi2.c cpirma2.cbl
+./cpi

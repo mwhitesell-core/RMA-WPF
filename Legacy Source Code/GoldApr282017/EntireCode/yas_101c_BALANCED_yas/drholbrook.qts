@@ -1,0 +1,86 @@
+;doc     : drholbrook.qts
+;purpose : report patient name for audit purposes from Jan 1 2003 until now
+;          
+;who     : Dr. Holbrook
+
+
+;Date           Who             Description
+;2003/07/17     Yasemin         Original
+
+can clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                     &
+link clmhdr-pat-ohip-id-or-chart            &
+  to key-pat-mstr of f010-pat-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220094000 to 220094999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if      clmhdr-batch-type = "C"        &
+                          and   clmhdr-serv-date >=  20030101  
+
+
+subfile drholbrook keep include                    &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr,&
+clmhdr-hosp                  of f002-claims-mstr,&
+clmhdr-pat-ohip-id-or-chart  of f002-claims-mstr,&
+pat-surname		                        ,&
+pat-given-name                                  ,&
+pat-health-nbr                                  ,&
+pat-version-cd                                  ,&
+pat-chart-nbr                                 
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *drholbrook                                                         &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+    to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr               &
+    of  f002-claims-mstr opt                                             
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20010301' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+def comma char*1 = "~" 
+
+sort on clmhdr-pat-ohip-id-or-chart
+
+subfile drholbrook1 portable keep at clmhdr-pat-ohip-id-or-chart include  & 
+clmhdr-claim-id              of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr,&
+clmhdr-hosp                  of f002-claims-mstr,&
+pat-surname                                     ,&
+pat-given-name                                  ,&
+pat-health-nbr                                  ,&
+pat-version-cd                                  ,&
+pat-chart-nbr                                   
+
+
+build $pb_obj/drholbrook
+

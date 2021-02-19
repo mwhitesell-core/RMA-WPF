@@ -1,0 +1,87 @@
+cancel clear
+
+run u140_c
+set process nolimit
+
+request u140_count_f020_doc_ohip_nbr         	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access f020-doctor-mstr 
+choose doc-ohip-nbr
+
+select if doc-ohip-nbr <> 0
+
+sorted on doc-ohip-nbr
+
+temp x-rec-count
+item x-rec-count = x-rec-count +1 	&
+	reset at doc-ohip-nbr
+
+subfile u140_c keep include		&
+  doc-ohip-nbr,				&
+  doc-nbr,				&
+  x-rec-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access *u140_c 	
+
+sorted on doc-ohip-nbr
+
+sort on doc-ohip-nbr 	A	&
+	on x-rec-count 	D
+
+;temp x-nbr-duplicates
+;item x-nbr-duplicates 						&
+;      = x-rec-count if x-rec-count > x-nbr-duplicates	&
+;   else x-nbr-duplicates
+
+subfile u140_c1 keep at doc-ohip-nbr	include
+  doc-ohip-nbr,			&
+  doc-nbr,			&
+  x-rec-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access *u140_c1					&
+	link doc-nbr				&
+	to   doc-nbr of f020-doctor-mstr
+
+output f075-afp-doc-mstr alias f075-add add
+  item doc-nbr		final doc-nbr of  u140_c
+  item doc-ohip-nbr	final doc-ohip-nbr of u140_c
+  item afp-duplicate-doc-count	final x-nbr-duplicates
+
+request u140_add_multi_doc_to_f075           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access *u140_c 					&
+	link doc-nbr				&
+	to   doc-nbr of f075-afp-doc-mstr opt
+
+sort on doc-ohip-nbr 	A	&
+	on x-rec-count 	D
+
+temp x-nbr-duplicates
+item x-nbr-duplicates 						&
+      = x-rec-count if x-rec-count > x-nbr-duplicates	&
+   else x-nbr-duplicates
+
+output f075-afp-doc-mstr alias f075-add add 	&
+  if not record f075-afp-doc-mstr  exists	&
+	item doc-nbr			final doc-nbr 	   of u140_c
+	item doc-ohip-nbr		final doc-ohip-nbr of u140_c
+	item afp-duplicate-doc-count	final x-nbr-duplicates
+
+output f075-afp-doc-mstr alias f075-update update	&
+  if     record f075-afp-doc-mstr  exists
+	item doc-ohip-nbr		final doc-ohip-nbr of u140_c
+	item afp-duplicate-doc-count	final x-nbr-duplicates
+
+build $obj/u140_c

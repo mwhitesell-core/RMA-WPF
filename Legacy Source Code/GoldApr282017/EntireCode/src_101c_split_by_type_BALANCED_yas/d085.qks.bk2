@@ -1,0 +1,99 @@
+;this program may no longer be required
+
+;PROGRAM D085
+; PURPOSE: ALLOW ENTRY OF CLAIM NBR AND MESSAGE CODE. TRANSACTION FILE
+;          CREATED BY THIS PROGRAM USED TO GENERATE LETTERS TO BE SENT
+;          TO THE PATIENT OF THE CLAIM.  BODY OF LETTER IS DETERMINED
+;          BY THE MESSAGE CODE ENTERED.
+;
+;
+;    93/03/25 m.c.	- SMS 141 (ORIGINAL)
+; 1999/jan/13 B.E.	- y2k
+; 1999/dec/09 B.E.	- added screen title
+; 2003/oct/20 b.e.	- 3 alpha doctor nbr
+;
+
+cancel clear
+
+screen $pb_obj/d085
+file rejected-claims occurs 18
+file f002-claims-mstr reference
+   access via 	key-clm-type, 		&
+		key-clm-batch-nbr, 	&
+		key-clm-claim-nbr, 	&
+	      	key-clm-serv-code, 	&
+		key-clm-adj-nbr    	&
+    using "B",                          &
+;    nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+    		claim-nbr[1:8],		&
+;    mod(claim-nbr,100), "00000", "0"
+    		claim-nbr[9:2],		&
+		"00000", 		&
+		"0"
+file f010-pat-mstr reference
+   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002-claims-mstr
+def x-name char*20 = pack(pat-surname + ", " + pat-given-name)
+def x-address char*25 = pack(subscr-addr1 + ", " +  subscr-addr2)
+
+temp w-date date initial sysdate
+
+align (,,70)
+field w-date display predisplay
+title "D085" at 2,1
+title "Entry of Claim Nbr and Patient Message Code" at 2,25
+skip
+	
+title "CLAIM NBR   MESS  HEALTH NBR  PATIENT NAME         ADDRESS" at 4,4
+align (1,,4) (,,17) (,,22) (,,34) (,,55)
+cluster occurs with rejected-claims at 5,1
+field claim-nbr of rejected-claims required		&
+	lookup noton rejected-claims,			&
+	       on f002-claims-mstr
+field mess-code of rejected-claims default "EH2" 	&
+	value "EH2", "EH3", "E4"
+field pat-health-nbr of f010-pat-mstr display
+field x-name     display
+field x-address  display
+
+procedure postfind
+begin
+   get f010-pat-mstr optional
+   if accessok
+   then display pat-health-nbr of f010-pat-mstr
+end
+
+procedure edit claim-nbr
+begin
+  if clmhdr-agent-cd <> 0 and clmhdr-agent-cd <> 2 and clmhdr-agent-cd <> 4
+  then error "*E* CLAIM IS NOT AGENT 0 OR 2 OR 4"
+end
+
+procedure process claim-nbr
+begin
+  get f010-pat-mstr optional
+  if not accessok
+  then error "*E* CLAIM DOES NOT HAVE PATIENT ID"
+  else begin
+       if pat-prov-cd <> "ON"
+       then error "*E* PATIENT IS NOT AN ONTARIO PATIENT"
+       display pat-health-nbr of f010-pat-mstr
+       display x-name
+       display x-address
+       end
+end
+
+procedure preupdate
+begin
+  for rejected-claims
+  begin
+;     let  doc-nbr  = mod(floor(claim-nbr / 100000),1000)
+     let  doc-nbr  = claim-nbr[3:3]
+     let  clmhdr-pat-ohip-id-or-chart of rejected-claims =  &
+          clmhdr-pat-ohip-id-or-chart of f002-claims-mstr
+     let  clmhdr-loc of rejected-claims = clmhdr-loc of f002-claims-mstr
+  end
+end
+
+
+build
+  

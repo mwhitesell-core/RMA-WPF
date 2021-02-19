@@ -1,0 +1,166 @@
+; PROGRAM: D087
+; PURPOSE:
+;	allow the entry of claims that have been manually rejected by the
+;	local OHIP office. No electronic file can be obtained from OHIP so the
+;	claims must be entered by hand from the hard copy report.
+;   Note that originally only the doctor number was entered (when this database
+;	was kep in LOTUS 123.  Therefore the claim number entry is optional
+;	but the doctor number must be entered. If a claim number is entered
+;	the doctor number is extracted and the doctor nbr field defaulted.
+;	The PED is defaulted from the Constants master but can be changed since
+;	some entry is done after month end.
+
+; MODIFICATION HISTORY
+;
+; WHEN        WHO	WHY
+; 1999/05/31  B.E.	- original
+; 1999/06/22  B.E.	- y2k
+; 1999/12/08  B.E.	- changed edits on patient to warnings rather than error
+; 1999/12/30  B.E.	- added "EH2" as default error message
+;
+
+cancel clear
+
+screen $pb_obj/d087
+
+
+file manual-rejected-claims-hist  occurs 18 times
+    access via manual-rejected-claim 				&
+         using manual-rejected-claim[1:2] +                     &
+               manual-rejected-claim[3:9] 			&
+;         using manual-rejected-claim[1:2] + '0' +               &
+;              manual-rejected-claim[3:8] 			&
+	 request  manual-rejected-claim
+    access via   entry-date					&
+         request entry-date
+    access sequential
+
+    item entry-date       initial sysdate
+    item entry-time-long  initial systime
+    item entry-user-id    initial signonuser
+
+    item last-mod-date    final sysdate
+    item last-mod-time    final systime/10000
+    item last-mod-user-id final signonuser
+
+file f093-ohip-error-msg-mstr reference
+
+temp x-name char*20 occurs with manual-rejected-claims-hist
+
+; NOTE: when user enters claim they don't type the leading '0' of doctor nbr
+;       so the using clause adds '0' 
+
+file f002-claims-mstr reference
+   access via key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+	      key-clm-serv-code, key-clm-adj-nbr      		  &
+    using 'B',                                                    &
+;   nconvert((manual-rejected-claim[1:2]) + '0' + manual-rejected-claim[3:6]), &
+;   nconvert(manual-rejected-claim[9:2]), '00000', '0'
+    nconvert((manual-rejected-claim[1:2]) +       manual-rejected-claim[3:7]), &
+    nconvert(manual-rejected-claim[10:2]), '00000', '0'
+
+file f002-claims-mstr alias f002find designer occurs with &
+	manual-rejected-claims-hist
+   access via key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+	      key-clm-serv-code, key-clm-adj-nbr      		  &
+    using 'B',                                                    &
+    clmhdr-batch-nbr of manual-rejected-claims-hist,     	  &   
+    clmhdr-claim-nbr of manual-rejected-claims-hist, '00000', '0'
+
+file f010-pat-mstr reference
+   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002-claims-mstr
+
+file f010-pat-mstr alias f010find designer occurs with 		  &
+	manual-rejected-claims-hist
+   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002find
+
+temp found char*1
+	
+temp w-date date initial sysdate
+
+align (,,70)
+title "Entry of Claims MANUALLY rejected by Ohip" at 1,26
+field w-date display predisplay
+title "D087" at 2,1
+skip
+
+title       '         REJECTION            DOC' at 3,4
+title       'CLAIM NBR   CODE    PED       NBR  PATIENT NAME          ENTERED' at 4,4
+align (1,,4) (,,17)     (,,22)  (,,25)  (,,32) (,,39)                 (,,61) (,,72)
+
+cluster occurs with manual-rejected-claims-hist at 5,1
+
+field manual-rejected-claim required nochange lookup on f002-claims-mstr
+field ohip-err-code  lookup  on f093-ohip-error-msg-mstr	&
+	default "EH2"
+
+; y2k
+field ped pic "^^^^/^^/^^"	     display 
+field clmhdr-doc-nbr significance 3  display
+field x-name     	display
+field entry-date 	display
+field entry-time-long	display pic "^^:^^^^^^"
+
+procedure postfind
+begin
+  for manual-rejected-claims-hist
+  begin
+
+;  NOTE: when the claim has been read from F087 it HAS a leading zero before doctor
+;	 number so the 'get' stmnt has a different 'access' clause rather the   F002
+;        'file' stmt
+
+   get f002find         optional 				  
+   if accessok 
+   then begin
+      get f010find      optional
+      if accessok 
+      then begin
+	  let x-name = pack(pat-surname of f010find + ', ' 	&
+			+ pat-given-name of f010find)
+          display x-name
+	  end
+      end
+   end
+end
+
+procedure process manual-rejected-claim
+begin
+; (preset doctor nbr from claim)
+  let     clmhdr-doc-nbr = nconvert(manual-rejected-claim[3:3]) 
+  display clmhdr-doc-nbr
+; (preset PED from claim)
+  let     ped = clmhdr-date-period-end of f002-claims-mstr
+  display ped
+
+  get f010-pat-mstr optional
+  if not accessok
+  then warning '*W* Claim does NOT have Patient Id'
+  else begin
+         if pat-prov-cd of f010-pat-mstr <> 'ON'
+         then warning '*W* Patient is NOT an Ontario patient'
+	 let x-name = pack(pat-surname of f010-pat-mstr + ', ' +	&
+                           pat-given-name of f010-pat-mstr)
+         display x-name
+       end
+end
+
+;procedure preupdate
+;begin
+;  if newrecord 
+;  then
+;    begin
+;      for manual-rejected-claims-hist  
+;      begin
+;        let  clmhdr-batch-nbr of manual-rejected-claims-hist	&
+;		= nconvert(  manual-rejected-claim[1:2]	&
+;				         + "0" 				&
+;	    	         + manual-rejected-claim[3:6]	&
+;	 		                )
+;        let clmhdr-claim-nbr = nconvert(manual-rejected-claim[10:2])
+;      end
+;    end
+;end
+
+build  detail list
+

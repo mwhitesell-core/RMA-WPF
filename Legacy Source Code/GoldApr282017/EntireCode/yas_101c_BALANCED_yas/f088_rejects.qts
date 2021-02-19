@@ -1,0 +1,152 @@
+;doc     : f088_rejects.qts
+;purpose : Report docs rat rejects                                       
+;who     : physicians   
+
+;Date           Who             Description
+;2008/03/25     Yasemin        
+;2010/05/03     Yas		Add nephrology docs
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one				&
+        on edit        errors report    &
+        on calculation errors report
+
+access f088-rat-rejected-claims-hist-dtl                                 &
+	link (clmhdr-batch-nbr+ascii(clmhdr-claim-nbr,2)),	         &
+	     ped 				                         &
+	 to  rat-rejected-claim, ped		                         &
+	     of f088-rat-rejected-claims-hist-hdr                        &
+        link clmhdr-doc-nbr                                              &
+        to doc-nbr of f020-doctor-mstr   opt                             &
+	link 'B', clmhdr-batch-nbr, clmhdr-claim-nbr,                    &
+	       '00000', '0'			                         &
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,         &
+             key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt  &
+	link clmhdr-pat-ohip-id-or-chart 	                         &
+	 to  key-pat-mstr of f010-pat-mstr opt
+
+choose clmhdr-batch-nbr '22J89@',   &
+                        '34J89@',   &                   
+                        '22D69@',   &                   
+                        '34D69@',   &                   
+                        '22P18@',   &                   
+                        '34P18@',   &                   
+                        '22733@',   &                   
+                        '34733@',   &                   
+                        '22J85@',   &                   
+                        '34J85@',   &                   
+                        '22J26@',   &                   
+                        '34J26@',   &                   
+                        '22K16@',   &                   
+                        '34K16@',   &                   
+                        '22D80@',   &                   
+                        '34D80@',   &                   
+                        '22459@',   &                   
+                        '34459@',   &                   
+                        '22279@',   &                   
+                        '34279@',   &                   
+                        '22M08@',   &                   
+                        '34M08@',   &
+                        '22L76@',   &                   
+                        '34L76@',   &                   
+                        '22K17@',   &                   
+                        '34K17@',   &                   
+                        '22055@',   &                   
+                        '34055@'
+
+select f088-rat-rejected-claims-hist-hdr if charge-status = 'Y'
+
+select f088-rat-rejected-claims-hist-dtl        &
+         if     clmdtl-sv-date  >= "20100101"   &
+         and    clmdtl-sv-date  <= "20100228"   
+;         and    ohip-err-code  <> "35"          &
+;         and    ohip-err-code  <> "I2"          &
+;         and 	ohip-err-code  <> " "
+
+def x-code cha*5 = clmhdr-adj-oma-cd + clmhdr-adj-oma-suff
+
+subfile f088 keep include	&
+  doc-nbr,                      &
+  doc-dept,                     &
+  doc-name,                     &
+  doc-inits,                    &
+  pat-surname,                  &
+  pat-given-name,               &
+  pat-health-nbr,               &
+  pat-version-cd,               &
+  clmhdr-manual-and-tape-payments, &
+  x-code,                       &
+  clmdtl-sv-date of f088-rat-rejected-claims-hist-dtl,               &
+  part-dtl-amt-bill,            &
+  part-dtl-amt-paid,            &
+  ohip-err-code of f088-rat-rejected-claims-hist-dtl,                &
+  clmhdr-batch-nbr of f088-rat-rejected-claims-hist-dtl,             &
+  clmhdr-claim-nbr of f088-rat-rejected-claims-hist-dtl,             &
+  ped of f088-rat-rejected-claims-hist-dtl
+
+
+request two				&
+        on edit        errors report    &
+        on calculation errors report
+
+access *f088			&
+	link 'B', clmhdr-batch-nbr,	&
+	     clmhdr-claim-nbr, 		&
+	     x-code, '0'		&
+	 to  key-clm-type,		&
+	     key-clm-batch-nbr,		&
+	     key-clm-claim-nbr,		&
+	     key-clm-serv-code,		&
+	     key-clm-adj-nbr of f002-claims-mstr opt
+
+
+def comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+def x-claim cha*10 = clmhdr-batch-nbr + ascii(clmhdr-claim-nbr[1:2])
+
+subfile f088_1 portable keep include	&
+  doc-nbr,                      &
+  comma,			&
+  doc-dept,                     &
+  comma,			&
+  doc-name,                     &
+  comma,			&
+  doc-inits,                    &
+  comma,			&
+  pat-surname,                  &
+  comma,			&
+  pat-given-name,               &
+  comma,			&
+  pat-health-nbr,               &
+  comma,			&
+  pat-version-cd,               &
+  comma,			&
+  x-code,                       &
+  comma,			&
+  clmdtl-sv-date of f088,	&
+  comma,			&
+  clmdtl-fee-ohip,              &
+  comma,			&
+  clmhdr-manual-and-tape-payments of f088, &
+  comma,			&
+  ohip-err-code,                &
+  comma,			&
+  clmhdr-batch-nbr of f088,     &
+  comma,			&
+  clmhdr-claim-nbr of f088,     &
+  comma,			&
+  x-claim,	&
+  comma,			&
+  ped,                          &
+  x-cr
+
+
+build $pb_obj/f088_rejects
+

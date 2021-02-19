@@ -1,0 +1,59 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE DRKOLESAR.QTS
+COMMENT "doc     : drkolesar.qts"
+COMMENT "purpose : report minimum/maximum/average amount for weekday-day, weekday-after-hour, weekend-day, weekend-after-hours"
+COMMENT "weekday-day   = claims with NO E400C or E401C  "
+COMMENT "weekday-after-hours  = claims with E400C or E401C  "
+COMMENT "weekend-day   = claims with E400C  "
+COMMENT "weekend-after-hours  = claims with E401C  "
+COMMENT "who     : Dr. Kolesar  - Chief of Anesthesia at HHS"
+COMMENT "2013/Jun/25  MC - original"
+COMMENT "- choose clinic 22, 23, 25, 32, 42, 98"
+COMMENT "- select location M461 and department 2/13/21/26 and department 14 with specialty 01 only"
+COMMENT "and serv date >= 20110701"
+COMMENT "- exclude adjustment (clmdtl-adj-nbr = 1) when calculating min/max/avg - separate pass"
+COMMENT "2013/Jul/08   MC - they only want ohip billings no bill direct; hence exclude clinic 98 "
+COMMENT "since this clinic should only contain agent 6"
+COMMENT "- add selection in first request for agent <> 6 for other clinics"
+COMMENT "*************************************************************"
+COMMENT "2013/Jul/23   MC - instead of using clmdtl-sv-date to determine weekday or weekend, use clmhdr-serv-date"
+COMMENT "for the claim, do not require to explode the consecutive date"
+COMMENT "write record at claim nbr level"
+COMMENT "NOTE: Extend the year if needed - now work for 5 years, modify serv-yr define statement in request two below"
+COMMENT "2013/Jul/30   MC     - Yasemin requested to exclude selected doctors because they can't get a consent from them"
+COMMENT "Dr. Forero    ohip# 24614  doc#V63"
+COMMENT "Dr. Hakim     ohip# 28527  doc# 37B and 72C"
+COMMENT "Dr. Thomas    ohip# 26538  doc# 622, 52A and 318 "
+CANCEL CLEAR
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+REQUEST ONE ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F002-CLAIMS-MSTR LINK KEY-CLM-BATCH-NBR[3:3] TO DOC-NBR OF F020-DOCTOR-MSTR OPT
+CHOOSE KEY-CLM-TYPE 'B' , KEY-CLM-BATCH-NBR '22@', '23@', '25@', '32@', '42@', KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE '00000', KEY-CLM-ADJ-NBR '0'
+SELECT F002-CLAIMS-MSTR IF CLMHDR-BATCH-TYPE = 'C' AND CLMHDR-SERV-DATE >= 20110701 AND CLMHDR-LOC = "M461" AND CLMHDR-AGENT-CD <> 6 AND ( CLMHDR-DOC-DEPT = 02 OR CLMHDR-DOC-DEPT = 13 OR CLMHDR-DOC-DEPT = 21 OR CLMHDR-DOC-DEPT = 26 OR ( CLMHDR-DOC-DEPT = 14 AND CLMHDR-DOC-SPEC-CD = 01 ) ) AND CLMHDR-TOT-CLAIM-AR-OHIP <> 0
+SUBFILE KOLESAR_1 KEEP INCLUDE CLMHDR-CLAIM-ID OF F002-CLAIMS-MSTR, KEY-CLM-BATCH-NBR OF F002-CLAIMS-MSTR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR, CLMHDR-LOC OF F002-CLAIMS-MSTR, CLMHDR-DOC-DEPT OF F002-CLAIMS-MSTR, CLMHDR-SERV-DATE OF F002-CLAIMS-MSTR, CLMHDR-ADJ-CD-SUB-TYPE OF F002-CLAIMS-MSTR, CLMHDR-DATE-PERIOD-END OF F002-CLAIMS-MSTR, CLMHDR-TOT-CLAIM-AR-OHIP OF F002-CLAIMS-MSTR, DOC-NAME
+REQUEST TWO ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *KOLESAR_1 LINK 'B', KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR
+SELECT F002-CLAIMS-MSTR IF CLMDTL-SV-DATE >= '20110701' AND CLMDTL-OMA-CD <> "0000" AND CLMDTL-OMA-CD <> "ZZZZ" AND CLMDTL-OMA-CD <> "PAID" AND CLMDTL-OMA-CD <> "MICM" AND CLMDTL-OMA-CD <> "MISJ" AND CLMDTL-OMA-CD <> "MISC" AND CLMDTL-OMA-CD <> "MICV" AND CLMDTL-OMA-CD <> "MISP" AND CLMDTL-OMA-CD <> "MOHR" AND CLMDTL-OMA-CD <> "MICB" AND CLMDTL-OMA-CD <> "MIBR" AND CLMDTL-OMA-CD <> "MINH" AND CLMDTL-OMA-CD <> "MHSC" AND CLMDTL-OMA-CD <> "NHSC" AND CLMDTL-OMA-CD <> "DHSC" AND CLMDTL-OMA-CD <> "AGEP" AND CLMDTL-OMA-CD <> "MOHD" AND CLMDTL-OMA-CD <> "MICA" AND CLMDTL-OMA-CD <> "MICC" AND CLMDTL-OMA-CD <> "MICD" AND CLMDTL-OMA-CD <> "MICE" AND CLMDTL-OMA-CD <> "MICF" AND CLMDTL-OMA-CD <> "MICG" AND CLMDTL-OMA-CD <> "MICH" AND CLMDTL-OMA-CD <> "MICJ" AND CLMDTL-OMA-CD <> "MICK" AND CLMDTL-OMA-CD <> "MICL" AND CLMDTL-OMA-CD <> "T995"
+SORTED ON KEY-CLM-BATCH-NBR ON KEY-CLM-CLAIM-NBR
+DEF X-DAY-HDR ZONED*1 UNSIGNED = MOD(DAYS(CLMHDR-SERV-DATE),7) IF CLMHDR-SERV-DATE <> 0 ELSE 9
+DEF WEEKDAY ZONED*1 UNSIGNED = 1 IF ( X-DAY-HDR > 0 AND X-DAY-HDR < 6 )
+DEF WEEKEND ZONED*1 UNSIGNED = 1 IF ( X-DAY-HDR = 0 OR X-DAY-HDR = 6 )
+COMMENT "if count > 1 means there is B adjustment in the claim"
+TEMP E400-COUNT ZONED*2 UNSIGNED
+ITEM E400-COUNT = E400-COUNT + 1 IF CLMDTL-OMA-CD = 'E400' AND CLMDTL-OMA-SUFF = 'C' RESET AT KEY-CLM-CLAIM-NBR
+COMMENT "if count > 1 means there is B adjustment in the claim"
+TEMP E401-COUNT ZONED*2 UNSIGNED
+ITEM E401-COUNT = E401-COUNT + 1 IF CLMDTL-OMA-CD = 'E401' AND CLMDTL-OMA-SUFF = 'C' RESET AT KEY-CLM-CLAIM-NBR
+COMMENT "extend the year if needed - now work for 5 years"
+DEF SERV-YR ZONE*1 UNSIGNED = 1 IF CLMHDR-SERV-DATE OF KOLESAR_1 < 20120701 ELSE 2 IF CLMHDR-SERV-DATE OF KOLESAR_1 < 20130701 ELSE 3 IF CLMHDR-SERV-DATE OF KOLESAR_1 < 20140701 ELSE 4 IF CLMHDR-SERV-DATE OF KOLESAR_1 < 20150701 ELSE 5 IF CLMHDR-SERV-DATE OF KOLESAR_1 < 20160701
+SUBFILE KOLESAR_CLM KEEP AT KEY-CLM-CLAIM-NBR INCLUDE KOLESAR_1 , WEEKDAY , WEEKEND , E400-COUNT , E401-COUNT , SERV-YR
+BUILD $OBJ/DRKOLESAR
+ENDMODULE DRKOLESAR.QTS

@@ -1,0 +1,107 @@
+; Program: u140_a
+; Purpose: Before the RA is run this program must to be to put all doctors
+;	   into the f075 file with an indication of the number of doctors
+;	   that share the same MOH OHIP Number
+;	   This f075 file is then updated with the RA payments and based upon
+;	   the split between a doctors RMA doctors of their RA Payments the
+;	   same ratio is used to divy up the single AFP payment identified
+;	   only with the doctor's OHIP number
+;
+; 2005/apr/08 b.e. - set lock update statement
+; 2005/apr/13 M.C. - count number of doctors within the group with MOH ohip number
+; 2005/may/10 b.e. - removed all select statements on doctors so that both
+;	  	     active and terminated doctors are selected
+
+
+cancel clear
+
+run u140_a
+set process nolimit
+set lock record update
+
+request u140_count_f020_doc_ohip_nbr         	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access f020-doctor-mstr 
+choose doc-ohip-nbr
+
+; 2005/may/10 commented out so that all doctors selected
+; use $src/f020_select_active.qzs
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;and select if doc-afp-paym-group <> " "
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; 2005/04/13 - MC
+;sorted on doc-ohip-nbr
+sort 	on doc-ohip-nbr 	&
+	on doc-afp-paym-group
+; 2005/04/13 - end
+
+temp x-rec-count
+item x-rec-count = x-rec-count +1 	&
+	reset at doc-afp-paym-group  
+
+subfile u140_a keep at doc-afp-paym-group include		&
+  doc-ohip-nbr,				&
+ doc-nbr,				&
+  doc-afp-paym-group,			&
+  x-rec-count
+
+; 2005/04/13 - MC - comment out -redundant
+;request u140_select_only_multi_doc           	&
+;               on edit        errors report 	&
+;               on calculation errors report
+;
+;access *u140_a 	
+;
+;sort on doc-ohip-nbr 	&
+;  on x-rec-count D	
+;
+;;select if x-rec-count > 1
+;
+;subfile u140_a1 keep at doc-ohip-nbr	include	&
+;  doc-ohip-nbr,					&
+;  doc-nbr,					&
+;  doc-afp-paym-group,			&
+;  x-rec-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+; 2005/04/13 - MC
+;access *u140_a1					&
+access *u140_a					&
+; 2005/04/13 - end
+	link doc-ohip-nbr			&
+	to   doc-ohip-nbr of f020-doctor-mstr
+
+; 2005/04/13 - MC
+;use $src/f020_select_active.qzs
+
+; 2005/may/10 commented out so that all doctors selected regardless if terminated
+select if      doc-ohip-nbr <> 0        &
+;          and (   doc-date-fac-start  = 0000000                         &
+;               or doc-date-fac-start < sysdate                          &
+;              )                                                         &
+;          and (  doc-date-fac-term   = 00000000                         &
+;               or doc-date-fac-term >= sysdate                          &
+;              )							 &
+	  and  doc-afp-paym-group of u140_a = doc-afp-paym-group of f020-doctor-mstr
+; 2005/04/13 - end
+
+sorted	on doc-ohip-nbr 	&
+	on doc-nbr		&
+	on doc-afp-paym-group
+
+output f075-afp-doc-mstr alias f075-add add 
+; 2005/04/13 - MC
+  item doc-ohip-nbr		final doc-ohip-nbr of u140_a
+  item doc-nbr			final doc-nbr      of f020-doctor-mstr
+  item doc-afp-paym-group	final doc-afp-paym-group of f020-doctor-mstr
+; 2005/04/13 - end
+  item afp-duplicate-doc-count	final x-rec-count
+
+build $obj/u140_a

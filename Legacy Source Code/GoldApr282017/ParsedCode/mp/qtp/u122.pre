@@ -1,0 +1,76 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U122.QTS
+COMMENT "#V PROGRAM-ID.     U122.QTS"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: SUB-PROCESS WITHIN  EARNINGS GENERATION  PROCESS."
+COMMENT "- Update F119-DOCTOR-YTD with values from current EP"
+COMMENT "run (that were placed into *F119)"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "93/Apr/19  ____   B.E.     - original"
+COMMENT "93/SEP/15  ____   B.E.     - added access to F190 so that GROSS amts"
+COMMENT "are updated into F119-YTD for INCOME based"
+COMMENT "based transactions and NET for NON-INCOME"
+COMMENT "93/NOV/26  ____   B.E.     - STATUS updated into YTD only, MTD zeroed"
+COMMENT "93/DEC/24  ____   B.E.     - YTDEAR updated into YTD only, MTD zeroed"
+COMMENT "93/DEC/28  ____   B.E.     - variables renamed to reflect change in"
+COMMENT "in *F119 from AMT-GROSS to X-AMT-GROSS"
+COMMENT "93/DEC/31  ____   B.E.     - changed f119 to unique keys"
+COMMENT "96/JAN/19  ____   M.C.     - INCREQ & INCTAR updated into YTD"
+COMMENT "only, MTD zeroed. (SMS 147)"
+COMMENT "96/APR/18  ____   Y.B.     - ADD  REVCLA  TO TMP-AMT-MTD AND"
+COMMENT "TO TMP-AMT-YTD (to pick up net-amt)"
+COMMENT "REVCLA ONE TIME ONLY. MAKE TMPMTD"
+COMMENT "AND TMPYTD THE SAME YTD DOES NOT"
+COMMENT "UPDATE OTHERWISE."
+COMMENT "98/oct/22         B.E.   - f119 database fields defined as 'numeric"
+COMMENT "size 8' as part of unix conversion."
+COMMENT "tmp-amt fields changed to match."
+COMMENT "1999/Feb/18  S.B.  - Checked for Y2K."
+COMMENT "2012/Aug/26  MC1   - set ytd-amt = 0 for 'DEFIC' & 'ADVOUT'"
+CANCEL CLEAR
+SET DEFAULT
+SET PROCESS LIMIT 100000
+RUN U122
+REQUEST U122_RUN_0_UPDATE_F119 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *F119 LINK DOC-NBR, COMP-CODE TO DOC-NBR, COMP-CODE OF F119-DOCTOR-YTD OPT LINK COMP-CODE TO COMP-CODE OF F190-COMP-CODES OPT
+COMMENT "(98/oct/22 B.E."
+COMMENT "Certain comp-codes are calculated only as YTD values, therefore the"
+COMMENT "YTD should be moved into, not added to the current YTD values.)"
+COMMENT "def tmp-amt-ytd integer signed size 4                          &"
+COMMENT "99/apr/30 B.E. 8 to 10"
+COMMENT "def tmp-amt-ytd zoned numeric size  8    &"
+COMMENT "MC1 - redundant - comment out - same as last condition"
+COMMENT "or not record f119-doctor-ytd exists   &"
+COMMENT "MC1 - end"
+COMMENT "MC1 - ytd-amt for 'DEFIC' and 'ADVOUT' should be zero"
+COMMENT "and x-amt-net of f119 should be 0"
+COMMENT "ytd-amt for 'TOTDED' should not include 'DEFIC'"
+DEF TMP-AMT-YTD ZONED NUMERIC SIZE 10 = X-AMT-GROSS OF F119 IF COMP-CODE OF F119 = "STATUS" OR COMP-CODE OF F119 = "YTDEAR" OR COMP-CODE OF F119 = "INCREQ" OR COMP-CODE OF F119 = "INCTAR" ELSE X-AMT-NET OF F119 IF COMP-CODE OF F119 = "REVCLA" OR COMP-CODE OF F119 = 'DEFIC' OR COMP-CODE OF F119 = 'ADVOUT' ELSE AMT-YTD OF F119-DOCTOR-YTD + X-AMT-GROSS OF F119
+COMMENT "(98/oct/22 B.E."
+COMMENT "For certain codes the calculations are based upon YTD criteria and"
+COMMENT "therefore no MTD is calculated -- it is thus set to zero)"
+COMMENT "def tmp-amt-mtd integer signed size 4               &"
+COMMENT "99/apr/30 B.E. 8 to 10"
+COMMENT "def tmp-amt-mtd zoned numeric size  8    &"
+DEF TMP-AMT-MTD ZONED NUMERIC SIZE 10 = 0 IF COMP-CODE OF F119 = "STATUS" OR COMP-CODE OF F119 = "YTDEAR" OR COMP-CODE OF F119 = "INCREQ" OR COMP-CODE OF F119 = "INCTAR" ELSE X-AMT-NET OF F119 IF COMP-CODE OF F119 = "REVCLA" ELSE X-AMT-GROSS OF F119
+COMMENT "OUTPUT F119-DOCTOR-YTD ALIAS F119-UPDATE UPDATE                 &"
+OUTPUT F119-DOCTOR-YTD UPDATE IF RECORD F119-DOCTOR-YTD EXISTS
+ITEM AMT-MTD FINAL TMP-AMT-MTD
+ITEM AMT-YTD FINAL TMP-AMT-YTD
+OUTPUT F119-DOCTOR-YTD ALIAS F119-ADD ADD IF NOT RECORD F119-DOCTOR-YTD EXISTS
+ITEM DOC-NBR FINAL DOC-NBR OF F119
+ITEM COMP-CODE FINAL COMP-CODE OF F119
+ITEM PROCESS-SEQ FINAL REPORTING-SEQ OF F119
+ITEM COMP-CODE-GROUP FINAL COMP-CODE-GROUP OF F119
+ITEM REC-TYPE FINAL X-REC-TYPE OF F119
+ITEM AMT-MTD FINAL TMP-AMT-MTD
+ITEM AMT-YTD FINAL TMP-AMT-YTD
+BUILD $PB_OBJ/U122
+ENDMODULE U122.QTS

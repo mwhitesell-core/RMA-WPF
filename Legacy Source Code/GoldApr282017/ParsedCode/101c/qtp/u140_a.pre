@@ -1,0 +1,214 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U140_A.QTS
+COMMENT "Program: u140_a"
+COMMENT "Purpose: Before the RA is run this program must to be to put all doctors"
+COMMENT "into the f075 file with an indication of the number of doctors"
+COMMENT "that share the same MOH OHIP Number"
+COMMENT "This f075 file is then updated with the RA payments and based upon"
+COMMENT "the split between a doctors RMA doctors of their RA Payments the"
+COMMENT "same ratio is used to divy up the single AFP payment identified"
+COMMENT "only with the doctor's OHIP number"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "NOTE:  BEWARE -  what you see in field doc-afp-paym-group in subfiles and /or files"
+COMMENT "is not from f020-doctor-mstr, but it is translated from the clinic nbr"
+COMMENT "that is assigned to the doctor"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "2005/apr/08 b.e. - set lock update statement"
+COMMENT "2005/apr/13 M.C. - count number of doctors within the group with MOH ohip number"
+COMMENT "2005/may/10 b.e. - removed all select statements on doctors so that both"
+COMMENT "active and terminated doctors are selected"
+COMMENT "2007/jul/19 M.C. - create a new request 'u140_extract_doc_afp_group' in the beginning"
+COMMENT "and a new request'u140_update_doc_count' at the end of the program"
+COMMENT "2008/sep/09 M.C. - create a new request to extract doctor records  for the incoming group from A2S file "
+COMMENT "into f075-afp-doc-mstr  with an indication of the number of doctors"
+COMMENT "2008/oct/16 M.C. - include doc-nbr in the sort statement in request u140_doc_afp_group  "
+COMMENT "and include doc-nbr in the access in the request u140_create_f075_records   "
+COMMENT "2008/nov/04 M.C. - Brad said that we should explode the group records only if doc-afp-paym-group"
+COMMENT "of f020-doctor-mstr is non-blank                                             "
+COMMENT "2008/dec/02 MC1  - undo on 2008/nov/04  - because dr 888 - Tarnolopsky 187427 has blank afp group defined in f020"
+COMMENT "and did not show on r140_b.txt report, he has 2 records from Dec governance which have"
+COMMENT "non-zero amt under H522 & H523"
+COMMENT "2009/jul/08 MC2  - include f074-afp-group-sequence-mstr in the access of request u140_extract_reporting_grp"
+COMMENT "- check on nonrbp-flag or solo-flag instead of hard coded group number"
+COMMENT "2011/nov/09 MC3  - change the sort in request u140_doc_afp_group so that the active doctor will be selected"
+COMMENT "for the same group number"
+COMMENT "2012/Apr/03 MC4  - Brad suggested to filter out (ignore) doctor with blank doc-afp-paym-group of f020-doctor-mstr"
+COMMENT "before creating records in f075 file in u140_create_f075_records request.  "
+COMMENT "This is for the example 266049 with 3 different doctor records"
+COMMENT "and has applied to the wrong doctor K79 and it should be 780."
+COMMENT "K79 Active with dept 31 and blank group"
+COMMENT "780 Active with dept 14 and H111  group"
+COMMENT "L69 Terminate with dept 14 and H111 group"
+CANCEL CLEAR
+RUN U140_A
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+COMMENT "2007/07/19 - MC - add the new request to extract doctor afp group"
+REQUEST U140_EXTRACT_DOC_AFP_GROUP ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F020-DOCTOR-MSTR LINK DOC-CLINIC-NBR TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC ALIAS CLINIC1 OPT LINK DOC-CLINIC-NBR-2 TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC ALIAS CLINIC2 OPT LINK DOC-CLINIC-NBR-3 TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC ALIAS CLINIC3 OPT LINK DOC-CLINIC-NBR-4 TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC ALIAS CLINIC4 OPT LINK DOC-CLINIC-NBR-5 TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC ALIAS CLINIC5 OPT LINK DOC-CLINIC-NBR-6 TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC ALIAS CLINIC6 OPT
+CHOOSE DOC-OHIP-NBR 1 TO 999999
+COMMENT "2008/11/04 - MC"
+COMMENT "2008/12/02 - MC1 - comment out"
+COMMENT "select if doc-afp-paym-group <> ' '"
+COMMENT "2008/12/02 - end"
+COMMENT "2008/11/04 - end"
+DEF X-TERM-DATE DATE = 20991231 IF DOC-DATE-FAC-TERM = 0 ELSE DOC-DATE-FAC-TERM
+COMMENT "2008/09/09 - MC - comment out clinic nbr - not needed"
+COMMENT "doc-clinic-nbr of f020-doctor-mstr,  &"
+COMMENT "2008/09/09 - end"
+SUBFILE U140_AFP_GROUP KEEP IF ICONST-CLINIC-CARD-COLOUR OF CLINIC1 = 'Y' INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE , ICONST-CLINIC-NBR OF CLINIC1
+COMMENT "2008/09/09 - MC - comment out clinic nbr - not needed"
+COMMENT "doc-clinic-nbr-2 of f020-doctor-mstr,  &"
+COMMENT "2008/09/09 - end"
+SUBFILE U140_AFP_GROUP ALIAS AFPCLINIC2 APPEND IF ICONST-CLINIC-CARD-COLOUR OF CLINIC2 = 'Y' INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE , ICONST-CLINIC-NBR OF CLINIC2
+COMMENT "2008/09/09 - MC - comment out clinic nbr - not needed"
+COMMENT "doc-clinic-nbr-3 of f020-doctor-mstr,  &"
+COMMENT "2008/09/09 - end"
+SUBFILE U140_AFP_GROUP ALIAS AFPCLINIC3 APPEND IF ICONST-CLINIC-CARD-COLOUR OF CLINIC3 = 'Y' INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE , ICONST-CLINIC-NBR OF CLINIC3
+COMMENT "2008/09/09 - MC - comment out clinic nbr - not needed"
+COMMENT "doc-clinic-nbr-4 of f020-doctor-mstr,  &"
+COMMENT "2008/09/09 - end"
+SUBFILE U140_AFP_GROUP ALIAS AFPCLINIC4 APPEND IF ICONST-CLINIC-CARD-COLOUR OF CLINIC4 = 'Y' INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE , ICONST-CLINIC-NBR OF CLINIC4
+COMMENT "2008/09/09 - MC - comment out clinic nbr - not needed"
+COMMENT "doc-clinic-nbr-5 of f020-doctor-mstr,  &"
+COMMENT "2008/09/09 - end"
+SUBFILE U140_AFP_GROUP ALIAS AFPCLINIC5 APPEND IF ICONST-CLINIC-CARD-COLOUR OF CLINIC5 = 'Y' INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE , ICONST-CLINIC-NBR OF CLINIC5
+COMMENT "2008/09/09 - MC - comment out clinic nbr - not needed"
+COMMENT "doc-clinic-nbr-6 of f020-doctor-mstr,  &"
+COMMENT "2008/09/09 - end"
+SUBFILE U140_AFP_GROUP ALIAS AFPCLINIC6 APPEND IF ICONST-CLINIC-CARD-COLOUR OF CLINIC6 = 'Y' INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE , ICONST-CLINIC-NBR OF CLINIC6
+COMMENT "2007/07/19 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "2008/09/09 - MC  "
+COMMENT "Purpose: Extract doctor records  for the incoming group from A2S file into f075-afp-doc-mstr  "
+COMMENT "for 'R'eporting Only groups (nonrbp)               "
+REQUEST U140_EXTRACT_REPORTING_GRP ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "2009/07/08 - MC2"
+ACCESS AFP-A2S-FILE LINK (NCONVERT(DOC-AFP-PAYM-SOLO)) TO DOC-OHIP-NBR OF F020-DOCTOR-MSTR LINK DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-SEQUENCE-MSTR OPT
+COMMENT "2009/07/08 - end"
+DEF X-PAYROLL CHAR*1 = PARM PROMPT 'Enter payroll (A/C) : '
+DEF X-TERM-DATE DATE = 20991231 IF DOC-DATE-FAC-TERM = 0 ELSE DOC-DATE-FAC-TERM
+COMMENT "2009/07/08 - MC2"
+COMMENT "if      (      doc-afp-paym-group of afp-a2s-file = 'H262' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H513' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H514' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H515' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H516' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H517' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H518' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H519' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H526' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H528' &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H529' &"
+COMMENT ")"
+DEF X-NONRBP-GROUP CHAR*1 = 'Y' IF NONRBP-FLAG = 'Y' AND SOLO-FLAG = 'N'
+COMMENT "2009/07/08 - end"
+COMMENT "2009/07/08 - MC2"
+COMMENT "if      (      doc-afp-paym-group of afp-a2s-file = 'H262'      &"
+COMMENT "or (      doc-afp-paym-group of afp-a2s-file >= 'H513' &"
+COMMENT "and   doc-afp-paym-group of afp-a2s-file <= 'H524' &"
+COMMENT ")       &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H526'      &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H528'      &"
+COMMENT "or    doc-afp-paym-group of afp-a2s-file = 'H529'      &"
+COMMENT ")"
+DEF X-SOLO-NONRBP-GROUP CHAR*1 = 'Y' IF NONRBP-FLAG = 'Y' AND (SOLO-FLAG = 'Y' OR SOLO-FLAG = 'N')
+COMMENT "2009/07/08 - end"
+COMMENT "select  if (      doc-afp-paym-group  of f020-doctor-mstr= 'H132'  &"
+COMMENT "and x-payroll = 'C'   &"
+COMMENT ")       &"
+COMMENT "or (      doc-dept of f020-doctor-mstr = 4     &"
+COMMENT "and x-payroll = 'A'   &"
+COMMENT ")      &"
+COMMENT "or (      doc-afp-paym-group of f020-doctor-mstr = 'H111'  &"
+COMMENT "and x-payroll = 'A'   &"
+COMMENT "and (doc-dept = 14 or doc-dept = 15) &"
+COMMENT ")"
+SELECT IF ( X-SOLO-NONRBP-GROUP = 'Y' AND X-PAYROLL = 'C' ) OR ( X-NONRBP-GROUP = 'Y' AND X-PAYROLL = 'A' )
+SUBFILE U140_AFP_GROUP ALIAS AFPA2S APPEND INCLUDE DOC-OHIP-NBR OF F020-DOCTOR-MSTR, DOC-NBR OF F020-DOCTOR-MSTR, X-TERM-DATE, DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE
+COMMENT "2009/09/09 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "2008/09/22 - MC - add new request"
+REQUEST U140_GET_UNIQUE_DOC_GROUP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *U140_AFP_GROUP
+DEFINE DOC-AFP-PAYM-GROUP CHAR*4 = ICONST-CLINIC-NBR
+SORT ON DOC-OHIP-NBR ON DOC-NBR ON DOC-AFP-PAYM-GROUP
+SUBFILE U140_AFP_GROUP_SORT KEEP AT DOC-AFP-PAYM-GROUP INCLUDE DOC-OHIP-NBR, DOC-NBR, X-TERM-DATE, DOC-AFP-PAYM-GROUP
+COMMENT "2008/09/22 - end "
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST U140_DOC_AFP_GROUP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *U140_AFP_GROUP_SORT
+COMMENT "2011/11/09 - MC3 - move doc-nbr to the end so that the active doctor will get selected for the same group"
+COMMENT "sort  on doc-ohip-nbr  &"
+COMMENT "2008/10/16 - MC - include doc-nbr in the sort"
+COMMENT "on doc-nbr  &"
+COMMENT "2008/10/16 - end"
+COMMENT "on doc-afp-paym-group   &"
+COMMENT "on x-term-date             "
+SORT ON DOC-OHIP-NBR ON DOC-AFP-PAYM-GROUP ON X-TERM-DATE ON DOC-NBR
+COMMENT "2011/11/09 - end   "
+TEMP X-DOC-COUNT
+ITEM X-DOC-COUNT = X-DOC-COUNT + 1 RESET AT DOC-AFP-PAYM-GROUP
+SUBFILE U140_A KEEP INCLUDE DOC-OHIP-NBR, DOC-NBR, DOC-AFP-PAYM-GROUP, X-TERM-DATE, X-DOC-COUNT
+COMMENT "output tmp-doctor-alpha add at sort-key  on errors report "
+COMMENT "2012/02/22 - MC3"
+COMMENT "output tmp-doctor-alpha add at doc-afp-paym-group  on errors report "
+OUTPUT TMP-DOCTOR-ALPHA ADD AT DOC-NBR ON ERRORS REPORT
+COMMENT "2012/02/22 - end"
+ITEM DOC-OHIP-NBR FINAL DOC-OHIP-NBR OF U140_AFP_GROUP_SORT
+ITEM DOC-NBR FINAL DOC-NBR OF U140_AFP_GROUP_SORT
+ITEM TMP-ALPHA-FIELD-1 FINAL DOC-AFP-PAYM-GROUP OF U140_AFP_GROUP_SORT
+ITEM TMP-ALPHA-FIELD-2 FINAL ASCII(X-TERM-DATE OF U140_AFP_GROUP_SORT)
+ITEM TMP-COUNTER-1 FINAL X-DOC-COUNT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST U140_CREATE_F075_RECORDS ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "2008/10/16 - MC"
+COMMENT "2012/02/22 - MC3 - include doc-afp-paym-group  "
+COMMENT "to  doc-ohip-nbr of tmp-doctor-alpha  "
+COMMENT ";  to  doc-ohip-nbr, doc-nbr of tmp-doctor-alpha  "
+COMMENT "2012/04/03 - MC4 - link to f020 to get doc-afp-paym-group"
+COMMENT "to  doc-ohip-nbr, doc-nbr, tmp-alpha-field-1   of tmp-doctor-alpha  "
+ACCESS *U140_A LINK DOC-OHIP-NBR, DOC-NBR, DOC-AFP-PAYM-GROUP TO DOC-OHIP-NBR, DOC-NBR, TMP-ALPHA-FIELD-1 OF TMP-DOCTOR-ALPHA LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR
+COMMENT "2012/04/03 - end"
+COMMENT "2012/02/22 - end"
+COMMENT "2008/10/16 - end"
+COMMENT "2012/02/22 - MC3 - comment out"
+COMMENT "select if doc-afp-paym-group of u140_a = tmp-alpha-field-1 of tmp-doctor-alpha  &"
+COMMENT "and    x-doc-count = tmp-counter-1 of tmp-doctor-alpha  "
+COMMENT "2012/02/22 - end"
+COMMENT "2012/04/03 - MC4"
+SORT ON DOC-OHIP-NBR ON DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR D
+TEMP X-COUNT
+ITEM X-COUNT = X-COUNT + 1 RESET AT DOC-OHIP-NBR
+COMMENT "2012/04/03 - end"
+SUBFILE BRADDEBUG KEEP INCLUDE DOC-OHIP-NBR OF U140_A , DOC-NBR OF U140_A, DOC-OHIP-NBR OF TMP-DOCTOR-ALPHA, DOC-NBR OF TMP-DOCTOR-ALPHA, DOC-AFP-PAYM-GROUP OF U140_A , TMP-ALPHA-FIELD-1 OF TMP-DOCTOR-ALPHA, X-DOC-COUNT ,TMP-COUNTER-1 OF TMP-DOCTOR-ALPHA
+COMMENT "2012/04/03 - MC4 - add condition"
+COMMENT "output f075-afp-doc-mstr add on errors report"
+OUTPUT F075-AFP-DOC-MSTR ADD IF DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR <> ' ' OR (DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR = ' ' AND X-COUNT = 1) ON ERRORS REPORT
+COMMENT "2012/04/03 - end"
+ITEM DOC-OHIP-NBR FINAL DOC-OHIP-NBR OF U140_A
+ITEM DOC-NBR FINAL DOC-NBR OF U140_A
+ITEM DOC-AFP-PAYM-GROUP FINAL DOC-AFP-PAYM-GROUP OF U140_A
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "2008/09/22 - MC - add 2 new requests"
+REQUEST U140_COUNT_F075_NBR_OF_DOCTOR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F075-AFP-DOC-MSTR
+SORT ON DOC-OHIP-NBR ON DOC-AFP-PAYM-GROUP ON DOC-NBR
+TEMP X-DOC-COUNT
+ITEM X-DOC-COUNT = X-DOC-COUNT + 1 RESET AT DOC-AFP-PAYM-GROUP
+SUBFILE U140_A_DOC_COUNT KEEP AT DOC-AFP-PAYM-GROUP INCLUDE DOC-OHIP-NBR, DOC-AFP-PAYM-GROUP, X-DOC-COUNT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST U140_UPDATE_F075_NBR_OF_DOCTOR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *U140_A_DOC_COUNT LINK DOC-OHIP-NBR TO DOC-OHIP-NBR OF F075-AFP-DOC-MSTR
+SELECT IF DOC-AFP-PAYM-GROUP OF U140_A_DOC_COUNT = DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR
+OUTPUT F075-AFP-DOC-MSTR UPDATE ON ERROR REPORT
+ITEM AFP-DUPLICATE-DOC-COUNT FINAL X-DOC-COUNT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+BUILD $OBJ/U140_A
+ENDMODULE U140_A.QTS

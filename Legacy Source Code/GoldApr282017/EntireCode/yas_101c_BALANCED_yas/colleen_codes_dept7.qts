@@ -1,0 +1,138 @@
+;doc     : colleen.qts
+;purpose : report totals for cardiology division - procedures ECG and ECHO's
+;          clinic 60's proffessional fees will be picked up in 22 agent T995
+;who     : Ken McFarlen
+
+
+;Date           Who             Description
+;2006/08/22     Yasemin                    
+;2007/05/03     Yasemin         add neurology docs take out Dr. Roman as per 
+;                               Pat Haslettes email and modify select codes
+;2007/11/27     yas             orig colleen_codes.qts                      
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr             &
+        link clmhdr-claim-id[3:3]   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr,  &
+                    key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                                &
+                          (    clmhdr-doc-dept = 7        &
+                            or clmhdr-doc-dept = 71       &
+                            or clmhdr-doc-dept = 72       &
+                            or clmhdr-doc-dept = 73       &
+                            or clmhdr-doc-dept = 74       &
+                            or clmhdr-doc-dept = 75       &
+                          )                               
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+
+subfile colleen       keep at key-clm-claim-nbr include             &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+doc-dept                     of f020-doctor-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *colleen                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+
+select f002-claims-mstr if                     &
+               clmdtl-sv-date         >= '20070701'    &
+      and      clmdtl-sv-date         <= '20080630'    &
+      and     (    clmdtl-oma-cd      =  "E450"    & ; details only
+                or clmdtl-oma-cd      =  "E451"    & ; details only
+                or clmdtl-oma-cd      =  "G310"    & ; details only
+                or clmdtl-oma-cd      =  "G313"    & ; details only
+                or clmdtl-oma-cd      =  "G414"    & ; details only
+                or clmdtl-oma-cd      =  "G416"    & ; details only
+                or clmdtl-oma-cd      =  "G418"    & ; details only
+                or clmdtl-oma-cd      =  "G544"    & ; details only
+                or clmdtl-oma-cd      =  "G554"    & ; details only
+                or clmdtl-oma-cd      =  "G555"    & ; details only
+                or clmdtl-oma-cd      =  "G566"    & ; details only
+                or clmdtl-oma-cd      =  "G567"    & ; details only
+                or clmdtl-oma-cd      =  "G570"    & ; details only
+                or clmdtl-oma-cd      =  "G571"    & ; details only
+                or clmdtl-oma-cd      =  "G577"    & ; details only
+                or clmdtl-oma-cd      =  "G578"    & ; details only
+                or clmdtl-oma-cd      =  "G579"    & ; details only
+                or clmdtl-oma-cd      =  "G581"    & ; details only
+                or clmdtl-oma-cd      =  "G650"    & ; details only
+                or clmdtl-oma-cd      =  "G651"    & ; details only
+                or clmdtl-oma-cd      =  "G652"    & ; details only
+                or clmdtl-oma-cd      =  "G658"    & ; details only
+                or clmdtl-oma-cd      =  "J310"    & ; details only
+                or clmdtl-oma-cd      =  "J315"    & ; details only
+                or clmdtl-oma-cd      =  "J322"    & ; details only
+                or clmdtl-oma-cd      =  "J340"    & ; details only
+                or clmdtl-oma-cd      =  "AGEP"    & ; details only
+                or clmdtl-oma-cd      =  "T995")   & ; details only
+      and      clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+sort on doc-nbr
+
+
+temp x-clms zoned*9 signed
+item x-clms  = x-clms + clmdtl-fee-ohip                  &
+              if     (     clmdtl-sv-date >= '20070701'  &
+                       and clmdtl-sv-date <= '20080630'  &
+                     )                                   &
+                 and clmdtl-oma-cd <> "AGEP"             &
+              reset at doc-nbr
+
+temp x-agep zoned*9 signed
+item x-agep  = x-agep + clmdtl-fee-ohip                  &
+              if     (     clmdtl-sv-date >= '20070701'  &
+                       and clmdtl-sv-date <= '20080630'  &
+                     )                                   &
+                 and clmdtl-oma-cd = "AGEP"              &
+              reset at doc-nbr
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + clmdtl-fee-ohip                  &
+              if     (     clmdtl-sv-date >= '20070701'  &
+                       and clmdtl-sv-date <= '20080630'  &
+                     )                                   &
+              reset at doc-nbr
+
+def x-comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile colleen1 portable keep at doc-nbr include      &
+  doc-dept,                     &
+  x-comma,                      &
+  doc-nbr,                      &
+  x-comma,                      &
+  doc-name,                     &
+  x-comma,                      &
+  doc-inits,                    &
+  x-comma,                      &
+  x-clms,                       &
+  x-comma,                      &
+  x-agep,                       &
+  x-comma,                      &
+  x-tot,                        &
+  x-cr
+
+build colleen_codes_dept7

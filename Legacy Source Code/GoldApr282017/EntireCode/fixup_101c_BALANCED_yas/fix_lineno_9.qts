@@ -1,0 +1,32 @@
+cancel clear
+set process nolimit
+
+access f002-claims-mstr			&
+   link clmdtl-id[1:11] 			&
+     to tmp-counter-key-alpha of tmp-counters-alpha
+
+;select if clmdtl-oma-cd <> "0000"		& ; detail recs only
+;	 and clmdtl-oma-cd <> "PAID"		& ; no payments
+select if                          	& ; detail recs only
+	     clmdtl-oma-cd <> "PAID"		& ; no payments
+	 and clmdtl-oma-cd <> "ZZZZ"		& ; no descriptions
+ 	 and CLMHDR-ADJ-ADJ-NBR = "0"	 	  ; claim recs only - no adjs
+
+def clm char*11 = clmdtl-id[1:11]
+
+sorted on clm
+
+temp x-count zoned*3 unsigned
+item x-count = x-count + 1 reset at clm
+
+subfile f002_fix_lineno_9 keep include		 &
+   clmdtl-id		of f002-claims-mstr	,&
+   clmdtl-line-no	of f002-claims-mstr	,&
+   x-count
+
+output f002-claims-mstr alias f002-update-dtl update if clmdtl-oma-cd <> "0000"
+  item clmdtl-line-no  	final x-count
+output f002-claims-mstr alias f002-update-hdr update if clmdtl-oma-cd =  "0000"
+  item clmhdr-tape-submit-ind  	final "X"
+
+build $obj/fix_lineno_9

@@ -1,0 +1,173 @@
+; DOC: R011B.QZS
+; DOC: PHYSICIAN REVENUE ANALYSIS BY DOCTOR (SUMMARY REPORT)
+; DOC: SORT BY CLINIC BY CLASS
+; DOC: RUN FOR: MUMC DIAGNOSTICS
+;
+;PROGRAM PURPOSE : REVENUE ANALYSIS BY DOCTOR (SUMMARY REPORT)
+;                  R011.CB CONVERSTION TO POWERHOUSE R011B.QZS
+;                  THIS IS THE FIRST PART OF 3 PROGRAMS APPEND
+;                  R011B.TXT TO END OF R011A.TXT
+;
+;DATE       WHO       DESCRIPTION
+;92/05/26   YASEMIN   ORIGINAL
+;2010/02/04 yas       - add new clinic 66
+;
+; Feb/19/2001 A.A  Increased size of docrev-mtd-in-svc and
+;                                    docrev-mtd-out-svc to 4 digits
+; Dec/17/2003 A.A. alpha doctor nbr
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r011b
+set formfee
+set noblank
+
+access f050-doc-revenue-mstr                              &
+  link docrev-doc-nbr                                     &
+    to doc-nbr of f020-doctor-mstr   opt                  &
+  link (nconvert(docrev-clinic-1-2))                      &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec   opt     &
+  link docrev-dept                                           &
+    to dept-nbr of f070-dept-mstr  opt
+
+choose docrev-key "60@" to "66@"
+
+sort on docrev-clinic-1-2 on doc-full-part-ind
+
+def x-class cha*18 = "FULL TIME"         if doc-full-part-ind = "F"   &
+                else "PART TIME"         if doc-full-part-ind = "P"   &
+                else "CLINICAL SCHOLARS" if doc-full-part-ind = "C"   &
+                else "OTHER"             if doc-full-part-ind = "S"
+
+; Feb/19/2001 A.A
+;def x-svc-mtd-in  zoned*3 signed = docrev-mtd-in-svc    &
+def x-svc-mtd-in  zoned*4 signed = docrev-mtd-in-svc    &
+                                   if docrev-location ne "MISC"
+
+; Feb/19/2001 A.A
+;def x-svc-mtd-out zoned*3 signed = docrev-mtd-out-svc   &
+def x-svc-mtd-out zoned*4 signed = docrev-mtd-out-svc   &
+                                   if docrev-location ne "MISC"
+
+def x-amt-mtd-in  zoned*8 signed = docrev-mtd-in-rec    &
+                                   if docrev-location ne "MISC"
+
+def x-amt-mtd-out zoned*8 signed = docrev-mtd-out-rec   &
+                                   if docrev-location ne "MISC"
+
+; Feb/19/2001 A.A
+;def x-misc-svc-mtd zoned*3 signed =(docrev-mtd-in-svc + docrev-mtd-out-svc) &
+def x-misc-svc-mtd zoned*4 signed =(docrev-mtd-in-svc + docrev-mtd-out-svc) &
+                              if docrev-location = "MISC"
+
+def x-misc-amt-mtd zoned*8 signed =(docrev-mtd-in-rec + docrev-mtd-out-rec) &
+                              if docrev-location = "MISC"
+
+def x-svc-ytd-in  zoned*5 signed = docrev-ytd-in-svc    &
+                                   if docrev-location ne "MISC"
+
+def x-svc-ytd-out zoned*5 signed = docrev-ytd-out-svc   &
+                                   if docrev-location ne "MISC"
+
+def x-amt-ytd-in  zoned*8 signed = docrev-ytd-in-rec    &
+                                   if docrev-location ne "MISC"
+
+def x-amt-ytd-out zoned*8 signed = docrev-ytd-out-rec   &
+                                   if docrev-location ne "MISC"
+
+def x-misc-svc-ytd zoned*5 signed =  &
+    (docrev-ytd-in-svc + docrev-ytd-out-svc) if docrev-location = "MISC"
+
+def x-misc-amt-ytd zoned*8 signed =   &
+    (docrev-ytd-in-rec + docrev-ytd-out-rec) if docrev-location = "MISC"
+
+; Feb/19/2001 A.A
+;def x-svc-total-mtd zoned*3 signed= (x-svc-mtd-in + x-svc-mtd-out + x-misc-svc-mtd)
+def x-svc-total-mtd zoned*4 signed= (x-svc-mtd-in + x-svc-mtd-out + x-misc-svc-mtd)
+
+def x-svc-total-ytd zoned*5 signed= (x-svc-ytd-in + x-svc-ytd-out + x-misc-svc-ytd)
+
+def x-amt-total-mtd zoned*8 signed= (x-amt-mtd-in + x-amt-mtd-out + x-misc-amt-mtd)
+
+def x-amt-total-ytd zoned*8 signed= (x-amt-ytd-in + x-amt-ytd-out + x-misc-amt-ytd)
+
+;y2k
+def x-period cha*1 = "."
+
+def x-name cha*30 =pack(doc-name +" "+ doc-inits)
+
+page heading                                                    &
+	tab 1   "R011"  			          	&
+	tab 7   "/"     			          	&
+	tab 8   docrev-clinic-1-2                               &
+	tab 13  "P.E.D"				          	&
+;y2k
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 47  "PHYSICIAN REVENUE ANALYSIS - BY DOCTOR"  	&
+	tab 103 "RUN DATE:"                               	&
+;y2k
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 60  "SUMMARY REPORT"                                &
+        tab 105 "CLINIC:"                                       &
+        tab 113  docrev-clinic-1-2                          &
+        tab 116  "-"                                            &
+        tab 118  iconst-clinic-nbr                              &
+skip 1  tab 56   iconst-clinic-name                     	&
+skip 2  tab 1   "CLINIC CLASS TOTALS"                  		&
+skip 2  tab 39  "# SVC---IN-PATIENT"                   		&
+        tab 64  "# SVC---OUT-PATIENT"              		&
+        tab 87  "# SVC--MISCELLANEOUS"                  	&
+        tab 113 "# SVC--TOTAL-AMOUNT"                  		&
+skip 2
+
+heading at docrev-clinic-1-2   skip page
+
+footing at doc-full-part-ind  &
+skip 2  tab 1   doc-full-part-ind tab 2 ":" tab 4 x-class        &
+        tab 29  "MONTH"                                          &
+        tab 41  x-svc-mtd-in    subtotal pic "^,^^^"             &
+        tab 47  x-amt-mtd-in    subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 66  x-svc-mtd-out   subtotal pic "^,^^^"             &
+        tab 72  x-amt-mtd-out   subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 89  x-misc-svc-mtd  subtotal pic "^,^^^"             &
+        tab 97  x-misc-amt-mtd  subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 113 x-svc-total-mtd subtotal pic "^,^^^"             &
+        tab 120 x-amt-total-mtd subtotal pic "^^^^,^^^.^^ " trail "-"       &
+skip 1  tab 30  "YEAR"                                           &
+        tab 40  x-svc-ytd-in    subtotal pic "^^,^^^"            &
+        tab 47  x-amt-ytd-in    subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 65  x-svc-ytd-out   subtotal pic "^^,^^^"            &
+        tab 72  x-amt-ytd-out   subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 88  x-misc-svc-ytd  subtotal pic "^^,^^^"            &
+        tab 97  x-misc-amt-ytd  subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 112 x-svc-total-ytd subtotal pic "^^,^^^"            &
+        tab 120 x-amt-total-ytd subtotal pic "^^^^,^^^.^^ " trail "-"
+
+footing at docrev-clinic-1-2     &
+skip 2  tab 1   "* CLINIC GRAND TOTALS *"                        &
+        tab 29  "MONTH"                                          &
+        tab 41  x-svc-mtd-in    subtotal pic "^,^^^"             &
+        tab 47  x-amt-mtd-in    subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 66  x-svc-mtd-out   subtotal pic "^,^^^"             &
+        tab 72  x-amt-mtd-out   subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 89  x-misc-svc-mtd  subtotal pic "^,^^^"             &
+        tab 97  x-misc-amt-mtd  subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 113 x-svc-total-mtd subtotal pic "^,^^^"             &
+        tab 120 x-amt-total-mtd subtotal pic "^^^^,^^^.^^ " trail "-"       &
+skip 1  tab 30  "YEAR"                                           &
+        tab 40  x-svc-ytd-in    subtotal pic "^^,^^^"            &
+        tab 47  x-amt-ytd-in    subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 65  x-svc-ytd-out   subtotal pic "^^,^^^"            &
+        tab 72  x-amt-ytd-out   subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 88  x-misc-svc-ytd  subtotal pic "^^,^^^"            &
+        tab 97  x-misc-amt-ytd  subtotal pic "^^^^,^^^.^^ " trail "-"       &
+        tab 112 x-svc-total-ytd subtotal pic "^^,^^^"            &
+        tab 120 x-amt-total-ytd subtotal pic "^^^^,^^^.^^ " trail "-"       &
+skip page
+
+build $pb_obj/r011b
+
+
+  

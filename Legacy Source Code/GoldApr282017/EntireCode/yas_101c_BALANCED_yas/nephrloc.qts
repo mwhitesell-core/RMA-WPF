@@ -1,0 +1,196 @@
+;doc     : nephrloc.qts
+;purpose : report nephrology group - amount by location R200 and B200
+;          
+;who     : Kevin Sulewski/dwayne dr russell - dept of med manager and Dr. Russell
+
+
+;Date           Who             Description
+;2003/04/08     Yasemin         Original
+
+can clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (nconvert(clmhdr-claim-id[4:3]))   &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220839000 to 220839999,   &
+                                              220481000 to 220481999,   &
+                                              220078000 to 220078999,   &
+                                              220188000 to 220188999,   &
+                                              220403000 to 220403999,   &
+                                              220886000 to 220886999,   &
+                                              220279000 to 220279999,   &
+                                              220792000 to 220792999,   &
+                                              220821000 to 220821999,   &
+                                              220879000 to 220879999,   &
+                                              220455000 to 220455999,   &
+                                              220928000 to 220928999,   &
+                                              220055000 to 220055999,   &
+                                              220662000 to 220662999,   &
+                                              220459000 to 220459999,   &
+                                              220425000 to 220425999,   &
+                                              220967000 to 220967999,   &
+                                              220448000 to 220448999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if      clmhdr-batch-type = "C"    &
+                          and   clmhdr-loc = "R200"
+
+def doc-nbr num*3 = nconvert(clmhdr-claim-id[4:3])
+
+def x-doc-name char*15 = pack(doc-name +" "+ doc-inits)
+
+subfile nephrloc keep include                    &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr,&
+clmhdr-hosp                  of f002-claims-mstr,&
+clmhdr-pat-ohip-id-or-chart  of f002-claims-mstr,&
+doc-nbr						,&
+x-doc-name
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *nephrloc                                                         &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+    to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr               &
+    of  f002-claims-mstr opt                                             
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20010301' &
+       and  clmdtl-sv-date     <= '20030331' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]
+
+def x-comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+sort on doc-nbr
+
+temp x-mar num*7
+item x-mar  = x-mar + clmdtl-fee-ohip                  &
+              if  x-yyyymm = "200103"                  &
+              reset at doc-nbr
+
+temp x-apr num*7
+item x-apr  = x-apr + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200104"               &
+              reset at doc-nbr
+
+temp x-may num*7
+item x-may  = x-may + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200105"               &
+              reset at doc-nbr
+
+temp x-jun num*7
+item x-jun  = x-jun + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200106"               &
+              reset at doc-nbr
+
+temp x-jul num*7
+item x-jul  = x-jul + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200107"               &
+              reset at doc-nbr
+
+temp x-aug num*7
+item x-aug  = x-aug  + clmdtl-fee-ohip              &
+              if  x-yyyymm = "200108"               &
+              reset at doc-nbr
+
+temp x-sep num*7
+item x-sep  = x-sep + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200109"               &
+              reset at doc-nbr
+
+temp x-oct num*7
+item x-oct  = x-oct + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200110"               &
+              reset at doc-nbr
+
+temp x-nov num*7
+item x-nov  = x-nov + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200111"               &
+              reset at doc-nbr
+
+temp x-dec num*7
+item x-dec  = x-dec + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200112"               &
+              reset at doc-nbr
+
+temp x-jan num*7
+item x-jan  = x-jan + clmdtl-fee-ohip               &
+              if  x-yyyymm = "200201"               &
+              reset at doc-nbr
+
+temp x-feb num*7
+item x-feb  = x-feb  + clmdtl-fee-ohip              &
+              if  x-yyyymm = "200202"               &
+              reset at doc-nbr
+
+;temp x-mar3  num*7
+;item x-mar3  = x-mar3 + clmdtl-fee-ohip             &
+;              if  x-yyyymm = "200302"               &
+;              reset at doc-nbr
+
+subfile nephrloc1 portable keep at doc-nbr include  & 
+  doc-nbr  of nephrloc         ,&
+  x-comma                      ,&
+  x-doc-name                   ,&
+  x-comma                      ,&
+  x-mar                        ,&
+  x-comma                      ,&
+  x-apr                        ,&
+  x-comma                      ,&
+  x-may                        ,&
+  x-comma                      ,&
+  x-jun                        ,&
+  x-comma                      ,&
+  x-jul                        ,&
+  x-comma                      ,&
+  x-aug                        ,&
+  x-comma                      ,&
+  x-sep                        ,&
+  x-comma                      ,&
+  x-oct                        ,&
+  x-comma                      ,&
+  x-nov                        ,&
+  x-comma                      ,&
+  x-dec                        ,&
+  x-comma                      ,&
+  x-jan                        ,&
+  x-comma                      ,&
+  x-feb                        ,&
+;  x-comma                      ,&
+;  x-mar3                       ,&
+  x-cr
+
+
+build $pb_obj/nephrloc
+

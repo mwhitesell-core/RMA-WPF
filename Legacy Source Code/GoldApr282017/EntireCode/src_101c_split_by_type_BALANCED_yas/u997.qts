@@ -1,0 +1,87 @@
+;program-id.	u997.qts
+;
+;purpose: To check data from u030-tape-145-file
+;         and create subfiles with "wrong" and "ok" data
+;
+;	MODIFICATION HISTORY
+;	  DATE	   SMS #	WHO	DESCRIPTION
+;       90.11.16   131          D.B.    ORIGINAL
+;       91.03.08   138		D.B.	NEW MRO LAYOUT
+;       92.10.14       		Y.B.	INCLUDE W-RAT-145-AMT-PAID IN
+;                                       U997_TOTAL
+;     1999/May/16		S.B.	Y2K checked.
+;     2003/dec/16		A.A.	alpha doctor nbr
+;     2004/sep/20		M.C.	change the definition for w-wrong-flag
+;     2004/nov/25       	M.C.	change the definition for w-wrong-flag
+;					by adding criteria
+;                                       create a new request for rmb 
+
+can clear
+
+request extract_records on calculation errors report
+
+set process nolimit
+set lock file update
+
+access u030-tape-145-file	&
+;!	link (nconvert(rat-145-account-nbr[1:3])) to doc-nbr of f020-doctor-mstr opt
+	link (rat-145-account-nbr[1:3]) to doc-nbr of f020-doctor-mstr opt
+
+def w-wrong-flag char*1 =	&
+	     'Y' if (not record f020-doctor-mstr exists		&
+	         or 8 > size(truncate(rat-145-account-nbr))	&
+; 2004/09/20 - MC - only check the last 5 digits of the claim nbr are numeric
+;		 or rat-145-account-nbr < '00000000'		&
+;		 or rat-145-account-nbr > '99999999')		&
+		 or rat-145-account-nbr[4:5] < '00000'		&
+		 or rat-145-account-nbr[4:5] > '99999')		&
+; 2004/09/20 - end
+; 2004/11/25 - MC - if incoming 6 digits doc nbr is not the same as in f020
+		 or (rat-145-doc-nbr <> doc-ohip-nbr)		&
+; 2004/11/25 - end
+	else 'N'
+
+def w-last-rec-flag char*1 = ' '
+
+sorted on w-last-rec-flag, rat-145-account-nbr
+
+temp w-count
+item w-count count at rat-145-account-nbr
+temp w-rat-145-amount-sub num*11
+item w-rat-145-amount-sub subtotal  rat-145-amount-sub
+temp w-rat-145-amt-paid num*11
+item w-rat-145-amt-paid subtotal  rat-145-amt-paid
+
+subfile u997_bad keep if w-wrong-flag = 'Y' &
+	include u030-tape-145-file
+
+subfile u997_good keep if w-wrong-flag = 'N' &
+	include u030-tape-145-file
+
+subfile u997_total keep at w-last-rec-flag	&
+	include w-count, w-rat-145-amount-sub, w-rat-145-amt-paid
+
+; 2004/11/25 - add the new request for rmb
+request extract_records on calculation errors report
+
+
+access u030-tape-rmb-file	&
+	link (rat-rmb-account-nbr[1:3]) to doc-nbr of f020-doctor-mstr opt
+
+def w-wrong-flag char*1 =	&
+	     'Y' if (not record f020-doctor-mstr exists		&
+	         or 8 > size(truncate(rat-rmb-account-nbr))	&
+		 or rat-rmb-account-nbr[4:5] < '00000'		&
+		 or rat-rmb-account-nbr[4:5] > '99999')		&
+		 or (rat-rmb-doc-nbr <> doc-ohip-nbr)		&
+	else 'N'
+
+subfile u997_bad keep append if w-wrong-flag = 'Y' &
+	include u030-tape-rmb-file
+
+subfile u997_rmb_good keep if w-wrong-flag = 'N' &
+	include u030-tape-rmb-file
+
+
+build $pb_obj/u997
+  

@@ -1,0 +1,599 @@
+
+;#> PROGRAM-ID.     NEWU706A2.QTS
+;
+;	((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE: SELECT "CORRECT" CLAIMS FROM THE SUSPENDED FILES
+;                  AND TRANSFER THEM INTO THE LIVE F002 CLAIMS MASTER.
+;
+; MODIFICATION HISTORY
+;    DATE    SMS #  WHO     DESCRIPTION
+;
+; 93/07/21	    M.C.    - SMS 142
+;			    - CLONE FROM U706A.QTS
+;			    - USE DOC-NBR TO LINK TO F020
+;			    - DO NOT REQUIRE TO PROMPT FOR DOC NBR
+;			    - WHEN CREATING RMA CLAIMS, ALSO CREATE
+;			      RECORDS IN F071-CLIENT-RMA-CLAIM-NBR
+; 93/08/31	    M.C.    - SMS 142
+;			    - ALSO DELETE "R"ESUBMIT CLAIMS IN REQUEST
+;			      U706A_DELETE_CLAIMS
+; 93/08/31          M.C.    - SMS 142
+;			    - SET CLMHDR-MANUAL-REVIEW FROM CLMHDR-
+;			      RELATIONSHIP OF F002-SUSPEND-HDR
+; 94/10/15	    B.E.    - ADDED CODE TO INITIALIZE FIELD CLMDTL-LINE-NO
+;			      WHEN CREATING CLAIM DETAIL RECORDS.
+;
+; 96/07/22	    M.C.    - PDR 649
+;			    - DIFFERENT SERVICE MONTH CAN BE IN A
+;			      DETAIL CLAIM
+;			    - CHANGE X-ACCOUNTING-NBR NOT TO INCLUDE
+;			      CLMDTL-SV-YY & CLMDTL-SV-MM
+; 96/08/19	    M.C.    - PDR 649 - REQUEST DELETE_CLAIMS DOES NOT
+;			      WORK ANYMORE, RECEIVE ERROR "RECORD HAS
+;			      BEEN CHANGED SINCE YOU FOUND IT", CONVERT
+;			      THE REQUEST INTO 3 INDIVIDUAL REQUESTS
+;			      DELETE_DETAIL, DELETE_ADDRESS, DELETE_HEADER
+; 98/02/19    B.E.    - A NEW BATCH NUMBER MUST BE CREATED WHEN
+;			      A DOCTOR"S CLINIC OR SPECIALTY CODE CHANGES.
+;			      IN REQUEST U706A_SELECT_COMPLETE_CLAIMS THE
+;			      SORT AND KEEP AT CHANGED SO THAT "W-COUNT"
+;			      IS RESET TO 1 IF CHANGE IN CLINIC/SPEC.
+;			      REQUEST U706A_GEN_CLAIM_NBRS CHANGED
+;			      TO BUILD BATCH NUMBER TAKING INTO CONSIDERATION
+;			      IF CLINIC/DOC NUMBER HAS CHANGED.
+; 98/04/17    M.C.    - CHANGE THE FORMULA FOR COUNTER-CLINIC-NBRS &
+;			COUNTER-SPEC-CODES, HOLD-CLINIC-NBR-1-2 &
+;			HOLD-SPEC-CD
+; 98/06/02    M.C.    - CHANGE THE FORMULA FOR COUNTER-CLINIC-NBRS &
+;			W-BATCH-NBR AND COMMENT OUT COUNTER-SPEC-CD
+;			IN U706A_PROCESS_CLAIM_DETAILS REQUEST,
+;			CHANGE THE SORTED AND OUTPUT F001-BATCH-
+;			CONTROL-FILE STATEMENTS
+; 98/09/14    B.E     - w-count was being reset a change in clinic/specialty
+;			which started batch number back at 1 again. If a 
+;			doctor had a large series of claims that increased
+;			batch number at each group of 99, then the reset
+;			caused the duplication of batch numbers. Code changed
+;			so that w-count reset only at change in doctor number
+;			so that it now counts all claims. This now calculates
+;			the next batch number correctly, however it doesn"t
+;			reset the claim-nbr within the batch back to 1.
+;			Therefore each time the clinic/spec/agent changes 
+;			the 1st claim within the batch will start at the
+;			next higher number than the last claim nbr in 
+;			in the last batch. This could eventually be
+;			be fixed but isn"t within this version of code.
+; also needs check if agent changed
+; 98/10/14    M.C.     - create "P" keys in header & detail records of
+;			 f002-claims-mstr   
+; 1999/jan/28 B.E./M.C.- y2k
+;                      - use key-p-clm-data instead of the 4 items when creating
+;                        p keys for claim header and detail records
+; 1999/May/21 S.B.     - Added the use file def_batctrl_batch_status.def
+;			 to remove any hardcoding of the 
+;			 batctrl-batch-status.
+; 1999/May/27 S.B.     - Added the use file
+;                        def_clmhdr_status.def to 
+;                        prevent hardcoding of clmhdr-status.
+; 1999/May/28 S.B.     - Removed the nconvert from the iconst-clinic-nbr.
+; 1999/Nov/08 M.C.     - output f071 record first before creating f002/f001
+;			 record in u706a_process_claim_headers request
+; 1999/Nov/12 M.C.     - reset batch nbr to 1 if ws-batch-nbr = 1000 in
+;                        u706a_gen_claim_nbrs request
+; 2000/Jan/18 M.C.     - include clinic nbr when creating f071 record in   
+;			 u706a_process_claim_headers request
+; 2000/Feb/08 B.A.     - Added code to put confidential-flag to 
+;         		 f002-claims-mstr and put a corresponding description
+; 2000/Feb/16 M.C.     - do not process f002-suspend-dtl where clmdtl-status
+;         	         equal to 'D' 
+; 2000/may/03 B.E.     - clmhdr-date-sys represents the date the claim
+;                        was "keyed". For diskette/web claims this date
+;                        was set at the time the file was uploaded into
+;                        suspense files. The newu706a pgm was changed to 
+;                        use the actual system date the day the suspend
+;                        record was loaded into the claims mstr instead
+;                        of the date it was loaded into suspense.
+; 2000/may/04 M.C.     - add clmhdr-doc-nbr in the sort/sorted statements of
+;                        request u706a_select_complete_claims, and       
+;                        u706a_gen_claim_nbrs 
+; 2000/jun/08 B.E.     - write out only 1 description rec for confidential
+;			 claims with message "NO VERIFICATION PLEASE"
+; 2000/jun/12 B.E.     - no defaulting of f002's "manual-revie"' based upon 
+;			 "confidentiality" field. Manual review is always
+;			 set to value of manual-review field in susp hdr.
+; 2000/sep/04 B.E.      - calculation of total nbr services now based
+;                         upon new redefined fields added to dictionary
+; 2000/sep/21 B.E.      - requests that delete hdr/dtl/address records
+;                         check clmhdr status. Added 'i'gnore status to select
+;			  deletion of transactions
+;			- added request to delete description records
+; 2000/sep/23 B.E.	- added request to upload description records into
+;			  claim description records
+; 2000/oct/02 B.E.	- updates claim header total oma/ohip amts with 
+;			  appropriate oma/ohip amt rather than putting ohip
+;			  amount into both fields
+;			- in request that deletes header record included
+;			  select of headers with 'delete' or 'ignore' status
+; 2000/oct/11 B.E.	- don't pickup description records unless header's
+;			  manual-review field = "Y" (some comments are passed
+;			  in from the web and are only for RMA staff to 
+;			  read - they don't need to be brought into f002
+; 2000/nov/07 M.C.	- change the definition when defining ws-batch-nbr
+;		        - add the new request u706a_gen_batch_nbrs,
+;			  u706a_sort_batch_rec, modify request
+;			  u706a_gen_claim_nbrs
+; 2002/may/06 M.C.      - if clinic is 85 with payroll-flag = 'B', set clmhdr-clinic to 22
+; 2002/jun/14 M.C.	-  add  'on errors report' at the end of each output statement
+; 2002/sep/30 M.C.	-  assign the correct next batch nbr based on the clinic nbr
+; 2003/jun/12 M.C.	-  change to sort on t-batch-nbr instead of w-batch-nbr
+; 2003/oct/23 M.C.	-  reset the next batch nbr to 1 if greater than 999 for
+;			   each clinic
+; 2003/dec/23 A.A.	-  alpha doctor nbr
+; 2004/jul/07 M.C.	-   reinstate the change on 2003/jun/12
+;			-   change back the sort on w-batch-nbr instead of t-batch-nbr
+;			-   change output on f001 at w-batch-nbr instead of t-batch-nbr
+; 2005/jan/05 M.C.	- split newu706a.qts into newu706a1/a2/a3.qts
+
+cancel clear
+
+run create_claims_from_suspense
+set lock file update
+set process nolimit
+
+;*******************************************************************************
+;
+request u706a_gen_claim_nbrs on calculation errors report
+
+; USING THE "NEXT AVAILABLE BATCH NUMBER" FROM DOCTOR FILE, GENERATE
+; BATCH/CLAIM ID"S FOR EACH CLAIM.  THE PROGRAM WILL ASSIGN UP TO 99
+; CLAIMS INTO 1 BATCH BEFORE INCREASING THE BATCH NUMBER BY 1.  THE
+; NEW "NEXT AVAILABLE BATCH NBR" IS CALCULATED AND UPDATED BACK INTO
+; THE DOCTOR"S RECORD
+
+access *u706a_sel_susp_hdr		&
+	link clmhdr-doc-nbr      	&
+          to doc-nbr of f020-doctor-mstr
+
+sorted  on clmhdr-doc-nbr,		&
+	   clmhdr-doc-ohip-nbr,		&
+	   w-convert-clinic,            &
+	   clmhdr-doc-spec-cd,		&
+	   clmhdr-agent-cd,		&
+	   clmhdr-accounting-nbr
+
+
+;2000/11/07 - MC - the following section is commented out
+;;;;---------------------------------------------------------------------------
+;;;;---------------------------------------------------------------------------
+;BE 98/FEB/11
+;;temp hold-clinic-nbr-1-2
+;;temp hold-spec-cd
+;;temp hold-agent-cd
+;;temp counter-clinic-nbrs
+
+;----------------------------------------------------------------
+
+; Increment batch nbr by 1 if either specialty or clinic number changes
+;MC 98/06/02 - fixed bug whereby batch nbr increased by 2 if both specialty and clinic
+;		changed at the same time 
+;BE 98/09/14 - added logic to check for change in agent code
+
+;;item hold-spec-cd  initial -1
+;;item hold-agent-cd initial -1 
+
+;;item counter-clinic-nbrs = counter-clinic-nbrs + 1			&
+;;		if    clmhdr-clinic-nbr-1-2 <> hold-clinic-nbr-1-2 	&
+;;		   or clmhdr-doc-spec-cd    <> hold-spec-cd		&
+;;		   or clmhdr-agent-cd       <> hold-agent-cd		&
+;;		reset at clmhdr-doc-ohip-nbr
+
+;;item hold-clinic-nbr-1-2 = clmhdr-clinic-nbr-1-2	&
+;;		reset at clmhdr-doc-ohip-nbr
+;;item hold-spec-cd        = clmhdr-doc-spec-cd		&
+;;		reset at clmhdr-doc-ohip-nbr to  -1
+;;item hold-agent-cd       = clmhdr-agent-cd		&
+;;		reset at clmhdr-doc-ohip-nbr to  -1
+
+;;----------------------------------------------------------------
+;;----------------------------------------------------------------
+
+def w-claim-nbr = w-count if                          w-count <=  99  &
+	else      w-count -  99 if (w-count >  99 and w-count <= 198) &
+	else      w-count - 198 if (w-count > 198 and w-count <= 297) &
+	else      w-count - 297 if (w-count > 297 and w-count <= 396) &
+	else      w-count - 396 if (w-count > 396 and w-count <= 495) &
+	else      w-count - 495 if (w-count > 495 and w-count <= 594) &
+	else      w-count - 594 if (w-count > 594 and w-count <= 693) &
+	else      w-count - 693 if (w-count > 693 and w-count <= 792) &
+	else      w-count - 792 if (w-count > 792 and w-count <= 891) &
+	else      w-count - 891 if (w-count > 891 and w-count <= 990) &
+	else      w-count - 990 if (w-count > 990 and w-count <= 1089) &
+	else      w-count - 1089 if (w-count > 1089 and w-count <= 1188) &
+	else      w-count - 1188 if (w-count > 1188 and w-count <= 1287) &
+	else      w-count - 1287 if (w-count > 1287 and w-count <= 1386) &
+	else      w-count - 1386 if (w-count > 1386 and w-count <= 1485) &
+	else      w-count - 1485 if (w-count > 1485 and w-count <= 1584) &
+	else      w-count - 1584 if (w-count > 1584 and w-count <= 1683) &
+	else      w-count - 1683 if (w-count > 1683 and w-count <= 1782) &
+	else      w-count - 1782 if (w-count > 1782 and w-count <= 1881) &
+	else      w-count - 1881 if (w-count > 1881 and w-count <= 1980) &
+	else      w-count - 1980 if (w-count > 1980 and w-count <= 2079) &
+	else      w-count - 2079 if (w-count > 2079 and w-count <= 2178) &
+	else      w-count - 2178 if (w-count > 2178 and w-count <= 2277) &
+	else      w-count - 2277 if (w-count > 2277 and w-count <= 2376) &
+	else      w-count - 2376 if (w-count > 2376 and w-count <= 2475) &
+	else      w-count - 2475 if (w-count > 2475 and w-count <= 2574) &
+	else	  w-count - 2574
+
+def w-batch-nbr-count = 1 if              w-count <=  99  &
+	else      2 if (w-count >  99 and w-count <= 198) &
+	else      3 if (w-count > 198 and w-count <= 297) &
+	else      4 if (w-count > 297 and w-count <= 396) &
+	else      5 if (w-count > 396 and w-count <= 495) &
+	else      6 if (w-count > 495 and w-count <= 594) &
+	else      7 if (w-count > 594 and w-count <= 693) &
+	else      8 if (w-count > 693 and w-count <= 792) &
+	else      9 if (w-count > 792 and w-count <= 891) &
+	else     10 if (w-count > 891 and w-count <= 990) &
+	else     11 if (w-count > 990 and w-count <= 1089) &
+	else     12 if (w-count > 1089 and w-count <= 1188) &
+	else     13 if (w-count > 1188 and w-count <= 1287) &
+	else     14 if (w-count > 1287 and w-count <= 1386) &
+	else     15 if (w-count > 1386 and w-count <= 1485) &
+	else     16 if (w-count > 1485 and w-count <= 1584) &
+	else     17 if (w-count > 1584 and w-count <= 1683) &
+	else     18 if (w-count > 1683 and w-count <= 1782) &
+	else     19 if (w-count > 1782 and w-count <= 1881) &
+	else     20 if (w-count > 1881 and w-count <= 1980) &
+	else     21 if (w-count > 1980 and w-count <= 2079) &
+	else     22 if (w-count > 2079 and w-count <= 2178) &
+	else     23 if (w-count > 2178 and w-count <= 2277) &
+	else     24 if (w-count > 2277 and w-count <= 2376) &
+	else     25 if (w-count > 2376 and w-count <= 2475) &
+	else     26 if (w-count > 2475 and w-count <= 2574) &
+	else	 27 if (w-count > 2574)
+
+;BE DEF W-BATCH-NBR =	&
+;BE	     DOC-NX-AVAIL-BATCH + W-BATCH-NBR-COUNT	
+
+
+;2000/11/07 - MC - the following section is commented out
+;;;;---------------------------------------------------------------------------
+;;;;---------------------------------------------------------------------------
+;;def ws-batch-nbr =			&
+;;	  doc-nx-avail-batch 		&
+;;	+ w-batch-nbr-count		&
+;;	+ counter-clinic-nbrs - 1	;&
+
+
+;99/11/12 MC - if batch-nbr > 999, reset to 1
+
+;;def w-batch-nbr =					&
+;;         1 		      if ws-batch-nbr = 1000	&
+;;    else (ws-batch-nbr - 999) if ws-batch-nbr > 1000	&
+;;    else ws-batch-nbr
+
+
+;;def w-key-claims-mstr char*18 =	&
+;	"B" + ASCII(DOC-CLINIC-NBR,2) + "0" + ASCII(DOC-NBR,3)	&
+;;	"B" + ascii(clmhdr-clinic-nbr-1-2,2) + "0" + ascii(doc-nbr,3)	&
+;;	+ ascii(w-batch-nbr,3) + ascii(w-claim-nbr,2) &
+;;	+ "000000"
+
+;;def w-p-key-claims-mstr char*18 =	&
+;;	"P" + clmhdr-pat-key-data
+
+;;subfile u706a_susp_hdr_count_srted keep at clmhdr-accounting-nbr 	&
+;;	include clmhdr-doc-ohip-nbr,					&
+;;	clmhdr-accounting-nbr, w-batch-nbr, 			  	&
+;;	W-key-claims-mstr, w-p-key-claims-mstr, w-batch-nbr-count, 	&
+;;	w-claim-nbr, clmhdr-agent-cd,                			&
+;;	clmhdr-tot-claim-ar-oma, clmhdr-tot-claim-ar-ohip, clmhdr-doc-nbr
+
+;BE subfile used to debug above
+;subfile u706a_susp_hdr_count_srted keep at clmhdr-accounting-nbr include &
+;w-key-claims-mstr, 		&
+;clmhdr-agent-cd,                		&
+;doc-nx-avail-batch          ,  &
+;w-batch-nbr-count, &  
+;counter-clinic-nbrs ,		&
+;hold-clinic-nbr-1-2 , 	&
+;clmhdr-clinic-nbr-1-2       , &
+;hold-spec-cd,        clmhdr-doc-spec-cd         
+
+;;output f020-doctor-mstr update at clmhdr-doc-ohip-nbr
+;;  item doc-nx-avail-batch final w-batch-nbr
+
+;;-----------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------
+
+;2000/1107 MC - define this new subfile
+subfile u706a_temp    keep	&
+	include clmhdr-doc-ohip-nbr,	&
+	clmhdr-accounting-nbr, clmhdr-doc-nbr,			  &
+; 2002/10/09 - MC
+;	clmhdr-clinic-nbr-1-2, clmhdr-doc-spec-cd, w-batch-nbr-count, &
+	w-convert-clinic,      clmhdr-doc-spec-cd, w-batch-nbr-count, &
+; 2002/10/09 - end
+	w-claim-nbr, clmhdr-agent-cd, clmhdr-pat-key-data, &
+	clmhdr-tot-claim-ar-oma, clmhdr-tot-claim-ar-ohip
+
+
+;*******************************************************************************
+;2000/11/07 - MC - add this next request
+;
+request u706a_sort_batch_rec on calculation errors report
+;
+; ASSIGN THE REAL BATCH NUMBER T-BATCH-NBR AT SORT-KEY 
+;
+access *u706a_temp         
+
+def sort-key char*13 = ascii(clmhdr-doc-ohip-nbr,6)  +  &
+; 2002/10/09 - MC
+;	               ascii(clmhdr-clinic-nbr-1-2,2) + &
+	               ascii(w-convert-clinic,2)      + &
+; 2002/10/09 - end
+			ascii(clmhdr-doc-spec-cd,2) +	&
+			ascii(clmhdr-agent-cd,1)    +	&
+			ascii(w-batch-nbr-count,2)
+
+; 2002/10/09 - MC
+;sorted on  clmhdr-doc-nbr on sort-key   
+sorted on  clmhdr-doc-nbr on w-convert-clinic on sort-key   
+; 2002/10/09 - end
+
+temp t-batch-nbr
+item t-batch-nbr = t-batch-nbr + 1 at sort-key reset at clmhdr-doc-nbr &
+		   to 1    
+
+subfile tempu706a keep include u706a_temp, t-batch-nbr
+
+;----------------------------------------------------------------------------
+;2000/11/07 - MC - add this new request
+;
+request u706a_gen_batch_nbrs on calculation errors report
+;
+; USING THE 'NEXT AVAILABLE BATCH NUMBER' FROM DOCTOR FILE, GENERATE  BATCH/CLAIM ID'S
+; FOR EACH CLAIM.  THE PROGRAM WILL ASSIGN UP TO 99 CLAIMS INTO 1 BATCH
+; BEFORE INCREASING THE BATCH NUMBER BY 1. THE NEW 'NEXT AVAILABLE BATCH NBR'
+; IS CALCULATED AND UPDATED BACK INTO THE DOCTOR'S RECORD
+
+;
+access *tempu706a  				&
+	link clmhdr-doc-nbr to doc-nbr of f020-doctor-mstr
+
+; 2002/10/09 - MC
+;sorted on  clmhdr-doc-nbr		
+sorted on  clmhdr-doc-nbr on  t-batch-nbr		
+; 2002/10/09 - end
+
+
+; 2002/05/06 - MC
+; 2002/10/09 - MC - transfer the define statement to the first request
+;		u706a_select_complete_claims
+;def w-convert-clinic zoned*2 unsigned  = 22 if clmhdr-clinic-nbr-1-2 = 85  &
+;	else clmhdr-clinic-nbr-1-2
+; 2002/10/09 - end
+; 2002/05/06 - end
+
+; 2002/10/09 - MC - use the correct next available batch nbr based on clinic nbr
+temp w-next-batch
+item w-next-batch  =  w-next-batch  + 1 		&
+			if w-convert-clinic = doc-clinic-nbr  at t-batch-nbr	&
+			reset at clmhdr-doc-nbr to doc-nx-avail-batch + 1
+
+temp w-next-batch-2
+item w-next-batch-2  =  w-next-batch-2  + 1 		&
+			if w-convert-clinic = doc-clinic-nbr-2  at t-batch-nbr	&
+			reset at clmhdr-doc-nbr to doc-nx-avail-batch-2 + 1
+
+temp w-next-batch-3
+item w-next-batch-3  =  w-next-batch-3  + 1 		&
+			if w-convert-clinic = doc-clinic-nbr-3  at t-batch-nbr	&
+			reset at clmhdr-doc-nbr to doc-nx-avail-batch-3 + 1
+
+temp w-next-batch-4
+item w-next-batch-4  =  w-next-batch-4  + 1 		&
+			if w-convert-clinic = doc-clinic-nbr-4  at t-batch-nbr	&
+			reset at clmhdr-doc-nbr to doc-nx-avail-batch-4 + 1
+
+temp w-next-batch-5
+item w-next-batch-5  =  w-next-batch-5  + 1 		&
+			if w-convert-clinic = doc-clinic-nbr-5  at t-batch-nbr	&
+			reset at clmhdr-doc-nbr to doc-nx-avail-batch-5 + 1
+
+temp w-next-batch-6
+item w-next-batch-6  =  w-next-batch-6  + 1 		&
+			if w-convert-clinic = doc-clinic-nbr-6  at t-batch-nbr	&
+			reset at clmhdr-doc-nbr to doc-nx-avail-batch-6 + 1
+
+; 2002/10/09 - end
+
+def ws-batch-nbr =			&
+; 2002/10/09 - MC
+;	  doc-nx-avail-batch 		&
+;	+ t-batch-nbr
+	  w-next-batch   if w-convert-clinic = doc-clinic-nbr	&
+   else   w-next-batch-2 if w-convert-clinic = doc-clinic-nbr-2 &
+   else   w-next-batch-3 if w-convert-clinic = doc-clinic-nbr-3 &
+   else   w-next-batch-4 if w-convert-clinic = doc-clinic-nbr-4 &
+   else   w-next-batch-5 if w-convert-clinic = doc-clinic-nbr-5 &
+   else   w-next-batch-6 if w-convert-clinic = doc-clinic-nbr-6 
+; 2002/10/09 - end
+
+;  reset to 1 if batch nbr > 999
+
+def w-batch-nbr	=				        	&
+	     1                    if ws-batch-nbr = 1000 	&
+	else (ws-batch-nbr - 999) if ws-batch-nbr > 1000	&
+	else ws-batch-nbr
+
+; 2003/10/23 - MC
+def d-next-batch-1 =					       	&
+	     1                    if w-next-batch = 1000 	&
+	else (w-next-batch - 999) if w-next-batch > 1000	&
+	else w-next-batch
+
+def d-next-batch-2 =					       	&
+	     1                      if w-next-batch-2 = 1000 	&
+	else (w-next-batch-2 - 999) if w-next-batch-2 > 1000	&
+	else w-next-batch-2
+
+def d-next-batch-3 =					       	&
+	     1                      if w-next-batch-3 = 1000 	&
+	else (w-next-batch-3 - 999) if w-next-batch-3 > 1000	&
+	else w-next-batch-3
+
+def d-next-batch-4 =					       	&
+	     1                      if w-next-batch-4 = 1000 	&
+	else (w-next-batch-4 - 999) if w-next-batch-4 > 1000	&
+	else w-next-batch-4
+
+def d-next-batch-5 =					       	&
+	     1                      if w-next-batch-5 = 1000 	&
+	else (w-next-batch-5 - 999) if w-next-batch-5 > 1000	&
+	else w-next-batch-5
+
+def d-next-batch-6 =					       	&
+	     1                      if w-next-batch-6 = 1000 	&
+	else (w-next-batch-6 - 999) if w-next-batch-6 > 1000	&
+	else w-next-batch-6
+; 2003/10/23 - end
+
+;!def w-key-claims-mstr char*18 =	&
+def w-key-claims-mstr char*17 =	&
+; 2002/05/06 - MC
+;	'B' + ascii(clmhdr-clinic-nbr-1-2,2) + '0' + ascii(doc-nbr,3)	&
+;!	'B' + ascii(w-convert-clinic,2) + '0' + ascii(doc-nbr,3)	&
+	'B' + ascii(w-convert-clinic,2) + doc-nbr			&
+; 2002/05/06 - end
+	+ ascii(w-batch-nbr,3) + ascii(w-claim-nbr,2) &
+	+ '000000'
+
+;!def w-p-key-claims-mstr char*18 =	&
+def w-p-key-claims-mstr char*17 =	&
+	'P' + clmhdr-pat-key-data
+
+; 2005/01/05 - MC - create a new temporary subfile before checking with f002
+
+;subfile u706a_susp_hdr_count_srted keep &
+; 	include clmhdr-doc-ohip-nbr,	&
+;	clmhdr-accounting-nbr, w-batch-nbr, 			  &
+;	w-key-claims-mstr, w-p-key-claims-mstr, w-batch-nbr-count, &
+;	w-claim-nbr, clmhdr-agent-cd, t-batch-nbr, 		&
+;	clmhdr-tot-claim-ar-oma, clmhdr-tot-claim-ar-ohip, clmhdr-doc-nbr
+subfile u706a_susp_hdr_count_srted_before_check keep &
+	include clmhdr-doc-ohip-nbr,	&
+	clmhdr-accounting-nbr, w-batch-nbr, 			  &
+	w-key-claims-mstr, w-p-key-claims-mstr, w-batch-nbr-count, &
+	w-claim-nbr, clmhdr-agent-cd, t-batch-nbr, 		&
+	clmhdr-tot-claim-ar-oma, clmhdr-tot-claim-ar-ohip, clmhdr-doc-nbr, &
+	clmhdr-doc-spec-cd, d-next-batch-1, d-next-batch-2,	&
+	d-next-batch-3, d-next-batch-4, d-next-batch-5,		&
+	d-next-batch-6
+
+; 2005/01/05 - end
+
+;*********************************************************************************
+;2005/01/05 - MC - add this new request to check against f002
+;
+request u706a_check_f002_exists on calculation errors report
+;
+;
+;add request here that verifies that no claims exist within the range
+;of batch numbers that are going to be used
+;so if this runs creates 3 new batches for doctor:
+;clinic + doctor nbr + batch-nbr-1
+;clinic + doctor nbr + batch-nbr-2
+;clinic + doctor nbr + batch-nbr-3
+;
+;then verify: 
+;clinic + doctor nbr + batch-nbr-1 + 01 thru + 99 doesn't exist
+;clinic + doctor nbr + batch-nbr-2 + 01 thru + 99 doesn't exist
+;clinic + doctor nbr + batch-nbr-3 + 01 thru + 99 doesn't exist
+;
+;if a match is found then 
+; stop the claim nbr generation at 1 before the matching number and
+; increase the batch-nbt-1  
+
+access *u706a_susp_hdr_count_srted_before_check			&
+	link 'B', w-key-claims-mstr[2:8], nconvert(w-key-claims-mstr[10:2]), &
+	w-key-claims-mstr[12:5], w-key-claims-mstr[17:1]	&
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+	     key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt
+ 
+def w-convert-clinic zoned*2 unsigned = nconvert(w-key-claims-mstr[2:2])
+def clmhdr-pat-key-data char*16 = w-p-key-claims-mstr[2:16] 
+
+sorted on w-convert-clinic on clmhdr-doc-nbr on clmhdr-doc-ohip-nbr &
+	on clmhdr-doc-spec-cd on clmhdr-agent-cd on clmhdr-accounting-nbr
+
+temp rec-exist
+item rec-exist = rec-exist + 1 if record f002-claims-mstr exists
+
+temp w-count
+item w-count count at clmhdr-accounting-nbr if rec-exist <> 0	&
+	reset at clmhdr-agent-cd
+
+subfile u706a_susp_hdr_count_srted keep append		&
+	if rec-exist = 0	include			&
+	u706a_susp_hdr_count_srted_before_check
+
+subfile u706a_susp_hdr_count_srted_doc keep 		&
+	if rec-exist = 0	include			&
+	clmhdr-doc-nbr of u706a_susp_hdr_count_srted_before_check, &
+	d-next-batch-1 of u706a_susp_hdr_count_srted_before_check,			&
+	d-next-batch-2 of u706a_susp_hdr_count_srted_before_check, &
+	d-next-batch-3 of u706a_susp_hdr_count_srted_before_check,			&
+	d-next-batch-4 of u706a_susp_hdr_count_srted_before_check, &
+	d-next-batch-5 of u706a_susp_hdr_count_srted_before_check,			&
+	d-next-batch-6 of u706a_susp_hdr_count_srted_before_check
+
+subfile u706a_susp_hdr_count_srted_exist keep		&
+	if rec-exist <> 0	include			&
+	clmhdr-doc-ohip-nbr of u706a_susp_hdr_count_srted_before_check, &
+	clmhdr-accounting-nbr of u706a_susp_hdr_count_srted_before_check,	&
+	w-count, clmhdr-pat-key-data, clmhdr-agent-cd of u706a_susp_hdr_count_srted_before_check,	&
+	clmhdr-tot-claim-ar-oma of u706a_susp_hdr_count_srted_before_check, &
+	clmhdr-tot-claim-ar-ohip of u706a_susp_hdr_count_srted_before_check, &
+	w-convert-clinic, clmhdr-doc-spec-cd of u706a_susp_hdr_count_srted_before_check, &
+	clmhdr-doc-nbr of u706a_susp_hdr_count_srted_before_check
+
+subfile u706a_mc_debug keep append include			&
+	clmhdr-doc-ohip-nbr of u706a_susp_hdr_count_srted_before_check, &
+	clmhdr-accounting-nbr of u706a_susp_hdr_count_srted_before_check,	&
+	rec-exist, w-count, clmhdr-pat-key-data, clmhdr-agent-cd of u706a_susp_hdr_count_srted_before_check,	&
+	clmhdr-tot-claim-ar-oma of u706a_susp_hdr_count_srted_before_check, &
+	clmhdr-tot-claim-ar-ohip of u706a_susp_hdr_count_srted_before_check, &
+	w-convert-clinic, clmhdr-doc-spec-cd of u706a_susp_hdr_count_srted_before_check, &
+	clmhdr-doc-nbr of u706a_susp_hdr_count_srted_before_check
+
+; 2005/01/05 - end
+
+;**************************************************************************
+; 2005/01/05 - add new request to update f020
+
+request update_f020 on calculation errors report on edit errors report
+ 
+access *u706a_susp_hdr_count_srted_doc		&
+	link clmhdr-doc-nbr 			&
+	 to  doc-nbr of f020-doctor-mstr
+
+sorted on clmhdr-doc-nbr
+
+subfile savef020 keep at clmhdr-doc-nbr include f020-doctor-mstr
+
+output f020-doctor-mstr update at clmhdr-doc-nbr on errors report
+  item doc-nx-avail-batch   final d-next-batch-1 - 1
+  item doc-nx-avail-batch-2 final d-next-batch-2 - 1
+  item doc-nx-avail-batch-3 final d-next-batch-3 - 1
+  item doc-nx-avail-batch-4 final d-next-batch-4 - 1
+  item doc-nx-avail-batch-5 final d-next-batch-5 - 1
+  item doc-nx-avail-batch-6 final d-next-batch-6 - 1
+;2005/01/05 - end
+
+;*******************************************************************************
+;
+;
+build $pb_obj/newu706a2

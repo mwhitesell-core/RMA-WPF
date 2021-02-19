@@ -1,0 +1,80 @@
+;Date           Who             Description
+;2012/10/31      Yasemin        report doc# name reject-code and how many reject for each reject code for doc
+;2012/11/01	 Moira		clone from costing11.qzs
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock record update
+
+request one				&
+        on edit        errors report    &
+        on calculation errors report
+
+access f088-rat-rejected-claims-hist-dtl alias f088-dtl                  &
+       link (rat-rejected-claim-dtl[1:10]), ped                          &
+	 to  rat-rejected-claim, ped		                         &
+	     of f088-rat-rejected-claims-hist-hdr alias f088-hdr opt     &
+        link clmhdr-doc-nbr                                              &
+         to  doc-nbr of f020-doctor-mstr   opt   
+
+choose clmhdr-doc-nbr   '459'     ,&
+                        '965'     ,&                           
+                        'W21'     ,&                           
+                        'D69'     ,&                           
+                        'D80'     ,&                           
+                        'J26'     ,&                           
+                        'J85'     ,&                           
+                        'J89'     ,&                           
+                        'K16'     ,&                           
+                        'K17'     ,&                           
+                        'M08'     ,&                           
+                        'V86'     ,&                           
+                        '207'     ,&                           
+	ped   20110701 to 20120630
+
+select f088-hdr if charge-status = 'Y'
+
+
+subfile nephrf088 keep include	&
+  clmhdr-doc-nbr of f088-dtl,   &
+  doc-name,                     &
+  doc-inits,                    &
+  ohip-err-code of f088-hdr,    &
+  rat-rejected-claim of f088-hdr,	     &
+  ped of f088-dtl 
+
+
+request two				&
+        on edit        errors report    &
+        on calculation errors report
+
+access *nephrf088			
+
+sort                               &
+     on clmhdr-doc-nbr             &
+     on ohip-err-code              &
+     on rat-rejected-claim
+
+temp x-count zoned*4 unsigned
+item x-count = x-count + 1 at rat-rejected-claim	&
+	reset at ohip-err-code
+
+def comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+
+subfile nephrf088_1 portable at ohip-err-code keep include	&
+  clmhdr-doc-nbr,               &
+  comma,			&
+  doc-name,                     &
+  comma,			&
+  ohip-err-code,                &
+  comma,			&
+  x-count,                      &
+  x-cr
+
+
+build $pb_obj/neph_rat_rejects

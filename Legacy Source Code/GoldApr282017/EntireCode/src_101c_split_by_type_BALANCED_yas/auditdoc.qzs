@@ -1,0 +1,78 @@
+; if doctor has full time number and a part time number
+; within the clinic it will count as 1 under fulltime.
+; it will select if no date assigned in termination date   or terminated date >= 20120701 and < 20130701
+
+set rep nolimit
+
+
+access f020-doctor-mstr
+
+
+; 99/11/22 -   MC IMPORTANT NOTE:
+;			If you extend the selection in doc-full-part-ind,
+;			please modify x-ind and x-class accordingly
+
+def x-ind cha*18 = "GFT      "         if doc-full-part-ind = "F"  &
+              else "PART TIME"         if doc-full-part-ind = "P"  &
+              else "CLINICAL SCHOLARS" if doc-full-part-ind = "C"  &
+              else "PLASTIC SURGERY"   if doc-full-part-ind = "S"
+
+def x-class num*1 = 4                  if doc-full-part-ind = "F"  &
+              else  3                  if doc-full-part-ind = "P"  &
+              else  2                  if doc-full-part-ind = "C"  &
+              else  1                  if doc-full-part-ind = "S"
+
+select if           doc-clinic-nbr = 22                 &
+           and (    doc-full-part-ind = "F"             &
+                 or doc-full-part-ind = "P"             &
+                 or doc-full-part-ind = "C"             &
+                 or doc-full-part-ind = "S")            &
+            and (   doc-dept ne 31)                     &         
+;           and (   (    doc-dept >= 1			&
+;                  and doc-dept <= 9)   		&
+;		    and doc-dept <= 10)   		&
+;                  or doc-dept = 10 			&
+;                  or doc-dept = 14 			&
+;                 or doc-dept = 17 			&
+;		 or doc-dept = 18			&
+;              )		 			&
+           and (   (   doc-date-fac-term  = 0         	&
+                    or doc-date-fac-term >= 20150701	&
+		   )	   	 			&
+                  and (doc-date-fac-start < 20160701	&
+		     )                                  &
+	        )
+
+sort on doc-ohip-nbr on x-class
+
+set subfile name auditdoc keep at doc-ohip-nbr
+rep summ x-ind doc-full-part-ind
+
+build $pb_obj/auditdoc1
+
+access *auditdoc
+
+set page length 62 width 132
+set rep device disc name auditdoc
+set formfeed
+
+page heading                                                      	&
+skip 1  tab 1   "run date: "                                            &
+        tab 11  sysdate                                                 &
+        tab 25  "(auditdoc.qzs)"                                        &
+skip 2  tab 1   "Doctor count from July 1, 2016 to June 30, 2017"       &
+skip 1  tab 1   "==============================================="       &
+skip 3
+
+sort on doc-full-part-ind
+
+footing at doc-full-part-ind					     &
+  tab 1   doc-full-part-ind count                                    &
+  tab 20  x-ind                                                      &
+skip 2
+
+final footing                                                        &
+tab 1   " *** This does not include the SOLO physicians"             &
+skip 2
+
+build $pb_obj/auditdoc2

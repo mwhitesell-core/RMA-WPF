@@ -1,0 +1,200 @@
+; DOC: R051CB.QZS
+; DOC: PHYSICIAN REVENUE ANALYSIS
+; DOC: SORT BY CLINIC/DEPT/CLASS/DOC #/OMA CODE (DETAIL REPORT)
+; DOC: RUN FOR: CLINIC 22/80/81
+;
+;PROGRAM PURPOSE : PHYSICIAN REVENUE ANALYSIS
+;                  R051A/B/C.CB CONVERSION TO POWERHOUSE
+;
+;
+;DATE       BY WHOM   DESCRIPTION
+;08/02/04   M. Chan   ORIGINAL
+;
+;
+CAN CLEAR
+SET REP NOLIMIT
+SET PAGE LENGTH 62 WIDTH 132
+SET REP DEVICE DISC NAME r051cb
+SET FORMFEED
+
+
+access  F050-DOC-REVENUE-MSTR 		 &
+  LINK DOCREV-DOC-NBR                                    &
+    TO DOC-NBR OF F020-DOCTOR-MSTR  OPT                  &
+  LINK (NCONVERT(DOCREV-CLINIC-1-2))                     &
+    TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC  OPT     &
+  LINK DOCREV-DEPT                                       &
+    TO DEPT-NBR OF F070-DEPT-MSTR  OPT                   &
+  LINK DOCREV-OMA-CD                                     &
+    TO FEE-OMA-CD OF F040-OMA-FEE-MSTR  OPT
+
+
+choose docrev-key parm prompt 'Enter clinic plus @:  ' 1 time
+
+SORT ON DOCREV-CLINIC-1-2  &
+     ON DOCREV-DEPT        &
+     ON DOC-FULL-PART-IND  &
+;;     ON DOCREV-DOC-NBR     &
+     ON DOCREV-OMA-CD
+
+DEF X-CLASS CHA*18 = "FULL TIME"         IF DOC-FULL-PART-IND = "F"   &
+                ELSE "PART TIME"         IF DOC-FULL-PART-IND = "P"   &
+		else "CLINICAL SCHOLAR"  IF DOC-FULL-PART-IND = "C"   &
+		else  "PLASTIC SURGERY"  IF DOC-FULL-PART-IND = "S"
+
+
+DEF X-AMT-MTD ZONED*8 SIGNED = DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC
+DEF X-SVC-MTD ZONED*3 SIGNED = DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC
+;;DEF X-AVG-MTD ZONED*8 SIGNED = X-AMT-MTD / X-SVC-MTD
+;;DEF X-PER-MTD ZONED*8 SIGNED =                   &
+;;    ROUND((X-AMT-MTD / X-DOC-MTD) * 100,0,NEAR)  &
+;;        IF X-AMT-MTD NE 0 ELSE 0
+
+DEF X-AMT-YTD ZONED*8 SIGNED = DOCREV-YTD-IN-REC + DOCREV-YTD-OUT-REC
+DEF X-SVC-YTD ZONED*5 SIGNED = DOCREV-YTD-IN-SVC + DOCREV-YTD-OUT-SVC
+;;DEF X-AVG-YTD ZONED*8 SIGNED = X-AMT-YTD / X-SVC-MTD
+;;DEF X-PER-YTD ZONED*8 SIGNED =                   &
+;;    ROUND((X-AMT-YTD / X-DOC-YTD) * 100,0,NEAR)  &
+;;        IF X-AMT-YTD NE 0 ELSE 0
+
+;** FOLLOWING FOR DEPARTMENT CLASS TOTALS **
+
+DEF X-FULL-AMT-MTD ZONED*8 SIGNED = X-AMT-MTD IF DOC-FULL-PART-IND = "F"
+DEF X-FULL-SVC-MTD ZONED*3 SIGNED = X-SVC-MTD IF DOC-FULL-PART-IND = "F"
+;;DEF X-FULL-AVG-MTD ZONED*8 SIGNED = (X-FULL-AMT-MTD / X-FULL-SVC-MTD)
+
+DEF X-FULL-AMT-YTD ZONED*8 SIGNED = X-AMT-YTD IF DOC-FULL-PART-IND = "F"
+DEF X-FULL-SVC-YTD ZONED*5 SIGNED = X-SVC-YTD IF DOC-FULL-PART-IND = "F"
+;;DEF X-FULL-AVG-YTD ZONED*8 SIGNED = (X-FULL-AMT-YTD / X-FULL-SVC-YTD)
+
+DEF X-PART-AMT-MTD ZONED*8 SIGNED = X-AMT-MTD IF DOC-FULL-PART-IND = "P"
+DEF X-PART-SVC-MTD ZONED*3 SIGNED = X-SVC-MTD IF DOC-FULL-PART-IND = "P"
+;;DEF X-PART-AVG-MTD ZONED*8 SIGNED = (X-PART-AMT-MTD / X-PART-SVC-MTD)
+
+DEF X-PART-AMT-YTD ZONED*8 SIGNED = X-AMT-YTD IF DOC-FULL-PART-IND = "P"
+DEF X-PART-SVC-YTD ZONED*5 SIGNED = X-SVC-YTD IF DOC-FULL-PART-IND = "P"
+;;DEF X-PART-AVG-YTD ZONED*8 SIGNED = (X-PART-AMT-YTD / X-PART-SVC-YTD)
+
+DEF X-CLINICAL-AMT-MTD ZONED*8 SIGNED = X-AMT-MTD IF DOC-FULL-PART-IND = "C"
+DEF X-CLINICAL-SVC-MTD ZONED*3 SIGNED = X-SVC-MTD IF DOC-FULL-PART-IND = "C"
+;;DEF X-CLINICAL-AVG-MTD ZONED*8 SIGNED = (X-CLINICAL-AMT-MTD / X-CLINICAL-SVC-MTD)
+
+DEF X-CLINICAL-AMT-YTD ZONED*8 SIGNED = X-AMT-YTD IF DOC-FULL-PART-IND = "C"
+DEF X-CLINICAL-SVC-YTD ZONED*5 SIGNED = X-SVC-YTD IF DOC-FULL-PART-IND = "C"
+;;DEF X-CLINICAL-AVG-YTD ZONED*8 SIGNED = (X-CLINICAL-AMT-YTD / X-CLINICAL-SVC-YTD)
+
+DEF X-PLASTIC-AMT-MTD ZONED*8 SIGNED = X-AMT-MTD IF DOC-FULL-PART-IND = "S"
+DEF X-PLASTIC-SVC-MTD ZONED*3 SIGNED = X-SVC-MTD IF DOC-FULL-PART-IND = "S"
+;;DEF X-PLASTIC-AVG-MTD ZONED*8 SIGNED = (X-PLASTIC-AMT-MTD / X-PLASTIC-SVC-MTD)
+
+DEF X-PLASTIC-AMT-YTD ZONED*8 SIGNED = X-AMT-YTD IF DOC-FULL-PART-IND = "S"
+DEF X-PLASTIC-SVC-YTD ZONED*5 SIGNED = X-SVC-YTD IF DOC-FULL-PART-IND = "S"
+;;DEF X-PLASTIC-AVG-YTD ZONED*8 SIGNED = (X-PLASTIC-AMT-YTD / X-PLASTIC-SVC-YTD)
+
+DEF X-PERIOD CHA*1 = "."
+
+DEF X-NAME CHA*30 =PACK(DOC-NAME +" "+ DOC-INITS)
+
+PAGE HEADING                                              	&
+	TAB 1   "R051CB "    		          	        &
+	TAB 8   "/"          	          	                &
+	TAB 9   DOCREV-CLINIC-1-2                           &
+	TAB 13  "P.E.D"				          	&
+	TAB 20  ICONST-DATE-PERIOD-END                      	&
+	TAB 50  "* DEPARTMENT PRACTICE ANALYSIS *"          	&
+	TAB 100 "RUN DATE:"                               	&
+	TAB 110  SYSDATE                                  	&
+        TAB 124 "PAGE:" TAB 130 SYSPAGE PIC "^^^"      	 	&
+SKIP 1  TAB 55  ICONST-CLINIC-NAME                   		&
+SKIP 2  TAB 50  "DEPT"                                          &
+        TAB 55  "#"  TAB 56 DOCREV-DEPT FILL "0"           	&
+        TAB 59  "-"  TAB 61 DEPT-NAME                           &
+SKIP 1  TAB 50  "CLASS"                                         &
+        TAB 57  DOC-FULL-PART-IND                       	&
+        TAB 59  "-"  TAB 61 X-CLASS                             &
+SKIP 2  TAB 56  "----------- M . T . D . -----------"           &
+        TAB 94  "-------------- Y . T. D . ------------"        &
+SKIP 1  TAB 58  "SVC"                                           &
+        TAB 69  "$ AMT"                                         &
+        TAB 98  "SVC"                                           &
+        TAB 109 "$ AMT"                                         &
+SKIP 1  TAB 1   "OHIP"                                          &
+        TAB 7   "------------OHIP CODE DESCRIPTION------------" & 
+SKIP 1
+
+FOOTING AT DOCREV-OMA-CD                                             &
+SKIP 1  TAB 1   DOCREV-OMA-CD                                        &
+        TAB 7   FEE-DESC                                           &
+        TAB 57  X-SVC-MTD      SUB PIC "^^^^"                        &
+        TAB 64  X-AMT-MTD      SUB PIC "^^^,^^^.^^ " TRAIL "-"       &
+        TAB 96  X-SVC-YTD      SUB PIC "^^^^^"                       &
+        TAB 103 X-AMT-YTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+SKIP 1
+
+FOOTING AT DOC-FULL-PART-IND                                     &
+SKIP 2  TAB 1   "DEPARTMENT CLASS TOTAL- "                       &
+        TAB 25  X-CLASS                                         &
+        TAB 56  X-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95  X-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       &
+SKIP PAGE
+
+
+FOOTING AT DOCREV-DEPT                                           &
+SKIP 2  TAB 1   "DEPT  "                                         &
+        TAB 9   DOCREV-DEPT fill '0'                             &
+        TAB 15  "TOTALS"                                         &
+        TAB 56  X-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95 X-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       &
+SKIP PAGE
+
+
+final footing                                                    &
+	TAB 1   "R051CB "    		          	        &
+	TAB 8   "/"          	          	                &
+	TAB 9   DOCREV-CLINIC-1-2                               &
+	TAB 13  "P.E.D"				          	&
+	TAB 20  ICONST-DATE-PERIOD-END                      	&
+	TAB 50  "* DEPARTMENT PRACTICE ANALYSIS *"          	&
+	TAB 100 "RUN DATE:"                               	&
+	TAB 110  SYSDATE                                  	&
+        TAB 124 "PAGE:" TAB 130 SYSPAGE PIC "^^^"      	 	&
+SKIP 1  TAB 55  ICONST-CLINIC-NAME                   		&
+SKIP 3  TAB 1   "CLINIC CLASS TOTALS"                            &
+SKIP 2  TAB 56  "----------- M . T . D . -----------"           &
+        TAB 94  "-------------- Y . T. D . ------------"        &
+SKIP 1  TAB 58  "SVC"                                           &
+        TAB 69  "$ AMT"                                         &
+        TAB 98  "SVC"                                           &
+        TAB 109 "$ AMT"                                         &
+skip 2  TAB 3   "C: CLINICAL SCHOLARS"                  	&
+        TAB 56  X-CLINICAL-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-CLINICAL-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95  X-CLINICAL-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-CLINICAL-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       &
+skip 2  TAB 3   "F: FULL TIME"                          	&
+        TAB 56  X-FULL-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-FULL-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95  X-FULL-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-FULL-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       &
+skip 2  TAB 3   "P: PART TIME"                          	&
+        TAB 56  X-PART-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-PART-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95  X-PART-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-PART-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       &
+skip 2  TAB 3   "S: PLASTIC SURGERY"                    	&
+        TAB 56  X-PLASTIC-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-PLASTIC-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95  X-PLASTIC-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-PLASTIC-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       &
+skip 2  TAB 1   "** CLINIC GRAND TOTALS **"                                    &
+        TAB 56  X-SVC-MTD      SUB PIC "^^^^^"                        &
+        TAB 63  X-AMT-MTD      SUB PIC "^^^^,^^^.^^ " TRAIL "-"       &
+        TAB 95  X-SVC-YTD      SUB PIC "^^^^^^"                       &
+        TAB 102 X-AMT-YTD      SUB PIC "^^^^^,^^^.^^ " TRAIL "-"       
+
+build $obj/r051cb 
+

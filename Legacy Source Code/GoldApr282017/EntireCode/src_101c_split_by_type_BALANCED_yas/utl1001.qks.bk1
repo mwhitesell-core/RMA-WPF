@@ -1,0 +1,523 @@
+;Program: utl1001.qks
+;       used to allow 'administrator' to change fields on claims detail recs
+
+; 1998/Jul/13 B.E.      - original - cloned from fixf002_hdr
+; NEEDS ABILITY TO ADD new records - doesn't update "orig" etc key
+; stuff and when entry made the records "disappeared" and couldn't
+; be displayed again by this pgm
+; 2000/jun/13 B.E.      - removed code that re-priced line
+; 2000/jul/05 M.C.	- receiving f001 as master, add sum into for
+;			  clmdtl amount and nbr of svc into f001 besides f002
+; 2000/nov/22 M.C.	- allow user to add new records with basic pricing
+; 2001/jun/17 B.E.	- renamed from fixf002_dtl.qks to utl1001.qks
+; 2002/mar/01 M.C.	- do not allow user to add or delete records,
+;			  allow user to change from oma cd and onward
+;			- do not allow user to change if batch status > 2
+;			- if batch status = 2 and user changes oma cd or amt or svc
+;			  reverse from f050 and f051 or tp  accordingly
+;			- add designer files f002-dtl-before and 
+;			  f002-dtl-after when there are changes
+;			  in oma cd, svc or amount with batch status = 2
+; 2002/may/23 M.C.	- allow user to change the record regardless of the batch status
+;			- store batch-status in f002-dtl-before/after files
+;			- if batch status = 3 , do the same as batch status 2
+;			- if batch status = 4, update YTD figures in f050 or f051 or tp files
+;			  and update MTD & YTD in f050 history if applicable
+;			- store batch-status in f002-dtl-before/after files
+; 2002/may/29 M.C.	- store clmdtl-date-period-end in f002-dtl-before/after files
+;
+; 2003/dec/10 A.A.	- alpha doctor nbr
+; 2006/feb/17 b.e.	- allow oma/ohip fees to be changed
+; 2006/feb/17 b.e.	- undid above change - use PRIC designer routine
+; 2011/jul/18 MC1 	- create new designer DATE to allow user to change service date
+; 2012/Aug/08 MC2 	- when user changes date, recalculate the clmhdr-serv-date      
+;
+;2002/03/01 - MC
+;screen $pb_obj/utl1001 receiving f002-claims-mstr, f001-batch-control-file
+screen $pb_obj/utl1001  activities find, change 		&
+			receiving f002-claims-mstr, f001-batch-control-file
+;2002/03/01 - end
+
+
+file f002-claims-mstr master
+
+
+;2000/07/05 - MC begin
+file f001-batch-control-file master 
+;2000/07/05 - MC end
+
+file f002-claims-mstr alias f002-dtl  occurs 10  noitems
+  access via       key-clm-type,				   &
+		   key-clm-batch-nbr, 				   &
+		   key-clm-claim-nbr    			   &
+	using      'B',						   &
+		   key-clm-batch-nbr of f002-claims-mstr,	   &
+		   key-clm-claim-nbr of f002-claims-mstr   
+;
+; select only details (no header records)
+  select if key-clm-serv-code of f002-dtl <> "00000" and 	   &
+	    key-clm-serv-code of f002-dtl[1:4] <> 'ZZZZ'
+
+;2002/03/01 - MC
+; item clmdtl-batch-nbr of f002-dtl initial key-clm-batch-nbr of f002-claims-mstr
+; item clmdtl-claim-nbr of f002-dtl initial key-clm-claim-nbr of f002-claims-mstr
+;2002/03/01 - end
+
+  item clmdtl-oma-cd    of f002-dtl final key-clm-serv-code of f002-dtl[1:4]
+  item clmdtl-oma-suff  of f002-dtl final key-clm-serv-code of f002-dtl[5:1]
+
+;2002/03/01 - MC
+;  item clmdtl-adj-nbr   of f002-dtl final nconvert(key-clm-adj-nbr of f002-dtl)
+;  item clmdtl-orig-batch-id of f002-dtl initial	&
+;	nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9) + &
+;		   ascii(key-clm-claim-nbr of f002-claims-mstr,2))
+;  item key-clm-type of f002-dtl initial 'B'
+;  item key-clm-batch-nbr of f002-dtl initial key-clm-batch-nbr of f002-claims-mstr
+;  item key-clm-claim-nbr of f002-dtl initial key-clm-claim-nbr of f002-claims-mstr
+;  item key-p-clm-type of f002-dtl initial 'Z'
+;  item key-p-clm-data of f002-dtl final clmdtl-id of f002-dtl
+;2002/03/01 - end
+
+
+  item clmdtl-fee-oma of f002-dtl   sum into	&
+	 clmhdr-tot-claim-ar-oma of f002-claims-mstr	
+  item clmdtl-fee-ohip of f002-dtl  sum into 	&
+	 clmhdr-tot-claim-ar-ohip of f002-claims-mstr ;, &
+;2000/07/05 - MC begin include f001 fields as well
+; batctrl-amt-est of f001-batch-control-file,	&
+; batctrl-amt-act of f001-batch-control-file,	&
+; batctrl-calc-tot-rev of f001-batch-control-file,	&
+; batctrl-calc-ar-due  of f001-batch-control-file
+  item clmdtl-nbr-serv  of f002-dtl sum into batctrl-svc-act,	&
+			batctrl-svc-est
+  item clmdtl-sv-nbr-1  of f002-dtl sum into batctrl-svc-act,	&
+			batctrl-svc-est
+  item clmdtl-sv-nbr-2  of f002-dtl sum into batctrl-svc-act,	&
+			batctrl-svc-est
+  item clmdtl-sv-nbr-3  of f002-dtl sum into batctrl-svc-act,	&
+			batctrl-svc-est
+;2000/07/05 - MC end
+
+  item clmdtl-amt-tech-billed of f002-dtl sum into &
+	 clmhdr-amt-tech-billed  of f002-claims-mstr	
+
+;2002/03/01 - MC
+;  item clmdtl-agent-cd of f002-dtl initial clmhdr-agent-cd of f002-claims-mstr
+;  item clmdtl-date-period-end of f002-dtl initial 	&
+;	ascii(clmhdr-date-period-end of f002-claims-mstr,8)
+;  item clmdtl-cycle-nbr of f002-dtl initial clmhdr-cycle-nbr of f002-claims-mstr
+;2002/03/01 - end
+
+temp t-tech-prof-fee float occurs with f002-dtl
+temp tot-nbr-serv    float occurs with f002-dtl
+temp t-silent char*1 occurs with f002-dtl
+
+;2002/03/05 - MC
+temp old-oma-cd char*5 occurs with f002-dtl
+temp old-nbr-serv zoned*2 unsigned occurs with f002-dtl
+temp old-fee-ohip zoned*7 signed occurs with f002-dtl
+temp old-amt-tech-billed zoned*7 signed occurs with f002-dtl
+temp change-flag char*1 occurs with f002-dtl
+; 2012/08/08 - MC2
+temp x-sv-date char*8 
+; 2012/08/08 - end
+;2002/03/05 - end
+
+file f040-oma-fee-mstr reference
+   access viaindex fee-oma-cd  using key-clm-serv-code[1:4]
+
+;2002/03/06 - MC
+file f002-dtl-before  designer occurs with f002-dtl
+file f002-dtl-after   designer occurs with f002-dtl
+;2002/03/06 - end
+
+
+;		1	  2	    3	      4		5	  6         7         8   
+;      123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 
+
+title "   cc-0-ddd-bbb c# oma/s adj svcDate svc $ oma   $ ohip  ln diag dd/# dd/# dd/#"
+
+align (1,,4)  (,16,17) (,,20) (,,27) (,,29) (,,38) (,,42) (,,50) 	&
+     (,,58) (,,62) (,,66) (,68,69) (,,71) (,73,74) (,,76) (,78,79)
+
+cluster occurs with f002-dtl for 2 at ,1
+;!field key-clm-batch-nbr of f002-dtl display pic "^^-^-^^^-^^^" predisplay
+field key-clm-batch-nbr of f002-dtl display pic "^^-^^^-^^^" predisplay
+field key-clm-claim-nbr of f002-dtl display label "-" predisplay
+field key-clm-serv-code of f002-dtl required   upshift		&
+;2002/03/04- MC
+;		lookup on f040-oma-fee-mstr             display &
+		lookup on f040-oma-fee-mstr             
+;2000/11/22 -MC
+;		on find
+; 2002/03/04 - end
+
+field key-clm-adj-nbr of f002-dtl   default '0' display &
+;2000/11/22 -MC
+		on find
+;2002/03/04 - MC
+;field clmdtl-sv-date of f002-dtl required       display &
+field clmdtl-sv-date of f002-dtl required       
+;2000/11/22 -MC
+;		on find
+;2002/03/04 - end
+
+;2002/03/04 - MC
+;field clmdtl-nbr-serv of f002-dtl default 1     display &
+field clmdtl-nbr-serv of f002-dtl default 1     
+;2000/11/22 -MC
+;		on find
+field clmdtl-fee-oma of f002-dtl  pic '^^^^.^^ ' display ; use PRIC to change!
+field clmdtl-fee-ohip of f002-dtl  pic '^^^^.^^ ' display ; don't make enterable!
+field clmdtl-line-no of f002-dtl required
+;field clmdtl-diag-cd of f002-dtl  	      display  &
+field clmdtl-diag-cd of f002-dtl  	      
+;2000/11/22 -MC
+;		on find
+;field clmdtl-sv-day-1 of f002-dtl 	      display
+;field clmdtl-sv-nbr-1  of f002-dtl label "/"  display
+;field clmdtl-sv-day-2 of f002-dtl             display
+;field clmdtl-sv-nbr-2 of f002-dtl label "/"   display
+;field clmdtl-sv-day-3 of f002-dtl	      display
+;field clmdtl-sv-nbr-3 of f002-dtl label "/"   display
+field clmdtl-sv-day-1 of f002-dtl 	      
+field clmdtl-sv-nbr-1  of f002-dtl label "/" 
+field clmdtl-sv-day-2 of f002-dtl           
+field clmdtl-sv-nbr-2 of f002-dtl label "/"
+field clmdtl-sv-day-3 of f002-dtl	  
+field clmdtl-sv-nbr-3 of f002-dtl label "/"   
+;2002/03/04 - end
+
+field t-silent silent
+; 2007/07/04 - MC - reactivate the following 2 lines
+;skip
+;field clmdtl-amt-tech-billed 
+skip
+field clmdtl-amt-tech-billed 
+cluster
+
+; - when code is changed, the oma/ohip "fee" amounts are changed to the
+;   values of the code read in the oma fee master, however the "amt tech billed"
+;   is not updated . Recalulate "tech fee" using the following logic:
+;
+;case #1:
+;       fee-tech-ind of f040 = "Y"
+;   and oma-fee-code-suffix of detail record being updated = "B"
+;then	
+;     move the "ohip fee" to the "tech fee"
+;
+;case #2:
+;        fee-tech-ind of f040 = "Y"
+;   and oma-fee-code-suffix of detail record being updated = "C"
+;then	
+;     move 0 to "tech fee"
+;
+;case #3:
+;fee record"s icc-sec = "NM" or "DR" or "DU" or "PF"
+;then
+;    move fee record"s oma-fee-1 to "tech fee"
+;    move fee record"s oma-fee-2 to "prof fee"
+;    add "tech fee", "prof fee" giving tmp-tech-prof-fee.
+;    if tmp-tech-prof-fee = zero
+;    then
+;        move zero                               to "tech fee"
+;    else
+;        compute "tech fee" rounded =
+;                "tech fee"
+;	       * (fee-ohip / tmp-tech-prof-fee).
+;
+;otherwise:
+;    move 0 to "tech fee"
+;
+;
+;
+
+procedure process key-clm-serv-code
+begin
+; 2003/02/26 - MC
+;   let clmdtl-fee-oma  of f002-dtl  = fee-curr-a-fee-1 / 10
+;   let clmdtl-fee-ohip of f002-dtl  = fee-curr-h-fee-1 / 10
+   if key-clm-serv-code[5:1] <> 'C'
+   then begin
+      let clmdtl-fee-oma  of f002-dtl  = fee-curr-a-fee-1 / 10
+      let clmdtl-fee-ohip of f002-dtl  = fee-curr-h-fee-1 / 10
+      end
+   else begin
+      let clmdtl-fee-oma  of f002-dtl  = fee-curr-a-fee-2 / 10
+      let clmdtl-fee-ohip of f002-dtl  = fee-curr-h-fee-2 / 10
+      end
+; 2003/02/26 - end
+
+;2002/03/04 - MC
+   display clmdtl-fee-oma of f002-dtl
+   display clmdtl-fee-ohip of f002-dtl
+   let change-flag = 'Y'
+;2002/03/04 - end
+
+end
+
+
+;2002/03/06  - set change-flag to 'Y' if user changes nbr of serv
+;		 so later we can adjust in f050/f051 if batch status >= 2
+procedure process clmdtl-nbr-serv
+begin
+  let change-flag = 'Y'
+end
+
+procedure process clmdtl-sv-nbr-1
+begin
+   let change-flag = 'Y'
+end
+
+procedure process clmdtl-sv-nbr-2
+begin
+   let change-flag = 'Y'
+end
+
+procedure process clmdtl-sv-nbr-3
+begin
+   let change-flag = 'Y'
+end
+;2002/03/06 - end
+
+
+;2002/03/05 - MC
+;procedure process t-silent
+procedure edit    t-silent
+;2002/03/05 - end
+begin
+; 2011/07/18 - MC1 - recalculate the amount only if change-flag = 'Y'
+ if change-flag = 'Y'
+ then begin
+;  2011/07/18 - end
+   let tot-nbr-serv =   clmdtl-nbr-serv of f002-dtl +  &
+ 	 		clmdtl-sv-nbr-1 of f002-dtl +  &
+			clmdtl-sv-nbr-2 of f002-dtl +  &
+			clmdtl-sv-nbr-3 of f002-dtl
+; 2003/02/26 - MC
+;  let clmdtl-fee-oma  of f002-dtl = fee-curr-a-fee-1 * tot-nbr-serv / 10
+;  let clmdtl-fee-ohip of f002-dtl = fee-curr-h-fee-1 * tot-nbr-serv / 10
+   if key-clm-serv-code[5:1] <> 'C'
+   then begin
+   	let clmdtl-fee-oma  of f002-dtl = fee-curr-a-fee-1 * tot-nbr-serv  / 10
+   	let clmdtl-fee-ohip of f002-dtl = fee-curr-h-fee-1 * tot-nbr-serv  / 10
+        end
+   else begin
+   	let clmdtl-fee-oma  of f002-dtl = fee-curr-a-fee-2 * tot-nbr-serv  / 10
+   	let clmdtl-fee-ohip of f002-dtl = fee-curr-h-fee-2 * tot-nbr-serv  / 10
+        end
+; 2003/02/26 - end
+   display clmdtl-fee-oma  of f002-dtl
+   display clmdtl-fee-ohip of f002-dtl
+;
+;
+; Case #1
+; 2003/02/21 - MC
+;   if fee-tech-ind = 'Y' and key-clm-serv-code of f002-dtl[5:1] = 'B'
+   if fee-tech-ind = 'Y' or key-clm-serv-code of f002-dtl[5:1] = 'B'
+; 2003/02/21 - end
+      then   let clmdtl-amt-tech-billed of f002-dtl = clmdtl-fee-ohip of f002-dtl
+; Case #2
+; 2003/02/21 - MC
+;   else   if fee-tech-ind = 'Y' and key-clm-serv-code of f002-dtl[5:1] = 'C'
+   else   if  key-clm-serv-code of f002-dtl[5:1] = 'C'
+; 2003/02/21 - end
+             then   let clmdtl-amt-tech-billed of f002-dtl = 0
+; Case #3
+   else   if fee-icc-sec = "NM" or 	&
+             fee-icc-sec = "DR" or 	&
+      	     fee-icc-sec = "DU" or 	&
+      	     fee-icc-sec = "PF"
+   	  then begin
+        	let t-tech-prof-fee = (fee-curr-a-fee-1 + fee-curr-a-fee-2) / 10
+		if t-tech-prof-fee = 0  
+		then let clmdtl-amt-tech-billed of f002-dtl = 0
+		else let clmdtl-amt-tech-billed of f002-dtl =	&
+		     (clmdtl-fee-oma of f002-dtl) * (clmdtl-fee-ohip of f002-dtl /  &
+				      t-tech-prof-fee)  
+		end
+; otherwise
+
+   else   let clmdtl-amt-tech-billed of f002-dtl = 0
+; 2011/07/18 - MC1
+ end
+; 2011/07/18 - end
+
+end
+
+;2011/07/18 - MC1
+procedure designer date  help 'Change Service Date'
+begin
+   accept clmdtl-sv-date of f002-dtl
+; 2012/08/08 - MC2
+;  put f002-dtl 
+; 2012/08/08 - end
+end
+; 2011/07/18 - end
+
+;2002/03/05 - MC
+procedure designer price help 'Change Total Fee'
+begin
+   accept clmdtl-fee-oma of f002-dtl
+   accept clmdtl-fee-ohip of f002-dtl
+   let change-flag = 'Y'
+end
+
+
+;2007/07/04 - MC
+procedure designer tech  help 'Change Tech Amt' 
+begin
+   accept clmdtl-amt-tech-billed of f002-dtl
+   let change-flag = 'Y'
+end
+;2007/07/04 - end
+
+
+procedure postfind
+begin
+  let change-flag = 'N'
+
+; 2012/08/08 - MC2
+  let x-sv-date = '20991231'
+; 2012/08/08 - end
+
+  if batctrl-batch-status  of f001-batch-control-file  >= '2'
+  then begin
+    for f002-dtl
+      begin
+      let change-flag = 'N'
+      let  old-oma-cd = key-clm-serv-code of f002-dtl
+      let  old-nbr-serv = clmdtl-nbr-serv of f002-dtl +  &
+                          clmdtl-sv-nbr-1 of f002-dtl +  &
+                          clmdtl-sv-nbr-2 of f002-dtl +  &
+                          clmdtl-sv-nbr-3 of f002-dtl
+      let  old-fee-ohip = clmdtl-fee-ohip of f002-dtl
+      let  old-amt-tech-billed = clmdtl-amt-tech-billed of f002-dtl
+      end
+   end
+end
+
+
+procedure preupdate
+begin
+
+; 2012/08/08 - MC2 - recalculate clmhdr-serv-date
+  for f002-dtl
+  begin
+     if clmdtl-sv-date of f002-dtl < x-sv-date
+     then let x-sv-date = clmdtl-sv-date of f002-dtl
+     end
+  let clmhdr-serv-date of f002-claims-mstr = nconvert(x-sv-date)
+; 2012/08/08 - end
+   
+  if batctrl-batch-status of f001-batch-control-file >= '2' 	
+  then begin
+     for f002-dtl
+     begin
+       if change-flag = 'Y'
+	then begin	 
+;create change before record
+	    let batctrl-batch-status of f002-dtl-before 	= 	&
+	  	batctrl-batch-status of f001-batch-control-file
+	    let batctrl-batch-type of f002-dtl-before 	= 	&
+	  	batctrl-batch-type of f001-batch-control-file
+	    let batctrl-adj-cd of f002-dtl-before     	=	&
+	        batctrl-adj-cd of f001-batch-control-file
+	    let clmhdr-clinic-nbr-1-2 of f002-dtl-before =	&
+;!		key-clm-batch-nbr of f002-claims-mstr / 10000000
+		nco(key-clm-batch-nbr of f002-claims-mstr[1:2])    
+	    let clmhdr-batch-nbr of f002-dtl-before	=	&
+		key-clm-batch-nbr of f002-claims-mstr
+	    let clmhdr-claim-nbr of f002-dtl-before	=	&
+		key-clm-claim-nbr of f002-claims-mstr
+	    let clmhdr-doc-nbr of f002-dtl-before	=	&
+;!		nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9)[3:4])
+		key-clm-batch-nbr of f002-claims-mstr[3:3]
+	    let clmhdr-doc-dept of f002-dtl-before	=	&
+	        clmhdr-doc-dept of f002-claims-mstr
+	    let clmhdr-loc of f002-dtl-before 		=	&
+	        clmhdr-loc of f002-claims-mstr
+	    let clmhdr-agent-cd of f002-dtl-before	=	&
+		clmhdr-agent-cd of f002-claims-mstr
+	    let clmhdr-manual-and-tape-payments of f002-dtl-before =	&
+		clmhdr-manual-and-tape-payments of f002-claims-mstr
+	    let clmhdr-amt-tech-paid of f002-dtl-before	=	&
+		clmhdr-amt-tech-paid of f002-claims-mstr
+	    let clmhdr-i-o-pat-ind of f002-dtl-before 	=	&
+		clmhdr-i-o-pat-ind of f002-claims-mstr
+	    let clmhdr-adj-cd-sub-type of f002-dtl-before =	&
+		clmhdr-adj-cd-sub-type of f002-claims-mstr
+	    let clmhdr-adj-cd      of f002-dtl-before 	=	&
+		clmhdr-adj-cd      of f002-claims-mstr
+	    let clmhdr-payroll     of f002-dtl-before 	=	&
+		clmhdr-payroll     of f002-claims-mstr
+	    let clmdtl-oma-cd of f002-dtl-before	=		&
+		old-oma-cd[1:4]	 
+	    let clmdtl-oma-suff of f002-dtl-before =		&
+		old-oma-cd[5:1]	 
+	    let clmdtl-fee-ohip of f002-dtl-before = 		&
+		old-fee-ohip  
+	    let clmdtl-nbr-serv of f002-dtl-before =		&
+		old-nbr-serv
+	    let clmdtl-amt-tech-billed of f002-dtl-before =	&
+		old-amt-tech-billed 
+	    let clmdtl-date-period-end of f002-dtl-before =	&
+		clmdtl-date-period-end of f002-dtl         
+	    put f002-dtl-before
+;create change after record
+	    let batctrl-batch-status of f002-dtl-after  	= 	&
+	  	batctrl-batch-status of f001-batch-control-file
+	    let batctrl-batch-type of f002-dtl-after 	= 	&
+	  	batctrl-batch-type of f001-batch-control-file
+	    let batctrl-adj-cd of f002-dtl-after     	=	&
+	        batctrl-adj-cd of f001-batch-control-file
+	    let clmhdr-clinic-nbr-1-2 of f002-dtl-after =	&
+;!		key-clm-batch-nbr of f002-claims-mstr / 10000000
+		nco(key-clm-batch-nbr of f002-claims-mstr[1:2])
+	    let clmhdr-batch-nbr of f002-dtl-after	=	&
+		key-clm-batch-nbr of f002-claims-mstr
+	    let clmhdr-claim-nbr of f002-dtl-after	=	&
+		key-clm-claim-nbr of f002-claims-mstr
+	    let clmhdr-doc-nbr of f002-dtl-after	=	&
+;!		nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9)[3:4])
+		key-clm-batch-nbr of f002-claims-mstr[3:3]
+	    let clmhdr-doc-dept of f002-dtl-after	=	&
+	        clmhdr-doc-dept of f002-claims-mstr
+	    let clmhdr-loc of f002-dtl-after 		=	&
+	        clmhdr-loc of f002-claims-mstr
+	    let clmhdr-agent-cd of f002-dtl-after	=	&
+		clmhdr-agent-cd of f002-claims-mstr
+	    let clmhdr-manual-and-tape-payments of f002-dtl-after =	&
+		clmhdr-manual-and-tape-payments of f002-claims-mstr
+	    let clmhdr-amt-tech-paid of f002-dtl-after	=	&
+		clmhdr-amt-tech-paid of f002-claims-mstr
+	    let clmhdr-i-o-pat-ind of f002-dtl-after 	=	&
+		clmhdr-i-o-pat-ind of f002-claims-mstr
+	    let clmhdr-adj-cd-sub-type of f002-dtl-after =	&
+		clmhdr-adj-cd-sub-type of f002-claims-mstr
+	    let clmhdr-adj-cd      of f002-dtl-after 	=	&
+		clmhdr-adj-cd      of f002-claims-mstr
+	    let clmhdr-payroll     of f002-dtl-after 	=	&
+		clmhdr-payroll     of f002-claims-mstr
+	    let clmdtl-oma-cd of f002-dtl-after	=		&
+		key-clm-serv-code of f002-dtl[1:4]
+	    let clmdtl-oma-suff of f002-dtl-after =		&
+		key-clm-serv-code of f002-dtl[5:1] 
+	    let clmdtl-fee-ohip of f002-dtl-after = 		&
+		clmdtl-fee-ohip of f002-dtl
+	    let clmdtl-nbr-serv of f002-dtl-after =		&
+		tot-nbr-serv
+	    let clmdtl-amt-tech-billed of f002-dtl-after =	&
+		clmdtl-amt-tech-billed of f002-dtl  
+	    let clmdtl-date-period-end of f002-dtl-after =	&
+		clmdtl-date-period-end of f002-dtl  
+	    put f002-dtl-after
+	    end
+	end
+    end
+end
+;2002/03/05 - end
+
+build  detail list
+
+

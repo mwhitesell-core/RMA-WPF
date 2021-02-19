@@ -1,0 +1,227 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U030BB.QTS
+COMMENT "#> Program-id.     u030bb.qts"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "Program Purpose:  - RMA charges doctors for researching and correcting"
+COMMENT "claims rejected on the RAT if they can't be"
+COMMENT "automatically adjusted.  An incorrect claim usually has"
+COMMENT "an OHIP error code however any claim not fully paid"
+COMMENT "can be considered to be in error and requiring work."
+COMMENT "- So that these rejects can be tracked and costed"
+COMMENT "this pgm adds the rejected claims to f088-hdr/dtl files."
+COMMENT "For costing purposes only the header is accessed however"
+COMMENT "the details can be viewed and the 'charge' indicator"
+COMMENT "at the header level can be manually changed (m088)."
+COMMENT "- The first request updates the f088-hdr record and"
+COMMENT "sets a error code or 'blank' and a charge status of  NO ."
+COMMENT "- The 2nd request updates the f088-dtl records."
+COMMENT "- The 3rd request prompts for the RAT processing date and"
+COMMENT "uses this date to select the f088-dtl records for the"
+COMMENT "RAT being processed.  The selected detail records are"
+COMMENT "filtered based upon 'charge/no charge' rules supplied"
+COMMENT "by thekla/lori etc.  The chargeable details are extracted"
+COMMENT "into a subfile and then used to update the header record"
+COMMENT "with a charge status of  Y es and with an OHIP error "
+COMMENT "code that matches the highest valued detail of the claim."
+COMMENT "- NOTE #1: unable to add new request on u030b as too"
+COMMENT "many files would be declared so this separate"
+COMMENT "program was created."
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    WHO    DESCRIPTION"
+COMMENT "2000/jan/21 B.A.   - original"
+COMMENT "2000/mar/10 B.E.   - add new fields to f088, obtain claims's PED via f002"
+COMMENT "2000/mar/30 M.C.   - change the linkage syntax    "
+COMMENT "- add 3 define items and select statement in request"
+COMMENT "f088_add_dtl...."
+COMMENT "2001/nov/16 B.E.   - transfer last 'request' of u030b into u030bb to "
+COMMENT "reduce complexity/size of u030b"
+COMMENT "2002/sep/09 M.C.   - undo the transfer done on 2001/nov/16 by Brad"
+COMMENT "- transfer back the first 'request' from u030bb to u030b for"
+COMMENT "updating amount in clmhdr"
+COMMENT "- u030b_special2.qts has already included this logic of updating"
+COMMENT "clmhdr amount.  If u030b_special1/2.qts are run to replace u030b.qts,"
+COMMENT "currently update clmhdr amount will be double."
+COMMENT "- comment out the request instead of deleting it                    "
+COMMENT "2003/dec/19 A.A.   - alpha doctor nbr"
+COMMENT "2010/Apr/07 MC1   - use set lock record update"
+CAN CLEAR
+RUN U030BB
+SET DEFAULT
+COMMENT "2010/04/07 - MC1"
+COMMENT "set lock file update"
+SET LOCK RECORD UPDATE
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_ICONST_CLINIC_VALUES_GLOBALS.QTS
+COMMENT "2010/04/07 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "request get_clinics_PED on calculation errors report & "
+COMMENT "on edit errors report"
+COMMENT "get the current PED of the Clinic being processed for update into f088 hdr"
+COMMENT "nol"
+COMMENT "File: get_const_clinic_values_globals.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "define items for clinic's iconstants master values"
+GLOBAL TEMP W-PED ZONED*8
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_ICONST_CLINIC_VALUES_GLOBALS.QTS
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_ICONST_CLINIC_VALUES.QTS
+COMMENT "nol"
+COMMENT "File: get_iconst_clinic_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current iconstant clinic values"
+REQUEST GET_ICONST_CLINIC_VALUES ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS ICONST-MSTR-REC
+CHOOSE ICONST-CLINIC-NBR-1-2 PARM PROMPT "RAT Clinic Nbr:  "
+ITEM W-PED FINAL ICONST-DATE-PERIOD-END OF ICONST-MSTR-REC
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_ICONST_CLINIC_VALUES.QTS
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+SET PROCESS NOLIMIT
+COMMENT "(2001/nov/16 B.E. moved below request from u030b to this module"
+COMMENT "on the assumption that u030b was too big and complex with it in it)"
+COMMENT "-------------------------------------------------------------------------"
+COMMENT "2002/09/09 - MC - comment the following request, it has moved back to "
+COMMENT "the end of u030b.qts"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "request update_claim_bal on calculation errors report on edit errors report"
+COMMENT "Update the adjusted balance to the"
+COMMENT "original claim header"
+COMMENT "access *u030_update_clmhdr                           &"
+COMMENT "link  'B', nconvert(part-hdr-claim-id[1:9]),        &"
+COMMENT "nconvert(part-hdr-claim-id[10:2]), '00000', '0' &"
+COMMENT "to   key-clm-type, key-clm-batch-nbr,             &"
+COMMENT "key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr &"
+COMMENT "of f002-claims-mstr"
+COMMENT "98/Sep/10 added sort in order to reset x-found-80-code counter"
+COMMENT "sorted on part-hdr-claim-id "
+COMMENT "B.E. 98/Sep/10"
+COMMENT "For clinics 60 thru 65, "
+COMMENT "if any of the details had an ohip reason code of '80' then all"
+COMMENT "of the adjustment is applied against the tech component of claim"
+COMMENT "Counter will be > 0 if any 80 codes found for claim"
+COMMENT "temp x-found-80-code"
+COMMENT "item x-found-80-code = x-found-80-code + 1   &"
+COMMENT "if    part-dtl-explan-cd =  80    &"
+COMMENT "and part-hdr-claim-id[1:2] >=  60   &"
+COMMENT "and part-hdr-claim-id[1:2] <=  65   &"
+COMMENT "reset at part-hdr-claim-id"
+COMMENT "define x-ohip-bal int*7 signed =                     &"
+COMMENT "x-claim-bal * -1"
+COMMENT "define x-tot-claim-ar-oma int*7 signed =                &"
+COMMENT "round(  (  clmhdr-tot-claim-ar-oma    &"
+COMMENT "* x-ohip-bal)    &"
+COMMENT "/ clmhdr-tot-claim-ar-ohip  )"
+COMMENT "if any reason codes = 80 then the full amount"
+COMMENT "of writeoff is applied against the tech portion, otherwise"
+COMMENT "based upon ratio of original ohip billed to original tech billed"
+COMMENT "define x-amt-tech-billed  int*7 signed =                &"
+COMMENT "round(  (  clmhdr-amt-tech-billed   &"
+COMMENT "* x-ohip-bal)     &"
+COMMENT "/ clmhdr-tot-claim-ar-ohip  )   &"
+COMMENT "if x-found-80-code = 0   &"
+COMMENT "else x-ohip-bal"
+COMMENT "subfile u030brad keep include &"
+COMMENT "x-found-80-code,  &"
+COMMENT "u030_update_clmhdr,  &"
+COMMENT "clmhdr-tot-claim-ar-oma, &"
+COMMENT "x-tot-claim-ar-oma,  &"
+COMMENT "clmhdr-tot-claim-ar-ohip, &"
+COMMENT "x-ohip-bal,   &"
+COMMENT "clmhdr-amt-tech-billed,  &"
+COMMENT "x-amt-tech-billed       "
+COMMENT "output f002-claims-mstr  update on errors report"
+COMMENT "item clmhdr-tot-claim-ar-oma    subtotal x-tot-claim-ar-oma"
+COMMENT "item clmhdr-tot-claim-ar-ohip   subtotal x-ohip-bal"
+COMMENT "item clmhdr-amt-tech-billed     subtotal x-amt-tech-billed"
+COMMENT "2002/09/09 - end"
+COMMENT "-------------------------------------------------------------------------"
+COMMENT "REQUEST 1 - add header records"
+COMMENT "-------------------------------------------------------------------------"
+REQUEST U030BB_ADD_HDR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "(link to claims hdr to obtain claim's PED - NOTE: this step could be"
+COMMENT "eliminated if u030b.qts put the ped in the part-paid-hdr file)"
+COMMENT "!     nconvert(part-hdr-claim-id[1:9]),  &"
+COMMENT "2000/03/30 - MC wrong  linkage"
+COMMENT "nconvert(part-hdr-claim-id[7:2]),  &"
+COMMENT "!           nconvert(part-hdr-claim-id[10:2]),    &"
+ACCESS *U030_NO_ADJ LINK PART-HDR-CLAIM-ID TO PART-HDR-CLAIM-ID OF PART-PAID-HDR LINK 'B', (PART-HDR-CLAIM-ID[1:8]), NCONVERT(PART-HDR-CLAIM-ID[9:2]), '00000', '0' TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR OPT
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\F088_CHARGE_STATUS.DEF
+COMMENT "File: f088_charge_status.def"
+COMMENT "Purpose: define the charge status code for the f088 rat rejection"
+COMMENT "claims history header file"
+DEF NOT-CHARGED CHAR*1 = " "
+DEF CHARGED CHAR*1 = "Y"
+DEF CANCELLED CHAR*1 = "C"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\F088_CHARGE_STATUS.DEF
+OUTPUT F088-RAT-REJECTED-CLAIMS-HIST-HDR ALIAS F088-HDR-ADD ADD ON ERRORS REPORT
+COMMENT "! item clmhdr-batch-nbr final nconv(part-hdr-claim-id of part-paid-hdr[1:9])"
+COMMENT "! item clmhdr-claim-nbr final nconv(part-hdr-claim-id of part-paid-hdr[10:2])"
+COMMENT "! item clmhdr-doc-nbr   final nconv(part-hdr-claim-id of part-paid-hdr[4:3])"
+ITEM CLMHDR-BATCH-NBR FINAL PART-HDR-CLAIM-ID OF PART-PAID-HDR[1:8]
+ITEM CLMHDR-CLAIM-NBR FINAL NCONV(PART-HDR-CLAIM-ID OF PART-PAID-HDR[9:2])
+ITEM CLMHDR-DOC-NBR FINAL PART-HDR-CLAIM-ID OF PART-PAID-HDR[3:3]
+COMMENT "(even if the ohip-error-code is 00 or blank the claim may be researched if "
+COMMENT "the amt paid <> billed so these values are stored)"
+ITEM PART-HDR-AMT-BILL OF F088-HDR-ADD FINAL PART-HDR-AMT-BILL OF U030_NO_ADJ
+ITEM PART-HDR-AMT-PAID OF F088-HDR-ADD FINAL PART-HDR-AMT-PAID OF U030_NO_ADJ
+COMMENT "actual error code not stored - the existance"
+ITEM OHIP-ERR-CODE FINAL ' '
+COMMENT "of this record is based upon u030b determined"
+COMMENT "full payment was not made and no automatic"
+COMMENT "adjustment can be made - therefore RMA research"
+COMMENT "research is needed"
+COMMENT "If subsequently RMA determines that the doctor"
+COMMENT "is NOT responsible for the error they can"
+COMMENT "cancel charges using  X  in charge field"
+COMMENT "later pass determines if chargable"
+ITEM CHARGE-STATUS FINAL NOT-CHARGED
+ITEM PED OF F088-HDR-ADD FINAL W-PED
+ITEM CLMHDR-DATE-PERIOD-END OF F088-HDR-ADD FINAL CLMHDR-DATE-PERIOD-END OF F002-CLAIMS-MSTR
+ITEM CLMHDR-SERV-DATE OF F088-HDR-ADD FINAL PART-HDR-SERV-DATE OF PART-PAID-HDR
+ITEM ENTRY-DATE FINAL SYSDATE
+ITEM ENTRY-TIME-LONG FINAL SYSTIME
+ITEM ENTRY-USER-ID FINAL 'u030bb'
+COMMENT "-------------------------------------------------------------------------"
+COMMENT "REQUEST 2 - add detail records"
+COMMENT "-------------------------------------------------------------------------"
+REQUEST U030BB_ADD_DTL_IGNORE_DUPLICATE_KEY_ERROR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "NOTE: d001 allows 'repetitive' service entries on a single record. When these"
+COMMENT "claims are sent to OHIP the repetitive services are  exploded  into"
+COMMENT "separate records. Therefore when records are read from the RAT it is"
+COMMENT "possible to get duplicates based upon link via service code only"
+COMMENT "!           nconvert(part-hdr-claim-id[1:9]),     &"
+COMMENT "2000/03/30 - MC wrong  linkage"
+COMMENT "nconvert(part-hdr-claim-id[7:2]),  &"
+COMMENT "!           nconvert(part-hdr-claim-id[10:2]),    &"
+ACCESS *U030_NO_ADJ LINK PART-HDR-CLINIC-NBR, PART-HDR-CLAIM-NBR TO PART-DTL-CLINIC-NBR, PART-DTL-CLAIM-NBR OF PART-PAID-DTL LINK 'B', (PART-HDR-CLAIM-ID[1:8]), NCONVERT(PART-HDR-CLAIM-ID[9:2]), PART-DTL-OMA-CD[1:5], '0' TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR OPT
+COMMENT "2000/03/30 - MC - defined 3 consecutive dates and select statements"
+DEF CONSEC-DATE-1 DATE = NCONVERT(CLMDTL-SV-DATE[1:6]+ CLMDTL-CONSEC-DATES-R[2:2]) IF CLMDTL-SV-DAY(1) <> 0
+DEF CONSEC-DATE-2 DATE = NCONVERT(CLMDTL-SV-DATE[1:6]+ CLMDTL-CONSEC-DATES-R[5:2]) IF CLMDTL-SV-DAY(2) <> 0
+DEF CONSEC-DATE-3 DATE = NCONVERT(CLMDTL-SV-DATE[1:6]+ CLMDTL-CONSEC-DATES-R[8:2]) IF CLMDTL-SV-DAY(3) <> 0
+SELECT IF PART-DTL-SERV-DATE = NCONVERT(CLMDTL-SV-DATE) OR PART-DTL-SERV-DATE = CONSEC-DATE-1 OR PART-DTL-SERV-DATE = CONSEC-DATE-2 OR PART-DTL-SERV-DATE = CONSEC-DATE-3
+OUTPUT F088-RAT-REJECTED-CLAIMS-HIST-DTL ALIAS F088-DTL-ADD ADD ON ERRORS REPORT
+COMMENT "! item clmhdr-batch-nbr    final nconv(part-dtl-claim-id  of part-paid-dtl[1:9])"
+COMMENT "! item clmhdr-claim-nbr    final nconv(part-dtl-claim-id  of part-paid-dtl[10:2])"
+ITEM CLMHDR-BATCH-NBR FINAL PART-DTL-CLAIM-ID OF PART-PAID-DTL[1:8]
+ITEM CLMHDR-CLAIM-NBR FINAL NCONV(PART-DTL-CLAIM-ID OF PART-PAID-DTL[9:2])
+ITEM CLMHDR-ADJ-OMA-CD FINAL PART-DTL-OMA-CD[1:4]
+ITEM CLMHDR-ADJ-OMA-SUFF FINAL PART-DTL-OMA-CD[5:1]
+ITEM CLMHDR-ADJ-ADJ-NBR FINAL '0'
+ITEM PED OF F088-DTL-ADD FINAL W-PED
+ITEM OHIP-ERR-CODE FINAL PART-DTL-EXPLAN-CD
+COMMENT "2000/mar/06 B.E."
+ITEM PART-DTL-AMT-PAID OF F088-DTL-ADD FINAL PART-DTL-AMT-PAID OF PART-PAID-DTL
+ITEM PART-DTL-AMT-BILL OF F088-DTL-ADD FINAL PART-DTL-AMT-BILL OF PART-PAID-DTL
+ITEM AUTO-ADJ-FLAG FINAL "N"
+COMMENT "! item clmhdr-doc-nbr  final nconv(part-dtl-claim-id of part-paid-dtl[4:3])"
+ITEM CLMHDR-DOC-NBR FINAL PART-DTL-CLAIM-ID OF PART-PAID-DTL[3:3]
+ITEM CLMDTL-DATE-PERIOD-END FINAL CLMDTL-DATE-PERIOD-END OF F002-CLAIMS-MSTR
+ITEM CLMDTL-SV-DATE FINAL ASC(PART-DTL-SERV-DATE,8)
+ITEM ENTRY-DATE FINAL SYSDATE
+ITEM ENTRY-TIME-LONG FINAL SYSTIME
+ITEM ENTRY-USER-ID FINAL 'u030bb'
+BUILD $PB_OBJ/U030BB
+ENDMODULE U030BB.QTS

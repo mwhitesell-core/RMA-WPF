@@ -1,0 +1,231 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Tue Feb  9 15:26:27 EST 2016
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/m116.qks]
+Q D E S I G N   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-DEVELOPMENT for customer: 0057360001 DYAD Systems Inc. UNIX
+
+> ;#> PROGRAM-ID.     m116.qks
+> ;
+> ;	((C)) Dyad Technologies
+> ;
+> ;    PROGRAM PURPOSE : maintenance of f116-dept-expense-rules-hdr
+> ;
+> ;    MODIFICATION HISTORY
+> ;      DATE   WHO	DESCRIPTION
+> ; 2008/jun/04 M.C.	- original
+> ; 2008/oct/30 M.C.	- add upshift to doc-nbr field
+> ; 2015/Jun/24 MC1 	- allow entry of doc-nbr
+> ; 2016/Feb/09 MC2       - add designer 'EXCL' to populate the excluded tithe doctors records in f116-dtl
+> 
+> can clear
+> 
+> screen $pb_obj/m116
+> 
+> file f116-dept-expense-rules-hdr     occurs 15
+>    item doc-nbr initial '000'
+> 
+> file f115-dept-expense-calc-codes reference
+>    access viaindex dept-expense-calc-code using dept-expense-calc-code of f116-dept-expense-rules-hdr
+> 
+> file f070-dept-mstr reference
+>    access viaindex dept-nbr using dept-nbr of f116-dept-expense-rules-hdr
+> 
+> file f020-doctor-mstr reference
+>    access viaindex doc-nbr using doc-nbr of f116-dept-expense-rules-hdr
+> 
+> temp w-check  occurs with f116-dept-expense-rules-hdr
+> 
+> ; MC2
+> temp comline char*256
+> ; MC2 - end
+> 
+> use $pb_src/std_hilite nol
+> 
+> title "Dept Expense Rules     " at ,42
+> title "Dept Expense            Dept   AFP    Doc   In/Ex"            at 4,4
+> title "Calc Code               Nbr    Group  Nbr   Clude"            at 5,4
+> 
+> skip to 7
+> cluster occurs with f116-dept-expense-rules-hdr
+> 
+> align (1,,4) (,,28)  (,,35) (,,42) (,,50)
+> field dept-expense-calc-code of f116-dept-expense-rules-hdr required &
+>       nochange lookup on f115-dept-expense-calc-codes upshift
+> field dept-nbr of f116-dept-expense-rules-hdr id same                    	&
+> 	lookup on f070-dept-mstr
+> field doc-afp-paym-group of f116-dept-expense-rules-hdr id same upshift
+> ; 2008/10/30 - MC
+> ;field doc-nbr of f116-dept-expense-rules-hdr id same predisplay noentry ;  &
+> ; MC1
+> ;field doc-nbr of f116-dept-expense-rules-hdr id same predisplay noentry  upshift ;  &
+> field doc-nbr of f116-dept-expense-rules-hdr id same predisplay   upshift
+> ; MC1 - end
+> ; 2008/10/20 - end
+> ;      lookup noton f116-dept-expense-rules-hdr via dept-expense-calc-code &
+> ;      , dept-nbr , doc-afp-paym-group , doc-nbr using &
+> ;      dept-expense-calc-code of f116-dept-expense-rules-hdr , dept-nbr of &
+> ;      f116-dept-expense-rules-hdr , doc-afp-paym-group of &
+> ;      f116-dept-expense-rules-hdr , doc-nbr of f116-dept-expense-rules-hdr
+> field w-check silent							&
+>       lookup noton f116-dept-expense-rules-hdr via dept-expense-calc-code &
+>       , dept-nbr , doc-afp-paym-group , doc-nbr using &
+>       dept-expense-calc-code of f116-dept-expense-rules-hdr , dept-nbr of &
+>       f116-dept-expense-rules-hdr , doc-afp-paym-group of &
+>       f116-dept-expense-rules-hdr , doc-nbr of f116-dept-expense-rules-hdr
+> field tithe-in-ex-clude-flag of f116-dept-expense-rules-hdr upshift
+> cluster
+> 
+> ; MC1
+> procedure edit doc-nbr
+> begin
+>    if doc-nbr <> '000'
+>    then begin
+>       get f020-doctor-mstr opt
+>       if not accessok
+>       then error 'Doctor nbr is not defined in doctor mstr'
+>       if doc-afp-paym-group of f116-dept-expense-rules-hdr <>		&
+> 	 doc-afp-paym-group of f020-doctor-mstr
+>       then error 'Afp payment group entered is not the same for the doctor in doctor mstr'
+>       if dept-nbr of f116-dept-expense-rules-hdr <>			&
+> 	 doc-dept of f020-doctor-mstr
+>       then error 'Dept entered is not the same for the doctor in doctor mstr'
+>       end
+> end
+> 
+> ; MC1 - end
+> 
+> 
+> procedure designer dtl
+> begin
+>     run screen $pb_obj/m116b.qkc passing f116-dept-expense-rules-hdr mode f
+> end
+> 
+> ; MC2
+> procedure designer exclude help 'populate f116-dtl records for excluded doctors'
+*W* Only the first four characters of this procedure name will be recognized.
+> begin
+>      let comline = "$cmd/populate_exclude_dtl " +  " " + ascii(doc-dept,2)  + " " + doc-afp-paym-group
+>      run command comline clear all response
+>      information = "populate excluded doctors for selected dept/paym group in f116-dtl file " now response
+> end
+> ; MC2 - end
+> 
+> build detail list
+> PROCEDURE APPEND
+>   BEGIN
+>     ACCEPT DEPT-EXPENSE-CALC-CODE OF F116-DEPT-EXPENSE-RULES-HDR
+>     ACCEPT DEPT-NBR OF F116-DEPT-EXPENSE-RULES-HDR
+>     ACCEPT DOC-AFP-PAYM-GROUP OF F116-DEPT-EXPENSE-RULES-HDR
+>     ACCEPT DOC-NBR OF F116-DEPT-EXPENSE-RULES-HDR
+>     EDIT W-CHECK
+>     ACCEPT TITHE-IN-EX-CLUDE-FLAG OF F116-DEPT-EXPENSE-RULES-HDR
+>     END
+> PROCEDURE ENTRY
+>   BEGIN
+>     FOR F116-DEPT-EXPENSE-RULES-HDR
+>       BEGIN
+>         PERFORM APPEND
+>         END
+>     END
+> PROCEDURE PATH
+>   BEGIN
+>     REQUEST DEPT-EXPENSE-CALC-CODE OF F116-DEPT-EXPENSE-RULES-HDR
+>     IF PROMPTOK
+>       THEN REQUEST DEPT-NBR OF F116-DEPT-EXPENSE-RULES-HDR
+>     IF PROMPTOK
+>       THEN REQUEST DOC-AFP-PAYM-GROUP OF F116-DEPT-EXPENSE-RULES-HDR
+>     IF PROMPTOK
+>       THEN REQUEST DOC-NBR OF F116-DEPT-EXPENSE-RULES-HDR
+>     IF PROMPTOK
+>       THEN LET PATH = 1
+>     IF PATH = 0
+>       THEN BEGIN
+>         REQUEST DEPT-EXPENSE-CALC-CODE OF F116-DEPT-EXPENSE-RULES-HDR
+>         IF PROMPTOK
+>           THEN REQUEST DEPT-NBR OF F116-DEPT-EXPENSE-RULES-HDR
+>         IF PROMPTOK
+>           THEN REQUEST DOC-AFP-PAYM-GROUP OF &
+>               F116-DEPT-EXPENSE-RULES-HDR
+>         IF PROMPTOK
+>           THEN LET PATH = 2
+>         END
+>     IF PATH = 0
+>       THEN BEGIN
+>         REQUEST DEPT-EXPENSE-CALC-CODE OF F116-DEPT-EXPENSE-RULES-HDR
+>         IF PROMPTOK
+>           THEN REQUEST DEPT-NBR OF F116-DEPT-EXPENSE-RULES-HDR
+>         IF PROMPTOK
+>           THEN LET PATH = 3
+>         END
+>     IF PATH = 0
+>       THEN BEGIN
+>         REQUEST DEPT-EXPENSE-CALC-CODE OF F116-DEPT-EXPENSE-RULES-HDR
+>         IF PROMPTOK
+>           THEN LET PATH = 4
+>         END
+>     IF PATH = 0
+>       THEN BEGIN
+>         LET PATH = 5
+>         END
+>     END
+> PROCEDURE FIND
+>   BEGIN
+>     FOR MISSING F116-DEPT-EXPENSE-RULES-HDR
+>       BEGIN
+>         IF PATH = 1
+>           THEN GET F116-DEPT-EXPENSE-RULES-HDR VIA &
+>               DEPT-EXPENSE-CALC-CODE , DEPT-NBR , DOC-AFP-PAYM-GROUP &
+>               , DOC-NBR
+>         IF PATH = 2
+>           THEN GET F116-DEPT-EXPENSE-RULES-HDR VIA &
+>               DEPT-EXPENSE-CALC-CODE , DEPT-NBR , DOC-AFP-PAYM-GROUP
+>         IF PATH = 3
+>           THEN GET F116-DEPT-EXPENSE-RULES-HDR VIA &
+>               DEPT-EXPENSE-CALC-CODE , DEPT-NBR
+>         IF PATH = 4
+>           THEN GET F116-DEPT-EXPENSE-RULES-HDR VIA &
+>               DEPT-EXPENSE-CALC-CODE
+>         IF PATH = 5
+>           THEN GET F116-DEPT-EXPENSE-RULES-HDR SEQUENTIAL
+>         END
+>     END
+> PROCEDURE UPDATE
+>   BEGIN
+>     FOR F116-DEPT-EXPENSE-RULES-HDR
+>       BEGIN
+>         PUT F116-DEPT-EXPENSE-RULES-HDR
+>         END
+>     END
+> PROCEDURE DELETE
+>   BEGIN
+>     DELETE F116-DEPT-EXPENSE-RULES-HDR
+>     END
+> ALLDONE
+MODE:x ACTION:xxxxxxxxx                  Dept Expense Rules
+ 
+ 
+   Dept Expense            Dept   AFP    Doc   In/Ex
+   Calc Code               Nbr    Group  Nbr   Clude
+ 
+01 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+02 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+03 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+04 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+05 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+06 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+07 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+08 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+09 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+10 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+11 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+12 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+13 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+14 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+15 xxxxxxxxxxxxxxxxxxxx    xx     xxxx   xxx     x
+ 
+ 
+0 ERRORS  1 WARNINGS. Delete old screen /alpha/rmabill/rmabill101/obj/m116.qkc?
+> 
+Tue Feb  9 15:26:30 EST 2016

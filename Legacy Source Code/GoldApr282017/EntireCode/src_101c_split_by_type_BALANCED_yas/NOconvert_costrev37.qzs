@@ -1,0 +1,73 @@
+; DOC: costrev37
+; DOC: 
+; DOC: 
+; DOC: RUN FOR: run for costing
+;
+;PROGRAM PURPOSE :  
+;                 
+;
+;DATE       BY WHOM   DESCRIPTION
+;01/09/01   YASEMIN   ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set rep nohead
+set rep device disc name costrev37
+
+access f050-doc-revenue-mstr-history         & 
+  link docrev-doc-nbr to doc-nbr             &
+    of f020-doctor-mstr  opt    
+
+select if     docrev-clinic-1-2 = "37"                   &
+          and ICONST-DATE-PERIOD-END = 20080601  
+
+sort on docrev-doc-nbr
+
+def x-amt-ytd      zoned*8 signed = docrev-ytd-in-rec + docrev-ytd-out-rec &
+                                   if docrev-location ne "MISC"
+
+def x-misc-amt-ytd zoned*8 signed = docrev-ytd-out-rec  &
+             if docrev-location = "MISC" and docrev-oma-code ne "MOHR"
+
+def x-mohr-amt-ytd zoned*8 signed = docrev-ytd-out-rec  &
+               if docrev-location = "MISC" and docrev-oma-code = "MOHR"
+
+def x-amt-total-ytd zoned*8 signed=(x-amt-ytd + x-misc-amt-ytd + x-mohr-amt-ytd)
+
+def x-coma cha*1 = ","
+
+footing at docrev-doc-nbr                     &
+  tab 1    doc-nbr                            &
+  tab 4    x-coma                             &
+  tab 5    doc-name                           &
+  tab 29   x-coma                             &
+  tab 30   doc-inits                          &
+  tab 33   x-coma                             & 
+  tab 34   doc-dept                           &
+  tab 36   x-coma                             & 
+  tab 37   x-amt-ytd  subtotal     pic " ^^^^^^.^^"         & 
+  tab 47   x-coma                                           & 
+  tab 48   x-misc-amt-ytd subtotal pic " ^^^^^^.^^"         & 
+  tab 58   x-coma                                           & 
+  tab 59   x-mohr-amt-ytd subtotal pic " ^^^^^^.^^"         & 
+  tab 69   x-coma                                           & 
+  tab 70   x-amt-total-ytd subtotal pic " ^^^^^^.^^"        & 
+  tab 82   doc-date-fac-start       pic "^^^^/^^/^^"        &
+  tab 95   doc-date-fac-term        pic "^^^^/^^/^^"        &
+skip 1
+ 
+final footing   &
+  tab 27   x-amt-ytd  subtotal      pic " ^^^^^^^^.^^"        &
+  tab 39   x-coma                                             &
+  tab 40   x-misc-amt-ytd subtotal  pic " ^^^^^^^^.^^"        &
+  tab 52   x-coma                                             &
+  tab 53   x-mohr-amt-ytd subtotal  pic " ^^^^^^^^.^^"        &
+  tab 65   x-coma                                             &
+  tab 66   x-amt-total-ytd subtotal pic " ^^^^^^^^.^^"        &
+skip 1
+
+build costrev37
+
+
+  

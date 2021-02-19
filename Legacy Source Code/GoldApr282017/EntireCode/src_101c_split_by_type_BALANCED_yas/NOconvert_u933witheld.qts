@@ -1,0 +1,56 @@
+;
+; 94/JUN/22	M.C.	- ORIGINAL (SMS 145)
+;			- ICU/APP FOR CLINIC 81 AGENT 8
+;; 94/NOV/24	B.M.L.  - ADDED WITHHELD
+;
+
+can clear
+
+run summ_claims
+
+request one
+
+access icu-app-file
+
+sort on doc-nbr on clmhdr-pat-ohip-id-or-chart on clmdtl-sv-date
+
+temp x-claim
+item x-claim = x-claim + 1 at clmdtl-sv-date reset at doc-nbr
+
+temp x-svc
+item x-svc = x-svc + clmdtl-nbr-serv reset at doc-nbr
+
+temp x-billing
+item x-billing = x-billing + clmdtl-fee-ohip reset at doc-nbr
+
+subfile payplan keep at doc-nbr	include		&
+	doc-nbr, clmhdr-doc-dept, x-claim, x-svc, x-billing
+
+request two
+
+access *payplan link doc-nbr to doc-nbr of f020-doctor-mstr opt &
+	link 81 to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+def x-clawback = parm prompt  'CLAWBACK % (99.99): '
+def x-charge = parm prompt 'RMA CHARGE PER CLAIM: '
+def x-withheld = parm prompt '% WITHHELD (99.99): '
+
+def x-less-withheld = x-billing * x-withheld / 100
+def x-less-clawback = x-billing * x-clawback / 100
+def x-tot-billing = (x-billing - x-less-clawback) - x-less-withheld
+def x-rma-charge = x-claim * x-charge * 100
+def x-gst = x-rma-charge  * .07
+def x-tot-exp = x-rma-charge + x-gst
+def x-net = x-tot-billing - x-tot-exp
+
+subfile u933a      keep include				&
+	doc-nbr of payplan,				&
+	doc-name, clmhdr-doc-dept, x-claim,         	&
+	x-svc, x-billing, x-less-clawback, 		&
+	x-tot-billing, x-rma-charge, x-gst, x-tot-exp,  &
+	x-net, iconst-date-period-end, x-less-withheld
+
+build $pb_obj/u933
+
+
+    

@@ -1,0 +1,109 @@
+; Program: costing6_man_rej_dtl.qts
+; Purpose: - creates files for costing the MANUAL REJECTION Charges
+;          - separate it into 3 catagories E, R and S                      
+;
+;
+;DATE       BY WHOM      DESCRIPTION
+;00/02/23   YASEMIN      ORIGINAL
+;02/07/30   M.C.	- increase the record count for manual rejection by patient by ohip-err-code
+;03/dec/11  A.A.	- alpha doctor nbr
+;04/may/10  M.C.	- access f087-submitted-rejected-claims-hdr instead
+;			- change sort statement
+;04/jul/28  b.e.	- if error code not on lookup table and thus no error
+;			  category can be determined, then consider as "R"ma
+;		          error.
+;		    	- selection criteria to include only chargeable items
+;04/jul/14  b.e.	- at yas's request changed some of the logic put in
+;			  2004/jul/28 to include more errors in subfile
+;			  but show them as "R"ma errors
+
+cancel clear
+
+run costing6
+
+set default
+set process nolimit
+set lock file update
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+request costing5_1     &
+        on calculation errors report    &
+        on edit errors report
+
+access f087-submitted-rejected-claims-hdr                 &
+  link clmhdr-doc-nbr                                    &
+  to   doc-nbr of f020-doctor-mstr			 &
+  link ohip-err-code 					 &
+  to   f093-ohip-error-msg-mstr opt			 &
+  link 'B', clmhdr-batch-nbr, clmhdr-claim-nbr, '00000', '0'                & 
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, &
+       key-clm-adj-nbr  of f002-claims-mstr  opt
+
+;(select rejections whose PED is within the period 'start of fiscal period'
+;  and  the 'current costing analysis ped' )
+define ped-yymm zoned*6 = ped / 100
+select if   (    ped      >= w-current-fiscal-start-yymmdd	&
+	     and ped-yymm <= w-current-costing-ped-yymm		&
+	    )	 					;	&
+
+;	  2005/jul/14 b.e. removed this edit to show all errors
+;        and (   charge-status = "Y"                                &; charged
+;            )                                                    ; errors only
+
+
+; (select doctor who  was 'active' anytime within the costing
+;  analysis period - ie. start of fiscal year to current costing
+;  analysis ped's yymm)
+
+use $use/select_f020_active_for_costing_analysis_period.use
+
+sort	on clmhdr-doc-nbr		&
+	on ohip-err-cat-code 		&
+	on clmhdr-pat-ohip-id-or-chart 	&
+	on ohip-err-code of f087-submitted-rejected-claims-hdr  
+
+temp man-reject-r  zoned*6 unsigned 
+item man-reject-r  = man-reject-r + 1 		&	
+    if    ohip-err-cat-code = "R"		&
+       or (    ohip-err-cat-code <> "R"		&
+           and ohip-err-cat-code <> "S"		&
+           and ohip-err-cat-code <> "E"		&
+	  )					&
+;         2005/jul/14 b.e. added below
+       or charge-status <> "Y"			&
+		at ohip-err-code		&
+	reset at clmhdr-doc-nbr    
+
+
+temp man-reject-e  zoned*6 unsigned             
+item man-reject-e  = man-reject-e + 1           &
+    if     ohip-err-cat-code = "E"		&
+       and charge-status     = "Y"		&
+		at ohip-err-code		&
+	reset at clmhdr-doc-nbr    
+
+temp man-reject-s  zoned*6 unsigned             
+item man-reject-s  = man-reject-s + 1           &
+    if     ohip-err-cat-code = "S"		&
+       and charge-status     = "Y"		&
+		at ohip-err-code		&
+	reset at clmhdr-doc-nbr 
+
+subfile costing6 keep at clmhdr-doc-nbr      &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+         doc-clinic-nbr,                    &
+         man-reject-r,                      &
+         man-reject-s,                      &
+         man-reject-e,			    &
+         ohip-err-cat-code
+
+build $obj/costing6

@@ -1,0 +1,1771 @@
+* file: pricing_logic.rtn
+* 00/aug/31 B.E. - original
+* 00/sep/07 B.E. - the sequence of incoming claim details is stored in
+*                   hold-incoming-line-nbr so that if the pricing
+*   		    module re-sorts the claim details within the hold area,
+*		    the program can use the hold-line-no field to re-sort
+*		    the records back into the original sequence)
+*  00/sep/07 B.E. - added additional display fields in ya11-
+*  00/sep/12 B.E. - yz0-reset-verify-prices logic moved from newu701 into
+*		    this common pricing logic so that the resetting to
+*		    'incoming' prices can be done before the technical/
+*		    professional fee calculations is performed.
+* 00/sep/25 B.E. - added display/confirm logic after each stage of pricing
+* 00/oct/02 B.E. - ajust pricing for newu701 so that: 
+* 	  	 (OP claims from the web/diskette retain their incoming $ while
+*  		  online claims use the amount the user entered into the OMA fee
+*  		  as the basis for basic pricing)
+* 00/dec/22 B.E. - "special"reduction (see MaryAnne) based upon oma code and 
+*		   location for in patients (currently G259/G420)
+
+
+ya0-price-claim.
+
+*   (turn off the zero fee flag until the end of pricing so that the
+*    warning is not produced each pass)
+    move 'N'                                            to flag-zero-fee.
+
+*    (note:  all pricing constant values are found in record 2 of constants
+*            master file which was read in 'mainline')
+
+*   (if the agent code is 'wcb' the constants master wcb rate is held
+*    or else the variable is set to 1 for no affect in the
+*    multiplication.)
+    if def-agent-wcb
+    then
+*       (wcb pricing/reductions not required at RMA currently, therefore
+*        just use the 1st line's curr-prev value to set rate)
+        move hold-ss-curr-prev(1)               to ss-curr-prev
+        move const-wcb(ss-curr-prev)            to ws-hold-wcb-rate
+    else
+        move 1                                  to ws-hold-wcb-rate.
+*   endif
+
+*   (if incoming diskette file was priced, then "B" and "C" suffix'd lines
+*    have the number of services combined using the 'basic + times' logic
+*    and this routine will strip out the basic units so that the regular
+*    pricing algorith will work)
+    if   (    diskette-claim
+          and override-with-rma-prices
+   	 )
+    then
+	perform ya5-reset-nbr-services-value	thru ya5-99-exit
+            varying ss
+            from 1 by 1
+            until   ss > ss-clmdtl-oma.
+*   endif
+
+*   (find the 'SP99' and 'SP98' add-on group reduction rates)
+*   (00/aug/08 changed to allow all ICC codes to be possible add on's)
+    move 1                                      to ws-reduc-rate.
+
+    perform ya2-find-add-on-reduc-rate          thru ya2-99-exit
+        varying subs
+        from 1 by 1
+        until   subs > const-max-nbr-rates.
+
+
+    perform yb0-calc-basic-fee                  thru yb0-99-exit
+        varying ss
+        from 1 by 1
+        until   ss > ss-clmdtl-oma.
+
+
+*       (if only 1 detail entry then no further reductions necessary)
+    if ss-clmdtl-oma = 1
+    then
+        go to ya0-98-display-fees.
+*   (else)
+*   endif
+
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+	move 90					to err-ind
+	perform za0-common-error		thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+    move 1                                      to ss
+                                                   ss2.
+    perform yc0-sort-by-icc-and-fee             thru yc0-99-exit
+                until ss2 not < ss-clmdtl-oma.
+
+    move "N"                                    to flag-sec-reduction-needed.
+
+    move zero                                   to ss-grp-tot
+                                                   hold-grp-totals-tbl.
+    move 1                                      to ss-sec
+                                                   ss-grp
+                                                   hold-flag-sec ( 1 )
+                                                   hold-flag-grp ( 1 ).
+    perform yd0-set-icc-sort-flags              thru yd0-99-exit
+        varying ss
+        from 2 by 1
+        until   ss > ss-clmdtl-oma.
+
+    move ss-clmdtl-oma                          to ss-hold-clmdtl-oma.
+
+    perform xa0-display-details                 thru xa0-99-exit
+                 varying ss-clmdtl-oma
+                 from 1
+                 by 1
+                 until   ss-clmdtl-oma > ss-hold-clmdtl-oma
+                      or ss-clmdtl-oma > ss-max-nbr-oma-det-rec-allow.
+
+    move ss-hold-clmdtl-oma                     to ss-clmdtl-oma.
+
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 91                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+    perform ye0-group-reductions                thru ye0-99-exit
+        varying ss
+        from 1 by 1
+        until   ss > ss-clmdtl-oma
+*  (00/jul/27 B.E. removed hard coding of 7 and replace with calculation)
+*            or ss > 7.
+             or ss > (ss-max-nbr-oma-det-rec-allow - 1) .
+
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 92                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+    perform yf0-add-on-increases                thru yf0-99-exit
+        varying ss
+        from 1 by 1
+        until   ss > ss-clmdtl-oma.
+
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 93                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+
+*       (at this time, only 'sp' oma codes require 'sectional' reduction)
+    if flag-sec-reduction-needed = "N"
+    then
+        go to ya0-98-display-fees.
+*   (else)
+*   endif
+
+    move 1                                      to ss-from.
+    move 0                                      to ss-to.
+
+ya0-calc-sectional-reductions.
+
+    if hold-icc-sec (ss-from) not = "SP"
+    then
+        move ss-from                    to      ss-to
+        go to ya0-increment-ss-from.
+*   (else)
+*   endif
+
+    perform yh0-find-high-grp-within-sec        thru yh0-99-exit.
+
+    if online-claim
+    then
+        display scr-acpt-det-desc.
+*   endif
+
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 94                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+    perform yi0-sec-reduct-within-sec           thru yi0-99-exit
+                varying ss
+                from ss-from by 1
+                until   ss > ss-to.
+
+ya0-increment-ss-from.
+
+    if ss-to < ss-clmdtl-oma
+    then
+        add  1, ss-to                           giving  ss-from
+        move 0                                  to      ss-to
+        perform ya1-display-fees                thru    ya1-99-exit
+*       ==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+        if password-input = password-special-privledges
+        then
+            move 95                                 to err-ind
+            perform za0-common-error                thru za0-99-exit
+*       ==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+            go to ya0-calc-sectional-reductions
+	else
+            go to ya0-calc-sectional-reductions.
+*       endif
+*   (else)
+*   endif
+
+    perform yf1-special-add-on-incr             thru yf1-99-exit
+        varying ss
+        from 1 by 1
+        until   ss > ss-clmdtl-oma.
+
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 96                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+
+ya0-98-display-fees.
+*   (display fees before min-max testing so that if warning message is displayed
+*    that fees being in/decreased then the Operator can see the fees on the
+*    screen)
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 97                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+*   (test min/max price to ensure that calculated basic prices are within
+*    acceptable range)
+    perform test-min-max-limits                 thru test-min-max-limits-99-exit
+        varying ss
+        from 1 by 1
+        until   ss > ss-clmdtl-oma.
+
+*  (display the fees again in case they min-max testing has changed the
+*   fee)
+*  (turn on flag to print warning message if a zero fee is found)
+    move 'Y'                                    to flag-zero-fee.
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 98                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+
+
+*   (00/sep/12 B.E. - reset prices, if necessary, before calculating
+*		      technical/professional breakdown)
+*   (this routine has priced claims according to RMA pricing. If
+*    incoming file was "D"iskette, then reset prices to the 'incoming'
+*    values rather than RMA priced amounts. If the file was from the "W"eb,
+*    then reset any OP or MR line to 'incoming' prices)
+    if not online-claim
+    then
+	perform yz0-reset-verify-prices      thru yz0-99-exit.
+*   endif
+
+    perform ya3-calc-priced-tech                thru ya3-99-exit
+        varying ss
+        from 1
+        by   1
+        until   ss > ss-clmdtl-oma.
+
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 99                                 to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+
+*   (00/sep/07 B.E. - if necessary, sort the details back into their
+*		      original sequence)
+    move 1                                      to ss
+                                                   ss2.
+    perform yj0-sort-by-orig-line-no            thru yj0-99-exit
+                until ss2 not < ss-clmdtl-oma.
+*   (redisplay records in original sequence)
+    perform ya1-display-fees                    thru ya1-99-exit.
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+    if password-input = password-special-privledges
+    then
+        move 100                                to err-ind
+        perform za0-common-error                thru za0-99-exit.
+*   (else)
+*   endif
+*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
+
+
+ya0-99-exit.
+    exit.
+
+
+ya1-display-fees.
+
+    move ss-clmdtl-oma                          to ss-hold-clmdtl-oma.
+
+    perform ya11-disp-oma-fees                  thru ya11-99-exit
+                varying ss-clmdtl-oma
+                from 1
+                by   1
+                until   ss-clmdtl-oma > ss-hold-clmdtl-oma
+                     or ss-clmdtl-oma > ss-max-nbr-oma-det-rec-allow.
+
+    move ss-hold-clmdtl-oma                     to ss-clmdtl-oma.
+
+ya1-99-exit.
+    exit.
+
+
+ya11-disp-oma-fees.
+
+*   (display fields on screen, only if pricing is for "online" d001 pgm)
+*    and skip if 'web' or 'diskette' type batch pricing)
+    if online-claim
+    then
+        next sentence
+    else
+        go to ya11-99-exit.
+*   endif
+
+    add ss-clmdtl-oma
+*       (sms 126 allow for 8 claim details instead of 6)
+*       14                              giving pline.
+        13                              giving pline.
+
+*   (00/sep/07 B.E. - added additional display fields)
+    display scr-hold-oma-cd.
+    display scr-hold-oma-suff.
+    display scr-hold-sv-date-yy-12.
+    display scr-hold-sv-date-yy-34.
+    display scr-hold-sv-date-mm.
+    display scr-hold-sv-date-dd.
+
+    display scr-hold-sv-nbr-0
+    display scr-hold-fee-oma.
+    display scr-hold-fee-ohip.
+
+    if      ( hold-fee-oma(ss-clmdtl-oma)  = 0
+          or  hold-fee-ohip(ss-clmdtl-oma) = 0 )
+      and     flag-zero-fee = 'Y'
+    then
+        move '* Warning - '             to e1-error-word
+        move 59                         to err-ind
+        perform za0-common-error        thru za0-99-exit
+        move '* Error - '               to e1-error-word.
+*   (else)
+*   endif
+
+ya11-99-exit.
+    exit.
+
+
+
+ya2-find-add-on-reduc-rate.
+
+*   (find the 'SP99' and 'SP98' add-on group reduction rates)
+
+*  ****  BUG BUG BUG BUG BUG BUG  - using first line's curr-prev subscript  ***
+*  ****  which may/maynot be SP98/SP99 item) **********************************
+    move hold-ss-curr-prev(1)               to ss-curr-prev.
+
+    if const-section-group (subs) = 'SP98'
+    then
+            move const-rates-curr-prev ( subs, ss-curr-prev) to ws-reduc-rate98
+    else
+        if const-section-group (subs) = 'SP99'
+        then
+            move const-rates-curr-prev ( subs, ss-curr-prev) to ws-reduc-rate99
+        else
+*           (00/aug/08 - no rate needed for non-SP add ons)
+            move 1                                           to ws-reduc-rate98
+                                                                ws-reduc-rate99.
+*       endif
+*   endif
+
+ya2-99-exit.
+    exit.
+
+
+ya3-calc-priced-tech.
+
+*   (sms #113 - treat agent 4 as direct bill)
+    if         def-agent-wcb
+      and not hold-fee-ohip-r(ss) = 0
+      and not hold-fee-oma-r (ss) = 0
+    then
+        perform ya4-round-wcb                   thru ya4-99-exit.
+*   endif
+
+    if    hold-basic-tech(ss) = 0
+       or hold-basic-fee (ss) = 0
+       or hold-fee-ohip  (ss) = 0
+    then
+       move 0 to hold-priced-tech(ss)
+    else
+       compute hold-priced-tech(ss) rounded =
+                (hold-basic-tech(ss) * hold-fee-ohip(ss)) / hold-basic-fee(ss).
+*   endif
+
+ya3-99-exit.
+    exit.
+
+ya4-round-wcb.
+
+    divide hold-fee-ohip-r(ss)  by 5
+        giving ws-hold-temp-3 remainder ws-hold-temp-2.
+
+    if ws-hold-temp-2 < 3
+    then
+        subtract ws-hold-temp-2 from hold-fee-ohip-r(ss)
+    else
+        subtract ws-hold-temp-2 from 5 giving ws-hold-temp-2
+        add      ws-hold-temp-2 to   hold-fee-ohip-r(ss).
+*   endif
+
+    divide hold-fee-oma-r(ss)   by 5
+        giving ws-hold-temp-3 remainder ws-hold-temp-2.
+
+    if ws-hold-temp-2 < 3
+    then
+        subtract ws-hold-temp-2 from hold-fee-oma-r(ss)
+    else
+        subtract ws-hold-temp-2 from 5 giving ws-hold-temp-2
+        add      ws-hold-temp-2 to   hold-fee-oma-r(ss).
+*   endif
+
+ya4-99-exit.
+    exit.
+
+
+ya5-reset-nbr-services-value.
+
+*  (incoming anaesthetis/assitance reocrds (B and C suffixed claims) have
+*   the number of services bumped up by the act of pricing the claim. so that
+*   the RMA pricing algorithm will work, extract out the basic units from
+*   the number of services from incoming claims)
+
+
+*      hold-sv-nbr-serv-incoming(ss)
+    if hold-sv-nbr-serv(ss) not = 0
+    then
+*       CASE
+	if hold-oma-suff(ss) = "B"
+	then
+	    if hold-oma-cd(ss) = "E400" or "E401"
+	    then
+		move 0			to     hold-sv-nbr-serv(ss)
+	    else
+                subtract hold-oma-fee-asst (ss,ohip)
+					from   hold-sv-nbr-serv(ss)
+				 	giving hold-sv-nbr-serv(ss)
+	else
+	if hold-oma-suff(ss) = "C"
+	then
+	    if hold-oma-cd(ss) = "E400" or "E401"
+	    then
+		move 0			to     hold-sv-nbr-serv(ss)
+	    else
+                subtract hold-oma-fee-anae (ss,ohip)
+					from   hold-sv-nbr-serv(ss)
+					giving hold-sv-nbr-serv(ss).
+*       ENDCASE
+*   endif
+
+ya5-99-exit.
+    exit.
+
+yb0-calc-basic-fee.
+
+*       (all entries except 'BI','OP' and 'add on codes' are priced according to
+*        the calculated basic-fee using the following formula :
+*               fee = basic-fee * (#-of-services)
+*
+*       'bi'lateral entries are priced according to:
+*               fee = basic-fee * (constants-master-bilateral-percentage-rate)
+
+*       'OP' override priced uses the fee entered by the
+*         operator for the oma-amt
+*         and multiply this fee by a constants-mstr-indep-consider-rate
+*         to obtain the ohip-amt unless batch-agent-code is 'direct' or 'wcb'
+*         in which case the amt-entered is used for both oma and ohip fees.
+
+*        NOTE: as documented in line below, 'add on' codes were identified by
+*              having ICC code of SP98/99. Changed to look for
+*              "F"lat/"P"ercentage designation
+*              in field fee-add-on-perc-or-flat-ind
+*         'add on' codes which have an icc-code of "SP98" or "SP99"
+*          are set to zero at this time --
+*           -- routine 'yf0' will later price these add on codes)
+
+
+*       agent code = 'wcb' ("9") is priced according to --
+*            'basic-rate' * constants master 'wcb-rate'
+*       wcb uses ohip-rate not oma-rate for basic-fee
+*                ----          ---
+
+*       agent code = 'direct bill' ("6") uses oma not ohip-rate for basic-fee
+*                                             ---     ----
+
+*=============  put the table used in calculating prices here =================
+
+*       (this flag will indicate if fee-1 ('1'),
+*                                   fee-2 ('2')
+*                                or "fee-1 + fee-2" ('3')
+*        is used in calculating final amount)
+    if hold-oma-cd(ss) = "E409"
+    then
+	next sentence.
+*    endif
+
+    move "0"                                    to hold-flag-fee-used (ss).
+
+*   (OP claims from the web/diskette retain their incoming $ while
+*    online claims use the amount the user entered into the OMA fee
+*    as the basis for basic pricing)
+    if hold-sv-day ( ss ,1) = "MR" or "OP"
+    then
+*   (sms #113 - treat agent 4 as direct bill)
+        if   def-agent-ohip
+          or def-agent-ohip-wcb
+          or def-agent-alternate-funding
+        then
+            move hold-ss-curr-prev(ss)              to ss-curr-prev
+	    if online-claim
+	    then
+                compute hold-fee-ohip (ss) rounded
+                      = hold-fee-oma  (ss) * const-ic (ss-curr-prev)
+                go to yb0-98-technical
+	    else
+                compute hold-fee-ohip      (ss) rounded
+                      = hold-fee-incoming  (ss) * const-ic (ss-curr-prev)
+                move    hold-fee-ohip      (ss) to hold-fee-oma (ss) 
+                go to yb0-98-technical
+		
+        else
+*               (agent 'non-ohip' ie. 'wcb' and 'direct')
+            move  hold-fee-oma  (ss) to hold-fee-ohip (ss)
+            go to yb0-98-technical.
+*       endif
+*   (else)
+*   endif
+
+*   (00/aug/08 B.E.
+*    recognize 'add on' codes by "P"ercent/"F"lat designation rather
+*    than having to have a specific ICC code)
+*           if hold-icc-cd (ss) =    "SP99"
+*                                 or "SP98"
+
+    if hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind) = "P"
+                                                       or "F"
+    then
+        move 0                                  to hold-fee-oma  (ss)
+        move 0                                  to hold-fee-ohip (ss)
+        go to yb0-98-technical.
+*   else
+*       if hold-sv-day ( ss ,1) = "OP"
+*       then
+*           if   def-agent-ohip
+*             or def-agent-alternate-funding
+*           then
+*               move hold-ss-curr-prev(ss)          to ss-curr-prev
+*               compute hold-fee-ohip (ss) rounded
+*                     = hold-fee-oma  (ss) * const-ic (ss-curr-prev)
+*               go to yb0-98-technical
+*           else
+*                       (agent 'non-ohip' ie. 'wcb' and 'direct')
+*               move    hold-fee-oma  (ss)
+*                            to hold-fee-ohip (ss)
+*               go to yb0-98-technical.
+*           endif
+*       (else)
+*       endif
+*   endif
+
+
+*   (basic fee calculation)
+
+*   (setup currrent/previous rate subscript for this detail line)
+    move hold-ss-curr-prev(ss)  to ss-curr-prev.
+
+    if   (hold-icc-sec (ss) = "CV")
+      or (     (   hold-icc-sec (ss) =   "NM"
+           or      hold-icc-sec (ss) =   "DR"
+           or      hold-icc-sec (ss) =   "PF"
+           or      hold-icc-sec (ss) =   "DU")
+           and hold-oma-suff (ss) = "B"        )
+
+      or (      hold-icc-sec (ss) = "SP"
+           and (hold-oma-suff (ss) = "A" or "M")   )
+
+      or (      hold-icc-sec (ss) = "CP"
+           and (hold-oma-suff (ss) = "A" or "M") )
+
+      or (      hold-icc-sec (ss) = "DT"
+           and (hold-oma-suff (ss) = "A" or "M")   )
+
+    then
+        move hold-oma-fee-1 (ss,oma)    to hold-fee-oma       (ss)
+        move hold-oma-fee-1 (ss,ohip)   to hold-fee-ohip      (ss)
+        move 1                          to hold-flag-fee-used (ss)
+
+    else
+        if   (    (   hold-icc-sec (ss) =   "NM"
+               or     hold-icc-sec (ss) =   "DR"
+               or     hold-icc-sec (ss) =   "DU"
+               or     hold-icc-sec (ss) =   "PF")
+              and hold-oma-suff (ss) = "C"          )
+        then
+            move hold-oma-fee-2 (ss,oma ) to hold-fee-oma       (ss)
+            move hold-oma-fee-2 (ss,ohip) to hold-fee-ohip      (ss)
+            move 2                        to hold-flag-fee-used (ss)
+
+        else
+            if   (    (   hold-icc-sec (ss) =   "NM"
+                   or     hold-icc-sec (ss) =   "DU"
+                   or     hold-icc-sec (ss) =   "PF"
+                   or     hold-icc-sec (ss) =   "DR")
+                  and (hold-oma-suff (ss) = "A" or "M") )
+            then
+                add hold-oma-fee-1 (ss,oma)
+                    hold-oma-fee-2 (ss, oma)
+                                        giving hold-fee-oma   (ss)
+                add hold-oma-fee-1 (ss,ohip)
+                    hold-oma-fee-2 (ss,ohip)
+                                        giving hold-fee-ohip  (ss)
+                move "3"                to hold-flag-fee-used (ss)
+            else
+                if   (     (   hold-icc-sec (ss) = "CP"
+                            or hold-icc-sec (ss) = "DT"
+                            or hold-icc-sec (ss) = "SP")
+                      and  hold-oma-suff (ss) = "C"        )
+                then
+                    if ws-doc-spec-cd = 0
+                    then
+                        move const-reg (ss-curr-prev, 2)
+                                        to hold-fee-oma (ss)
+                        move const-reg (ss-curr-prev, 1)
+                                        to hold-fee-ohip (ss)
+                    else
+                        move const-cert (ss-curr-prev, 2)
+                                        to hold-fee-oma (ss)
+                        move const-cert (ss-curr-prev, 1)
+                                        to hold-fee-ohip (ss)
+*                   endif
+                else
+                    if    hold-icc-sec  (ss) = "SP"
+                      and hold-oma-suff (ss) = "B"
+                    then
+                        move const-asst (ss-curr-prev, 2)
+                                        to hold-fee-oma (ss)
+                        move const-asst (ss-curr-prev, 1)
+                                        to hold-fee-ohip (ss)
+                    else
+                        next sentence.
+*                   endif
+*               endif
+*           endif
+*       endif
+*   endif
+
+
+*       (apply 'bi'lateral reduction unless i.o.p. code)
+
+    if     hold-sv-day ( ss, 1)         = "BI"
+       and hold-oma-cd-alpha ( ss ) not = "Z"
+    then
+        compute hold-fee-oma  (ss) rounded
+                = hold-fee-oma  (ss) * const-bilateral( ss-curr-prev)
+        compute hold-fee-ohip (ss) rounded
+                = hold-fee-ohip (ss) * const-bilateral( ss-curr-prev)
+        go to yb0-50
+    else
+        next sentence.
+*   endif
+
+
+*       (calculate total # of services)
+    compute ws-tot-serv = hold-sv-nbr-serv (ss)
+                        + hold-sv-nbr      (ss, 1)
+                        + hold-sv-nbr      (ss, 2)
+                        + hold-sv-nbr      (ss, 3).
+
+*       (if anae or asst then create a 'basic + times' description rec)
+    if         (hold-oma-suff (ss) =  "B" or "C")
+       and not (hold-icc-sec(ss)   = "NM" or "PF" or "DU")
+    then
+        perform ym0-create-basic-times-desc     thru ym0-99-exit
+    else
+        next sentence.
+*   endif
+
+*       (if anaesthetist ('c') then  fee =  basic fee (which takes into consideration regular vs certified rate)
+*                                  times (# services + oma code's anaesthetist units)
+    if     hold-oma-suff (ss) = "C"
+      and (hold-icc-sec (ss)  = "CP" or "DT" or "SP")
+    then
+        compute hold-fee-oma  (ss) rounded
+              = hold-fee-oma  (ss) * ( ws-tot-serv + hold-oma-fee-anae (ss,  oma) )
+        compute hold-fee-ohip (ss) rounded
+              = hold-fee-ohip (ss) * ( ws-tot-serv + hold-oma-fee-anae (ss, ohip) )
+        add hold-oma-fee-anae ( ss, ohip)                       to hold-sv-nbr-serv (ss)
+        go to yb0-50
+    else
+        next sentence.
+*   endif
+
+
+*       (if assistant ('b') then  fee =  basic fee
+*                                  times (# services + oma code's assistant units)
+    if    hold-oma-suff (ss) = "B"
+      and hold-icc-sec (ss) = "SP"
+    then
+        compute hold-fee-oma  (ss) rounded
+              = hold-fee-oma  (ss) * ( ws-tot-serv + hold-oma-fee-asst (ss,  oma) )
+        compute hold-fee-ohip (ss) rounded
+              = hold-fee-ohip (ss) * ( ws-tot-serv + hold-oma-fee-asst (ss, ohip) )
+        add hold-oma-fee-asst ( ss, ohip)                       to hold-sv-nbr-serv (ss)
+        go to yb0-50
+    else
+        next sentence.
+*   endif
+
+
+    compute hold-fee-oma  (ss) rounded = hold-fee-oma  (ss) * ws-tot-serv.
+    compute hold-fee-ohip (ss) rounded = hold-fee-ohip (ss) * ws-tot-serv.
+
+
+yb0-50.
+
+*       (agent is wcb - calculate at 'basic-rate' (ohip-rate not oma-rate) * 'wcb-rate'
+*                                                  ----          ---
+
+*   (sms #113 - treat agent 4 as direct bill)
+    if def-agent-wcb
+    then
+        compute hold-fee-ohip (ss) rounded = hold-fee-ohip (ss) * const-wcb( ss-curr-prev)
+        move    hold-fee-ohip (ss)        to hold-fee-oma  (ss)
+    else
+*       (agent is direct bill - use oma-rate not ohip-rate)
+*                                   ---          ----
+
+*   (sms #113 - treat agent 4 as direct bill)
+        if def-agent-bill-direct
+           or def-agent-foreign-direct
+           or def-agent-ifhp-direct
+           or def-agent-ontario-direct
+           or def-agent-quebec-direct
+        then
+            move hold-fee-oma (ss)      to hold-fee-ohip (ss)
+        else
+           next sentence.
+*       endif
+*   endif
+
+yb0-98-technical.
+
+*   ("special" reduction of fees based upon OMA/LOCATION)
+    if    hold-oma-cd(ss)    = "G259"
+      and hold-oma-suff(ss)  = "A"
+      and clmhdr-loc         = "G420"
+      and clmhdr-i-o-pat-ind = "I"
+    then
+	compute hold-fee-ohip(ss) = hold-fee-ohip(ss) * .85 .
+*   endif
+
+*   save basic fee and basic technical portion for later
+*   calculation of the priced technical portion
+
+    move hold-fee-ohip (ss)                     to hold-basic-fee(ss).
+
+    if hold-oma-rec-ind (ss,ss-tech-ind) = "Y"
+    or hold-oma-suff    (ss) = 'B'
+    then
+        move hold-basic-fee(ss)                 to hold-basic-tech(ss)
+    else
+        if hold-oma-suff(ss) = 'C'
+        then
+            move zero                           to hold-basic-tech(ss)
+        else
+            if hold-icc-sec(ss) = 'NM' or 'DR' or 'DU' or 'PF'
+            then
+                move hold-oma-fee-1(ss,ohip)    to hold-basic-tech(ss)
+                move hold-oma-fee-2(ss,ohip)    to hold-basic-prof(ss)
+                perform yb1-compute-basic-tech  thru yb1-99-exit
+            else
+                move zero                       to hold-basic-tech(ss).
+*   endif
+
+yb0-99-exit.
+    exit.
+
+
+yb1-compute-basic-tech.
+
+    add hold-basic-tech(ss), hold-basic-prof(ss) giving ws-hold-temp-1.
+
+    if ws-hold-temp-1 = zero
+    then
+        move zero                               to hold-basic-tech(ss)
+    else
+        compute hold-basic-tech(ss) rounded =
+                hold-basic-tech(ss) *
+                (hold-basic-fee(ss) / ws-hold-temp-1).
+
+yb1-99-exit.
+
+    exit.
+
+yc0-sort-by-icc-and-fee.
+
+    if hold-sort-key-1 (ss) > hold-sort-key-1 (ss + 1)
+    then
+        move hold-oma-rec (ss)          to hold-sort-oma-rec
+        move hold-oma-rec (ss + 1)      to hold-oma-rec (ss)
+        move hold-sort-oma-rec          to hold-oma-rec (ss + 1)
+        if ss > 1
+        then
+            subtract 1 from ss
+            go to yc0-sort-by-icc-and-fee
+        else
+            next sentence
+*       endif
+    else
+        if hold-sort-key-1 (ss) = hold-sort-key-1 (ss + 1)
+        then
+            if hold-fee-ohip (ss) < hold-fee-ohip (ss + 1)
+            then
+                move hold-oma-rec (ss)          to hold-sort-oma-rec
+                move hold-oma-rec (ss + 1)      to hold-oma-rec (ss)
+                move hold-sort-oma-rec          to hold-oma-rec (ss + 1)
+                if ss > 1
+                then
+                    subtract 1 from ss
+                    go to yc0-sort-by-icc-and-fee.
+*               (else)
+*               endif
+*           (else)
+*           endif
+*       (else)
+*       endif
+*   endif
+
+    add 1,  ss2                                 giving ss2
+                                                       ss.
+
+yc0-99-exit.
+    exit.
+
+yj0-sort-by-orig-line-no.
+
+    if hold-line-no (ss) > hold-line-no (ss + 1)
+    then
+        move hold-oma-rec (ss)          to hold-sort-oma-rec
+        move hold-oma-rec (ss + 1)      to hold-oma-rec (ss)
+        move hold-sort-oma-rec          to hold-oma-rec (ss + 1)
+        if ss > 1
+        then
+            subtract 1 from ss
+            go to yj0-sort-by-orig-line-no
+        else
+            next sentence.
+*       endif
+*   endif
+
+    add 1,  ss2                                 giving ss2
+                                                       ss.
+
+yj0-99-exit.
+    exit.
+
+yd0-set-icc-sort-flags.
+
+    if hold-icc-sec (ss) = "SP"
+    then
+        move "Y"                        to flag-sec-reduction-needed.
+*   (else)
+*   endif
+
+*   (if same day, check for add on code)
+*   (00/aug/08 B.E.
+*    recognize 'add on' codes by "P"ercent/"F"lat designation rather
+*    than having to have a specific ICC code)
+*             ('sp98' and 'sp99' are checks for 'add-on' codes)
+
+    if     hold-sv-date    (ss) = hold-sv-date (ss - 1)
+       and hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind) <> "P"
+       and hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind) <> "F"
+*             and  (hold-icc-cd (ss) not = "SP98")
+*             and  (hold-icc-cd (ss) not = "SP99")
+    then
+        if    hold-icc-sec (ss) = hold-icc-sec (ss - 1)
+           or hold-icc-sec (ss) = "SP"
+        then
+            if     hold-icc-grp       (ss) = hold-icc-grp (ss - 1)
+              and  (    (hold-icc-cd  (ss) not = "SP00")
+                     or (hold-icc-grp (ss) not = "00"  ) )
+            then
+                move hold-flag-sec (ss - 1) to hold-flag-sec (ss)
+                move hold-flag-grp (ss - 1) to hold-flag-grp (ss)
+                go to yd0-99-exit
+            else
+                move hold-flag-sec (ss - 1)     to     hold-flag-sec (ss)
+                add  1, ss-grp          giving ss-grp
+                                                       hold-flag-grp (ss)
+                go to yd0-99-exit.
+*           endif
+*       (else)
+*       endif
+*   (else)
+*   endif
+
+    add 1, ss-sec                               giving ss-sec
+                                                       hold-flag-sec (ss).
+    move 1                                      to     ss-grp
+                                                       hold-flag-grp (ss).
+
+yd0-99-exit.
+    exit.
+
+
+
+ye0-group-reductions.
+
+*       (do not do group reduction if the 'icc' group code = "00" --
+*       -- also bilateral and independent considerations are not 'group reduced")
+*       note - sort has put highest valued entry in group in lower subscripted
+*              position of hold-array. therefore we reduce entires (ss+1)
+*            - if the icc code of entry to be reduced is not found in constant
+*              master record's table of rate then no reduction is done
+
+    add ss, 1                           giving ss-plus-one.
+
+    if      hold-flag-sec-group (ss)  = hold-flag-sec-group (ss-plus-one)
+       and (hold-icc-grp (ss) not = "00")
+       and (hold-sv-day ( ss, 1)  not = "BI")
+       and (hold-sv-day ( ss, 1)  not = "MR")
+       and (hold-sv-day ( ss, 1)  not = "OP")
+    then
+        move 0                          to rate-found-ss
+        perform ye1-find-group-rate     thru ye1-99-exit
+                varying ss-x
+                from 1 by 1
+                until    rate-found-ss not = 0
+                      or ss-x > const-max-nbr-rates
+
+*       (setup currrent/previous rate subscript for this detail line)
+        move hold-ss-curr-prev(ss)  to ss-curr-prev
+        if rate-found-ss not = 0
+        then
+            compute hold-fee-ohip (ss-plus-one)  rounded =
+                    hold-fee-ohip (ss-plus-one) * const-rates-curr-prev ( rate-found-ss, ss-curr-prev)
+            compute hold-fee-oma  (ss-plus-one)  rounded =
+                    hold-fee-oma  (ss-plus-one) * const-rates-curr-prev ( rate-found-ss, ss-curr-prev).
+*       (else)
+*       endif
+*   (else)
+*   endif
+
+*  (may need 'pricing_test_min_max_limits.ws' logic here!!)
+
+ye0-99-exit.
+    exit.
+
+ye1-find-group-rate.
+
+    if const-section-group (ss-x) = hold-icc-cd (ss-plus-one)
+    then
+        move ss-x                       to rate-found-ss.
+*   (else)
+*   endif
+
+ye1-99-exit.
+    exit.
+
+
+yf0-add-on-increases.
+
+*       (this rtn is called varying 'ss' across # of detail lines ('ss-clmdtl-oma') --
+*       - if add on codes e409 or e400 have been entered then flag
+*         will force search for these codes -- search must be made since
+*         these codes are considered as add on's for all oma codes
+*         but are not found in any code's 'hold-oma-add-on-cd (x)' fields)
+
+
+*        skip search if code being checked (ie. oma-cd (ss) )
+*          is an add-on code itself since add on's for add on's is not allowed)
+
+    if     hold-oma-cd (ss) =   "E400"
+                             or "E409"
+                             or "E410"
+                             or "E401"
+       or hold-sv-day(ss,1) = "MR" or "OP"
+*================   you can add on  to an add on  ==========================
+****      or (hold-icc-cd (ss) =   "SP98"
+****                            or "SP99")
+*      or hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind )=   "P"
+*                                                           or "F"
+
+    then
+        go to yf0-99-exit.
+*   (else)
+*   endif
+*============================================================================
+
+
+    if     ws-special-add-on-cd-entered = "N"
+      and (hold-oma-add-on-cd (ss, 1) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 2) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 3) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 4) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 5) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 6) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 7) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 8) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 9) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss,10) = spaces  or  zeroes)
+    then
+        next sentence
+    else
+        perform yf2-search-oma-recs-4-addon-cd  thru yf2-99-exit
+            varying ss2
+            from 1 by 1
+            until   ss2 > ss-clmdtl-oma.
+*   endif
+
+yf0-99-exit.
+    exit.
+
+yf2-search-oma-recs-4-addon-cd.
+
+*       (note: add on codes "E409" and "E400" are considerated as add on
+*        codes for all oma codes and need not be found in add-on-code slots
+*                  ===
+
+
+*       (add on codes allowed only if performed on same service date)
+    if hold-sv-date (ss2) not = hold-sv-date (ss)
+    then
+        go to yf2-99-exit.
+*   (else)
+*   endif
+*   (00/agu/08 B.E.
+*    SP98 and SP99 add on codes have to be reduced by their 'group reduction'
+*    factor, however all other add ons have no reduction rate)
+    if hold-icc-cd (ss2) = 'SP98'
+    then
+        move ws-reduc-rate98                    to ws-reduc-rate
+    else
+        if hold-icc-cd (ss2) = 'SP99'
+        then
+            move ws-reduc-rate99                to ws-reduc-rate
+        else
+            move 1                              to ws-reduc-rate.
+*       endif
+*   endif
+
+    if hold-oma-cd (ss2) =    hold-oma-add-on-cd (ss, 1)
+                           or hold-oma-add-on-cd (ss, 2)
+                           or hold-oma-add-on-cd (ss, 3)
+                           or hold-oma-add-on-cd (ss, 4)
+                           or hold-oma-add-on-cd (ss, 5)
+                           or hold-oma-add-on-cd (ss, 6)
+                           or hold-oma-add-on-cd (ss, 7)
+                           or hold-oma-add-on-cd (ss, 8)
+                           or hold-oma-add-on-cd (ss, 9)
+                           or hold-oma-add-on-cd (ss,10)
+*============================================================================
+*                                 or "E409"
+*============================================================================
+                           or "E400"
+                           or "E401"
+    then
+        next sentence
+    else
+        go to yf2-99-exit.
+*   endif
+
+    if hold-oma-suff(ss2) not = hold-oma-suff(ss)
+    then
+        go to yf2-99-exit.
+*   (else)
+*   endif
+
+*       (note - fee-1 contains percent of add on code (ss2) --
+*        - also the percentage type add-on is not multiplied by
+*          wcb-rate since the value of oma code from which add on's percentage
+*          is calculated, has already been multiplied by the wcb-rate --
+*          however flat rate is calculated as flat-rate * wcb-rate)
+
+    if hold-oma-rec-ind (ss2 , ss-add-on-perc-or-flat-ind) <> "P"
+    then
+        go to yf2-30.
+*   endif
+
+*   (============  percentage add-on code calculation ==========)
+*   (calculate Percentage price unless operator has Overridden Price)
+*   (00/aug/31 B.E. changed subscript line below from ss-clmdtl-oma to ss2)
+*   	if hold-sv-day ( ss-clmdtl-oma, 1) not = "OP"
+
+    if hold-sv-day ( ss2, 1) not = "OP"
+    then
+        compute hold-fee-oma  (ss2) rounded =
+                hold-fee-oma  (ss2)     + (   hold-fee-oma   (ss)
+                                            * hold-oma-fee-1 (ss2 , oma)
+                                            * ws-reduc-rate    )
+        compute hold-fee-ohip  (ss2) rounded =
+                hold-fee-ohip  (ss2)    + (   hold-fee-ohip   (ss)
+                                            * hold-oma-fee-1 (ss2 , ohip)
+                                            * ws-reduc-rate    )
+*           (if special add-on code then update add on with # of services)
+        if hold-oma-cd (ss2) =    "E400"
+                               or "E401"
+        then
+            compute hold-sv-nbr-serv (ss2)      =  hold-sv-nbr-serv ( ss2)
+                                                 + hold-sv-nbr-serv ( ss)
+                                                 + hold-sv-nbr      ( ss, 1)
+                                                 + hold-sv-nbr      ( ss, 2)
+                                                 + hold-sv-nbr      ( ss, 3)
+            go to yf2-50
+        else
+            go to yf2-50
+*           endif
+*       endif
+    else
+        next sentence.
+*   endif
+
+
+yf2-30.
+*   ( ===========  FLAT add-on code calculation ========== )
+*   (the # of services doesn't effect pricing for the two special add-on codes)
+*   if hold-oma-cd ( ss2 ) = "E409"
+*   then
+*       move 1                                  to ws-pricing-nbr-serv
+*   else
+        compute ws-pricing-nbr-serv =             hold-sv-nbr-serv ( ss2)
+                                                + hold-sv-nbr      ( ss2, 1)
+                                                + hold-sv-nbr      ( ss2, 2)
+                                                + hold-sv-nbr      ( ss2, 3).
+*   endif
+
+*    note - fee-2 contains flat rate value of add on code (ss2)
+*   (calculate Flag price unless operator has Overridden Price)
+*   (00/aug/31 B.E. changed subscript line below from ss-clmdtl-oma to ss2)
+*   	if hold-sv-day ( ss-clmdtl-oma, 1) not = "OP"
+
+    if hold-sv-day ( ss2, 1) not = "OP"
+    then
+        compute hold-fee-oma   (ss2) rounded =
+                hold-fee-oma   (ss2)        +   (   hold-oma-fee-2 (ss2 ,  oma)
+                                                  * ws-hold-wcb-rate
+                                                  * ws-pricing-nbr-serv
+                                                  * ws-reduc-rate       )
+        compute hold-fee-ohip  (ss2) rounded =
+                hold-fee-ohip  (ss2)        +  (   hold-oma-fee-2 (ss2 , ohip)
+                                                 * ws-hold-wcb-rate
+                                                 * ws-pricing-nbr-serv
+                                                 * ws-reduc-rate       ).
+*   endif
+
+yf2-50.
+
+*    (e409 has special processing - it is calculated as a percent but then
+*     the result is compared against the 'flat' rate -- the greater amount is used)
+
+*   if hold-oma-cd (ss2) = "E409"
+*   then
+*       (if percent calculated amt < 'flat' rate)
+*       if  hold-fee-oma (ss2)     < hold-oma-fee-2 (ss2, oma)
+*       then
+*           move hold-oma-fee-2 (ss2, oma)      to hold-fee-oma  (ss2)
+*           move hold-oma-fee-2 (ss2,ohip)      to hold-fee-ohip (ss2)
+*       else
+*           next sentence.
+*       endif
+*   endif
+
+*       (agent is wcb - calculate at 'basic-rate' (ohip-rate not oma-rate) * 'wcb-rate'
+*                                                  ----          ---
+
+*   (sms #113 - treat agent 4 as direct bill)
+*   if def-agent-wcb
+*   then
+**      (setup currrent/previous rate subscript for this detail line)
+*       move hold-ss-curr-prev(ss)  to ss-curr-prev
+*       compute hold-fee-ohip (ss) rounded = hold-fee-ohip (ss) * const-wcb( ss-curr-prev)
+*       move    hold-fee-ohip (ss)        to hold-fee-oma  (ss)
+*   else
+*       (agent is direct bill - use oma-rate not ohip-rate)
+*                                   ---          ----
+
+*   (sms #113 - treat agent 4 as direct bill)
+        if def-agent-bill-direct
+           or def-agent-foreign-direct
+           or def-agent-ifhp-direct
+           or def-agent-ontario-direct
+           or def-agent-quebec-direct
+        then
+            move hold-fee-oma (ss)      to hold-fee-ohip (ss)
+        else
+            next sentence.
+*       endif
+*   endif
+
+yf2-99-exit.
+    exit.
+
+
+yf1-special-add-on-incr.
+
+*       (this rtn is called varying 'ss' across # of detail lines ('ss-clmdtl-oma') --
+*       - if add on codes e409 or e400 have been entered then flag
+*         will force search for these codes -- search must be made since
+*         these codes are considered as add on's for all oma codes
+*         but are not found in any code's 'hold-oma-add-on-cd (x)' fields)
+
+
+*        skip search if code being checked (ie. oma-cd (ss) )
+*          is an add-on code itself since add on's for add on's is not allowed)
+
+    if     hold-oma-cd (ss) =   "E400"
+                             or "E409"
+                             or "E401"
+                             or "E410"
+*==*==   you can add on  to an add on  *==*==**
+***      or (hold-icc-cd (ss) =   "SP98"
+***                            or "SP99")
+*    if hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind )=   "P"
+*                                                         or "F"
+
+    then
+        go to yf1-99-exit.
+*   (else)
+*   endif
+
+
+    if     ws-special-add-on-cd-entered = "N"
+      and (hold-oma-add-on-cd (ss, 1) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 2) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 3) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 4) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 5) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 6) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 7) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 8) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss, 9) = spaces  or  zeroes)
+      and (hold-oma-add-on-cd (ss,10) = spaces  or  zeroes)
+    then
+        next sentence
+    else
+        perform yf3-search-oma-recs-4-addon-cd  thru yf3-99-exit
+            varying ss2
+            from 1 by 1
+            until   ss2 > ss-clmdtl-oma.
+*   endif
+
+yf1-99-exit.
+    exit.
+
+yf3-search-oma-recs-4-addon-cd.
+
+*       (note: add on codes "E409" and "E400" are considerated as add on
+*        codes for all oma codes and need not be found in add-on-code slots
+*                  ===
+
+*       (add on codes allowed only if performed on same service date)
+    if hold-sv-date (ss2) not = hold-sv-date (ss)
+    then
+        go to yf3-99-exit.
+*   (else)
+*   endif
+*   (00/aug/08 B.E.
+*    if not SP add on, no group reduction factor needed, default to 1)
+
+    if hold-icc-cd (ss2) = 'SP98'
+    then
+        move ws-reduc-rate98                    to ws-reduc-rate
+    else
+        if hold-icc-cd (ss2) = 'SP99'
+        then
+            move ws-reduc-rate99                to ws-reduc-rate
+        else
+            move 1                              to ws-reduc-rate.
+*       endif
+*   endif
+
+*   if hold-oma-cd (ss2) =    hold-oma-add-on-cd (ss, 1)
+*                          or hold-oma-add-on-cd (ss, 2)
+*                          or hold-oma-add-on-cd (ss, 3)
+*                          or hold-oma-add-on-cd (ss, 4)
+*                          or hold-oma-add-on-cd (ss, 5)
+*                          or hold-oma-add-on-cd (ss, 6)
+*                          or hold-oma-add-on-cd (ss, 7)
+*                          or hold-oma-add-on-cd (ss, 8)
+*                          or hold-oma-add-on-cd (ss, 9)
+*                          or hold-oma-add-on-cd (ss,10)
+     if hold-oma-cd (ss2) =   "E409"
+                           or "E410"
+*                          or "E400"
+    then
+        next sentence
+    else
+        go to yf3-99-exit.
+*   endif
+
+    if hold-oma-suff(ss2) not = hold-oma-suff(ss)
+    then
+        go to yf3-99-exit.
+*   (else)
+*   endif
+
+*       (note - fee-1 contains percent of add on code (ss2) --
+*        - also the percentage type add-on is not multiplied by
+*          wcb-rate since the value of oma code from which add on's percentage
+*          is calculated, has already been multiplied by the wcb-rate --
+*          however flat rate is calculated as flat-rate * wcb-rate)
+
+    if hold-oma-rec-ind (ss2 , ss-add-on-perc-or-flat-ind) <> "P"
+    then
+        go to yf3-30.
+*   endif
+
+*   (============  percentage add-on code calculation ==========)
+*   (calculate PERCENTAGE price unless operator has Overridden Price)
+*   (00/aug/31 B.E. changed subscript line below from ss-clmdtl-oma to ss2)
+*   	if hold-sv-day ( ss-clmdtl-oma, 1) not = "OP"
+
+    if hold-sv-day ( ss2, 1) not = "OP"
+    then
+*       ( ===========  percentage add-on code calculation ========== )
+        compute hold-fee-oma  (ss2) rounded =
+                hold-fee-oma  (ss2)     + (   hold-fee-oma   (ss)
+                                            * hold-oma-fee-1 (ss2 , oma)
+                                            * ws-reduc-rate    )
+        compute hold-fee-ohip  (ss2) rounded =
+                hold-fee-ohip  (ss2)    + (   hold-fee-ohip   (ss)
+                                            * hold-oma-fee-1 (ss2 , ohip)
+                                            * ws-reduc-rate    )
+            if hold-oma-cd(ss2) =    "E409"
+                                  or "E410"
+            then
+                move 1                          to hold-sv-nbr-serv(ss2)
+                go to yf3-50
+            else
+                go to yf3-50
+*           endif
+*       endif
+    else
+        next sentence.
+*   endif
+
+
+yf3-30.
+*   ( ===========  flat add-on code calculation ========== )
+
+*   (the # of services doesn't effect pricing for the two special add-on codes)
+    if hold-oma-cd ( ss2 ) =    "E409"
+                             or "E410"
+    then
+        move 1                                  to ws-pricing-nbr-serv.
+*   else
+*       compute ws-pricing-nbr-serv =             hold-sv-nbr-serv ( ss2)
+*                                               + hold-sv-nbr      ( ss2, 1)
+*                                               + hold-sv-nbr      ( ss2, 2)
+*                                               + hold-sv-nbr      ( ss2, 3).
+*   endif
+
+*    note - fee-2 contains flat rate value of add on code (ss2)
+*   (calculate FLAT price unless operator has Overridden Price)
+*   (00/aug/31 B.E. changed subscript line below from ss-clmdtl-oma to ss2)
+*       if hold-sv-day ( ss-clmdtl-oma, 1) not = "OP"
+
+    if hold-sv-day ( ss2, 1) not = "OP"
+    then
+        compute hold-fee-oma   (ss2) rounded =
+                hold-fee-oma   (ss2)        +   (   hold-oma-fee-2 (ss2 ,  oma)
+                                                  * ws-hold-wcb-rate
+                                                  * ws-pricing-nbr-serv
+                                                  * ws-reduc-rate       )
+        compute hold-fee-ohip  (ss2) rounded =
+                hold-fee-ohip  (ss2)        +  (   hold-oma-fee-2 (ss2 , ohip)
+                                                 * ws-hold-wcb-rate
+                                                 * ws-pricing-nbr-serv
+                                                 * ws-reduc-rate       ).
+*   endif
+
+
+yf3-50.
+
+*    (E409 has special processing - it is calculated as a percent but then
+*     the result is compared against the 'flat' rate -- the greater amount is used)
+
+*   (00/aug/31 B.E. changed subscript line below from ss-clmdtl-oma to ss2)
+    if     (hold-oma-cd (ss2) =    "E409"
+                                or "E410")
+*     		 and hold-sv-day ( ss-clmdtl-oma, 1) not = "OP"
+       and hold-sv-day ( ss2, 1) not = "OP"
+    then
+*       (if percent calculated amt < 'flat' rate)
+        if  hold-fee-oma (ss2)     < hold-oma-fee-2 (ss2, oma)
+        then
+            move hold-oma-fee-2 (ss2, oma)      to hold-fee-oma  (ss2)
+            move hold-oma-fee-2 (ss2,ohip)      to hold-fee-ohip (ss2)
+        else
+            next sentence.
+*       endif
+*   endif
+
+*       (agent is wcb - calculate at 'basic-rate' (ohip-rate not oma-rate) * 'wcb-rate'
+*                                                  ----          ---
+
+*   (sms #113 - treat agent 4 as direct bill)
+*    if def-agent-bill-direct
+*   then
+*       (setup currrent/previous rate subscript for this detail line)
+*       move hold-ss-curr-prev(ss)  to ss-curr-prev.
+*       compute hold-fee-ohip (ss) rounded = hold-fee-ohip (ss) * const-wcb( ss-curr-prev)
+*       move    hold-fee-ohip (ss)        to hold-fee-oma  (ss)
+*   else
+*       (agent is direct bill - use oma-rate not ohip-rate)
+*                                   ---          ----
+
+*   (sms #113 - treat agent 4 as direct bill)
+        if def-agent-bill-direct
+           or def-agent-foreign-direct
+           or def-agent-ifhp-direct
+           or def-agent-ontario-direct
+           or def-agent-quebec-direct
+        then
+            move hold-fee-oma (ss)      to hold-fee-ohip (ss)
+        else
+            next sentence.
+*       endif
+*   endif
+
+yf3-99-exit.
+    exit.
+
+
+
+yh0-find-high-grp-within-sec.
+*       (calculate each group's value -- ignore all anaesthetist ('c') and assistant ('b') entries)
+
+*       (since 'yh1' varies 'ss' from ss-from+1 up, check ss-from position of hold area before entering routine)
+    move zeros                                  to hold-grp-totals-tbl
+                                                 ss-grp-tot
+                                                ws-highest-grp-tot
+                                                ws-highest-grp-nbr.
+    move "N"                                    to flag-new-sec.
+
+yh0-100-find-sp-suffix-a.
+
+    if hold-oma-suff (ss-from) = "A"
+    then
+        add 1                           to      ss-grp-tot
+        move ss-from                    to      ss
+        perform yh11-add-singular-value thru    yh11-99-exit
+    else
+        add 1                           to      ss-from
+        if ss-from > ss-clmdtl-oma
+        then
+            move ss-clmdtl-oma          to      ss-to
+            move "Y"                    to      flag-new-sec
+        else
+            go to yh0-100-find-sp-suffix-a.
+*       endif
+*   endif
+
+*       (if the icc section code indicates that 'sectional reduction' will be
+*        necessary ((at this time only 'sp' for suffix codes "A" qualify)) -- then sum
+*        the group total.  these group totals will later be used to determine
+*         which group is highest valued and therefore not to be sectionally reduced.)
+
+    add 1, ss-from                              giving ss-from-plus-one.
+
+    perform yh1-calc-group-values               thru yh1-99-exit
+                varying ss
+                from ss-from-plus-one by 1
+                until   flag-new-sec = "Y".
+
+
+*       (determine which group in hold-grp-tot array has highest value)
+
+    move 'N'                                    to flag-z-highest-grp
+
+    perform yh2-find-highest-value              thru yh2-99-exit
+                varying ss
+                from 1 by 1
+                until ss > ss-grp-tot.
+
+yh0-99-exit.
+    exit.
+
+
+yh1-calc-group-values.
+
+*       (process only 'ss-clmdtl-oma' nbr of entries)
+
+    if ss > ss-clmdtl-oma
+    then
+        move ss-clmdtl-oma                      to ss-to
+        move "Y"                                to flag-new-sec
+        go to yh1-99-exit.
+*   (else)
+*   endif
+
+*       (if anesthetist or assistant ignore entry)
+    if hold-oma-suff (ss) = "B" or "C"
+    then
+        go to yh1-99-exit.
+*   (else)
+*   endif
+
+
+    if hold-icc-sec  (ss) not = "SP"
+    then
+        next sentence
+    else
+        if  hold-flag-sec-group (ss) = hold-flag-sec-group (ss - 1)
+        then
+            perform yh11-add-singular-value     thru    yh11-99-exit
+            go to yh1-99-exit
+        else
+            if hold-flag-sec (ss) = hold-flag-sec (ss - 1)
+            then
+                add 1                           to ss-grp-tot
+                perform yh11-add-singular-value thru    yh11-99-exit
+                go to yh1-99-exit.
+*           (else)
+*           endif
+*       endif
+*    endif
+
+*       (new section found - set flag to stop perform)
+
+    subtract 1 from ss                          giving ss-to.
+    move "Y"                                    to flag-new-sec.
+
+yh1-99-exit.
+    exit.
+
+
+
+yh11-add-singular-value.
+
+*       (store sec/group flag and add up group's "SINGULAR UNIT" values
+
+*        -- determine if 'fee-1'/'fee-2'/'fee-1+fee-2' was used to calculate
+*       'singular unit value'.
+*       if fee used is not known (ie. flag=0) then use calculated
+*       'fee-oma')
+
+
+    move hold-flag-sec-group (ss)               to hold-grp-nbr (ss-grp-tot).
+
+
+    if hold-flag-fee-used (ss) = "0"
+    then
+        add hold-fee-oma (ss)                   to hold-grp-tot (ss-grp-tot)
+    else
+        if hold-flag-fee-used (ss) = "1"
+        then
+            add hold-oma-fee-1 (ss, ohip)       to hold-grp-tot (ss-grp-tot)
+        else
+            if hold-flag-fee-used (ss) = "2"
+            then
+                add hold-oma-fee-2 (ss, ohip)   to hold-grp-tot (ss-grp-tot)
+            else
+                if hold-flag-fee-used (ss) = "3"
+                then
+                    add hold-oma-fee-1 (ss, ohip)
+                        hold-oma-fee-2 (ss, ohip)
+                        hold-grp-tot (ss-grp-tot) giving hold-grp-tot (ss-grp-tot).
+*               (else)
+*               endif
+*           endif
+*       endif
+*   endif
+
+yh11-99-exit.
+    exit.
+
+
+
+yh2-find-highest-value.
+
+    if hold-grp-tot ( ss ) > ws-highest-grp-tot
+    then
+        move hold-grp-tot ( ss )                to ws-highest-grp-tot
+        move hold-grp-nbr ( ss )                to ws-highest-grp-nbr
+        if hold-oma-cd-alpha(ss) = 'Z'
+        then
+            move 'Y'                            to flag-z-highest-grp.
+*       (else)
+*       endif
+*   (else)
+*   endif
+
+yh2-99-exit.
+    exit.
+
+
+
+yi0-sec-reduct-within-sec.
+
+*      (sectional reduction entails reducing all groups except the
+*       highest priced one by the sectional reduction rate.
+*       THE FOLLOWING ARE not SECTIONALLY REDUCED:
+*               - 'add on' codes ("P"ercentage/"F"lat designation)
+*               - 'I.O.P' codes (starting with 'Z') ,
+*               - Manual Review (MR) and
+*               - Entries for anesthetists (suffix = 'C')
+*                          or assistants   (suffix = 'B')
+
+*   (setup currrent/previous rate subscript for this detail line)
+    move hold-ss-curr-prev(ss)  to ss-curr-prev.
+
+*   if       hold-icc-sec (ss)  = "SP"
+
+    if     hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind) <> "P"
+       and hold-oma-rec-ind(ss, ss-add-on-perc-or-flat-ind) <> "F"
+       and hold-sv-day     (ss, 1)  <> "MR"
+       and hold-sv-day     (ss, 1)  <> "OP"
+       and hold-oma-suff   (ss)     <> "B"
+       and hold-oma-suff   (ss)     <> "C"
+    then
+*       (reduce this group if its not the highest valued group)
+        if    hold-flag-sec-group (ss) = ws-highest-grp-nbr
+          or  flag-z-highest-grp = 'Y'
+        then
+            next sentence
+        else
+            if    hold-oma-cd-alpha (ss) <> "Z"
+              and hold-oma-rec-ind  (ss, ss-add-on-perc-or-flat-ind) <> "P"
+              and hold-oma-rec-ind  (ss, ss-add-on-perc-or-flat-ind) <> "F"
+*                      and (hold-icc-cd (ss) not = "SP98")
+*                      and (hold-icc-cd (ss) not = "SP99")
+            then
+                compute hold-fee-oma  (ss) rounded =
+                        hold-fee-oma  (ss) * const-sr (ss-curr-prev)
+                compute hold-fee-ohip (ss) rounded =
+                        hold-fee-ohip (ss) * const-sr (ss-curr-prev).
+*           (else)
+*           endif
+*       endif
+*   (else)
+*   endif
+
+yi0-99-exit.
+    exit.
+
+
+
+ym0-create-basic-times-desc.
+*   (CURRENTLY newu701 doesn't create these records in the suspense files -
+*    so code is skipped)
+    if not online-claim
+    then
+	go to ym0-99-exit.
+*   endif
+
+    add 1                               to ss-basic-times.
+
+    if ss-basic-times > 2
+    then
+        move 1                          to ss-basic-times
+        add 1, ss-basic-times-desc-rec  giving ss-basic-times-desc-rec.
+*   (else)
+*   endif
+
+    move "B +"                          to hold-basic-b (ss-basic-times).
+    move "T /"                          to hold-times-t (ss-basic-times).
+
+    move ws-tot-serv                      to hold-times-units (ss-basic-times).
+
+    if hold-oma-suff (ss) = "B"
+    then
+        move hold-oma-fee-asst (ss, ohip) to hold-basic-units (ss-basic-times)
+    else
+        move hold-oma-fee-anae (ss, ohip) to hold-basic-units (ss-basic-times).
+*   endif
+
+
+    move hold-basic-times-desc             to hold-desc (ss-basic-times-desc-rec).
+
+    display scr-acpt-det-desc.
+
+ym0-99-exit.
+    exit.
+
+
+
+
+yz0-reset-verify-prices.
+
+    perform yz1-check-price		thru yz1-99-exit  
+        varying ss
+        from 1 by 1
+        until   ss > ss-clmdtl-oma.
+
+yz0-99-exit.
+    exit.
+
+
+yz1-check-price.
+
+*  (routine 'ya0' has priced claims according to RMA pricing. if
+*   incoming file was "D"iskette AND the operator requested that the
+*   incoming prices NOT be retain, then reset prices to
+*   the 'incoming' values rather than RMA priced amounts. 
+*   If the file was from the "W"eb, then reset any OP or MR line 
+*   to 'incoming' prices)
+*   NOTE: updating OHIP price only - OMA has RMA calculated prices!!!!!
+
+    if   (    diskette-claim
+          and retain-incoming-prices
+	 )
+      or     web-claim
+         and (    retain-incoming-prices
+	       or hold-sv-day (ss,1) = "MR" or "OP"
+	     )
+    then
+	move hold-fee-incoming (ss)	to hold-fee-ohip    (ss).
+*   endif
+
+*  (routine 'ya0-' also may have altered the nbr services on the claim
+*   as it priced "B/C" suffix claims for basic+times calculations.
+*   Reset these to original incoming values if incoming file was a 
+*   diskette claim)
+    if   diskette-claim
+    then
+	move hold-sv-nbr-serv-incoming(ss)
+					to hold-sv-nbr-serv (ss).
+*   endif
+
+yz1-99-exit.
+    exit.
+     

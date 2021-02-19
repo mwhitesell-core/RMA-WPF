@@ -1,0 +1,238 @@
+cancel clear
+set report nolimit
+set report dev disc name dump_pc1_sum
+set rep noclose
+set rep nohead
+set page length 66 width 132
+
+access *debugu116cd1
+; select if one of the 'bad' doctors OR any doctor who is paycode 1 and didn't get paid
+select if  (      doc-pay-code      <>"0"		&
+               AND  (   W-PAYPOT-AMT-NET-FINAL = 0	&
+		     OR w-underage-act    <> 0		&
+		    )					&
+	   )		
+sorted on doc-nbr
+
+def x-calc-desc char*100                                                &
+        = "doc-CEICEA + doc-TOTINC"     if doc-pay-sub-code = "C"       &
+    else  "(YTDCEA   -  YTDEAR) * ceiling guarantee % (any advance?,   underage?)"  if doc-pay-sub-code = "A"          &
+    else  "w-paypot-b-2"                if doc-pay-sub-code = "B"       &
+    else  "doc-ceicea"          if       doc-pay-sub-code = "D"         &
+                                    and (   w-true-ytdinc-plus-ceiear 	&
+                                         >  w-doc-yrly-ceil-guar     )	&
+    else  "w-actual-d-payment"      if    doc-pay-sub-code = "D"        &
+                                    and (  w-true-ytdinc-plus-ceiear  	&
+                                         > w-doc-yrly-ceil-guar     )
+
+def  x-calc1 zoned*10   numeric    &
+        = DOC-YTDCEA if doc-pay-sub-code = "A"  &
+     else 0
+
+def  x-calc2 zoned*10   numeric    &
+        = DOC-YTDEAR if doc-pay-sub-code = "A"  &
+     else 0
+
+def  x-calc3 zoned*10   numeric    &
+	= w-doc-yrly-ceiling-guar-factor * 100 if doc-pay-sub-code = "A"  &
+     else 0
+
+def  x-calc4 zoned*10   numeric    &
+;PUTBACK 	= amt-net  if doc-pay-sub-code = "A"  &
+	= w-potguar-amt-net if 1=1 &
+     else 0
+
+def  x-calc5 zoned*10   numeric    &
+;PUTBACK 	= w-underage-act  if doc-pay-sub-code = "A"  &
+	=  W-PAYPOT-AMT-NET-FINAL if 1= 1  &
+     else 0
+
+heading at doc-nbr                              &
+tab 01 doc-nbr                                  &
+tab 10  w-paypot-amt-net-final  pic "^^^,^^^.^^ "      &
+tab 30 x-calc-desc                              &
+skip                                            &
+tab 30 x-calc1 pic "^^^,^^^.^^ "                &
+tab 45 x-calc2 pic "^^^,^^^.^^ "     		&
+tab 60 x-calc3 pic "^^^,^^^.^^ "     		&
+tab 75 x-calc4 pic "^^^,^^^.^^ "     		&
+tab 90 x-calc5 pic "^^^,^^^.^^ "     		&
+skip 2
+
+
+go
+
+select if                          		&
+             (      doc-pay-code      = "1"	&
+               AND  (   w-potguar-amt-net =  0 	&
+		     OR w-underage-act    <> 0	&
+		    )				&
+	     )				
+
+rep                   &
+skip 2			&
+"EP-NBR"              &
+tab 30 EP-NBR                &
+skip                  &
+"DOC-NBR"             &
+tab 30 DOC-NBR               &
+skip                  &
+"DOC-PAY-CODE"        &
+tab 30 DOC-PAY-CODE          &
+skip                  &
+"DOC-PAY-SUB-CODE"    &
+tab 30 DOC-PAY-SUB-CODE      &
+skip                  &
+"FACTOR"              &
+tab 29 FACTOR                &
+skip                  &
+"DOC-YTDEAR"          &
+tab 29 DOC-YTDEAR            &
+skip                  &
+"DOC-YTDINC"          &
+tab 29 DOC-YTDINC            &
+skip                  &
+"DOC-YTDCEA"          &
+tab 29 DOC-YTDCEA            &
+skip                  &
+"DOC-YTDGUA"          &
+tab 29 DOC-YTDGUA            &
+skip                  &
+"DOC-YTDGUB"          &
+tab 29 DOC-YTDGUB            &
+skip                  &
+"DOC-YTDGUC"          &
+tab 29 DOC-YTDGUC            &
+skip                  &
+"DOC-YTDGUD"            &
+tab 29 DOC-YTDGUD            &
+skip                  &
+"NEW-DOC-YTDEAR"      &
+tab 30 NEW-DOC-YTDEAR        pic "^,^^^,^^^.^^ "       &
+skip                  &
+"NEW-DOC-YTDGUA"      &
+tab 30 NEW-DOC-YTDGUA        pic "^,^^^,^^^.^^ "       &
+skip                  &
+"NEW-DOC-YTDGUB"      & 
+tab 30 NEW-DOC-YTDGUB        pic  "^,^^^,^^^.^^ " &
+skip                  &
+"NEW-DOC-YTDGUC"      &
+tab 30 NEW-DOC-YTDGUC        pic  "^,^^^,^^^.^^ " &
+skip                  &
+"NEW-DOC-YTDGUD"      & 
+tab 30 NEW-DOC-YTDGUD      pic  "^,^^^,^^^.^^ " &
+skip                  &
+"NEW-DOC-YTDINC"      & 
+tab 30 NEW-DOC-YTDINC        pic  "^,^^^,^^^.^^ " &
+skip                  &
+"amt-net"             &
+tab 32 amt-net               pic  "^^^,^^^.^^ "   &
+skip                  &
+"W-ACTUAL-D-PAYMENT"  &
+tab 30 W-ACTUAL-D-PAYMENT    pic  "^,^^^,^^^.^^ " &
+skip                  &
+"W-DOC-YRLY-CEIL-GUAR"  &
+tab 30 W-DOC-YRLY-CEIL-GUAR  pic  "^,^^^,^^^.^^ " &
+skip                  &
+"W-DOC-YRLY-CEILING"  &
+tab 30 W-DOC-YRLY-CEILING    pic  "^,^^^,^^^.^^ " &
+skip                    &
+"W-DOC-YRLY-CEILING-GUAR-FACTOR" &
+tab 30 W-DOC-YRLY-CEILING-GUAR-FACTOR        pic "^,^^^,^^^.^^ " &
+skip                     &
+"W-EXCESS-INCOME" &
+tab 30 W-EXCESS-INCOME          pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-AMT-GROSS" &
+tab 30 W-PAYPOT-AMT-GROSS       pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-AMT-NET-1" &
+tab 30 W-PAYPOT-AMT-NET-1       pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-AMT-NET-2" &
+tab 30 W-PAYPOT-AMT-NET-2       pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-AMT-NET-3" &
+tab 30 W-PAYPOT-AMT-NET-3       pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-AMT-NET-4" &
+tab 30 W-PAYPOT-AMT-NET-4       pic  "^,^^^,^^^.^^ " &
+skip                     &
+"w-amt-advout"                             &
+tab 32 w-amt-advout             pic  "^^^,^^^.^^ "   &
+skip                     &
+"W-PAYPOT-AMT-NET-FINAL" &
+tab 30 W-PAYPOT-AMT-NET-FINAL   pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-B-2"          &
+tab 30 W-PAYPOT-B-2             pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-POTGUAR-AMT-NET"     &
+tab 30 W-POTGUAR-AMT-NET        pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-POT-D-PAYMENT" &
+tab 30 W-POT-D-PAYMENT          pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-POT-D-YTD-PAYMENTS" &
+tab 30 W-POT-D-YTD-PAYMENTS     pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-POT-YTDGUB" &
+tab 30 W-POT-YTDGUB             pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-TRUE-YTDINC" &
+tab 30 W-TRUE-YTDINC            pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-TRUE-YTDINC-PLUS-CEIEAR" &
+tab 30 W-TRUE-YTDINC-PLUS-CEIEAR             pic "^,^^^,^^^.^^ " &
+skip                     &
+"W-YTDCEA-MINUS-YTDEAR" &
+tab 30 W-YTDCEA-MINUS-YTDEAR    pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-YTDCEA-MINUS-YTDEAR-X-GUAR%" &
+tab 30 W-YTDCEA-MINUS-YTDEAR-X-GUAR%         pic "^,^^^,^^^.^^ " &
+skip                     &
+"W-YTD-COMPUTED-CEIEAR" &
+tab 30 W-YTD-COMPUTED-CEIEAR    pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-PAYPOT-YTD" &
+tab 30 W-PAYPOT-YTD             pic  "^,^^^,^^^.^^ " &
+skip                     &
+"W-UNDERAGE-ACT" &
+tab 32 W-UNDERAGE-ACT           pic  "^^^,^^^.^^ "	&
+skip page
+
+
+set report dev disc name dump_pc1_sum
+access *debugu116cd346
+sorted on doc-nbr
+
+; select if one of the 'bad' doctors OR any doctor who is paycode 1 and didn't get paid
+select if  (      doc-pay-code      <>"0"		&
+               AND  (   W-PAY-actual-n = 0		&
+		     OR w-underage-act    <> 0		&
+		    )					&
+	   )		
+def x-calc-desc char*100                                                &
+        = "paycode 3 calc goes here"    if doc-pay-code = "3"       &
+     else "paycode 4 calc goes here"	if doc-pay-code = "4"	&
+     else "paycode 6 calc goes here"	if doc-pay-code = "6"	&
+     else "unknown paycode"		
+
+def  x-calc1 zoned*10   numeric    &
+        =  1.0       if doc-pay-sub-code = "A"  &
+     else 0
+
+heading at doc-nbr                              &
+tab 01 doc-nbr                                  &
+tab 10  w-pay-actual-n          pic "^^^,^^^.^^ "      &
+tab 30 x-calc-desc                              &
+skip                                            &
+tab 30 x-calc1 pic "^^^,^^^.^^ "                &
+;tab 45 x-calc2 pic "^^^,^^^.^^ "     		&
+;tab 60 x-calc3 pic "^^^,^^^.^^ "     		&
+;tab 75 x-calc4 pic "^^^,^^^.^^ "     		&
+;tab 90 x-calc5 pic "^^^,^^^.^^ "     		&
+skip 2
+
+!vi dump_pc1_sum.txt
+#!vi dump_pc1_det.txt

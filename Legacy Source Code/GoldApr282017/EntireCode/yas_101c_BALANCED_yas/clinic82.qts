@@ -1,0 +1,240 @@
+;doc     : clinic82.qts
+;purpose : report clinic 82 claims by service date 20010401 to 20021231
+;	   by doc by month  $only agent 0/2/4 include "B" adj
+;who     : Peter Steer
+
+
+;Date		Who		Description
+;2003/08/15     yasemin         orig
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one
+
+access f002-claims-mstr                                         &
+  link (nconvert(ascii(key-clm-batch-nbr,9)[4:3]))              &
+    to  doc-nbr of f020-doctor-mstr opt
+
+ 
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 820000000 to 829999999,  &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if			                             &
+  (     (clmhdr-agent-cd = 0 or clmhdr-agent-cd = 4 or clmhdr-agent-cd = 2)  &
+    and (clmhdr-batch-type  = 'C' or 			                     &
+        (clmhdr-batch-type = 'A' and clmhdr-adj-cd = 'B'))                   &
+;    and (    clmhdr-date-period-end >= 20010401                              &
+;         and clmhdr-date-period-end <= 20021231)                             &
+  )
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+        
+subfile clinic82a keep include                   &
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+Access *clinic82a                                                    &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr     
+
+select f002-claims-mstr if                   &
+;           CLMDTL-DATE-PERIOD-END         >= '20010401' & 
+;       and CLMDTL-DATE-PERIOD-END         <= '20021231' &
+            clmdtl-sv-date     >= '20010401' & 
+       and  clmdtl-sv-date     <= '20021231' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous deptbilling
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"       ; "  "             "
+;       and  clmdtl-adj-nbr     = 0             ; no adjustments
+;from the first request adj is included 
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]        
+;def x-yyyymm cha*6 = CLMDTL-DATE-PERIOD-END[1:6]        
+
+sort on x-doc-nbr    
+
+temp x-apr-2001  zoned*7 signed
+item x-apr-2001   = x-apr-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200104"         &
+                    reset at x-doc-nbr 
+
+temp x-may-2001  zoned*7 signed
+item x-may-2001   = x-may-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200105"         &
+                    reset at x-doc-nbr 
+
+temp x-jun-2001  zoned*7 signed
+item x-jun-2001   = x-jun-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200106"         &
+                    reset at x-doc-nbr 
+
+temp x-jul-2001  zoned*7 signed
+item x-jul-2001   = x-jul-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200107"         &
+                    reset at x-doc-nbr 
+
+temp x-aug-2001  zoned*7 signed
+item x-aug-2001   = x-aug-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200108"         &
+                    reset at x-doc-nbr 
+
+temp x-sep-2001  zoned*7 signed
+item x-sep-2001   = x-sep-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200109"         &
+                    reset at x-doc-nbr 
+
+temp x-oct-2001  zoned*7 signed
+item x-oct-2001   = x-oct-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200110"         &
+                    reset at x-doc-nbr 
+
+temp x-nov-2001  zoned*7 signed
+item x-nov-2001   = x-nov-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200111"         &
+                    reset at x-doc-nbr 
+
+temp x-dec-2001  zoned*7 signed
+item x-dec-2001   = x-dec-2001  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200112"         &
+                    reset at x-doc-nbr 
+
+temp x-jan-2002   zoned*7 signed
+item x-jan-2002    = x-jan-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200201"          &
+                    reset at x-doc-nbr
+
+temp x-feb-2002   zoned*7 signed
+item x-feb-2002    = x-feb-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200202"          &
+                    reset at x-doc-nbr
+
+temp x-mar-2002   zoned*7 signed
+item x-mar-2002    = x-mar-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200203"          &
+                    reset at x-doc-nbr
+
+temp x-apr-2002   zoned*7 signed
+item x-apr-2002    = x-apr-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200204"          &
+                    reset at x-doc-nbr
+
+temp x-may-2002   zoned*7 signed
+item x-may-2002    = x-may-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200205"          &
+                    reset at x-doc-nbr
+
+temp x-jun-2002   zoned*7 signed
+item x-jun-2002    = x-jun-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200206"          &
+                    reset at x-doc-nbr
+
+temp x-jul-2002   zoned*7 signed
+item x-jul-2002    = x-jul-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200207"          &
+                    reset at x-doc-nbr
+
+temp x-aug-2002   zoned*7 signed
+item x-aug-2002    = x-aug-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200208"          &
+                    reset at x-doc-nbr
+
+temp x-sep-2002   zoned*7 signed
+item x-sep-2002    = x-sep-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200209"          &
+                    reset at x-doc-nbr
+
+temp x-oct-2002   zoned*7 signed
+item x-oct-2002    = x-oct-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200210"          &
+                    reset at x-doc-nbr
+
+temp x-nov-2002   zoned*7 signed
+item x-nov-2002    = x-nov-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200211"          &
+                    reset at x-doc-nbr
+
+temp x-dec-2002   zoned*7 signed
+item x-dec-2002    = x-dec-2002  + clmdtl-fee-ohip /100    &
+                    if   x-yyyymm = "200212"          &
+                    reset at x-doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile clinic82b portable keep at x-doc-nbr include &
+x-doc-nbr                                           ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-apr-2001                                          ,&
+comma                                               ,&
+x-may-2001                                          ,&
+comma                                               ,&
+x-jun-2001                                          ,&
+comma                                               ,&
+x-jul-2001                                          ,&
+comma                                               ,&
+x-aug-2001                                          ,&
+comma                                               ,&
+x-sep-2001                                          ,&
+comma                                               ,&
+x-oct-2001                                          ,&
+comma                                               ,&
+x-nov-2001                                          ,&
+comma                                               ,&
+x-dec-2001                                          ,& 
+comma                                               ,&
+x-jan-2002                                          ,&
+comma                                               ,&
+x-feb-2002                                          ,&
+comma                                               ,&
+x-mar-2002                                          ,&          
+comma                                               ,&
+x-apr-2002                                          ,&          
+comma                                               ,&
+x-may-2002                                          ,&          
+comma                                               ,&
+x-jun-2002                                          ,&          
+comma                                               ,&
+x-jul-2002                                          ,&          
+comma                                               ,&
+x-aug-2002                                          ,&          
+comma                                               ,&
+x-sep-2002                                          ,&          
+comma                                               ,&
+x-oct-2002                                          ,&          
+comma                                               ,&
+x-nov-2002                                          ,&          
+comma                                               ,&
+x-dec-2002                                          ,&
+x-cr                                                
+
+build $obj/clinic82

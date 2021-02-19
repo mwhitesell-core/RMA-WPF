@@ -1,0 +1,70 @@
+; Program: r716a.qzs
+; Purpose: To create a flat file used with the web
+; Modification History
+; YY/MMM/DD  By whom    Why
+; 00/jan/01  B.A.	- original
+; 00/sep/21  B.E.       - picked up actual BI/OP flags from dtl rec
+;			- added page length 0, no formfeed
+; 00/oct/10  B.E.	- deleted records now get transferred back to web
+;			- removed access to header (even if header is updated
+;			  don't send back any details unless are altered too)
+;			  note: if the header is 'd'eleted then then details
+;			  	don't need to be sent back 
+; 00/oct/18 B.E.	- changed select. Since all details are dropped when
+;			  the header is udpated, we must sent ALL details
+;			  for UPDATED headers must go back to the web
+;		  	  UNLESS they have been "D"eleted
+;
+
+can clear
+set rep nolimit
+set page width 132 length 0
+set noformfeed
+set nohead
+
+set rep dev disc name r716b
+
+access f002-suspend-dtl 			&
+   link clmdtl-doc-ohip-nbr, 			&
+        clmdtl-accounting-nbr 			&
+     to clmhdr-doc-ohip-nbr,			&
+        clmhdr-accounting-nbr of f002-suspend-hdr
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+;select if   clmdtl-status = clmdtl-status-updated	&
+;         or clmdtl-status = clmdtl-status-new		&
+;         or clmdtl-status = clmdtl-status-delete  
+select if    clmhdr-status = updated	&
+	  and clmdtl-status <> clmdtl-status-delete
+	
+
+
+; (00/sep/21 B.E.)
+def x-clmdtl-flag-bi char*1                     &
+     = "Y" if clmdtl-sv-day-alpha-1 = "BI"      &
+  else  " "
+def x-clmdtl-flag-op char*1                     &
+     = "Y" if clmdtl-sv-day-alpha-1 = "OP"      &
+  else  " " 
+
+def Z-CLMDTL-DOC-OHIP-NBR zoned unsigned size 6 = CLMDTL-DOC-OHIP-NBR
+def Z-CLMDTL-DIAG-CD zoned unsigned size 3 = CLMDTL-DIAG-CD
+def Z-CLMDTL-NBR-SERV zoned unsigned size 2 = CLMDTL-NBR-SERV
+def Z-CLMDTL-FEE-OHIP zoned unsigned size 7 = CLMDTL-FEE-OHIP
+def Z-CLMDTL-AMT-TECH-BILLED zoned unsigned size 6 = CLMDTL-AMT-TECH-BILLED
+
+report                                                   &     
+tab 1 Z-CLMDTL-DOC-OHIP-NBR     pic "^^^^^^" fill "0"    &
+tab 7 CLMDTL-ACCOUNTING-NBR                              &
+tab 15 CLMDTL-OMA-CD                                	 & 
+tab 19 CLMDTL-OMA-SUFF                             	 &
+tab 20 Z-CLMDTL-DIAG-CD         pic "^^^" fill "0"       &
+tab 23 Z-CLMDTL-NBR-SERV        pic "^^" fill "0"        &
+tab 25 Z-CLMDTL-FEE-OHIP        pic "^^^^^^^" fill "0"   &
+tab 32 Z-CLMDTL-AMT-TECH-BILLED pic "^^^^^^" fill "0"    &
+tab 38 x-clmdtl-flag-op					 &
+tab 39 x-clmdtl-flag-bi					
+
+build $pb_obj/r716b

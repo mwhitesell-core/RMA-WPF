@@ -1,0 +1,35 @@
+cancel clear
+set rep nolimit
+access f001-batch-control-file
+sel if batctrl-batch-status = '1' and batctrl-batch-type = 'C'
+set subfile name savef001 keep
+rep summ batctrl-batch-nbr
+go
+
+
+access *savef001 link ('B', batctrl-batch-nbr) &
+	to key-clm-type, key-clm-batch-nbr of f002-claims-mstr  &
+	link clmhdr-loc to loc-nbr of f030-locations-mstr opt
+sel f002-claims-mstr if clmdtl-oma-cd = '0000'
+set subfile name savef002hdr     keep
+rep summ key-clm-type key-clm-batch-nbr key-clm-claim-nbr clmhdr-date-admit clmhdr-loc loc-service-location-indicator
+go
+
+access *savef002hdr link to f002-claims-mstr &
+ link clmdtl-oma-cd, clmdtl-oma-suff, loc-service-location-indicator		&
+  to  clmdtl-oma-cd, clmdtl-oma-suff, loc-service-location-indicator of f201-sli-oma-code-suff
+sel f002-claims-mstr if clmdtl-oma-cd <> '0000'				&
+		  and   clmdtl-oma-cd <> 'ZZZZ'
+sel if       (clmhdr-date-admit <> '00000000' and fee-admit-ind = 'N')		&
+	 or  (clmhdr-date-admit =  '00000000' and fee-admit-ind = 'Y')
+set subfile name savef002hdrdtl keep
+rep summ key-clm-type key-clm-batch-nbr key-clm-claim-nbr clmhdr-date-admit clmhdr-loc loc-service-location-indicator &
+clmdtl-oma-cd clmdtl-oma-suff fee-admit-ind
+go
+
+access *savef002hdrdtl
+set rep dev disc name slif002
+set rep page length 132
+rep all
+go
+

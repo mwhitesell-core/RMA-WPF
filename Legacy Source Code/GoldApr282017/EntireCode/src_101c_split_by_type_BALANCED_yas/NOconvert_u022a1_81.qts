@@ -1,0 +1,63 @@
+;#> PROGRAM-ID.     u022a1.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : TO WORK WITH R022A.QZS - BY CREATING A AUDIT SUBFILE
+;		       THIS USED TO BE THE FIRST RUN OF THAT PROGRAM
+;
+;  MODIFICATION HISTORY
+;    DATE   WHO   DESCRIPTION
+; 00/MAY/08 B.A.  - ORIGINAL (transformed from r022a.qzs to 
+;		    u022a.qts so that multiple subfiles (audit)
+;		    could be generated in 1 pass
+; 00/may/08 B.E.  - added selection of "X" status claims to force
+;		    resubmit of claims regardless of other conditions
+; 00/may/29 B.E.  - don't select for resubmission claims that haven't 
+;		    been submitted to ohip yet (ie. have blank
+;		    submission date)
+; 00/may/31 B.E.  - clmhdr-date-cash-tape-payment is character field
+;		    and selection added to select if date is "  00" 
+; 00/jun/01 B.E.  - changed test to use submit-date rather than entry-date
+;			     
+
+can clear
+set default
+set input nolimit
+set process nolimit
+set lock record update
+
+
+request one
+
+access f002-claims-mstr                                        		
+
+choose key-clm-type "B", key-clm-batch-nbr 810000000 to 819999999
+
+select if   (                                                          &
+                      clmdtl-oma-cd     < > "0000"                      &
+                  and clmdtl-oma-cd     < > "ZZZZ"                      &
+                  and clmdtl-sv-date  >=  "20010801"			&
+		  and clmdtl-sv-date  <=  "20010831"		&
+            )
+
+sort on key-clm-batch-nbr on key-clm-claim-nbr on clmdtl-sv-date d
+
+subfile u022a1_sel_81  keep at key-clm-claim-nbr include    &
+  key-clm-type,                 &
+  key-clm-batch-nbr,             &
+  key-clm-claim-nbr,		&
+  clmdtl-sv-date
+
+request two
+
+access *u022a1_sel_81			&
+	link key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0' &
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,key-clm-serv-code,  &
+	   key-clm-adj-nbr of f002-claims-mstr
+
+output f002-claims-mstr update on errors report
+
+   item clmhdr-serv-date final nconvert(clmdtl-sv-date of u022a1_sel_81) 
+
+
+build $pb_obj/u022a1_81

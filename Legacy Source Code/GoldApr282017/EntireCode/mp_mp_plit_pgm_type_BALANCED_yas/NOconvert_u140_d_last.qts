@@ -1,0 +1,99 @@
+; Program: u140_d.qts
+; Purpose:	Calculate individual doctor AFP conversion payment /submission amounts 
+;		factoring values sent from MOH by the RA payments
+; 
+; modification history
+; 04/jul/01 b.e.	-original
+; 04/aug/12 b.e.	-add record to f075 if payment comes in for doctor
+;			 not on file .. 
+; 04/oct/16 b.e.	- store afp-submission-amt in tmp-counter-2
+; 05/mar/08 M.C.        - substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+; 2005/apr/08 b.e. - set lock update statement
+; 2005/jun/09 M.C. - change def factored with zoned*11 numeric
+
+cancel clear
+set process nolimit
+run u140_d
+;set lock file update 
+set lock record update 
+
+;-------------------------------------------------------
+request u140_update_f075_with_conversion_payments	&
+                on edit        errors report    	&
+                on calculation errors report
+
+access *u140_d1						&
+	link (nconvert(doc-afp-paym-solo)),		&
+	     doc-nbr					&
+	to   doc-ohip-nbr,				&
+	     doc-nbr of tmp-doctor-alpha opt		&
+        link doc-nbr					&
+	to   doc-nbr of f075-afp-doc-mstr opt 		&
+	link doc-afp-paym-group of u140_d1		&
+	to   doc-afp-paym-group of f074-afp-group-mstr opt
+
+select if  doc-afp-paym-group of u140_d1		&
+	 = doc-afp-paym-group of f075-afp-doc-mstr
+
+
+; 2005/06/09 - MC
+;def x-afp-payment-amt-factored						&
+;   =  round(  afp-conversion-amt     of u140_d1			&
+def x-afp-payment-amt-factored	zoned*11 numeric 		&
+   =  round(  x-conversion-amt     of u140_d1				&
+; 2005/06/09 - end
+; 2005/03/08 - MC 
+;	    * (  afp-payment-percentage of f075-afp-doc-mstr		&
+;	       / 100							&
+;;;;;	    * (  afp-multi-doc-ra-percentage of f075-afp-doc-mstr	&
+;;;;;	       / 100000							&
+; 2005/03/08 - end
+;;;;;	      )								&
+	   ) 
+
+; 2005/06/09 - MC
+;def x-afp-submission-amt-factored					&
+;   =  round(  afp-submission-amt      of u140_d1			&
+def x-afp-submission-amt-factored zoned*11 numeric			&
+   =  round(  x-submission-amt      of u140_d1				&
+; 2005/06/09 - end
+; 2005/03/08 - MC 
+;	    * (  afp-payment-percentage of f075-afp-doc-mstr		&
+;	       / 100							&
+;;;;;	    * (  afp-multi-doc-ra-percentage of f075-afp-doc-mstr	&
+;;;;;	       / 100000							&
+; 2005/03/08 - end
+;;;;;	      ) &;  if afp-payment-percentage of f075-afp-doc-mstr <> 0	&
+	   )
+
+output f075-afp-doc-mstr alias f075-update update	&
+     if record f075-afp-doc-mstr exists
+  item afp-reporting-mth  	final afp-reporting-mth of f074-afp-group-mstr 
+; 2005/06/09 - MC
+;  item afp-payment-amt-total	final afp-conversion-amt
+  item afp-payment-amt-total	final x-conversion-amt of u140_d1
+; 2005/06/09 - end
+  item afp-payment-amt		final x-afp-payment-amt-factored
+  item afp-submission-amt	final x-afp-submission-amt-factored
+
+output f075-afp-doc-mstr alias f075-add    add		&
+     if not record f075-afp-doc-mstr exists
+  item doc-nbr 			final doc-nbr of u140_d1 
+  item doc-ohip-nbr 		final nconvert(doc-afp-paym-solo)
+  item doc-afp-paym-group 	final doc-afp-paym-group of u140_d1
+  item afp-reporting-mth  	final afp-reporting-mth of f074-afp-group-mstr 
+; 2005/06/09 - MC
+;  item afp-payment-amt-total	final afp-conversion-amt
+  item afp-payment-amt-total	final x-conversion-amt of u140_d1
+  item afp-payment-amt		final x-afp-payment-amt-factored
+;  item afp-submission-amt	final afp-submission-amt of u140_d1
+  item afp-submission-amt	final x-afp-submission-amt-factored   
+; 2005/06/09 - end
+
+subfile u140d_debug keep include 			&
+x-afp-payment-amt-factored, 				&
+x-conversion-amt     of u140_d1		,		&
+afp-multi-doc-ra-percentage of f075-afp-doc-mstr,	&
+x-afp-submission-amt-factored ,			&
+x-submission-amt      of u140_d1
+

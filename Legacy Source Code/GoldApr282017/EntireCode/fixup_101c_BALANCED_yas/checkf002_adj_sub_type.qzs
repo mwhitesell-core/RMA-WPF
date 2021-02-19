@@ -1,0 +1,38 @@
+; This program is for costing purpose, find out what adj cd sub type for the doctor so that it can be
+; updated accordingly in f073 file via checkf020_adjtype subfile in createf073_costing.qts
+
+cancel clear
+set report nolimit
+set page width 132
+
+;extract all claim type
+access f002-claims-mstr	
+choose key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+sel if clmhdr-batch-type = 'C'
+
+def doc-nbr char*3 = key-clm-batch-nbr[3:3]
+
+set subfile name checkf002adjsubtype keep
+
+rep summ clmhdr-claim-id doc-nbr  clmhdr-adj-cd-sub-type clmhdr-date-period-end clmhdr-date-sys
+
+go
+
+; calculate the claim out per doctor per adj type
+access *checkf002adjsubtype
+
+sort on doc-nbr on clmhdr-adj-cd-sub-type
+def x-count = 1
+set subfile name checkf020_adjtype keep at clmhdr-adj-cd-sub-type
+rep summ doc-nbr clmhdr-adj-cd-sub-type  x-count subt reset at clmhdr-adj-cd-sub-type
+go
+
+; write record for each doctor at the highest claim count for the adj type
+access *checkf020_adjtype
+sort on doc-nbr on x-count
+set subfile name savef020adjtype keep at doc-nbr
+rep summ all
+go
+
+

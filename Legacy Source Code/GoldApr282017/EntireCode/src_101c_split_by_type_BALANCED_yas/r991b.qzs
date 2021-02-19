@@ -1,0 +1,99 @@
+; Program: r991b.qzs 
+; Purpose: Check that f001 record exists for all claims
+;		and the the AR amount is correct vs the claim hdr amts
+;
+;   DATE      WHOM   DESCRIPTION
+; 2000/mar/14 B.E.   - original
+; 2016/Jul/04 MC1    - comment out select
+
+cancel clear
+set rep nolimit
+set page length 66 width  132
+set rep device disc name r991b
+
+
+access  *r991a 
+
+; **** CLINIC 22 only **************************
+; MC1
+;select if BATCTRL-BATCH-NBR  <=229999999
+; **********************************************
+
+sort on clmdtl-date-period-end		&
+     on clmdtl-cycle-nbr		;&
+;     on clmhdr-submit-date		&
+;     on clmhdr-date-sys
+
+def x-diff-amt =  batctrl-calc-ar-due		&
+                - x-clmdtl-fee-ohip
+
+def x-diff-svcs =  batctrl-svc-act		&
+	         - x-svcs-in-batch-counter 
+
+def print-flag-f001-missing char*1		&
+     = "Y" if flag-f001-missing = "Y"		&
+  else " "
+
+page heading                                              	&
+	tab 1  "r991b"  			          	&
+	tab 10 "P.E.D."                                        &
+;        tab 18  iconst-date-period-end pic "^^^^/^^/^^"         &
+	tab 30 "Claims with missing/incorrect A/R amt in Batch Control File"&
+	tab 98 "Run Date:"                               	&
+	tab 110 sysdate                                  	&
+        tab 124 "Page:" tab 129 syspage pic "^^^"      	 	&
+skip 3  tab 63 "Batctrl"                                        &
+        tab 72 "--Nbr svcs----"                                 &
+        tab 95 "------Total OHIP A/R amt-----"                  &
+skip 1  tab 1   "Batch Nbr"                                     &
+        tab 11  "Agent"                                         &
+        tab 22  "PED"                                           &
+        tab 30  "Submit Date"                                   &
+        tab 44  "Entry Date"                                    &
+        tab 57  "Cycle"                                         &
+        tab 63  "missing?"                                      &
+        tab 72  "f001 f002 Diff"                                &
+        tab 97  "f001"                                          &
+        tab 112 "f002"                                          &
+        tab 117 "Difference"                                    &
+skip 1  tab 01  "--------- -----  -----------  ---------    -----------  -----"&
+skip 2
+
+report 								&
+  tab 02 x-orig-batch						&
+; tab 13 clmhdr-agent-cd					&
+  tab 13 batctrl-agent-cd					&
+  tab 14 "/"							&
+  tab 15 batctrl-agent-cd					&
+; tab 18 clmhdr-date-period-end					&
+  tab 18 clmdtl-date-period-end					&
+;  tab 31 clmhdr-submit-date					&
+;  tab 44 clmhdr-date-sys pic "^^^^/^^/^^"			&
+;  tab 59 clmhdr-cycle-nbr					&
+  tab 66 print-flag-f001-missing				&
+  tab 73 batctrl-svc-act pic "^^^"				&
+  tab 78 x-svcs-in-batch-counter pic "^^^"			&
+  tab 83 x-diff-svcs pic "^^^"					&
+  tab 91 batctrl-calc-ar-due					&
+  tab 108 x-clmdtl-fee-ohip pic "^^^,^^^.^^ "			&
+  tab 117 x-diff-amt        pic "^,^^^,^^^.^^ " skip 2
+
+final footing 							&
+ skip 3								&
+  tab 01 "Final Totals "                                        &
+  tab 73 "---"                                                  &
+  tab 78 "---"                                                  &
+  tab 83 "---"                                                  &
+  tab 90 "-----------"                                          &
+  tab 105 "-----------"                                         &
+  tab 116 "-----------"                                         &
+ skip 1								&
+  tab 71 batctrl-svc-act             subtotal pic "^^^^^"         &
+  tab 76 x-svcs-in-batch-counter     subtotal pic "^^^^^"         &
+  tab 81 x-diff-svcs 		     subtotal pic "^^^^^" bwz     &
+  tab 91 batctrl-calc-ar-due    subtotal pic "^^^,^^^.^^ "	&
+  tab 108 x-clmdtl-fee-ohip     subtotal pic "^^^,^^^.^^ "	&
+  tab 121 x-diff-amt 	        subtotal pic "^^^^,^^^.^^" 
+
+build $pb_obj/r991b
+

@@ -1,0 +1,594 @@
+;     DATE    WHO  WHY
+; 2004/mar/25 b.e. made common to u115a/b.qts   
+; 2006/mar/20 b.e. while testing a comp code with a factor of 0 (shows amount
+;		   in gross but pays nothing by turning net to zero) it was
+;		   discovered that the old 'hold back' feature used in mid-90's
+;		   was kicking in and generating a HOLDBK comp code for the 
+;		   gross amount. The calculation of this hold back amount
+;		   changed to always be zero so that it won't intefere with
+;		   using a factor of 0.00
+;		   - set to zero by adding a condition 1 = 2 to logic
+; 2006/jun/09 b.e. - UNDID THE ABOVE CHANGE SO THAT HOLDBK AGAIN CALCULATED
+; 2006/jun/22 b.e. after change in size of field there occcured rounding
+; problem giving .01 difference .. changed from > to = in calc of x-amt-gst-only
+; 2008/jun/05 M.C. - modify criteria for tot-income-gross-reg, tot-income-gross-misc &
+;			tot-income-gross-other, create tot-tithe-gross-reg,
+;			tot-tithe-gross-misc & tot-tithe-gross-other
+;		   - apply the same to tot-income-net-reg/misc/other, and
+;		     tot-tithe-net-reg/misc/other
+; 2008/jul/02 brad1 - add  code to catch TITHE expenese - above not working
+; 2008/jul/02 brad2 - added check that comp-type is I'ncome type when incuding
+;		      in calculation of:
+;			  tot-income-gross-reg/misc/other
+;		      and tot-income-net-reg/misc/other
+;		      and tot-tithe-gross-reg/misc/other
+;		      and tot-tithe-net-reg/misc/other
+;
+; ----------- CALCULATIONS PERFORMED AT COMP-CODE LEVEL ------------
+
+; (Determine Expenses charged (difference between GROSS and NET) using
+;  FACTOR or non-zero Expense Percentages as indicators as to type of charges
+;  applied)
+
+
+;def x-income-gross-minus-net       int*8 signed size 4           &
+;def x-income-gross-minus-net       int*10 signed                 &
+def x-income-gross-minus-net       int*8 signed                 &
+   =  amt-gross  of f110-compensation                            &
+    - amt-net    of f110-compensation
+
+;def x-amt-dept-expense-pot-g   int*8 signed size 4                    &
+;      = round ( (  amt-gross of f110-compensation                     &
+;                 * doc-dept-expense-percent-reg   ) / 1000000,0,near) &
+;           if    comp-type     of f190-comp-codes = "I"               &
+;             and comp-sub-type of f190-comp-codes = "R"               &
+;   else round ( (  amt-gross of f110-compensation                     &
+;                 * doc-dept-expense-percent-misc  ) / 1000000,0,near) &
+;           if    comp-type     of f190-comp-codes = "I"               &
+;             and comp-sub-type of f190-comp-codes = "M"               &
+;   else 0
+
+;brad1
+def tot-dept-expense-other   int*10 signed                            &
+      = round (  (  amt-gross of f110-compensation                    &
+;;;;;;;;                  / 1000000				      &
+  	         ) 					      	      &
+;;;;;;;;               * factor                   ,0,near	      &
+	      )							      &
+           if    comp-type     of f190-comp-codes = "E"               &
+             and comp-sub-type of f190-comp-codes = "O"               
+
+;def x-amt-dept-expense-pot-g   int*8 signed size 4                    &
+def x-amt-dept-expense-pot-g   int*10 signed                          &
+      = round (  (  amt-gross of f110-compensation                    &
+                  / 1000000					      &
+  	         ) 					      	      &
+               * doc-dept-expense-percent-reg  ,0,near)		      &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "R"               &
+; 		2008/06/05 - MC - add criteria				&
+	     and (  not record f116-group  exists 			&
+		  or (     record f116-group exists			& 
+		      and tithe-in-ex-clude-flag = "E"  		&
+		     )							&
+                  or (     record f116-group exists                     &
+                      and tithe-in-ex-clude-flag = "I"                  &
+                      and flag-display-hide      = "N"                  &
+                     )                                                  &
+	         )							&
+   else round (  (  amt-gross of f110-compensation                    &
+                  / 1000000					      &
+  	         ) 					      	      &
+               * doc-dept-expense-percent-misc ,0,near)		      &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "M"               &
+; 		2008/06/05 - MC - add criteria				&
+	     and (  not record f116-group  exists 			&
+		  or (     record f116-group exists			& 
+		      and tithe-in-ex-clude-flag = 'E'  		&
+		     )							&
+                  or (     record f116-group exists                     &
+                      and tithe-in-ex-clude-flag = "I"                  &
+                      and flag-display-hide      = "N"                  &
+                     )                                                  &
+		 )							&
+   else 0
+
+; (check for inconsistent data where calc'd expense greater than
+;  difference between gross and net)
+;def x-amt-dept-expense-g   int*8 signed size 4                         &
+;def x-amt-dept-expense-g   int*10 signed                               &
+def x-amt-dept-expense-g   int*8 signed                               &
+     = x-amt-dept-expense-pot-g                                        &
+     if       (x-amt-dept-expense-pot-g <  x-income-gross-minus-net    &
+           and amt-gross of f110-compensation > 0)                     &
+        or    (x-amt-dept-expense-pot-g >  x-income-gross-minus-net    &
+           and amt-gross of f110-compensation < 0)                     &
+  else x-income-gross-minus-net
+
+;def x-amt-rma-expense-pot-g   int*8 signed size 4                     &
+def x-amt-rma-expense-pot-g   int*10 signed                           &
+      = round (  (  amt-gross of f110-compensation                    &
+                  / 1000000					      &
+  	         ) 					      	      &
+               * doc-rma-expense-percent-reg  ,0,near)		      &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "R"               &
+; 		2008/06/05 - MC - add criteria				&
+	     and (  not record f116-group  exists 			&
+		  or (     record f116-group exists			& 
+		      and tithe-in-ex-clude-flag = 'E'  		&
+		     )							&
+                  or (     record f116-group exists                     &
+                      and tithe-in-ex-clude-flag = "I"                  &
+                      and flag-display-hide      = "N"                  &
+                     )                                                  &
+		 )							&
+   else round (  (  amt-gross of f110-compensation                    &
+                  / 1000000					      &
+  	         ) 					      	      &
+               * doc-rma-expense-percent-misc ,0,near)		      &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "M"               &
+; 		2008/06/05 - MC - add criteria				&
+	     and (  not record f116-group  exists 			&
+		  or (     record f116-group exists			& 
+		      and tithe-in-ex-clude-flag = 'E'  		&
+		     )							&
+                  or (     record f116-group exists                     &
+                      and tithe-in-ex-clude-flag = "I"                  &
+                      and flag-display-hide      = "N"                  &
+                     )                                                  &
+		 )							&
+   else 0
+
+;def x-amt-rma-expense-only       int*8 signed size 4 			 &
+;def x-amt-rma-expense-only       int*10 signed          		&
+def x-amt-rma-expense-only       int*8 signed          		&
+    =  x-amt-rma-expense-pot-g                          		&
+      if    (    x-income-gross-minus-net > (  x-amt-dept-expense-g	&
+                       	                     + x-amt-rma-expense-pot-g) &
+             and amt-gross of f110-compensation > 0			&
+	    )    							&
+         or (    x-income-gross-minus-net < (  x-amt-dept-expense-g 	&
+                                             + x-amt-rma-expense-pot-g) &
+             and  amt-gross of f110-compensation < 0			&
+	    )      							&
+ else   x-income-gross-minus-net					&
+      - x-amt-dept-expense-g
+
+;def x-amt-gst-pot-g     int*8 signed size 4      &
+;def x-amt-gst-pot-g     int*10 signed           & 
+def x-amt-gst-pot-g     int*8 signed           & 
+     =  round (    (   x-amt-rma-expense-only   &
+                     * gst-percent 		&
+		   )				&
+		 / 100				&
+	       ,0,near				&
+	      )                         	&
+           if doc-ind-pays-gst = "Y"            &
+  else  0
+
+; 2006/jun/22 b.e. after change in size of field there occcured rounding
+; problem giving .01 difference .. changed from > to =
+
+def x-amt-round-off int*8 =   absolute(x-income-gross-minus-net) &
+		  	    - absolute(x-amt-dept-expense-g)  	&
+			    - absolute(x-amt-rma-expense-only) 	&
+			    - absolute(x-amt-gst-pot-g)		
+
+;def x-amt-gst-only      int*8 signed size 4       		 &
+;def x-amt-gst-only      int*10 signed              		&
+def x-amt-gst-only      int*8 signed              		&
+     =  x-amt-gst-pot-g                           		&
+	    if     (     (     (   x-income-gross-minus-net 	&
+		                >  (  x-amt-dept-expense-g  	&
+	                            + x-amt-rma-expense-only 	&
+			            + x-amt-gst-pot-g		&
+			           )      			&
+			       )				&
+	       	           and amt-gross of f110-compensation > 0 &
+		         ) 					&
+	              or (      (   x-income-gross-minus-net 	&
+			          <  (  x-amt-dept-expense-g  	&
+				      + x-amt-rma-expense-only 	&
+				      +  x-amt-gst-pot-g	&
+				     )      			&
+			        )				&
+	         	and amt-gross of f110-compensation < 0) &
+	  	    )					        &
+;		   (account for rounding where diff may be +- .05 cents)
+	        and (  x-amt-round-off > 5			&
+		    )						&
+   else (  x-income-gross-minus-net                             &
+         - x-amt-dept-expense-g                                 &
+         - x-amt-rma-expense-only                               &
+        )
+
+;def x-amt-rma-expense-plus-gst-g    int*8 signed size 4          &
+def x-amt-rma-expense-plus-gst-g    int*10 signed                &
+         =  x-amt-rma-expense-only                              &
+          + x-amt-gst-only
+
+; (RMA 'Holdback ' calculated as difference between 'GROSS and NET'
+;  minus 'DEPT Expense + RMA Expense + GST')
+;def x-amt-holdback-g             int*8 signed size 4    &
+;    =  x-income-gross-minus-net                         &
+;     - x-amt-dept-expense-g                             &
+;     - x-amt-rma-expense-plus-gst-g                     &
+;   if         (x-income-gross-minus-net > (x-amt-dept-expense-g &
+;		+  x-amt-rma-expense-plus-gst-g)	&
+;          and  amt-gross of f110-compensation > 0)      &
+;      or      (x-income-gross-minus-net < (x-amt-dept-expense-g &
+;		+  x-amt-rma-expense-plus-gst-g)	&
+;          and  amt-gross of f110-compensation < 0)      &
+; else 0
+
+;def x-amt-holdback-g             int*8 signed size 4    &
+def x-amt-holdback-g             int*10 signed          &
+    = round(  x-income-gross-minus-net                  &
+            - x-amt-dept-expense-g                      &
+            - x-amt-rma-expense-plus-gst-g              &
+           )                                            &
+          if      (   (        x-income-gross-minus-net        	&
+                           > (  x-amt-dept-expense-g            &
+                              + x-amt-rma-expense-plus-gst-g    &
+                             )                                 	&
+                        and  amt-gross of f110-compensation > 0 &
+                       )                                        &
+                    or (      x-income-gross-minus-net         	&
+                          < (  x-amt-dept-expense-g            	&
+                             + x-amt-rma-expense-plus-gst-g    	&
+                            )                                  	&
+                        and  amt-gross of f110-compensation < 0 &
+                       )                                        &
+	          )					   	&
+;;;;;;;;;;;;;;;;;;;;	      and 1 = 2 & ; set condition always false so that holdback not generated regardless of previous logic
+ else 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;(IF HOLDBACK IS LESS THAN OR = 10 CENTS AND THERE WAS PREVIOUS
+; NON-ZERO EXPENSE CALCULATIONS, THEN IGNORE THE CALCULATED HOLDBACK
+; AND ADD THE AMOUNT OF THE LEFT OVER "HOLDBACK" BACK INTO THE
+; LAST NON-ZERO EXPENSE CALCUATION)
+; 2000/nov/23 B.E. changed limit from 10 cents to a dollar
+def  x-amt-holdback-final					&
+    = x-amt-holdback-g						&
+;	if   x-amt-holdback-g > 10				&
+	if   x-amt-holdback-g > 100				&
+          or (    x-amt-rma-expense-only = 0			&
+              and x-amt-dept-expense-g   = 0			&
+	     )							&
+ else 0
+
+def x-amt-rma-expense-final					&
+    =   x-amt-rma-expense-only					&
+      + x-amt-holdback-g					&
+     	if     x-amt-holdback-g < 10				&
+           and x-amt-rma-expense-only <> 0			&
+   else   x-amt-rma-expense-only
+
+def x-amt-dept-expense-final					&
+        =   x-amt-dept-expense-g				&
+	  + x-amt-holdback-g					&
+     if     x-amt-holdback-g < 10				&
+ 	and x-amt-dept-expense-g <>  0				&
+   else   x-amt-dept-expense-g
+
+;def x-amt-rma-expense-plusgst-final int*8 signed size 4            &
+def x-amt-rma-expense-plusgst-final int*10 signed               &
+         =  x-amt-rma-expense-final                             &
+          + x-amt-gst-only
+
+; ----------- CALCULATIONS SUMMED TO DOC-NBR LEVEL ------------
+;temp    tot-income-gross-reg  int*8 signed size 4
+temp    tot-income-gross-reg  int*10 signed 
+item    tot-income-gross-reg                            &
+     =  tot-income-gross-reg                            &
+      + amt-gross of f110-compensation                  &
+;		   brad2				&
+             if    comp-type     of f190-comp-codes = "I"	&
+               and comp-sub-type of f190-comp-codes = "R"	&
+;	           2008/06/05 - MC - add criteria	&
+               and (  not record f116-group  exists 	&
+	            or (     record f116-group exists	& 
+	                and tithe-in-ex-clude-flag = 'E'&
+	               )				&
+                    or (     record f116-group exists   &
+                        and tithe-in-ex-clude-flag = "I"&
+                        and flag-display-hide      = "N"&
+                       )                                &
+                   )					&
+;	    	    2008/06/05 - end			&
+  else tot-income-gross-reg                             &
+  reset at doc-nbr
+;temp    tot-income-gross-misc int*8 signed size 4
+temp    tot-income-gross-misc int*10 signed 
+item    tot-income-gross-misc                           &
+     =  tot-income-gross-misc                           &
+      + amt-gross of f110-compensation                  &
+;		   brad2				&
+           if    comp-type     of f190-comp-codes = "I"	&
+             and comp-sub-type of f190-comp-codes = "M"	&
+;	          2008/06/05 - MC - add criteria	&
+              and (  not record f116-group  exists 	&
+	           or (     record f116-group exists	& 
+	               and tithe-in-ex-clude-flag = 'E' &
+	              )					&
+                    or (     record f116-group exists   &
+                        and tithe-in-ex-clude-flag = "I"&
+                        and flag-display-hide      = "N"&
+                       )                                &
+                  )					&
+;	          2008/06/05 - end			&
+  else tot-income-gross-misc                           	& 
+  reset at doc-nbr
+;temp    tot-income-gross-other int*8 signed size 4
+temp    tot-income-gross-other int*10 signed
+item    tot-income-gross-other                          &
+     =  tot-income-gross-other                          &
+      + amt-gross of f110-compensation                  &
+;		   brad2				&
+            if    comp-type     of f190-comp-codes = "I"	&
+              and comp-sub-type of f190-comp-codes = "O"	&
+;	          2008/06/05 - MC - add criteria	&
+              and (  not record f116-group  exists 	&
+	           or (     record f116-group exists	& 
+	               and tithe-in-ex-clude-flag = 'E'	&
+	              )					&
+                    or (     record f116-group exists   &
+                        and tithe-in-ex-clude-flag = "I"&
+                        and flag-display-hide      = "N"&
+                       )                                &
+                  )					&
+;		  2008/06/05 - end			&
+  else tot-income-gross-other                           &
+  reset at doc-nbr
+
+;temp    tot-income-net-reg  int*8 signed size 4
+temp    tot-income-net-reg  int*10 signed
+item    tot-income-net-reg                              &
+     =  tot-income-net-reg                              &
+      + amt-net of f110-compensation                    &
+;		   brad2				&
+      if    comp-type     of f190-comp-codes = "I"	&
+        and comp-sub-type of f190-comp-codes = "R"	&
+; 2008/06/05 - MC - add criteria			&
+        and (  not record f116-group  exists 		&
+	    or (     record f116-group exists		& 
+	         and tithe-in-ex-clude-flag = 'E'	&
+	       )					&
+            or (     record f116-group exists   	&
+                 and tithe-in-ex-clude-flag = "I"	&
+                 and flag-display-hide      = "N"	&
+               )                                	&	
+            )						&
+; 2008/06/05 - end
+  else tot-income-net-reg                               &
+  reset at doc-nbr
+;temp    tot-income-net-misc int*8 signed size 4
+temp    tot-income-net-misc int*10 signed
+item    tot-income-net-misc                             &
+     =  tot-income-net-misc                             &
+      + amt-net of f110-compensation                    &
+;		   brad2				&
+            if    comp-type     of f190-comp-codes = "I"	&
+              and comp-sub-type of f190-comp-codes = "M"	&
+;	           2008/06/05 - MC - add criteria	&
+              and (  not record f116-group  exists 	&
+	           or (     record f116-group exists	& 
+	               and tithe-in-ex-clude-flag = 'E' &
+	              )					&
+            	   or (     record f116-group exists   	&
+                       and tithe-in-ex-clude-flag = "I"	&
+                       and flag-display-hide      = "N"	&
+                      )                                	&	
+                  )					&
+; 		   2008/06/05 - end			&
+  else tot-income-net-misc                              &
+  reset at doc-nbr
+;temp    tot-income-net-other int*8 signed size 4
+temp    tot-income-net-other int*10 signed 
+item    tot-income-net-other                            &
+     =  tot-income-net-other                            &
+      + amt-net of f110-compensation                    &
+;		   brad2				&
+            if    comp-type     of f190-comp-codes = "I"	&
+              and comp-sub-type of f190-comp-codes = "O"	&
+;	          2008/06/05 - MC - add criteria	&
+              and (  not record f116-group  exists 	&
+	           or (     record f116-group exists	& 
+	               and tithe-in-ex-clude-flag = 'E' &
+	              )			 		&
+            	   or (     record f116-group exists   	&
+                       and tithe-in-ex-clude-flag = "I"	&
+                       and flag-display-hide      = "N"	&
+                      )                                	&	
+                  )					&
+;		  2008/06/05 - end			&
+  else tot-income-net-other                             &
+  reset at doc-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 2008/06/05 - MC
+
+temp    tot-tithe-gross-reg  int*10 signed 
+item    tot-tithe-gross-reg                            	&
+     =  tot-tithe-gross-reg                            	&
+      + amt-gross of f110-compensation                  &
+;		  brad2					&
+       	    if    comp-type     of f190-comp-codes = "I"&
+              and comp-sub-type of f190-comp-codes = "R"&
+              and record f116-group exists		& 
+	      and tithe-in-ex-clude-flag = 'I'  	&
+;		TODO IS THI MISSING LOTS OF IF?????????????????
+  else tot-tithe-gross-reg                              &
+  reset at doc-nbr
+
+temp    tot-tithe-gross-misc int*10 signed 
+item    tot-tithe-gross-misc                            &
+     =  tot-tithe-gross-misc                            &
+      + amt-gross of f110-compensation                  &
+;	          brad2					&
+            if    comp-type     of f190-comp-codes = "I"&
+              and comp-sub-type of f190-comp-codes = "M"&
+              and record f116-group exists		& 
+	      and tithe-in-ex-clude-flag = 'I' 	&
+  else tot-tithe-gross-misc                           	& 
+  reset at doc-nbr
+
+temp    tot-tithe-gross-other int*10 signed
+item    tot-tithe-gross-other                          	&
+     =  tot-tithe-gross-other                          	&
+      + amt-gross of f110-compensation                  &
+;	          brad2					&
+            if    comp-type     of f190-comp-codes = "I"&
+              and comp-sub-type of f190-comp-codes = "O"&
+              and record f116-group exists		& 
+	      and tithe-in-ex-clude-flag = 'I'  	&
+  else tot-tithe-gross-other                            &
+  reset at doc-nbr
+
+temp    tot-tithe-net-reg  int*10 signed
+item    tot-tithe-net-reg                               &
+     =  tot-tithe-net-reg                               &
+      + amt-net of f110-compensation                    &
+;	          brad2					&
+            if    comp-type     of f190-comp-codes = "I"&
+              and comp-sub-type of f190-comp-codes = "R"&
+              and record f116-group exists		&	
+	      and tithe-in-ex-clude-flag = 'I'  	&
+  else tot-tithe-net-reg                                &
+  reset at doc-nbr
+
+temp    tot-tithe-net-misc int*10 signed
+item    tot-tithe-net-misc                              &
+     =  tot-tithe-net-misc                              &
+      + amt-net of f110-compensation                    &
+;	          brad2					&
+            if    comp-type     of f190-comp-codes = "I"&
+              and comp-sub-type of f190-comp-codes = "M"&
+              and record f116-group exists		& 
+	      and tithe-in-ex-clude-flag = 'I'  	&
+  else tot-tithe-net-misc                               &
+  reset at doc-nbr
+
+temp    tot-tithe-net-other int*10 signed 
+item    tot-tithe-net-other                             &
+     =  tot-tithe-net-other                             &
+      + amt-net of f110-compensation                    &
+;	          brad2					&
+            if    comp-type     of f190-comp-codes = "I"&
+              and comp-sub-type of f190-comp-codes = "O"&
+              and  record f116-group exists		& 
+	      and  tithe-in-ex-clude-flag = 'I'  	&
+  else tot-tithe-net-other                              &
+  reset at doc-nbr
+
+; 2008/06/05 - end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;temp    tot-dept-expense-reg         int*8 signed size 4
+temp    tot-dept-expense-reg         int*10 signed 
+item    tot-dept-expense-reg                            &
+     =  tot-dept-expense-reg                            &
+      + x-amt-dept-expense-final                            &
+          if comp-sub-type = "R"                        &
+  else  tot-dept-expense-reg                            &
+  reset at doc-nbr
+;temp    tot-dept-expense-misc        int*8 signed size 4
+temp    tot-dept-expense-misc        int*10 signed 
+item    tot-dept-expense-misc                           &
+     =  tot-dept-expense-misc                           &
+      + x-amt-dept-expense-final                            &
+          if comp-sub-type = "M"                        &
+  else  tot-dept-expense-misc                           &
+  reset at doc-nbr
+
+;temp    tot-rma-expense-plus-gst-reg        int*8 signed size 4
+temp    tot-rma-expense-plus-gst-reg        int*10 signed 
+item    tot-rma-expense-plus-gst-reg                            &
+     =  tot-rma-expense-plus-gst-reg                            &
+      + x-amt-rma-expense-plusgst-final                 &
+          if comp-sub-type = "R"                        &
+  else  tot-rma-expense-plus-gst-reg                            &
+  reset at doc-nbr
+
+;temp    tot-rma-expense-plus-gst-misc       int*8 signed size 4
+temp    tot-rma-expense-plus-gst-misc       int*10 signed
+item    tot-rma-expense-plus-gst-misc                           &
+     =  tot-rma-expense-plus-gst-misc                           &
+      + x-amt-rma-expense-plusgst-final                        &
+          if comp-sub-type = "M"                                &
+  else  tot-rma-expense-plus-gst-misc                           &
+  reset at doc-nbr
+
+;temp    tot-rma-expense-only-reg        int*8 signed size 4
+temp    tot-rma-expense-only-reg        int*10 signed 
+item    tot-rma-expense-only-reg                                &
+     =  tot-rma-expense-only-reg                                &
+      + x-amt-rma-expense-final                                  &
+          if comp-sub-type = "R"                                &
+  else  tot-rma-expense-only-reg                                &
+  reset at doc-nbr
+;temp    tot-rma-expense-only-misc       int*8 signed size 4
+temp    tot-rma-expense-only-misc       int*10 signed
+item    tot-rma-expense-only-misc                               &
+     =  tot-rma-expense-only-misc                               &
+      + x-amt-rma-expense-final                                  &
+          if comp-sub-type = "M"                                &
+  else  tot-rma-expense-only-misc                               &
+  reset at doc-nbr
+
+;temp    tot-gst-only-reg        int*8 signed size 4
+temp    tot-gst-only-reg        int*10 signed 
+item    tot-gst-only-reg                                &
+     =  tot-gst-only-reg                                &
+      + x-amt-gst-only                                  &
+          if comp-sub-type = "R"                        &
+  else  tot-gst-only-reg                                &
+  reset at doc-nbr
+;temp    tot-gst-only-misc       int*8 signed size 4
+temp    tot-gst-only-misc       int*10 signed 
+item    tot-gst-only-misc                               &
+     =  tot-gst-only-misc                               &
+      + x-amt-gst-only                                  &
+          if comp-sub-type = "M"                        &
+  else  tot-gst-only-misc                       &
+  reset at doc-nbr
+
+;temp    tot-holdback-only-reg   int*8 signed size 4
+temp    tot-holdback-only-reg   int*10 signed
+item    tot-holdback-only-reg                           &
+     =  tot-holdback-only-reg                           &
+      + x-amt-holdback-final                                &
+          if comp-sub-type = "R"                        &
+  else  tot-holdback-only-reg                           &
+  reset at doc-nbr
+
+;temp    tot-holdback-only-misc  int*8 signed size 4
+temp    tot-holdback-only-misc  int*10 signed 
+item    tot-holdback-only-misc                          &
+     =  tot-holdback-only-misc                          &
+      + x-amt-holdback-final                                &
+          if comp-sub-type = "M"                        &
+  else  tot-holdback-only-misc                  &
+  reset at doc-nbr
+
+;temp    tot-revhbk	int*8 signed size 4
+temp    tot-revhbk	int*10 signed 
+item    tot-revhbk = tot-revhbk + amt-net of f110-compensation &
+	if  comp-type of f110-compensation = 'E'		&
+	and (comp-code of f110-compensation = 'REVHBK'		&
+	 or  comp-code of f110-compensation = 'REVCLA')		&
+   else tot-revhbk    reset at doc-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; current EP Manual Payments affect the YTD Earnings (YTDEAR)
+;temp amt-manpay   integer*8 signed size 4
+temp amt-manpay   integer*10 signed
+item amt-manpay   = amt-manpay   + amt-net of f110-compensation    &
+                        if    comp-type of f110-compensation="M"   &
+               else amt-manpay                                     &
+                        reset at doc-nbr

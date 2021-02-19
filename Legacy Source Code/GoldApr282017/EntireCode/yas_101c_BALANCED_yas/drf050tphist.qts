@@ -1,0 +1,36 @@
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050tp-doc-revenue-mstr-history                          &
+ link docrevtp-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrevtp-oma-cd  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+; suffix "C" = professional if suffix is A then fee-tech-ind must equal to N for professional
+def x-suffix cha*1 = docrevtp-oma-cd[5:1]
+
+select if      iconst-date-period-end     = 20010601                  &
+          and               doc-dept      = 04                        &
+          and (      (      fee-tech-ind  = "N"                       &
+		       and       x-suffix = 'A')                      &
+                 or              x-suffix = "C" )
+
+sort on docrevtp-oma-cd 
+
+temp x-service num*7 
+item x-service = x-service + docrevtp-in-prof-nbr-svc(2) + docrevtp-out-prof-nbr-svc(2) &
+		reset at docrevtp-oma-cd
+
+def x-fee  num*7  =  fee-curr-a-fee-1 if fee-tech-ind = "N" and x-suffix = "A" &
+                else fee-curr-a-fee-2 if fee-tech-ind = "N" and x-suffix = "C"
+
+subfile drf050tphist keep at docrevtp-oma-cd include  &
+  docrevtp-clinic-nbr, &
+  doc-dept           , &
+  docrevtp-oma-cd    , &
+  fee-desc   	     , & 
+  x-fee              , & 
+  x-service          
+
+build $pb_obj/drf050tphist
+

@@ -1,0 +1,108 @@
+;#> Program-id.   fix_f088_b.qts
+;
+; ((C)) Dyad Technologies
+;
+;  Program Purpose:  - clone of u030bb_1.qts to read f088-dtl recs and update 
+;			f088-hdr records with appropriate charge status
+;			and OHIP error code. 
+; MODIFICATION HISTORY
+;     DATE    WHO    DESCRIPTION
+; 2000/jul/13 B.E.   - original
+; 2000/aug/10 B.E.   - moved select statement logic of copy book to be shared between 
+;			fix_f088_b.qts and u030bb_1.qts
+;
+can clear
+run u030bb_1
+
+set default
+set lock file update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;request get_clinics_PED on calculation errors report &
+;                        on edit errors report
+; get the current PED of the Clinic being processed for update into f088 hdr
+
+use $use/get_iconst_clinic_values_globals.qts   ;nol
+use $use/get_iconst_clinic_values.qts           ;nol
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+set process nolimit
+
+;-------------------------------------------------------------------------
+; REQUEST 3a - extract 'chargeable' details from f088-dtl for current RAT
+;-------------------------------------------------------------------------
+
+request u030bb_1_extract_chargeable_dtls on calculation errors report	&
+				       on edit errors report
+
+access f088-rat-rejected-claims-hist-dtl                        &
+	   alias f088-dtl					&
+  link 'B',                                   			&
+       nconvert(rat-rejected-claim-dtl[1:9]),     		&
+       nconvert(rat-rejected-claim-dtl[10:2]),  		&
+       '00000',                 				&
+       '0'                                   			&
+    to key-clm-type,                          			&
+       key-clm-batch-nbr,                     			&
+       key-clm-claim-nbr,                     			&
+       key-clm-serv-code,                     			&
+       key-clm-adj-nbr of f002-claims-mstr   opt		&
+  link clmhdr-doc-nbr                                           &
+    to doc-nbr                   of f020-doctor-mstr   opt      &
+  link ohip-err-code to rat-code of f096-ohip-pay-code opt
+
+define x-selected-rat-date date                         &
+        = w-ped
+;       = parm prompt "Enter PAYMENT DATE contained in RAT header record: "
+
+
+; (select ALL transactions in file that RMA has decided to charge for
+;  except for user updated transactions)
+def x-pgm-name char*10 = "fix_f088_b"
+use $use/costing_charge_select.use
+
+
+; (determine outstanding balance of detail. The error code of the detail with
+; the largest difference is used to update the header rec)
+def x-bal = part-dtl-amt-paid - part-dtl-amt-bill
+
+; (sort on x-bal so that the dtl with largest difference between paid/billed
+;  is sorted last)
+define x-claim-nbr char*11 = rat-rejected-claim-dtl[1:11]
+sort on x-claim-nbr	&
+     on x-bal           
+
+subfile u030bb_1_chargeable_details 		&
+  keep at x-claim-nbr include 			&
+     x-claim-nbr,  				&
+     ohip-err-code, 				&
+     ped,					&
+     entry-user-iD
+
+;-------------------------------------------------------------------------
+; REQUEST 3b - udpate f088-dtl with least paid detail's OHIP error code
+;		and set charge-status to "Y"es
+;-------------------------------------------------------------------------
+; (update header with the error code of the detail with the largest shortfall 
+;  ie. with the largest descrepancy between paid and billed)
+request u030bb_1_update_f088_dtl  on calculation errors report 	&
+		  		  on edit errors report
+
+access *u030bb_1_chargeable_details             &
+ link x-claim-nbr,                              &
+      ped                                       &
+   to rat-rejected-claim,                       &
+      ped                                       &
+      of f088-rat-rejected-claims-hist-hdr      &
+                alias f088-hdr
+
+use $use/f088_charge_status.def nol
+
+output f088-rat-rejected-claims-hist-hdr 			&
+	alias f088-hdr-update update on errors report noitems
+
+ item ohip-err-code of f088-hdr-update				&
+		    final ohip-err-code of u030bb_1_chargeable_details
+ item charge-status final charged
+

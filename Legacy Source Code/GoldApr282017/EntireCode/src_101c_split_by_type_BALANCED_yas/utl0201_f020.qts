@@ -1,0 +1,75 @@
+;#> PROGRAM-ID.   utl0201.qts
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :
+;	- extract data from:
+;		- all 'doctor changes audit' files 
+;		- f020
+;		- all payments from f119 and f119 history
+;	  and place into .ps for ftp download to SQL server database
+;
+;	NOTE:  This program is run for 3 environments for their own files and then consolidate to *_all.ps in 101c/production
+;	       This program should NOT extract master files that are shared the same for all environments.  If needed, define
+;	       in utl0030.qts
+
+;  MODIFICATION HISTORY
+;    DATE   WHO   DESCRIPTION
+; 2015/mar/03 b.e - original
+; 2015/mar/24 MC1 - transfer the request for f191 from ut0030.qts as agreed by Brad
+; 2017/jan/09 be2 - ID: 1706 - don't see f020-doctor-mstr doctors if terminate > 18 months ago
+
+
+cancel clear
+
+set stacksize 15000
+run utl0201
+
+set default
+set verify errors
+set process nolimit
+set lock record update
+
+
+global temp  environment char*4  parm prompt 'Select environment (101c, Solo, MP): '
+
+;-------------------------------------------------------------------------------
+Request utl0201_f020
+
+access f020-doctor-mstr                 &
+        link doc-dept                   &
+        to   dept-nbr of f070-dept-mstr
+
+
+;be2  don't select any doctor  terminated > 18 months ago
+def sys-mth = mod((sysdate /100),100)
+;def term-18-mths-ago zoned*8 unsigned = sysdate - 10600 if sys-mth > 06  &
+;                                else    sysdate - 19400 if sys-mth < 07
+def term-18-mths-ago zoned*8 unsigned = 20151231
+sel if doc-date-fac-term = 0   or doc-date-fac-term > term-18-mths-ago
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+def x-doc-ohip-nbr char*6 = ascii(doc-ohip-nbr)[1:6]
+def x-doc-sin-nbr  char*9 = ascii(doc-sin-nbr)[1:9]
+subfile utl0f020   portable keep include        &
+        environment             ,       &
+        x-delimiter             ,       &
+        doc-nbr                 ,       &
+        x-delimiter             ,       &
+        doc-dept                ,       &
+        x-delimiter             ,       &
+        doc-name                ,       &
+        x-delimiter             ,       &
+        doc-inits               ,       &
+        x-delimiter             ,       &
+        x-doc-ohip-nbr          ,       &
+        x-delimiter             ,       &
+        x-doc-sin-nbr           ,       &
+        x-delimiter             ,       &
+        doc-date-fac-term       ,       &
+        x-lf
+
+build $obj/utl0201_f020

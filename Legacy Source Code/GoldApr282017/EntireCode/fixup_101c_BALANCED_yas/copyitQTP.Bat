@@ -1,0 +1,16 @@
+copy CREATEF073_COSTING.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy DEL_DOCTOR.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy PURGE_F071.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy PURGE_F071_RMA.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_CLAIMS.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_CLAIMS_REASON.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_F001_F002_SUB_TYPE.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_F087.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_F087_VH8.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSP_HDR_DTL_ADD_DESC.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSPEND_ALL_DTL.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSPEND_HDR.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSPEND_HDR_DTL.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSPEND_HDR_DTL_DIAG.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSPEND_HDR_FROM_ALL_DTL.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp
+copy UPDATE_SUSPEND_OHIP.qts C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\qtp

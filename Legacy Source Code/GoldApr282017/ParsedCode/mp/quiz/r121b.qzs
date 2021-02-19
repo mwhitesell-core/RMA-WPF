@@ -1,0 +1,94 @@
+; PROGRAM: R121B.QZS
+;      REPORT MTD AND YTD FIGURES PRINT AT DOC-DEPT
+
+; DATE      WHO       MODIFICATION
+; 94/08/17  B.M.L.    ORIGINAL
+; 94/11/03  YASEMIN   ADD CLASS PLASTIC SURGERY
+; 95/01/09  YASEMIN   CHANGE SORT ORDER TO MATCH R119A.QZS
+; 98/01/29  J. CHAU   COMMENT OUT SET NOCLOSE
+; 14/may/14 MC1       link to f112 to not select pay code 7
+
+;
+cancel clear
+set default
+set noblanks
+set report nolimit
+set report dev disc name r121b
+set page width 132 length 63
+set formfeed
+;jc set noclose
+
+access f020-doctor-mstr                   	           	&
+  link doc-nbr to doc-nbr of f119-doctor-ytd                    &
+  link comp-code to f190-comp-codes              opt            &
+  link doc-dept to dept-nbr of f070-dept-mstr    opt            &
+  link (6) to const-rec-nbr of constants-mstr-rec-6		&
+; MC1
+  link  current-ep-nbr,                                         &
+        doc-nbr of f119-doctor-ytd                              &
+   to   ep-nbr ,                                                &
+        doc-nbr of f112-pycdceilings
+; MC1 - end
+
+;MC1
+sel if doc-pay-code of f112-pycdceilings <> '7'
+
+;DEF X-KEY1 CHAR*11 =  COMP-TYPE + COMP-CODE
+ def x-key1 cha*9  = comp-code-group + ascii(reporting-seq,2) + comp-code
+
+def x-key2 char*1 =  "D" if doc-dept  eq 14			&
+		else "A" if doc-full-part-ind eq "F"		&
+		else "B" if doc-full-part-ind eq "P"		&
+		else "C" if doc-full-part-ind eq "C"            &
+		else "S" if doc-full-part-ind eq "S"            &
+		else "E"
+
+def x-class cha*18 = "FULL TIME"         if x-key2  = "A"  &
+                else "PART TIME"         if x-key2  = "B"  &
+                else "CLINICAL SCHOLARS" if x-key2  = "C"  &
+                else "PLASTIC SURGERY"   if x-key2  = "S"  &
+                else "DEPT-14        "   if x-key2  = "D"  &
+		else "UNKNOWN"           if x-key2  = "E"
+
+sort on x-key2              on x-key1
+
+page heading							&
+  tab  1 "R121"							&
+  tab  7 "RUN DATE:"						&
+;y2k
+  tab 17  sysdate						&
+  tab 47  sysname						&
+  tab 121 "PAGE:"						&
+  tab 127 syspage						&
+skip 1								&
+  tab 49  "EARNINGS REGISTER MTD & YTD TOTALS"                  &
+skip 1								&
+  tab 53  "For Earnings Period: "				&
+  tab 74  current-ep-nbr    				        &
+skip 2
+
+heading at x-key2                                                     &
+        tab  1  "********** CLASS TOTALS **********"             &
+skip 2  tab  1  "CLASS : "                                            &
+        tab  11 x-class                                               &
+skip 2  tab  52  "COMPENSATION DESCRIPTION"                           &
+        tab 103 "MTD"                                                 &
+        tab 118 "YTD"                                                 &
+skip 2
+
+footing at x-key1                                                     &
+skip 1  tab  50 comp-type                                             &
+        tab  52 comp-code of f119-doctor-ytd                          &
+        tab  59 "-"                                                   &
+        tab  60 desc-short                                            &
+        tab  93 amt-mtd                                               &
+                  subtotal pic "^^,^^^,^^^.^^"                        &
+        tab 108 amt-ytd   of f119-doctor-ytd                          &
+                  subtotal pic "^^,^^^,^^^.^^"                        &
+skip 1
+
+footing at x-key2   skip page
+
+build $pb_obj/r121b
+
+  

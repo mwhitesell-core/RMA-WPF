@@ -1,0 +1,164 @@
+; NAME   : PM43.QZS
+; PURPOSE: Create a report of the PWO invoiced hours and $ amounts
+;          broken down by Activity Code
+; MODIFICATION HISTORY
+; YY/MMM/DD 	By Whom     	Why
+; ??/???/?? 	?. ????????  	- original
+; 92/FEB/28	M. CHAN		- SAF 1005 (ORIGINAL)
+;				- CLONE FROM PM17.QZS
+;				- MODIFY THE PROGRAM TO HAVE FUNCTION/
+;				  ACTIVITY BREAKDOWN
+
+
+
+cancel clear
+
+set default
+set report device printer
+set page length 60 width 80
+set report nolimit
+
+access ftimesht 	  &
+       link to fclients   &
+       and  to fpwos      &
+       link(ascii(pwo-num,5)+activity) to pwoact-key of fpwoacts &
+       and  tsht-emp to emp-num of femployees &
+       and  (characters(tsht-emp) + characters(pwo-num)) to emppwo-key of femppwos
+choose pwo-num parm                  &
+       prompt "Choose PWO # without period (Enter new line to select all): "
+define x-mark char*1 = parm upshift prompt &
+	"Do you want to print MARKETING activity code (Y)es or (N)o? "
+
+define x-breakdown char*1 = parm upshift prompt &
+	"Do you want to print ONLY THOSE PWO's REQUIRING THIS BREAKDOWN (Y)es or (N)o? "
+
+define x-yymm zoned*4 unsigned = parm &
+	prompt "ENTER YYMM FOR INVOICING: "
+
+define year character*2 = characters(x-yymm)[1:2]
+define month character*9 = &
+ 	"  JANUARY" if characters(x-yymm)[3:2] = "01" else &
+        " FEBRUARY" if characters(x-yymm)[3:2] = "02" else &
+        "    MARCH" if characters(x-yymm)[3:2] = "03" else &
+        "    APRIL" if characters(x-yymm)[3:2] = "04" else &
+        "      MAY" if characters(x-yymm)[3:2] = "05" else &
+        "     JUNE" if characters(x-yymm)[3:2] = "06" else &
+        "     JULY" if characters(x-yymm)[3:2] = "07" else &
+        "   AUGUST" if characters(x-yymm)[3:2] = "08" else &
+        "SEPTEMBER" if characters(x-yymm)[3:2] = "09" else &
+        "  OCTOBER" if characters(x-yymm)[3:2] = "10" else &
+        " NOVEMBER" if characters(x-yymm)[3:2] = "11" else &
+        " DECEMBER" if characters(x-yymm)[3:2] = "12"
+;DEFINE X-INVOICE CHAR*1 = PARM                             &
+;      PROMPT "Do you wish INVOICED AMOUNT printed (Y)es or (N)o: "
+define x-bill-hrs pic '^^^^^^.^^' &
+       = tot if billable = ' '  &
+       else 0
+;DEFINE X-BILL-DOLLAR-AMT NUMERIC*8 = X-BILL-HRS * BILL-RATE/100 &
+;                                    IF INVOICED-AMOUNT = "Y" ELSE 0
+define x-nobill-hrs pic '^^^^^^.^^' &
+       = tot if billable = '*'  &
+       else 0
+define x-nobill-dollar-amt numeric*8 = x-nobill-hrs * bill-rate/100 &
+                                     if billable = "*" else 0
+;DEFINE X-INVOICED CHAR*8 = "INVOICED" IF INVOICED-AMOUNT = "Y" ELSE " "
+;DEFINE X-AMOUNT   CHAR*8 = " AMOUNT " IF INVOICED-AMOUNT = "Y" ELSE " "
+;DEFINE X-WRITEOFF CHAR*11  = "WRITTEN OFF"
+
+;DEFINE X-LINE1    CHAR*8 = "--------" IF INVOICED-AMOUNT = "Y" ELSE " "
+;DEFINE X-LINE2    CHAR*8 = "========" IF INVOICED-AMOUNT = "Y" ELSE " "
+
+define x-func-desc char*30 =				&
+     "FEASIBILITY STUDY            " if function = "P30" &
+else "USER REQUIREMENT SPECIFICATN " if function = "P31" &
+else "GENERAL SYSTEMS DESIGN	   " if function = "P32" &
+else "DETAIL SYSTEMS DESIGN        " if function = "P33" &
+else "PROGRAMMING                  " if function = "P34" &
+else "TESTING                      " if function = "P35" &
+else "IMPLEMENTATION               " if function = "P36" &
+else "SYSTEMS AUDIT                " if function = "P37" &
+else "SYSTEMS SOFTWARE             " if function = "P38" &
+else "DOCUMENTATION                " if function = "P39" &
+else "CONSULTING                   " if function = "P40" &
+else "PROJECT MANAGEMENT           " if function = "P41" &
+else "MEETINGS                     " if function = "P42" &
+else "TRAVEL                       " if function = "P98" &
+else "IDLE TIME                    " if function = "P99" &
+else "TRAINING GIVEN               " if function = "T01" &
+else "TRAINING RECEIVED/PREPARATION" if function = "T02" &
+else "MARKETING                    " if function = "M10" &
+else "MARKETING - SUPPORT          " if function = "M11" &
+else "VACATION                     " if function = "L01" &
+else "ILLNESS                      " if function = "L02" &
+else "STATUTORY HOLIDAY            " if function = "L03" &
+else "OTHER PAID LEAVE             " if function = "L04" &
+else "OTHER UNPAID LEAVE           " if function = "L05" &
+else "AUTHORIZED TIME OFF          " if function = "L06" &
+else "ADMINISTRATIVE FUNCTIONS     " if function = "A21" &
+else "SECRETARIAL SERVICES         " if function = "A22" &
+else "RECRUITMENT                  " if function = "A23" &
+else "TRAVELARIAL SERVICES         " if function = "A98" &
+else "IDLE TIME                    " if function = "A99"
+
+select ftimesht if (   (tsht-yymm = x-yymm and x-mark = "Y")	 &
+                    or (     tsht-yymm = x-yymm and x-mark = "N"     &
+                         and activity of ftimesht <> "MK01"  	    &
+ 	                 and activity of ftimesht <> "MK02"))
+
+select fpwos if (   x-breakdown = "N" &
+		 or (pwo-breakdown = "Y" and x-breakdown = "Y"))
+
+sort on pwo-num reset page on activity on tsht-emp
+sort on pwo-num reset page on function on activity on tsht-emp
+
+page heading                   sysdate format yymmmdd 	&
+	tab 29 "DYAD TECHNOLOGIES INC." tab 70 "PAGE: " &
+	tab 76 syspage skip 2 tab 25 "PWO/FUNCTION/ACTIVITY BREAKDOWN" &
+        skip 1 &
+        tab  33 month tab 42 "/" tab 43 year &
+	skip 3 "Client:" tab 15 cl-name &
+        skip 2 "PWO # :" tab 15 pwo-num bwz tab 25 pwo-desc &
+        skip 3 "ACTIVITY" tab 41 "EMPLOYEE" tab 61 "------ HOURS ------" &
+;                          TAB 84 X-INVOICED         &
+;			   TAB 97 X-WRITEOFF	     &
+;       SKIP 1 TAB 61 "   N/C     BILLABLE" TAB 84 X-AMOUNT SKIP 2
+        skip 1 tab 61 "   N/C     BILLABLE" skip 2
+
+heading at function					&
+	tab 1  "FUNCTION: "				&
+	tab 12 function					&
+	tab 20 x-func-desc				&
+	skip 3
+
+footing at tsht-emp tab 05 activity print at activity &
+                    tab 10 act-desc of fpwoacts print at activity &
+        tab 41 name                       &
+        tab 58 x-nobill-hrs   subtotal pic "^^^^^^.^^" bwz &
+        tab 71 x-bill-hrs   subtotal pic "^^^^^^.^^" bwz
+;       TAB 84 X-BILL-DOLLAR-AMT SUBTOTAL PIC "^^^^^^.^^" BWZ &
+;	TAB 97 X-NOBILL-DOLLAR-AMT SUBTOTAL PIC "^^^^^^.^^" BWZ
+
+footing at activity skip 2
+
+;FOOTING AT ACTIVITY SKIP 1 TAB 58 "---------" TAB 71 "---------" &
+;       SKIP 1 TAB 41 "TOTAL ACTIVITY:" &
+;       TAB 58 X-NOBILL-HRS SUBTOTAL PIC "^^^^^^.^^" BWZ &
+;       TAB 71 X-BILL-HRS SUBTOTAL PIC "^^^^^^.^^" BWZ SKIP 2
+;       TAB 84 X-BILL-DOLLAR-AMT SUBTOTAL PIC "^^^^^^.^^" BWZ SKIP 2 &
+;	TAB 97 X-NOBILL-DOLLAR-AMT SUBTOTAL PIC "^^^^^^.^^" BWZ
+
+footing at function skip 1 tab 58 "---------" tab 71 "---------" &
+        skip 1 tab 1  "TOTAL FUNCTION:" &
+        tab 58 x-nobill-hrs subtotal pic "^^^^^^.^^" bwz &
+        tab 71 x-bill-hrs subtotal pic "^^^^^^.^^" bwz skip 3
+
+footing at pwo-num  skip 2 tab 58 "=========" tab 71 "=========" &
+;       TAB 84 X-LINE2 SKIP 1 TAB 46 "TOTAL PWO:" &
+                       skip 1 tab 46 "TOTAL PWO:" &
+        tab 58 x-nobill-hrs subtotal pic "^^^^^^.^^" bwz &
+        tab 71 x-bill-hrs subtotal pic "^^^^^^.^^" bwz skip page
+;       TAB 84 X-BILL-DOLLAR-AMT SUBTOTAL PIC "^^^^^^.^^" BWZ SKIP PAGE
+
+
+build $pb_obj/pm43
+  

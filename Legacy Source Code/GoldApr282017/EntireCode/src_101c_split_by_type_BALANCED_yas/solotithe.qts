@@ -1,0 +1,138 @@
+;doc     : solotithe.qts           
+;purpose : create a excel file for dept 4 H132 docs                          
+;	   sort by doc-name  
+;who     : For Dwayne Martins                                    
+;
+; *************************************************************
+
+;Date		Who		Description
+;2008/10/07	Yasemin	        original
+; 2016/Aug/11   MC1             - add a new column for term date as requested by Yasemin
+; 2016/Aug/15      		- change the same as prodtithe.qts for choose and sorted
+; 2016/Sep/08		        - Yasemin agreed to include the new column primary-flag
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd          &
+  link doc-nbr to doc-nbr       &
+    of f020-doctor-mstr opt     &
+; MC1 
+  link doc-nbr to doc-nbr	&
+   of f020-doctor-extra opt
+
+; MC1
+choose doc-nbr
+
+select if doc-afp-paym-group = "H132"                 
+
+sorted on doc-nbr                   
+
+;temp x-afpcon    num*7
+;item x-afpcon    = x-afpcon + amt-ytd/100     &
+;                    if comp-code =  "AFPCON"  &             
+;                    reset at doc-nbr
+
+;;;; tithd1 only picking up the mtd day figures use x-totrev instead
+temp x-tithd1     num*7
+item x-tithd1    = x-tithd1 + amt-ytd/100     &
+                    if comp-code =  "TITHD1"  &
+                    reset at doc-nbr
+
+temp x-tithd2     num*7
+item x-tithd2    = x-tithd2 + amt-ytd/100     &
+                    if comp-code =  "TITHD2"  &
+                    reset at doc-nbr
+
+temp x-tithd3     num*7
+item x-tithd3    = x-tithd3 + amt-ytd/100     &
+                    if comp-code =  "TITHD3"  &
+                    reset at doc-nbr
+
+temp x-totitd     num*7
+item x-totitd    = x-totitd + amt-ytd/100     &
+                    if comp-code =  "TOTITD"  &
+                    reset at doc-nbr
+
+temp x-nonrb      num*7
+item x-nonrb     = x-nonrb  + amt-ytd/100     &
+                    if comp-code =  "NONRB"   &
+                    reset at doc-nbr
+
+temp x-nonrbp     num*7
+item x-nonrbp    = x-nonrbp + amt-ytd/100     &
+                    if comp-code =  "NONRBP"  &
+                    reset at doc-nbr
+
+temp x-depmed     num*7
+item x-depmed    = x-depmed + amt-ytd/100     &
+                    if comp-code =  "DEPMED"  &
+                    reset at doc-nbr
+
+temp x-payeft     num*7
+item x-payeft    = x-payeft + amt-ytd/100     &
+                    if comp-code =  "PAYEFT"  &
+                    reset at doc-nbr
+
+temp x-advout     num*7
+item x-advout    = x-advout + amt-mtd/100     &
+                    if comp-code =  "ADVOUT"  &
+                    reset at doc-nbr
+
+temp x-totrev     num*7
+;item x-totrev    = x-totrev + x-nonrb + x-nonrbp/100     &
+item x-totrev    =  x-nonrb + x-nonrbp         		  &
+                    reset at doc-nbr
+
+temp x-totded     num*7
+;item x-totded    = x-totded + x-tithd1 + x-tithd2 + x-tithd3 + x-depmed/100   &
+item x-totded    =  x-tithd1 + x-tithd2 + x-tithd3 + x-depmed       &
+                    reset at doc-nbr
+; MC1
+def term-date char*8 = ascii(doc-date-fac-term) if doc-date-fac-term <> 0
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile solotithe  portable keep at doc-nbr include  &
+;doc-afp-paym-group  of f020-doctor-mstr             ,&
+;comma                                               ,&
+doc-nbr             of f020-doctor-mstr             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-nonrb                                             ,&
+comma                                               ,&
+x-nonrbp                                            ,&
+comma                                               ,&
+x-totrev                                            ,&
+comma                                               ,&
+x-tithd1                                            ,&
+comma                                               ,&
+x-tithd2                                            ,&
+comma                                               ,&
+x-tithd3                                            ,&
+comma                                               ,&
+x-depmed                                            ,&
+comma                                               ,&
+x-totded                                            ,&
+comma                                               ,&
+x-advout                                            ,&
+; MC1
+comma                                               ,&
+term-date          				    ,&
+comma                                               ,&
+doc-flag-primary				    ,&
+; MC1 - end
+x-cr
+
+build $obj/solotithe

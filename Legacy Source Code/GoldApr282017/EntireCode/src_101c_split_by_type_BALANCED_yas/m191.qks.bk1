@@ -1,0 +1,129 @@
+;#> PROGRAM-ID.     M191.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: MAINTENANCE OF THE EARNINGS PERIOD MASTER
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   M.C.     - original
+;
+; ???? !!!! ERROR CHECKS MUST USE 'DO APPEND' CHECKING NOT IN PREUPDATE !!!!
+;
+;  1999/Jan/19 		S.B.     - Reset the alignment for the details
+;				   and the titles for Y2K compliance.
+;   1999/Jun/07         S.B.     - Altered the call to scrtitle.use and
+;                                  stdhilite.use to be called from $use
+;                                  instead of src.
+;                                - Removed the call to secfile.use because
+;                                  it was not doing anything.
+;
+;  2002/May/28		M.C.	- add process procedure to set ped-yyyymm
+;				  from iconst-date-period-end
+
+
+cancel clear
+
+screen $pb_obj/m191.qkc on 1 for 23 message on line 24
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows maintenance of the EARNINGS PERIOD NUMBERS, " &
+"       and associated BILLINGS P.E.D. and ACCOUNTING PERIOD           " &
+"                                                                      " &
+"                                                                      "
+
+file  f191-earnings-period  primary  occurs 13
+
+define x-screen-name char*55 = "EARNINGS PERIOD (E/P) Maintenance"
+use $use/scrtitle.use  nol nod
+use $use/stdhilite.use nol nod
+
+skip to 3
+title                                                                          &
+"   -Fiscal-                                  DIRECT  --ACCOUNTING--           " &
+at ,1
+skip
+title                                                                          &
+"   E/P    Seq BILLING     START      END     DEPOSI  ----PERIOD---- ---STATUS---" &
+at ,1
+skip
+title                                                                          &
+"   Nbr    Nbr   PED       DATE       DATE    DATE    NBR  DATE END VALUE   DATE" &
+at ,1
+skip
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;
+;01 199101 99 1991/07/20 1991/07/01 19910720  19910801  01 19910731  C  19910803
+align (1,,4) (,,11) (,,14) (,,25) (,,36) (,,45) (,,55) (,,59) (,,69) (,,72)
+cluster occurs with f191-earnings-period   ; FOR 13,80
+field ep-nbr            of f191-earnings-period			&
+      lookup noton f191-earnings-period				&
+      message "Error - This EARNINGS PERIOD has already been defined."
+field ep-fiscal-nbr            of f191-earnings-period
+field iconst-date-period-end of f191-earnings-period 
+field ep-date-start          of f191-earnings-period 
+field ep-date-end            of f191-earnings-period pic "^^^^^^^^" &
+	sig 8
+field date-eft-deposit       of f191-earnings-period pic "^^^^^^^^" &
+	sig 8
+field accounting-period-nbr  of f191-earnings-period
+field accounting-period-date-end    of f191-earnings-period	&
+	pic "^^^^^^^^" sig 8
+field ep-status              of f191-earnings-period
+field ep-date-closed         of f191-earnings-period display 	&
+	pic "^^^^^^^^" sig 8
+;FIELD LAST-MOD-DATE         OF F191-EARNINGS-PERIOD
+;FIELD LAST-MOD-TIME         OF F191-EARNINGS-PERIOD
+;FIELD LAST-MOD-USER-ID      OF F191-EARNINGS-PERIOD
+
+
+
+;**************
+;***
+;***   PROCEDURE DEFINITIONS
+;***
+;**************
+
+
+;2002/05/28 - MC
+procedure process iconst-date-period-end
+begin
+   let ped-yyyymm = iconst-date-period-end / 100
+end
+;2002/05/28 - end
+
+;PROCEDURE INPUT BILLING-PED
+;BEGIN
+;  IF FIELDTEXT = "."
+;  THEN BEGIN
+;    LET X-SRCH = " "
+;    RUN SCREEN OBJ:L???.QKC   PASSING T-SRCH-WLOC-CODE  MODE F
+;    IF T-SRCH-WLOC-CODE NE " "
+;    THEN LET FIELDTEXT = T-SRCH-WLOC-CODE
+;  END
+;END
+
+;PROCEDURE EDIT POS-NO
+;BEGIN
+;  IF NEWRECORD OF POSITION
+;  THEN BEGIN
+;    GET WORK-LOC VIA WLOC-CODE USING POS-NO[5:4]
+;    IF NOT ACCESSOK
+;      THEN ERROR "Not valid Work Location"
+;    end
+;  END
+
+procedure preupdate
+begin
+  if ep-date-end < ep-date-start
+  then error "Error - EARNings Period Date Start must preceed Date End."
+
+  if   ep-date-end   < iconst-date-period-end  &
+    or ep-date-start > iconst-date-period-end
+  then error "Error -  Billing PED doesn't fall within EARNing Period's Start/End dates"
+end
+
+build
+  

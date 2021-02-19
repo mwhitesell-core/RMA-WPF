@@ -1,0 +1,54 @@
+; Progam: fix_f020_next_batch_nbr
+; updates f020 with last used batch nbr taken from f001
+; NOTE: pgm can't handle those docs that have "rolled over" from batch 999
+cancel clear
+run fix_f020
+set process nolimit
+
+request get_all_batch_nbrs
+
+access f001-batch-control-file
+
+define x-doc-nbr	zoned*3 = nconvert(ascii(batctrl-batch-nbr)[4:3])
+define x-batch-nbr	zoned*3 = nconvert(ascii(batctrl-batch-nbr)[7:3])
+
+subfile fix_f020_next_batch_nbr_1 keep include 	&
+   x-doc-nbr,	&
+   x-batch-nbr
+
+
+request find_highest_batch_nbr
+set process nolimit
+
+access *fix_f020_next_batch_nbr_1
+
+sort on x-doc-nbr 	&
+     on x-batch-nbr
+
+subfile fix_f020_next_batch_nbr_2 keep at x-doc-nbr	&
+  include 						&
+    x-doc-nbr, 						&
+    x-batch-nbr
+
+
+request update_f020_with_batch_nbr
+set process nolimit
+
+access *fix_f020_next_batch_nbr_2		&
+     link x-doc-nbr				&
+     to     doc-nbr of f020-doctor-mstr
+
+subfile fix_f020_updated_batch_nbr_3 keep 		&
+  include 						&
+   x-doc-nbr, 						&
+   x-batch-nbr, 					&
+   doc-nx-avail-batch of f020-doctor-mstr
+
+output f020-doctor-mstr update 				&
+  if   doc-nx-avail-batch of f020-doctor-mstr		&
+    <> x-batch-nbr of fix_f020_next_batch_nbr_2
+
+  item doc-nx-avail-batch final x-batch-nbr of fix_f020_next_batch_nbr_2
+
+
+

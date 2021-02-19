@@ -1,0 +1,248 @@
+;doc     : dwayneloc.qts
+;purpose : report cardiology docs print at oma code                          
+;          report doc, omacod, omacode exp, loc, location name amount
+;          July 1, 2004 to June 30 2005
+;who     : Dr. Dwayne Martins 
+
+
+;Date		Who		Description
+;2006/04/03	Yasemin	        drdentloc
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr			
+ 
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22431@",          &
+                                              "34431@",          &
+                                              "61431@",          &
+                                              "22413@",          &
+                                              "34413@",          &
+                                              "22415@",          &
+                                              "34415@",          &
+                                              "61415@",          &
+                                              "64415@",          &
+                                              "22442@",          &
+                                              "34442@",          &
+                                              "61442@",          &
+                                              "64442@",          &
+                                              "22873@",          &
+                                              "34873@",          &
+                                              "22660@",          &
+                                              "34660@",          &
+                                              "22620@",          &
+                                              "34620@",          &
+                                              "61620@",          &
+                                              "22015@",          &
+                                              "34015@",          &
+                                              "61015@",          &
+                                              "22976@",          &
+                                              "34976@",          &
+                                              "61976@",          &
+                                              "22181@",          &
+                                              "34181@",          &
+                                              "61181@",          &
+                                              "22809@",          &
+                                              "34809@",          &
+                                              "22C53@",          &
+                                              "34C53@",          &
+                                              "22891@",          &
+                                              "22492@",          &
+                                              "22D98@",          &
+                                              "34D98@",          &
+                                              "22907@",          &
+                                              "34907@",          &
+                                              "61907@",          &
+                                              "22D50@",          &
+                                              "34D50@",          &
+                                              "61D50@",          &
+                                              "64D50@",          &
+                                              "22793@",          &
+                                              "34793@",          &
+                                              "22E46@",          &
+                                              "34E46@",          &
+                                              "61E46@",          &
+                                              "22441@",          &
+                                              "34441@",          &
+                                              "22329@",          &
+                                              "34329@",          &
+                                              "61329@",          &
+                                              "22476@",          &
+                                              "34476@",          &
+                                              "61476@",          &
+                                              "22004@",          &
+                                              "34004@",          &
+                                              "61004@",          &
+                                              "22115@",          &
+                                              "34115@",          &
+                                              "22158@",          &
+                                              "22366@",          &
+                                              "34366@",          &
+        key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+select f002-claims-mstr if clmhdr-batch-type = 'C'                  
+        
+subfile dwayneloc keep include                   &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+clmhdr-loc                   of f002-claims-mstr,& 
+clmhdr-hosp                  of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dwayneloc                                                           &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20040701' & 
+       and  clmdtl-sv-date     <= '20050630' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"       ; "  "             "
+
+def x-oma-code cha*5 = clmdtl-id[11:5]
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-doc-nbr cha*3 = (clmdtl-id[3:3])
+                                         
+subfile dwayneloc1 keep include           &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+x-sv-date-1                              ,&
+x-sv-nbr1	                         ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code	                         ,& 
+clmhdr-loc	      of dwayneloc       ,& 
+clmhdr-hosp           of dwayneloc       ,& 
+x-clmdtl-fee-ohip-1                      
+
+subfile dwayneloc1 alias drdent_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+x-sv-date-2                              ,&
+x-sv-nbr2                                ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code                               ,&
+clmhdr-loc            of dwayneloc       ,&
+clmhdr-hosp           of dwayneloc       ,& 
+x-clmdtl-fee-ohip-2                     
+
+subfile dwayneloc1 alias drdent_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+x-sv-date-3                              ,&
+x-sv-nbr3                                ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code                               ,&
+clmhdr-loc            of dwayneloc       ,&
+clmhdr-hosp           of dwayneloc       ,& 
+x-clmdtl-fee-ohip-3                      
+
+subfile dwayneloc1 alias drdent_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+x-sv-date-4                              ,&
+x-sv-nbr4                                ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code                               ,&
+clmhdr-loc            of dwayneloc       ,&
+clmhdr-hosp           of dwayneloc       ,& 
+x-clmdtl-fee-ohip-4                      
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dwayneloc1
+ 
+sort on x-doc-nbr on clmhdr-loc on x-oma-code
+
+subfile dwayneloc2 keep at x-doc-nbr   include      &
+clmdtl-id       of dwayneloc1               ,&
+x-doc-nbr             of dwayneloc1         ,&
+x-sv-nbr1	      of dwayneloc1         ,& 
+x-oma-code	      of dwayneloc1         ,& 
+clmhdr-loc	      of dwayneloc1         ,& 
+clmhdr-hosp           of dwayneloc1         ,& 
+x-clmdtl-fee-ohip-1   of dwayneloc1         
+
+build $obj/dwayneloc

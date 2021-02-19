@@ -1,0 +1,154 @@
+;program: r084.qzs
+;
+;program purpose : report claim information by clinis, doctor and batch 
+;                  received date
+;
+;    DATE      BY WHOM     DESCRIPTION
+; 2000/Feb/10  B.Annis	- original
+; 2000/feb/28  B.E.	- cosmetics
+; 2000/fef/29  B.Annis   - added new run
+;			- changed original access statement to only extract
+;                         those records related to the previous current-ep-nbr
+; 2000/jul/26  B.E.	- changed selection criteria. User enters PED to be
+;			  processed and all clinics are processed with that PED
+; 2000/aug/30 B.E.	- corrected heading so that proper clinic appears on
+;			  each page, add claim-source to printout
+; 2000/sep/25 B.E.	- change select statement to match on dates but ignore
+;			  'dd' portion of date
+;
+can clear
+
+set rep nolimit
+set rep page width 132 length 66
+set rep device disc name r084
+set formfeed
+
+access f084-claims-inventory 					&
+   link doc-nbr of f084-claims-inventory			&
+     to doc-nbr of f020-doctor-mstr   opt			
+
+def x-selected-ped date = parm prompt "Enter PED to process(yyyymmdd) : "
+def x-selected-ped-yymm zoned*6 = nconvert(ascii(x-selected-ped)[1:6])
+def x-f084-ped-yymm     zoned*6 = ((iconst-date-period-end))/100
+
+; (ignore 'dd' when matching dates)
+select if x-selected-ped-yymm = x-f084-ped-yymm 
+;select if   iconst-date-period-end of f084-claims-inventory		&
+;	  = x-selected-ped
+
+sort on clmhdr-clinic-nbr-1-2 	&
+     on doc-name              	&
+     on batch-received-date
+
+define  d-received-claims     =   nbr-claims-batches  &
+                               +  nbr-claims-queried  
+define  d-unregistered-claims = nbr-claims-batches  &
+        if doc-ohip-nbr = 0
+
+set nohead
+
+heading at clmhdr-clinic-nbr-1-2 skip page
+
+page heading						&
+        tab  1  "r084"                             	&
+        tab 24 "Monthly Claims Invertory Report"	&
+        tab 60 sysdate 					& 
+        tab 72 "Page "					&
+        tab 77 syspage pic "^^^"                	&
+skip 1 							&
+        tab 29 "By Clinic and Doctor"			&
+skip 2							&
+  	tab 32 "For Clinic: " 				&
+  	tab 44 clmhdr-clinic-nbr-1-2			&
+skip 1							&
+	tab 32 "PED       : "				&
+	tab 44 x-selected-ped				&
+skip 2							&
+  tab 04 "Doctor"   					&
+  tab 62 "Total"					&
+  tab 86 "Billing" 	  				&
+  tab 96 "Claim"					&
+skip 1				  			&
+  tab 01 "Nbr/Dept Name"				&
+  tab 34 "Date"						&
+  tab 41 "Claims"		  			&
+  tab 50 "Queries"		  			&
+  tab 59 "Received"		  			&
+  tab 68 "Unprocessed" 	 	  			&
+  tab 81 "Unregistered"		  			&
+  tab 96 "Source"					&
+  tab 106 "Clerk"					&
+skip 1							&
+  tab 01 "-------------"				&
+  tab 34 "----"						&
+  tab 41 "------"		  			&
+  tab 50 "-------"		  			&
+  tab 59 "--------"		  			&
+  tab 68 "-----------" 	 	  			&
+  tab 81 "------------"		  			&
+  tab 96 "------" 	  				&
+  tab 106 "-----" 	  				&
+skip 2
+
+rep							&
+  tab  1 doc-nbr  print at doc-name			&
+  tab  7 doc-dept print at doc-name			&
+  tab 10 doc-name print at doc-name			&
+  tab 29 batch-received-date				&	
+  tab 44 nbr-claims-batches      pic '^^^'        	&
+  tab 54 nbr-claims-queried      pic '^^^'        	&
+  tab 64 d-received-claims       pic '^^^'        	&
+  tab 76 nbr-claims-unprocessed  pic '^^^'        	&
+  tab 90 d-unregistered-claims   pic '^^^'      	&
+  tab 98 claim-source					&
+  tab 107 billing-clerk-initials
+
+footing at doc-name					&
+  tab 44 "---"						&
+  tab 54 "---"						&
+  tab 64 "---"						&
+  tab 76 "---"						&
+  tab 90 "---"						&
+skip							&
+  tab 25 "Doctor Totals:"				&
+  tab 43 nbr-claims-batches     subt pic '^^^^'        	&
+  tab 53 nbr-claims-queried     subt pic '^^^^'        	&
+  tab 63 d-received-claims      subt pic '^^^^'        	&
+  tab 75 nbr-claims-unprocessed subt pic '^^^^'        	&
+  tab 89 d-unregistered-claims  subt pic '^^^^'      	&
+skip 2
+
+;heading at clmhdr-clinic-nbr-1-2 skip page
+
+footing at clmhdr-clinic-nbr-1-2          		&
+  tab 43 "===="						&
+  tab 53 "===="						&
+  tab 63 "===="						&
+  tab 75 "===="						&
+  tab 89 "===="						&
+skip 2							&
+  tab 01 "Totals for Clinic:"				&
+  tab 20 clmhdr-clinic-nbr-1-2				&
+  tab 41 nbr-claims-batches     subt pic '^^,^^^'      	&
+  tab 52 nbr-claims-queried     subt pic  '^,^^^'      	&
+  tab 61 d-received-claims      subt pic '^^,^^^'      	&
+  tab 74 nbr-claims-unprocessed subt pic  '^,^^^'      	&
+  tab 88 d-unregistered-claims  subt pic  '^,^^^'      
+
+;final footing						&
+; skip 5							&
+;  tab 43 "===="						&
+;  tab 53 "===="						&
+;  tab 63 "===="						&
+;  tab 75 "===="						&
+;  tab 89 "===="						&
+;skip							&
+;  tab 01 "Grand  Totals:"				&
+;  tab 41 nbr-claims-batches     subt pic '^^,^^^'      	&
+;  tab 51 nbr-claims-queried     subt pic '^^,^^^'      	&
+;  tab 61 d-received-claims      subt pic '^^,^^^'      	&
+;  tab 73 nbr-claims-unprocessed subt pic '^^,^^^'      	&
+;  tab 87 d-unregistered-claims  subt pic '^^,^^^'
+
+build $obj/r084
+

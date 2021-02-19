@@ -1,0 +1,97 @@
+;#> PROGRAM-ID.     R030K_CSV.QZS
+;
+;	((C)) Dyad Infosys Ltd 
+;
+;    PROGRAM PURPOSE : PRINT THE DOCTOR'S TOTAL AMOUNT PREMIUM PAID FROM THE RAT
+
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2016/Aug/24 M.C.         - ORIGINAL (clone from r030k.qzs)
+;                            - Helena requested to have CSV version
+
+can clear
+set report nolimit
+set rep dev disc name ru030k_csv
+set rep page width 132 length 0
+set nohead
+
+access *r031a_active_doctor			&
+	link doc-nbr                   		&
+	 to  doc-nbr of f020-doctor-mstr
+
+def x-delimiter char*1 = "~"
+
+def x-period char*1 = "."
+
+def x-clinic-alpha char*2 = ascii(x-clinic,2)
+
+def x-doc-name char*30 = pack(doc-name + ', ' + doc-inits)
+
+def x-dept         char*4  = '"' + ascii(doc-dept,2) + '"'
+
+def x-doc-nbr      char*5  = '"' + doc-nbr     + '"'
+
+def x-doc-ohip-nbr char*8  = '"' + ascii(doc-ohip-nbr of r031a_active_doctor,6) + '"'
+
+def x-total-paid-amt-sign char*1 = "-"                       	  if x-total-paid-amt < 0       &
+                else " "
+def x-total-paid-amt-dollars = abs(x-total-paid-amt) / 100        if x-total-paid-amt <> 0      &
+                else  0
+def x-total-paid-amt-cents   = mod(abs(x-total-paid-amt),100)     if x-total-paid-amt <> 0      &
+                else  0
+
+def x-paid-amt-alpha char*10 =  pack(trunc(lj(x-total-paid-amt-sign +             &
+                                              ascii(x-total-paid-amt-dollars) +   &
+                                              x-period +                          &
+                                              ascii(x-total-paid-amt-cents,2))))
+
+def x-term-date char*8 = ascii(doc-date-fac-term) if doc-date-fac-term <> 0
+
+sort on doc-dept on doc-name
+
+
+def x-head char*132 =						&
+                'CLINIC'                                        &
+             +  x-delimiter                                     &
+             +  'DEPT'                                          &
+             +  x-delimiter                                     &
+             +  'DOC OHIP NBR'                                  &
+             +  x-delimiter                                     &
+             +  'DOC#'                                          &
+             +  x-delimiter                                     &
+             +  'DOC NAME'                                      &
+             +  x-delimiter                                     &
+             +  'PAID AMOUNT'                                   &
+             +  x-delimiter                                     &
+             +  'TERM DATE'	
+
+
+def x-line char*132 =                                   &
+        lj(pack(                                        &
+                x-clinic-alpha  +                       &
+                x-delimiter  +                          &
+                x-dept          +                       &
+                x-delimiter  +                          &
+                x-doc-ohip-nbr  +                       &
+                x-delimiter  +                          &
+                x-doc-nbr       +                       &
+                x-delimiter  +                          &
+                x-doc-name      +                       &
+                x-delimiter  +                          &
+                x-paid-amt-alpha  +                     &
+                x-delimiter  +                          &
+                x-term-date                             &
+                ) )
+
+initial heading                                         &
+	tab 1 x-head
+
+report tab 01 x-line
+
+;------------------------------
+
+
+
+
+
+build $pb_obj/r030k_csv

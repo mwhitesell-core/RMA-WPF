@@ -1,0 +1,97 @@
+* file: tech_prof_suff_split_part1.rtn
+* purpose: certain ICC codes must be submitted appropriate suffix depending
+*	   upon tech/prof components. Note that diskette uploaded claims
+*	   are NOT changed 
+* 2001/apr/01 B.E. - original
+* 2001/oct/01 B.E. documentation wrong - corrected!
+
+
+*   (note only RMA repsonsible claims with sufix "A" are tested)
+    if    ( hold-icc-sec (ss-clmdtl-oma) = "PF" or "DU" or "DR" or "NM" )
+      and ( hold-oma-suff(ss-clmdtl-oma) = "A" )
+      and ( not diskette-claim)
+    then
+*	CASE
+*	(if "TECH" only and "A" suffix - change to "B")
+	if    hold-oma-fee-1(ss-clmdtl-oma , ohip)<> 0
+	  and hold-oma-fee-2(ss-clmdtl-oma , ohip) = 0
+	then
+	    move "Y"			    to   flag-tech-prof-suffix-rule
+	    move "B" to hold-oma-suff(ss-clmdtl-oma)
+            perform xa0-display-details     thru xa0-99-exit
+	else
+
+*	(if "PROF" only and "A" suffix - change to "C")
+	if    hold-oma-fee-1(ss-clmdtl-oma , ohip) = 0
+	  and hold-oma-fee-2(ss-clmdtl-oma , ohip)<> 0
+	then
+	    move "Y"				to flag-tech-prof-suffix-rule
+	    move "C"				to hold-oma-suff(ss-clmdtl-oma)
+            perform xa0-display-details         thru xa0-99-exit
+	else
+
+*	(if both "PROF+TECH" "A" suffix - change to "B" and add 2nd line
+*					 with "C" code if not 8th line of input)
+	if    hold-oma-fee-1(ss-clmdtl-oma , ohip)<> 0
+	  and hold-oma-fee-2(ss-clmdtl-oma , ohip)<> 0
+	then
+	    perform zz6-calc-ss-for-next-dtl	thru   zz6-99-exit
+	    if    online-claim
+	    then
+*	        (error if new line would exceed max allowed number of detail lines)
+	        if ss-clmdtl-new-dtl > ss-max-nbr-oma-det-rec-allow
+	        then
+		    move 101			to err-ind
+		    perform za0-common-error	thru za0-99-exit 
+*		    (blank line entered since it can't be expanded)
+		    move spaces		to hold-oma-rec     (ss-clmdtl-oma)
+		    move zero		to hold-sv-nbr-serv (ss-clmdtl-oma)
+		    move zero		to hold-sv-date     (ss-clmdtl-oma)
+		    move zero		to hold-sv-nbr-days-conseq
+							    (ss-clmdtl-oma,1)
+		    move zero		to hold-sv-nbr-days-conseq
+							    (ss-clmdtl-oma,2)
+		    move zero		to hold-sv-nbr-days-conseq
+							    (ss-clmdtl-oma,3)
+		    move zero		to hold-fee-incoming(ss-clmdtl-oma)
+		    move zero		to hold-fee-oma     (ss-clmdtl-oma)
+		    move zero		to hold-fee-ohip    (ss-clmdtl-oma)
+		    move zero		to hold-priced-tech (ss-clmdtl-oma)
+		    move zero		to hold-basic-tech  (ss-clmdtl-oma)
+		    move zero		to hold-basic-prof  (ss-clmdtl-oma)
+	  	    move zero		to hold-basic-fee   (ss-clmdtl-oma)
+	  	    move zero		to hold-oma-fees    (ss-clmdtl-oma,1)
+		    move zero		to hold-oma-fees    (ss-clmdtl-oma,2)
+		    move zero		to hold-fee-min     (ss-clmdtl-oma,1)
+		    move zero		to hold-fee-min     (ss-clmdtl-oma,2)
+		    move zero		to hold-fee-max     (ss-clmdtl-oma,1)
+		    move zero		to hold-fee-max     (ss-clmdtl-oma,2)
+		    move zero		to hold-oma-fee-anae(ss-clmdtl-oma,1)
+		    move zero		to hold-oma-fee-anae(ss-clmdtl-oma,2)
+		    move zero		to hold-oma-fee-asst(ss-clmdtl-oma,1)
+		    move zero		to hold-oma-fee-asst(ss-clmdtl-oma,2)
+		    move zero		to hold-ss-curr-prev(ss-clmdtl-oma)
+		    move zero		to hold-flag-sec-group(ss-clmdtl-oma)
+		    move zero		to hold-diag-cd     (ss-clmdtl-oma)
+		    move zero		to hold-line-no     (ss-clmdtl-oma)
+	            subtract 1		from                 ss-clmdtl-oma
+	        else
+		    perform zz7-split-a-into-b-and-c thru zz7-99-exit
+*		    (split line's svc need to be added to claim audit counter)
+		    add hold-sv-nbr-serv (ss-clmdtl-oma)
+						     to  nbr-of-services
+		    display scr-last-claim-lit
+		    perform xa0-display-details      thru xa0-99-exit
+*		    (bump up line number so that operator skips the system
+*		     built line from above code)
+		    add 1 			     to   ss-clmdtl-oma
+                    perform xa0-display-details      thru xa0-99-exit
+*		endif
+ 	    else
+		perform zz7-split-a-into-b-and-c     thru zz7-99-exit
+		add 1				     to ss-clmdtl-next-avail-dtl.
+*	    endif
+*	endif
+*	ENDCASE
+
+

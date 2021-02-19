@@ -1,0 +1,95 @@
+;#> program-id.     r022a8.qzs
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SELECT RECORDS FROM F087-DTL FOR MANUAL REVIEW REPORT
+;
+;    MODIFICATION HISTORY
+;    DATE   WHO          DESCRIPTION
+; 03/nov/13 M.C.        - clone from original r022a7.qzs 
+; 03/nov/13 M.C.	- extract rejected details from f087-dtl into
+;			  the subfile r022a7_desc_reject
+;
+; 04/Jan/08 M.C.	- alpha doc nbr
+; 04/Jan/20 M.C.	- pick up the initial reject details, a claim
+;			  could have duplicate rejects from each submission
+;			- add the sort statement and write the subfile at control break
+; 04/May/06 M.C.	- since we have consolidated records from manual-rejected-claims-hist
+;			  into f087-submitted-rejected-claims-hdr/dtl, Yas/users requested to
+;			  exclude the old records from manual-rejected-claims-hist with
+;			  edt-process-date 19000101
+
+cancel clear
+set default
+set rep nolimit
+
+
+access *u022a4	&
+; 2004/01/08 - MC
+;!  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),      &
+;!           (nconvert(clmhdr-claim-id[10:2])),               &
+   link ("B" ,(clmhdr-claim-id[1:8]),                  &
+              (nconvert(clmhdr-claim-id[9:2])),                &
+; 2004/01/08 - end
+	"00000", "0")						&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+	key-clm-serv-code, key-clm-adj-nbr			&
+	of f002-claims-mstr opt					&
+  link (clmhdr-claim-id, clmhdr-date-period-end)		&
+  to  submitted-rejected-claim, ped 				&
+        of f087-submitted-rejected-claims-dtl  
+
+
+def w-health-nbr char*12 =	&
+	ascii(pat-health-nbr,10) if pat-health-nbr <> 0	&
+	else w-pat-ohip-mmyy
+
+def w-wcb char*1 = "Y" if batctrl-agent-cd = 2
+
+def x-type char*1 = 'R'
+def x-clmdtl-desc char*22 = ' '
+
+; 2004/05/06 - MC
+sel if edt-process-date <> 19000101
+; 2004/05/06 - end
+
+
+; 2004/01/20 - MC
+sort on  clmhdr-claim-id on edt-service-date on edt-oma-service-cd-and-suffix	&
+	on edt-process-date d
+
+;set subfile name r022a7_desc_reject keep append 
+set subfile name r022a7_desc_reject keep append at edt-oma-service-cd-and-suffix
+; 2004/01/20 - end
+
+report	summ				&
+   w-health-nbr                   	& 
+   translated-group-nbr             	& 
+   batctrl-doc-nbr-ohip             	&
+   clmhdr-doc-spec-cd			&
+   clmhdr-claim-id               	&
+   pat-prov-cd				&
+   w-wcb				&
+   clmdtl-sv-date                 	&
+   x-clmdtl-desc			&
+   x-type				&
+   edt-oma-service-cd-and-suffix 	&
+   edt-service-date 			&
+   edt-nbr-serv 			&
+   edt-amount-submitted 		&
+   edt-dtl-diag-cd 			&
+   edt-dtl-err-cd-1 			&
+   edt-dtl-err-cd-2 			&
+   edt-dtl-err-cd-3 			&
+   edt-dtl-err-cd-4 			&
+   edt-dtl-err-cd-5 			&
+   edt-process-date 		  	&	
+   pat-birth-date			&
+   pat-version-cd			&
+   clmhdr-loc
+
+
+
+
+build $pb_obj/r022a8
+

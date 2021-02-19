@@ -1,0 +1,116 @@
+;doc     : dept4142_bydoc_byloc.qts            
+;purpose : report by doc - patient count - separated by location - "H" vs "G"
+
+;
+; *************************************************************
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'             &
+                          and (    clmhdr-doc-dept = 41                &
+                                or clmhdr-doc-dept = 42                &                
+                                or clmhdr-doc-dept = 43)                
+
+def x-claim cha*10 = clmhdr-claim-id[1:10]
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile payrollctas keep include      &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+x-claim                              ,&
+x-clinic                             ,&
+clmhdr-payroll                       ,&
+clmhdr-doc-dept                      ,&
+clmhdr-loc                           ,&
+clmhdr-serv-date                     ,&
+doc-dept                             ,&
+doc-nbr                              ,&
+doc-name                             ,&
+doc-inits
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *payrollctas
+
+select if      clmhdr-serv-date   >= 20150401  &
+          and  clmhdr-serv-date   <= 20160331
+
+def x-loc char*1 = clmhdr-loc[1:4]
+
+def x-month char*6 = ascii(clmhdr-serv-date)[1:6]
+
+;use this sort if you want to print 2 lines for doc one for henderson one for General
+;sort on x-loc on doc-nbr
+
+sort on doc-nbr
+
+temp ctas1-count  num*6
+item ctas1-count  = ctas1-count + 1 if clmhdr-payroll = "1"     &
+                  reset at doc-nbr    
+
+temp ctas2-count  num*6
+item ctas2-count  = ctas2-count + 1 if clmhdr-payroll = "2"     &
+                  reset at doc-nbr   
+
+temp ctas3-count  num*6
+item ctas3-count  = ctas3-count + 1 if clmhdr-payroll = "3"     &
+                  reset at doc-nbr   
+
+temp ctas4-count  num*6
+item ctas4-count  = ctas4-count + 1 if clmhdr-payroll = "4"     &
+                  reset at doc-nbr   
+
+temp ctas5-count  num*6
+item ctas5-count  = ctas5-count + 1 if clmhdr-payroll = "5"     &
+                  reset at doc-nbr    
+
+temp ctas0-count  num*6
+item ctas0-count  = ctas0-count + 1 if clmhdr-payroll = " "     &
+                                    or clmhdr-payroll = "0"     &
+                                    or clmhdr-payroll > "5"     &
+                  reset at doc-nbr   
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile payrollctas1       portable keep at doc-nbr         include    &
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+clmhdr-loc                                          ,&
+comma                                               ,&
+ctas1-count                                         ,&
+comma                                               ,&
+ctas2-count                                         ,&
+comma                                               ,&
+ctas3-count                                         ,&
+comma                                               ,&
+ctas4-count                                         ,&
+comma                                               ,&
+ctas5-count                                         ,&
+comma                                               ,&
+ctas0-count                                         ,&
+x-cr
+
+build $pb_obj/dept4142_doc_loc_ctas

@@ -1,0 +1,89 @@
+; Name   : PM16.QZS
+; Purpose: PWO ACTIVITY REPORT
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD  	By whom        	Why
+; ??/???/??  	?.?           	-
+;
+; 88/09/16    	M. SO		PRINT 2 IMAGES ON THE REPORT
+; 89/11/06    	S. FADER  	SET TO 3 IMAGES AND ADD CHOOSE
+; 90/11/02    	BML       	SET TO INCLUDE PWO BREAKDOWN CHOICE
+;
+; 91/05/29    	S. CHAN   	CANCEL THE SELECTION ON X-BREAKDOWN
+; 92/01/24    	M. CHAN   	SAF 1001 - ALLOW USER TO PRINT EITHER
+;				'O'PEN, 'C'LOSE OR 'A'LL ACTIVITIES
+;				IN EACH PWO
+; 92/02/28	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+;				- PRINT ONLY ONE IMAGE
+;				- PAGE BREAK AT ACT-STATUS
+
+
+can clear
+set report device printer
+set report nolimit
+set page width 80 length 60
+;SET PAGE IMAGES 2
+set noblanks
+
+
+access fpwoacts link pwo-num to pwo-num of fpwos       		&
+		link client of fpwos to client of fclients
+
+choose pwo-num parm prompt                                      &
+       "Select PWO #'s or <CR> for all : "
+
+
+define x-status char*6 = "CLOSED" if pwo-status = "C"   &
+                  else   "OPEN  "
+
+define x-close     char*1 = parm upshift prompt  &
+ "Do you want to print ONLY OPEN PWO'S  (Y)es or (N)o? "
+
+define x-select    char*1 = parm upshift prompt	&
+ "Do you want to print 'O'pen, 'C'losed or 'A'll activities? "
+
+define x-act-status char*6 = 'CLOSED' if act-status = 'C' else 'OPEN'
+
+
+select fpwos if   (  x-close = "N"      			&
+               or (pwo-status = "O" and x-close  = "Y"))
+
+select fpwoacts if  (x-select = 'O' and act-status = 'O')	&
+		or  (x-select = 'C' and act-status = 'C')	&
+		or  (x-select = 'A')
+
+
+;SORT   ON PWO-NUM OF FPWOACTS ON ACTIVITY OF FPWOACTS
+sort   on pwo-num    of fpwoacts              &
+       on act-status of fpwoacts                 &
+       on activity   of fpwoacts
+
+page heading 					&
+	tab 1 "PM16"                		&
+        tab 17 "MINICOMPUTER SERVICES - TIME ACCOUNTING SYSTEM"  &
+        tab 70  sysdate format ddmmmyy  skip 2     	&
+        tab 29 "INVOICE ACTIVITY CODES" skip 2  &
+	tab 1 "PWO"                             &
+       	tab 10 pwo-num of fpwos	       	    	&
+       	tab 20 pwo-desc of fpwos       		&
+        tab 55 "Project Status"  		&
+       	tab 74 x-status             skip 2	&
+	tab 1  "Client"                         &
+       	tab 10 client of fclients             	&
+       	tab 20 cl-name of fclients  skip 2   	&
+	tab 1  "Activity Status"		&
+	tab 20 x-act-status	skip 3		&
+       	tab 10 "Activity"  tab 20 "Description" skip 2
+
+
+report tab 10 activity of fpwoacts        &
+       tab 20 act-desc of fpwoacts
+
+footing at act-status of fpwoacts tab 1 " " skip page
+
+footing at pwo-num of fpwoacts tab 1 " " skip page
+
+
+build $pb_obj/pm16
+  

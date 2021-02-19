@@ -1,0 +1,106 @@
+;doc     : drsethi_rat.qts           
+;purpose : Create a report for Dr. Sethi  clinic 22, 14-L02 
+;          For each date - total number of E082 and E083 codes
+;          For each date - total dollar amount (amount billed only)
+;          Grand total for all E082 and E083 codes both number of codes and dollar amount 
+;who       Send the report to Dr. Sethi or put it on his portal site
+; *************************************************************
+
+;Date           Who             Description
+;2011/09/07     Yasemin       
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access U030-TAPE-145-FILE
+
+select if    RAT-145-DOC-NBR = 17119             &
+       and   rat-145-account-nbr[1:3] = "L02"	 &
+       and  (    RAT-145-SERVICE-CD = "E082A"    &
+              or RAT-145-SERVICE-CD = "E083A")
+
+
+subfile sethi1   keep include         &
+RAT-145-AMOUNT-SUB                   ,&
+RAT-145-AMT-PAID                     ,&
+RAT-145-SERVICE-CD                   ,&
+rat-145-service-date		     ,&
+rat-145-nbr-of-serv 
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *sethi1
+
+sort on RAT-145-SERVICE-DATE 
+
+temp x-e082-serv  zoned*8 unsigned
+item x-e082-serv = x-e082-serv + rat-145-nbr-of-serv 	&
+                if RAT-145-SERVICE-CD = "E082A"  &
+		reset at RAT-145-SERVICE-DATE 
+
+temp x-e083-serv  zoned*8 unsigned
+item x-e083-serv = x-e083-serv + rat-145-nbr-of-serv         &
+                if RAT-145-SERVICE-CD = "E083A"  &
+                reset at RAT-145-SERVICE-DATE 
+
+temp x-e082-amt   zoned*8 signed
+item x-e082-amt  = x-e082-amt  + RAT-145-AMOUNT-SUB  &
+                if RAT-145-SERVICE-CD = "E082A"  &
+                reset at RAT-145-SERVICE-DATE  
+
+temp x-e083-amt   zoned*8 signed
+item x-e083-amt  = x-e083-amt  + RAT-145-AMOUNT-SUB  &
+                if RAT-145-SERVICE-CD = "E083A"  &
+                reset at RAT-145-SERVICE-DATE
+
+temp e082-count  zoned*6 unsigned
+item e082-count  = e082-count + 1                &
+                 if RAT-145-SERVICE-CD = "E082A"  &
+                 reset at RAT-145-SERVICE-DATE
+
+temp e083-count  zoned*6 unsigned
+item e083-count  = e083-count + 1                &
+                 if RAT-145-SERVICE-CD = "E083A"  &
+                 reset at RAT-145-SERVICE-DATE
+
+temp tot-code    zoned*6 unsigned
+item tot-code    = tot-code   + 1                &
+                 reset at RAT-145-SERVICE-DATE
+
+temp tot-amt     zoned*8 signed
+item tot-amt     = tot-amt  + RAT-145-AMOUNT-SUB &
+                 reset at RAT-145-SERVICE-DATE
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile sethi2 portable keep at rat-145-service-date include                 &
+rat-145-service-date				    ,&
+comma                                               ,&
+x-e082-serv                                         ,&
+comma                                               ,&
+x-e083-serv                                         ,&
+comma                                               ,&
+x-e082-amt                                          ,&
+comma                                               ,&
+x-e083-amt                                          ,&
+comma                                               ,&
+e082-count                                          ,&
+comma                                               ,&
+e083-count                                          ,&
+comma                                               ,&
+tot-code                                            ,&
+comma                                               ,&
+tot-amt                                             ,&
+x-cr
+
+build $obj/drsethi_rat               

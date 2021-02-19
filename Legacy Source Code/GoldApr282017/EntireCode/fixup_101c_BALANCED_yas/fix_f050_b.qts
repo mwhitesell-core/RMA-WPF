@@ -1,0 +1,54 @@
+; Program: fix_f050
+; Purpose: corrects MTD values by subtracting current MTD values in
+;               a subfile from current MTD values. The values in the
+;               subfile were obtained from the PREVIOUS months MTD values
+;       - this pgm was originally need when MTD were not zeroed by u015
+;         before several cycles were run
+
+cancel clear
+set process nolimit
+
+access *unlof050_dec_svc    &
+  link (DOCREV-CLINIC-1-2+		&
+        ascii(DOCREV-DEPT)+			&
+        ascii(DOCREV-DOC-NBR)+		&
+        DOCREV-LOCATION+		&
+        DOCREV-OMA-CODE+		&
+        DOCREV-OMA-SUFF)		&
+  to f050-doc-revenue-mstr
+
+select if DOCREV-CLINIC-1-2 = "22"
+
+sorted on DOCREV-CLINIC-1-2 		&
+       on DOCREV-DEPT  			&
+       on DOCREV-DOC-NBR  		&
+       on DOCREV-LOCATION 		&
+       on DOCREV-OMA-CODE 		&
+       on DOCREV-OMA-SUFF 		
+
+temp tmp-in-svc 			
+item tmp-in-svc =   tmp-in-svc		&
+                  + DOCREV-MTD-IN-svc  of unlof050_dec_svc 	&
+			reset at DOCREV-OMA-SUFF
+temp tmp-out-svc 			
+item tmp-out-svc =   tmp-out-svc		&
+                  + DOCREV-MTD-OUT-svc  of unlof050_dec_svc	&
+			reset at DOCREV-OMA-SUFF
+
+
+;subfile bradf050 keep include &
+;docrev-key, &
+;DOCREV-MTD-IN-svc  of f050-doc-revenue-mstr              , &
+;tmp-in-svc,&
+;      DOCREV-MTD-out-svc  of f050-doc-revenue-mstr               ,&
+; tmp-out-svc
+
+output f050-doc-revenue-mstr alias f050-updated update at DOCREV-OMA-SUFF 
+item DOCREV-MTD-IN-svc  of f050-updated                 final   &
+      DOCREV-MTD-IN-svc  of f050-doc-revenue-mstr               &
+    - tmp-in-svc
+item DOCREV-MTD-OUT-svc  of f050-updated          final &
+      DOCREV-MTD-out-svc  of f050-doc-revenue-mstr               &
+    - tmp-out-svc
+
+; NO YTD   

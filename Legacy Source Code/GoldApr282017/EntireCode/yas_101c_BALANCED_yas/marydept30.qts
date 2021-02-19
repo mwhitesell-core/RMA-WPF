@@ -1,0 +1,50 @@
+;doc     : marydept30
+;purpose : report claim numbers if clinic 22 and dept30 and balance due > or < 0
+;          report unpaid claims
+
+;Date           Who             Description
+;2008/10/30     Yasemin
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22@",               &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+define x-balance-due zoned*7 numeric                              &
+    = clmhdr-manual-and-tape-payments + clmhdr-tot-claim-ar-ohip  &
+                if clmhdr-agent-cd = 0                            &
+ else clmhdr-manual-and-tape-payments + clmhdr-tot-claim-ar-oma
+
+select f002-claims-mstr if    clmhdr-batch-type = 'C'                    &
+                          and clmhdr-doc-dept = 30                       
+;                          and x-balance-due <> 0
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile dept30 portable keep include                 &
+clmhdr-claim-id                                     ,&
+comma                                               ,&
+clmhdr-serv-date                                    ,&
+comma                                               ,&
+clmhdr-date-period-end                              ,&
+comma                                               ,&
+clmhdr-tot-claim-ar-ohip                            ,&
+comma                                               ,&
+clmhdr-date-cash-tape-payment                       ,&
+comma                                               ,&
+clmhdr-manual-and-tape-payments                     ,&
+comma                                               ,&
+x-balance-due                                       ,&
+x-cr
+
+

@@ -1,0 +1,77 @@
+;for Leena                                                
+;Clinics 22, 79 and 88 and Departments 41, 42 and 43
+;exlude all the misc payment 
+;by doc by clinic by dept
+
+cancel clear
+set process nolimit
+set lock file update 
+
+request f050hist                        &
+        on calculation errors report    &
+        on edit errors report
+
+access f050-doc-revenue-mstr-history    &
+ link docrev-doc-nbr to doc-nbr         &
+   of f020-doctor-mstr  opt	
+
+choose ep-yr 2009, 2010
+
+select if 			        &
+       (  docrev-dept = 41              &
+       or docrev-dept = 42              &
+       or docrev-dept = 43              &
+       )                                &
+and (     docrev-oma-cd[1:4] <> "MICM"  &
+      and docrev-oma-cd[1:4] <> "MISJ"  &
+      and docrev-oma-cd[1:4] <> "MISC"  &
+      and docrev-oma-cd[1:4] <> "MICV"  &
+      and docrev-oma-cd[1:4] <> "MISP"  &
+      and docrev-oma-cd[1:4] <> "MICB"  &
+      and docrev-oma-cd[1:4] <> "MIBR"  &
+      and docrev-oma-cd[1:4] <> "MINH"  &
+      and docrev-oma-cd[1:4] <> "MHSC"  &
+      and docrev-oma-cd[1:4] <> "DHSC"  &
+      and docrev-oma-cd[1:4] <> "MOHR"  &
+      and docrev-oma-cd[1:4] <> "MICA"  &
+      and docrev-oma-cd[1:4] <> "MICC"  &
+      and docrev-oma-cd[1:4] <> "MICD"  &
+      and docrev-oma-cd[1:4] <> "MICE"  &
+      and docrev-oma-cd[1:4] <> "MICF"  &
+      and docrev-oma-cd[1:4] <> "MICG"  &
+      and docrev-oma-cd[1:4] <> "MICH"  &
+      and docrev-oma-cd[1:4] <> "MICJ"  &
+      and docrev-oma-cd[1:4] <> "MICK"  &
+      and docrev-oma-cd[1:4] <> "MICL"  &
+      and docrev-oma-cd[1:4] <> "T995"  & 
+    )                                   &
+      and (    docrev-clinic-1-2 ='22'  &
+            or docrev-clinic-1-2 ='79'  &
+            or docrev-clinic-1-2 ='88'  &
+          )                             
+
+sort on docrev-doc-nbr on docrev-clinic-1-2 on docrev-dept
+
+temp x-amt  zoned*9 signed
+item x-amt  = x-amt + ((DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC)/100 )&
+            if (     iconst-date-period-end >= 20100401              &
+                 and iconst-date-period-end <= 20110331)             & 
+                   reset at docrev-dept
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f050emerg keep at docrev-dept portable include           &
+doc-name             , &
+comma                , &
+docrev-doc-nbr       , &
+comma                , &
+docrev-clinic-1-2    , &
+comma                , &
+docrev-dept          , &
+comma                , &
+x-amt                , &
+x-cr
+
+build $pb_obj/f050hist_emergency

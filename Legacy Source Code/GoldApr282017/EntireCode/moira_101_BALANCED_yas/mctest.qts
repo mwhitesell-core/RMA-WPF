@@ -1,0 +1,109 @@
+cancel clear
+set lock record update
+
+request u140_nonrb_nonrbp                       &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access f075-afp-doc-mstr				&
+    link doc-afp-paym-group   				&
+    to   doc-afp-paym-group	of f074-afp-group-mstr  &
+    link doc-nbr of f075-afp-doc-mstr			&
+    to   doc-nbr of f020-doctor-mstr opt		&
+; 2009/07/08 - MC
+        link doc-afp-paym-group  of f075-afp-doc-mstr           &
+        to   doc-afp-paym-group  of f074-afp-group-sequence-mstr opt
+; 2009/07/08 - end
+
+def x-selected-payroll char*1  				&
+	= parm prompt "Enter PAYROLL ID:"  upshift
+
+ 
+
+; 'NONRB'  for solo doctors with incoming group H132 or
+; 'NONRBP' for GFT & non-GFT doctors with incoming group H262, H513 to H519, H526, H528 & H529
+;      and for solo doctors with incoming group H262, H513 to H519, H520 to H524, H526, H528 & H529
+
+
+def x-solo-doc  char*1 = 'Y'						    &
+	             if    doc-afp-paym-group of f020-doctor-mstr  = 'H132' &
+		       and x-selected-payroll  = 'C'        
+
+def x-gft-doc       char*1 = 'Y'						&
+	             if    doc-afp-paym-group of f020-doctor-mstr  = 'H111'     &
+		       and (    doc-dept of f020-doctor-mstr = 14		&
+		            or  doc-dept of f020-doctor-mstr = 15		&
+			   )							&
+		       and x-selected-payroll  = 'A'        
+		  
+def x-non-gft-doc   char*1 = 'Y'						&
+	             if    doc-dept of f020-doctor-mstr = 4			&
+		       and x-selected-payroll  = 'A'        
+
+
+
+def x-rec-type char*1 = 'D'
+
+def x-nonrbp-group char*1 = 'Y'						           &
+                if nonrbp-flag = 'Y' and solo-flag = 'N'
+
+def x-solo-nonrbp-group char*1 = 'Y'						        &
+            if       nonrbp-flag = 'Y'                          &
+                and (solo-flag = 'Y' or solo-flag = 'N')
+
+; 2.1.1.4.1 - solo doctors
+def x-nonrb    char*1  = 'Y'						    &
+             if     x-solo-doc = 'Y'                                        &
+	        and doc-afp-paym-group of f075-afp-doc-mstr = 'H132' 
+
+; 2.1.1.4.2 - solo doctors
+def x-nonrbp   char*1   = 'Y'						    &
+                     if (    (    x-solo-doc = 'Y'                          &
+	                      and x-solo-nonrbp-group = 'Y'  		    &
+			     )						    &
+; 2.1.1.5 - GFT doctors
+                         or  (    x-gft-doc = 'Y'                           &
+	                      and x-nonrbp-group = 'Y'  		    &
+			     )						    &
+; 2.1.1.6 - non-GFT doctors
+                         or  (    x-non-gft-doc = 'Y'                       &
+	                      and x-nonrbp-group = 'Y'  		    &
+			     )						    &
+                       )
+
+select if    afp-submission-amt <> 0					&
+ 	 and (     x-nonrb = 'Y'                                        &
+		or x-nonrbp = 'Y'                             		&
+	     )
+
+def x-comp-code char*6  &
+        = "NONRB"    if    x-nonrb    = 'Y'                                 &
+  else   "NONRBP"    if    x-nonrbp   = 'Y'
+
+def x-amt-net    integer*10 signed    = afp-submission-amt of f075-afp-doc-mstr 
+def x-amt-gross  integer*10 signed    = afp-submission-amt of f075-afp-doc-mstr 
+
+sort	on doc-nbr			&	
+	on x-comp-code                                       
+
+temp x-tmp-amt-gross zoned*10 numeric
+item x-tmp-amt-gross = x-tmp-amt-gross + afp-submission-amt reset at x-comp-code
+temp x-tmp-amt-net zoned*10 numeric 
+item x-tmp-amt-net   = x-tmp-amt-net   + afp-submission-amt reset at x-comp-code
+
+
+subfile u140_e_audit_mc keep append at x-comp-code  include	&
+  x-selected-payroll,				&
+  doc-nbr of f075-afp-doc-mstr,			&
+  doc-afp-paym-group	of f075-afp-doc-mstr,   &
+  doc-name       	of f020-doctor-mstr,	&
+  doc-inits		of f020-doctor-mstr,	&
+  doc-dept		of f020-doctor-mstr,	&
+  x-comp-code,                                    &
+  x-tmp-amt-gross,				&
+  x-tmp-amt-net
+
+go
+
+

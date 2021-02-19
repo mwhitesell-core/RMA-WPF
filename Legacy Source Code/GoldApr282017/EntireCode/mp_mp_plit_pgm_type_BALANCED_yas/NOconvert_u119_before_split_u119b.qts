@@ -1,0 +1,415 @@
+;#> PROGRAM-ID.     U119.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             CALCULATE 'EFTXXX' TRANSACTIONS FOR ALL PAY CODES
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/JAN/01  ____   B.E.     - original
+;     93/MAY/18  ____   B.E.     - added *F119
+;     93/MAY/21  ____   B.E.     - Optimize
+;     93/JUN/20  ____   B.E.     - Don't allow negative EFT NET amount
+;     93/JUN/21  ____   B.E.     - allow Advances (TOTADV) to affect PAYEFT, removed SELECT
+;     93/JUN/22  ____   B.E.     - added U119_PAYEFT
+;     93/JUL/06  ____   B.E.     - Output "Outstanding Advances" (ADVOUT)
+;                                  only if non-zero value
+;     94/NOV/19         B.E.     - removed TOTADV from this pgm, now affect PAYPOT
+;                                  in U116.
+;
+;
+; ??????? EP PLUS 1 AND MINUS 1 MUST BE READ NEXT/BACKWARDS, NOT SUBTRACTION
+;
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/June/01 	S.B.     - Added the use file
+;                        	   def_compensation_status.def to 
+;                        	   prevent hard coding of compensation-status.
+;
+
+cancel clear
+set default
+set stacksize 1000
+set process limit 100000
+run u119
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+global temp w-current-ep-nbr-plus1  numeric
+
+global temp payeft-seq     zoned*2 unsigned
+global temp payeft-seq-rpt zoned*2 unsigned
+global temp payeft-type    char*1
+global temp payeft-group   char*1
+global temp payeft-factor  numeric
+
+global temp advout-seq     zoned*2 unsigned
+global temp advout-seq-rpt zoned*2 unsigned
+global temp advout-type    char*1
+global temp advout-group   char*1
+global temp advout-factor  numeric
+
+global temp totded-seq    zoned*2 unsigned
+global temp totded-type   char*1
+global temp totded-group  char*1
+global temp totded-factor  numeric
+
+;GLOBAL TEMP TOTADV-SEQ     ZONED*2 UNSIGNED
+;GLOBAL TEMP TOTADV-SEQ-RPT ZONED*2 UNSIGNED
+;GLOBAL TEMP TOTADV-TYPE    CHAR*1
+;GLOBAL TEMP TOTADV-GROUP   CHAR*1
+;GLOBAL TEMP TOTADV-FACTOR  NUMERIC
+
+global temp paypot-seq    zoned*2 unsigned
+global temp paypot-type   char*1
+global temp paypot-group  char*1
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u119_a on edit        errors report &
+               on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        =  current-ep-nbr
+item w-current-ep-nbr-minus1 =  current-ep-nbr - 1
+item w-current-ep-nbr-plus1  =  current-ep-nbr + 1
+;
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u119_a_get_payeft                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "PAYEFT"
+item payeft-seq     =  process-seq
+item payeft-seq-rpt =  reporting-seq
+item payeft-type    =  comp-type
+item payeft-group   =  comp-code-group
+item payeft-factor  =  factor
+
+request u119_a_get_advout                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "ADVOUT"
+item advout-seq     =  process-seq
+item advout-seq-rpt =  reporting-seq
+item advout-type    =  comp-type
+item advout-group   =  comp-code-group
+item advout-factor  =  factor
+
+request u119_a_get_totded                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTDED"
+item totded-seq   =  process-seq
+item totded-type  =  comp-type
+item totded-factor =  factor
+
+;REQUEST U119_A_GET_TOTADV                    &
+;                ON EDIT        ERRORS REPORT &
+;                ON CALCULATION ERRORS REPORT
+;ACCESS F190-COMP-CODES
+;CHOOSE COMP-CODE "TOTADV"
+;ITEM TOTADV-SEQ     =  PROCESS-SEQ
+;ITEM TOTADV-SEQ-RPT =  REPORTING-SEQ
+;ITEM TOTADV-TYPE    =  COMP-TYPE
+;ITEM TOTADV-GROUP   =  COMP-CODE-GROUP
+;ITEM TOTADV-FACTOR  =  FACTOR
+
+request u119_a_get_paypot                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "PAYPOT"
+item paypot-seq   =  process-seq
+item paypot-type  =  comp-type
+
+;-------------------------------------------------------------------------------
+; PAY CODE 0/1/2/3/4
+;
+;
+request u119_b on edit        errors report &
+               on calculation errors report
+
+access constants-mstr-rec-6                             &
+        link current-ep-nbr                             &
+        viaindex f112-ep-doc-nbr                        &
+        to   ep-nbr of f112-pycdceilings                &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             paypot-seq,                                              &
+             "PAYPOT"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation                        &
+                       alias f110-paypot       optional               &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             totded-seq,                                              &
+             "TOTDED"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation                        &
+                       alias f110-totded          opt                 &
+;       LINK DOC-NBR OF F112-PYCDCEILINGS,                            &
+;            EP-NBR  OF F112-PYCDCEILINGS,                            &
+;            TOTADV-SEQ,                                              &
+;            "TOTADV"                                                 &
+;       TO   DOC-NBR,                                                 &
+;            EP-NBR,                                                  &
+;            PROCESS-SEQ,                                             &
+;            COMP-CODE    OF F110-COMPENSATION                        &
+;                      ALIAS F110-TOTADV          OPT                 &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             advout-seq,                                              &
+             "ADVOUT"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation                        &
+                       alias f110-advout          opt                 &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             payeft-seq,                                              &
+             "PAYEFT"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation                        &
+                       alias f110-payeft       opt                    &
+        link doc-nbr of f112-pycdceilings                             &
+        to   doc-nbr of f020-doctor-mstr       opt
+
+choose const-rec-nbr 6
+
+;SELECT F112-PYCDCEILINGS                                              &
+;        IF    (   DOC-PAY-CODE OF F112-PYCDCEILINGS = "0"             &
+;               OR DOC-PAY-CODE OF F112-PYCDCEILINGS = "1"             &
+;               OR DOC-PAY-CODE OF F112-PYCDCEILINGS = "2"             &
+;               OR DOC-PAY-CODE OF F112-PYCDCEILINGS = "3"             &
+;               OR DOC-PAY-CODE OF F112-PYCDCEILINGS = "4")
+;         AND EP-NBR       OF F112-PYCDCEILINGS = W-CURRENT-EP-NBR
+
+;DEF W-PAYEFT-AMT-1 INTEGER*8 SIGNED SIZE 4                             &
+;     = ((  (  AMT-NET   OF F110-PAYPOT                                 &
+;            - AMT-NET   OF F110-TOTDED)                                &
+;          * PAYEFT-FACTOR)+.5) / 10000 IF NOT RECORD F110-PAYEFT EXISTS&
+;  ELSE (( (  AMT-NET   OF F110-PAYPOT                                 &
+;            - AMT-NET   OF F110-TOTDED)                               &
+;          * FACTOR OF F110-PAYEFT)+.5) / 10000
+def w-payeft-amt-1 integer*8 signed size 4                             &
+     = round(( (  amt-net   of f110-paypot                             &
+                - amt-net   of f110-totded)                            &
+              * payeft-factor)/10000,0,near)                           &
+                        if not record f110-payeft exists               &
+  else round(( (  amt-net   of f110-paypot                             &
+                - amt-net   of f110-totded)                            &
+              * factor of f110-payeft) / 10000,0,near)
+
+; (Don't allow negative EFT even if Deductions have exceeded Potential Pay)
+
+def w-payeft-amt-n integer*8 signed size 4                             &
+        = w-payeft-amt-1 if w-payeft-amt-1 >= 0                        &
+     else 0
+
+; (If Deductions exceed pay, then move excess to the outstanding advances)
+; (reduce PAYEFT by any total of all ADVANCES)
+def w-excess-deductions integer*8 signed size 4                            &
+        = 0 if w-payeft-amt-1 >= 0                                         &
+     else abs(w-payeft-amt-1)
+
+;; (reduce EFT by amount of advances for EP)
+;DEF W-PAYEFT-AMT-3 INTEGER*8 SIGNED SIZE 4                                 &
+;       =  W-PAYEFT-AMT-2                                                  &
+;        - AMT-NET  OF F110-TOTADV   IF RECORD F110-TOTADV EXISTS          &
+;   ELSE  W-PAYEFT-AMT-2
+;
+;; (if Advances greater than amt to be paid, pay zero)
+;DEF W-PAYEFT-AMT-N INTEGER*8 SIGNED SIZE 4                                 &
+;        = W-PAYEFT-AMT-3 IF W-PAYEFT-AMT-3 >= 0                            &
+;     ELSE 0
+;
+;; (if Advances greater than amt to be paid, carry excess over to next PED
+;;  as ADVANCE OUTSTANDING transaction)
+;DEF W-EXCESS-ADVANCES INTEGER*8 SIGNED SIZE 4                              &
+;        = 0              IF W-PAYEFT-AMT-3 >= 0                            &
+;     ELSE ABS(W-PAYEFT-AMT-3)
+;
+
+; (carry over total of excess Deductions and Advances)
+def x-amt-advout integer*8 signed size 4                             &
+        =  amt-net  of f110-advout                                   &
+         + w-excess-deductions      if record f110-advout exists     &
+     else  w-excess-deductions
+
+;S.B.
+use $use/def_compensation_status.def
+
+subfile debugu119 keep                              include &
+     doc-nbr of f112-pycdceilings           , &
+     amt-net   of f110-paypot               , &
+     amt-net   of f110-totded               , &
+     payeft-factor                          , &
+     factor of f110-payeft                  , &
+     w-payeft-amt-1                         , &
+;    W-PAYEFT-AMT-2                         , &
+     w-excess-deductions                    , &
+;    AMT-NET  OF F110-TOTADV                , &
+;    W-PAYEFT-AMT-3                         , &
+     w-payeft-amt-n                         , &
+;    W-EXCESS-ADVANCES                      , &
+     x-amt-advout
+
+; ------------- F 1 1 0 --------------------------------------------------------
+output f110-compensation add alias f110-output-payeft-not-exists        &
+    if not record f110-payeft exists
+        item ep-nbr          =  w-current-ep-nbr
+        item ep-nbr-entry    =  w-current-ep-nbr
+        item comp-code       =  "PAYEFT"
+        item comp-type       =  payeft-type
+        item process-seq     =  payeft-seq
+        item factor          =  payeft-factor
+        item factor-override =  " "
+        item comp-units      =  0
+        item amt-gross       = (  amt-net   of f110-paypot      &
+                                - amt-net   of f110-totded )
+;                               - AMT-NET   OF F110-TOTADV)
+        item amt-net         = w-payeft-amt-n
+;S.B.
+;        item compensation-status =  " "
+        item compensation-status =  compensation-status-accepted
+        item last-mod-date    =  sysdate
+        item last-mod-time    =  systime / 10000
+        item last-mod-user-id =  "U119 gen'd"
+
+output f110-compensation  update  alias f110-output-payeft-exists  &
+    if     record f110-payeft exists
+        item factor-override =  "*"     ; INDICATE OVERRIDE FACTOR USED
+        item comp-units      =  (( comp-units      of f110-payeft      &
+                                  * factor        of f110-payeft)+.5) / 10000
+        item amt-gross       = (  amt-net   of f110-paypot      &
+                                - amt-net   of f110-totded )
+;                               - AMT-NET   OF F110-TOTADV)
+        item amt-net         = w-payeft-amt-n
+;S.B.
+;        item compensation-status =  " "
+        item compensation-status =  compensation-status-accepted
+        item last-mod-date    =  sysdate
+        item last-mod-time    =  systime / 10000
+        item last-mod-user-id =  "U119 Upd'd"
+
+output f110-compensation  update   alias f110-output-advout-exits &                  &
+    if    record f110-advout exists                               &
+      and x-amt-advout > 0
+        item ep-nbr          =  w-current-ep-nbr-plus1
+        item ep-nbr-entry    =  w-current-ep-nbr
+        item comp-code       =  "ADVOUT"
+        item comp-type       =  advout-type
+        item process-seq     =  advout-seq
+        item factor          =  advout-factor
+        item factor-override =  "*"
+        item comp-units      =  0
+        item amt-gross       =  0
+        item amt-net         =  x-amt-advout
+;S.B.
+;        item compensation-status =  " "
+        item compensation-status =  compensation-status-accepted
+        item last-mod-date    =  sysdate
+        item last-mod-time    =  systime / 10000
+        item last-mod-user-id =  "U119 gen'd"
+
+output f110-compensation add alias f110-output-advout-not-exists  &
+    if    (not record f110-advout exists)                         &
+      and x-amt-advout > 0
+        item ep-nbr          =  w-current-ep-nbr-plus1
+        item ep-nbr-entry    =  w-current-ep-nbr
+        item comp-code       =  "ADVOUT"
+        item comp-type       =  advout-type
+        item process-seq     =  advout-seq
+        item factor          =  advout-factor
+        item factor-override =  "*"
+        item comp-units      =  0
+        item amt-gross       =  0
+        item amt-net         =  x-amt-advout
+;S.B.
+;        item compensation-status =  " "
+        item compensation-status =  compensation-status-accepted
+        item last-mod-date    =  sysdate
+        item last-mod-time    =  systime / 10000
+        item last-mod-user-id =  "U119 gen'd"
+
+
+; --------- 'PAYCHQ' REQUIRED IF NOT ALL PAYMENT IS TO GO VIA 'EFT' ---
+; IF 'EFT' TRAN'S 'FACTOR' IS LESS THAN 1.0 THEN DIFFERENCE IS PAID BY
+; A MANUAL CHEQUE ON TGHE "PAYCHEQ" TRANSACTIONS (NOTE THAT THE "MANPAY"
+; TRANSACTION IS A CHEQUE MANUALLY PREPARED AND GIVEN OUT **BEFORE**
+; THIS EARNINGS RUN AS COMPARED TO THIS TRANSACTION THAT IS GENERATED BY
+; THE EARNINGS RUN
+;
+;OUTPUT F110-COMPENSATION UPDATE ALIAS F110-OUTPUT-PAYCHQ               &
+;    IF      RECORD F110-PAYEFT EXISTS AND FACTOR OF F110-PAYEFT <> 1.0 &
+;     OR NOT RECORD F110-PAYEFT EXISTS AND PAYEFT-FACTOR         <> 1.0
+;       ITEM EP-NBR          =  W-CURRENT-EP-NBR
+;       ITEM EP-NBR-ENTRY    =  W-CURRENT-EP-NBR
+;       ITEM COMP-CODE       =  "PAYCHQ"
+;       ITEM COMP-TYPE       =  PAYCHQ-TYPE
+;       ITEM PROCESS-SEQ     =  PAYCHQ-SEQ
+;       ITEM FACTOR          =  FACTOR OF F110-PAYEFT IF RECORD F110-PAYEFT EXISTS &
+;                          ELSE PAYEFT-FACTOR
+;       ITEM FACTOR-OVERRIDE =  "*"    OF F110-PAYEFT IF RECORD F110-PAYEFT EXISTS &
+;                          ELSE " "
+;       ITEM COMP-UNITS      =  ???
+;       ITEM AMT-GROSS       =   ???
+;       ITEM AMT-NET         = ???
+;       ITEM COMPENSATION-STATUS =  " "
+;       ITEM LAST-MOD-DATE    =  SYSDATE
+;       ITEM LAST-MOD-TIME    =  SYSTIME / 10000
+;       ITEM LAST-MOD-USER-ID =  "U119 Upd'd"
+
+; ------------- F 1 1 9 --------------------------------------------------------
+define x-not-needed integer*8 signed size 4 = 0
+define x-rec-type  char*1 = "A"
+temp x-comp-code char*6
+item x-comp-code = "PAYEFT"
+subfile f119 append                                   include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         payeft-seq-rpt                 , &
+         payeft-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         w-payeft-amt-n
+
+temp x-comp-code-advout char*6
+item x-comp-code-advout = "ADVOUT"
+subfile f119 alias f119-advout append     &
+   if x-amt-advout > 0                    &
+     include                              &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code-advout             , &
+         advout-seq-rpt                 , &
+         advout-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         x-amt-advout
+
+; ------------- U 1 1 9 _ P A Y E F T -----------------------------------------
+subfile u119_payeft portable keep                     include &
+         doc-nbr  of f112-pycdceilings   , &
+         doc-dept of f020-doctor-mstr    , &
+         w-payeft-amt-n
+
+; ------------- F 0 2 0 -------------------------------------------------------
+output f020-doctor-mstr update
+    item doc-payeft final w-payeft-amt-n
+
+build $pb_obj/u119
+  

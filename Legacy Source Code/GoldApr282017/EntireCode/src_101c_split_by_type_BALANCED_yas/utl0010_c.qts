@@ -1,0 +1,52 @@
+; program: utl0010_c.qts(third pass of utl0010)
+; purpose: Update the next available batch nbr for each doctor from  doctor
+;	   mstr in tmp-counters-999  , increment the next batch nbr for each 
+;	   subsequent record for each doctor
+
+cancel clear
+set lock file update
+set process nolimit
+
+;------------------------------------------------------------------
+
+access f020-doctor-mstr			
+	
+
+def x-next-batch-1 			&
+    = doc-nx-avail-batch + 1
+
+def x-next-batch-2 			&
+    = x-next-batch-1 			&
+	if x-next-batch-1 <= 999	&
+ else x-next-batch-1  - 999
+
+subfile  utl0010_1 keep include 	&
+  doc-nbr,				&
+  doc-date-fac-term,			&
+  doc-nx-avail-batch ,			&
+  x-next-batch-1,			&
+  x-next-batch-2
+;---------------------------------------
+request utl0010_2 on calculation errors report &
+               on edit errors report
+
+
+access *utl0010_1      			&
+	link doc-nbr			&
+	 to tmp-counter-key of tmp-counters-999
+	
+sorted on doc-nbr
+
+temp x-batch-nbr
+item x-batch-nbr = x-batch-nbr + 1 reset at doc-nbr &
+				  to doc-nx-avail-batch 
+
+def x-next-batch = x-batch-nbr if x-batch-nbr <= 999	&
+	else  x-batch-nbr - 999
+
+output tmp-counters-999 update on errors report
+   item tmp-counter-2 final x-next-batch  
+
+
+build $obj/utl0010_c
+  

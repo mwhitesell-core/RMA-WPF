@@ -1,0 +1,55 @@
+; Program: u140_a
+; Purpose: Before the RA is run this program must to be to put all doctors      
+;          into the f075 file with an indication of the number of doctors
+;          that share the same MOH OHIP Number
+;          This f075 file is then updated with the RA payments and based upon
+;          the split between a doctors RMA doctors of their RA Payments the
+;          same ratio is used to divy up the single AFP payment identified 
+;          only with the doctor's OHIP number
+
+cancel clear
+
+run u140_b
+set process nolimit
+
+request f074_update_report_mth               &
+                on edit        errors report &
+                on calculation errors report
+
+access afp-a1f-file 						&
+        link afp-governance-group                               &
+        to   afp-governance-group of f074-afp-group-mstr 
+
+def x-payment-amt-total				&
+	= afp-payment-amt 			&
+		if afp-payment-sign = " "	&
+    else  0 - afp-payment-amt
+
+output  f074-afp-group-mstr update 
+  item 	afp-reporting-mth     	of f074-afp-group-mstr	&
+			final afp-reporting-mth of afp-a1f-file 
+  item 	afp-payment-amt-total	of f074-afp-group-mstr	&
+			final x-payment-amt-total
+
+;--------------------------------------------------------------------
+request f074_update_payment_amt              &
+                on edit        errors report &
+                on calculation errors report
+access afp-a2g-file                                             &
+        link doc-afp-paym-group                                 &
+        to   doc-afp-paym-group of f074-afp-group-mstr opt
+
+def x-payment-amt 				&
+	= afp-payment-amt 			&
+		if afp-payment-sign = " "	&
+    else  0 - afp-payment-amt
+
+output  f074-afp-group-mstr update 
+  item  afp-group-name         	of f074-afp-group-mstr	&
+			final afp-group-name of afp-a2g-file
+  item 	afp-payment-percentage 	of f074-afp-group-mstr	&
+			final afp-payment-percentage of afp-a2g-file 
+  item 	afp-payment-amt 	of f074-afp-group-mstr	&
+			final   x-payment-amt
+
+build $obj/u140_b

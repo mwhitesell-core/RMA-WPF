@@ -1,0 +1,74 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE R004C_PORTAL_SS.QZS
+COMMENT "doc: r004c_portal_ss.qzs"
+COMMENT "program purpose : transaction summary (detail report) for import into excel - (column titles and data only)"
+COMMENT "use r004b.sf and create detail report"
+COMMENT "r004c.txt control break at doc-nbr"
+COMMENT "modification history"
+COMMENT "date       by whom   description"
+COMMENT "2013/Jan/17 MC        original (clone from r004c_portal.qzs)"
+COMMENT "to show column headings and values, do not need page titles and totals as suggested by Brad"
+COMMENT "2013/Jan/22 be1 - change delimiter from tilde to ,  and double quote all character fields and reformat dates for xls"
+COMMENT "2013/Apr/03 MC1 - add f020-rpt to access statement, and add select statement"
+CAN CLEAR
+SET REP NOLIMIT
+SET REP DEVICE DISC NAME R004C_PORTAL_SS
+SET PAGE LENGTH 0 WIDTH 264
+SET NOHEAD
+SET NOBLANKS
+SET NOFORMFEED
+COMMENT "2013/04/03 - MC1"
+COMMENT "access *r004b           "
+ACCESS *R004B LINK (X-DOC-NBR, 1) TO DOC-NBR, REPORT-ID OF F020-RPT OPTIONAL
+COMMENT "if no record for the report id (in this case report id 1 for r004c_portal_ss) for the doctor, then create report for the doctor"
+SEL IF NOT RECORD F020-RPT EXISTS
+COMMENT "2012/04/03 - end"
+SORT ON ICONST-CLINIC-NBR-1-2 ON CLMHDR-DOC-DEPT OF R004B ON X-DOC-NBR ON X-PAT-NAME ON CLMDTL-SV-DATE ON X-CLAIM-DTL-ID ON X-OMA-CODE
+COMMENT "be1 def delimiter char*1 = '~'"
+DEF DELIMITER CHAR*1 = ','
+COMMENT "be1 def x-doc-dept-nbr char*7= '~' + x-doc-nbr + ascii(clmhdr-doc-dept of r004b,2) + '~'"
+DEF X-DOC-DEPT-NBR CHAR*7= '"' + X-DOC-NBR + ASCII(CLMHDR-DOC-DEPT OF R004B,2) + '"'
+COMMENT "be1"
+COMMENT "def x-tab-num   int*2 unsigned = 11"
+COMMENT "def x-tab       char*1         = char(x-tab-num)[1:1]"
+DEF X-TAB CHAR*1 = "	"
+COMMENT "be1"
+DEF X-SERVICE-DATE CHAR*12 = '"' + CLMDTL-SV-DATE[1:4] + "-" + CLMDTL-SV-DATE[5:2] + "-" + CLMDTL-SV-DATE[7:2] + '"'
+DEF X-ENTRY-DATE CHAR*12 = '"' + CLMHDR-DATE-SYS[1:4] + "-" + CLMHDR-DATE-SYS[5:2] + "-" + CLMHDR-DATE-SYS[7:2] + '"'
+DEF X-OMA-CD-SUFF CHAR*7 = '"' + CLMDTL-OMA-CD + CLMDTL-OMA-SUFF + '"'
+DEF X-CLMDTL-ADJ-CD CHAR*3 = '"' + CLMDTL-ADJ-CD + '"'
+DEF X-AGENT CHAR*40 = '"0 - OHIP BILLING"' IF CLMDTL-AGENT-CD = 0 ELSE '"1 - DIAGNOSTIC BILLING"' IF CLMDTL-AGENT-CD = 1 ELSE '"2 - OHIP WCB BILLING"' IF CLMDTL-AGENT-CD = 2 ELSE '"3 - ICU (85) DIRECT BILL"' IF CLMDTL-AGENT-CD = 3 ELSE '"4 - INELIGIBLE OHIP/BILL PATIENT"' IF CLMDTL-AGENT-CD = 4 ELSE '"5 - MOH REMITTANCE REDUCTION (MOHR)"' IF CLMDTL-AGENT-CD = 5 ELSE '"6 - PATIENT/INSURANCE BILLING"' IF CLMDTL-AGENT-CD = 6 ELSE '"7 - MISCELLANEOUS PAYMENT"' IF CLMDTL-AGENT-CD = 7 ELSE '"8 - NEONATAL / GERIATRICS ALT / ICU ALT"' IF CLMDTL-AGENT-CD = 8 ELSE '"9 - W.C.B. BILLING / W.C.B. MISC."' IF CLMDTL-AGENT-CD = 9 ELSE PACK('"' + ASCII(CLMDTL-AGENT-CD) + '"')
+COMMENT "be1 else ' A - A Adjustment '  if x-source[2:1] = 'A' &"
+COMMENT "be1 else ' R - R Adjustment '  if x-source[2:1] = 'R' &"
+DEF X-SOURCE-CD CHAR*23 = '"D - Diskette"' IF X-SOURCE[2:1] = 'D' ELSE '"W - Webstar"' IF X-SOURCE[2:1] = 'W' ELSE '"A - Cash+Revenue Adj."' IF X-SOURCE[2:1] = 'A' ELSE '"R - Revenue only Adj."' IF X-SOURCE[2:1] = 'R' ELSE PACK('"' + X-SOURCE + '"' )
+COMMENT "(CHECK IF NEGATIVE SIGN WILL BE PRINTED)"
+DEF X-OHIP-FEE-SIGN CHAR*1 = "-" IF X-REV-OHIP-FEE < 0 ELSE " "
+DEF X-OHIP-ADJ-SIGN CHAR*1 = "-" IF X-REV-OHIP-ADJ < 0 ELSE " "
+DEF X-PERIOD CHAR*1 = "."
+DEF X-OHIP-FEE-DOLLARS = ABS(X-REV-OHIP-FEE) / 100 IF X-REV-OHIP-FEE <> 0 ELSE 0
+DEF X-OHIP-FEE-CENTS = MOD(ABS(X-REV-OHIP-FEE),100) IF X-REV-OHIP-FEE <> 0 ELSE 0
+DEF X-OHIP-ADJ-DOLLARS = ABS(X-REV-OHIP-ADJ) / 100 IF X-REV-OHIP-ADJ <> 0 ELSE 0
+DEF X-OHIP-ADJ-CENTS = MOD(ABS(X-REV-OHIP-ADJ),100) IF X-REV-OHIP-ADJ <> 0 ELSE 0
+DEF X-DIAG-CD-ALPHA CHAR*5 = PACK('"' + ASCII(CLMDTL-DIAG-CD) + '"')
+DEF X-NBR-SVCS-ALPHA CHAR*5 = PACK('"' + ASCII(X-NBR-SVCS) + '"')
+DEF X-PAT-SURNAME CHAR*27 = PACK('"' + PAT-SURNAME + '"')
+DEF X-PAT-GIVEN-NAME CHAR*19 = PACK('"' + PAT-GIVEN-NAME + '"')
+DEF X-X-CLAIM-DTL-ID CHAR*18 = PACK('"' + PACK(X-CLAIM-DTL-ID) + '"')
+COMMENT "def x-ohip-fee-alpha char*12 = pack(' ' + ascii(x-rev-ohip-fee)  + ' ')"
+COMMENT "def x-ohip-adj-alpha char*12 = pack(' ' + ascii(x-rev-ohip-adj)  + ' ')"
+DEF X-OHIP-FEE-ALPHA CHAR*12 = PACK('"' + TRUNC(LJ(X-OHIP-FEE-SIGN + ASCII(X-OHIP-FEE-DOLLARS) + X-PERIOD + ASCII(X-OHIP-FEE-CENTS,2))) + '"')
+DEF X-OHIP-ADJ-ALPHA CHAR*12 = PACK('"' + TRUNC(LJ(X-OHIP-ADJ-SIGN + ASCII(X-OHIP-ADJ-DOLLARS) + X-PERIOD + ASCII(X-OHIP-ADJ-CENTS,2))) + '"')
+DEF X-X-PAT-ID-INFO CHAR*14 = PACK('"' + X-PAT-ID-INFO + '"')
+DEF X-X-ORIG-BATCH CHAR*10 = PACK('"' + X-ORIG-BATCH + '"')
+DEF X-CLMHDR-REFERENCE CHAR*13= PACK('"' + CLMHDR-REFERENCE + '"')
+INITIAL HEADING TAB 01 '"Pat Surname"' TAB 15 X-TAB TAB 16 '"Pat Given Name"' TAB 33 X-TAB TAB 34 '"Claim Nbr"' TAB 45 X-TAB TAB 46 '"Patient Id"' TAB 58 X-TAB TAB 59 '"Billing Agent"' TAB 74 X-TAB TAB 75 '"Adjust Code"' TAB 88 X-TAB TAB 89 '"Source Code"' TAB 102 X-TAB TAB 103 '"OHIP Fee"' TAB 113 X-TAB TAB 114 '"Adjustment Amt"' TAB 130 X-TAB TAB 131 '"Service Date"' TAB 145 X-TAB TAB 146 '"Claim Entry Date"' TAB 164 X-TAB TAB 165 '"Diag Code"' TAB 176 X-TAB TAB 177 '"OMA Code"' TAB 187 X-TAB TAB 188 '"Nbr Services"' TAB 202 X-TAB TAB 203 '"RMA BATCH Id"' TAB 217 X-TAB TAB 218 '"Note"' TAB 224 X-TAB TAB 225 X-DOC-DEPT-NBR
+DEFINE X-LINE CHAR*262 = LJ( PACK ( X-PAT-SURNAME + X-TAB + X-PAT-GIVEN-NAME + X-TAB + X-X-CLAIM-DTL-ID + X-TAB + X-X-PAT-ID-INFO + X-TAB + X-AGENT + X-TAB + X-CLMDTL-ADJ-CD + X-TAB + X-SOURCE-CD + X-TAB + X-OHIP-FEE-ALPHA + X-TAB + X-OHIP-ADJ-ALPHA + X-TAB + X-SERVICE-DATE + X-TAB + X-ENTRY-DATE + X-TAB + X-DIAG-CD-ALPHA + X-TAB + X-OMA-CD-SUFF + X-TAB + X-NBR-SVCS-ALPHA + X-TAB + X-X-ORIG-BATCH + X-TAB + X-CLMHDR-REFERENCE + X-TAB + X-DOC-DEPT-NBR ) )
+REPORT TAB 01 X-LINE
+BUILD $OBJ/R004C_PORTAL_SS
+ENDMODULE R004C_PORTAL_SS.QZS

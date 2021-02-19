@@ -1,0 +1,99 @@
+;#> program-id.     u934.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: icu payroll/statements
+;
+;		For RMA DOCTORS ONLY!
+;
+;		take transactions in clinic 85 ('ICU' or CRITICAL CARE payroll)
+;		and transfer for RMA doctors ONLY the "TRANFER" comp codes
+;		amounts into the Regular of 22 payroll
+;	   	- this program reads the subfile copied from the ICU payroll
+;		  clinic's directory
+;
+;    MODIFICATION HISTORY
+;    DATE   WHO	DESCRIPTION
+; 00/nov/07 B.E.	- original
+; 04/may/06 b.e.	- changed  w-comp-code-transfer-or-eft  to comp-code
+;			  to make compile of this program easier
+
+
+cancel clear
+run u934
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        zoned unsigned
+global temp w-current-ep-nbr-minus1 zoned unsigned
+global temp w-current-ep-nbr-plus1  zoned unsigned
+global temp w-ep-fiscal-nbr         zoned unsigned
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u934_const_values_get_ep_nbr           &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item w-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item w-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item w-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+item w-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+
+
+request u934_update_f110			&
+                on edit        errors report    &
+                on calculation errors report
+
+access *u119_f110_transferred		&
+;   link x-comp-code			&
+     link "TRNICU"			&
+     to    comp-code of f190-comp-codes opt
+
+; select 'RMA' doctors by looking at the comp-code:
+; RMA doctors have their PAYEFT comp code replaced with TRANFSER
+; 2004/may/06 b.e. changed name to make compile from u119 easier
+;select if  w-comp-code-transfer-or-eft  = "TRANSF"
+select if  comp-code = "TRANSF"
+
+use $use/def_compensation_status.def nol
+
+;-------------------------------------------------------------------
+; f110-compensation with MONTHLY values
+;
+output f110-compensation add          
+        item ep-nbr          = w-current-ep-nbr
+        item ep-nbr-entry    = w-current-ep-nbr
+;         item comp-code       = x-comp-code
+        item comp-code       = "TRNICU"
+        item comp-type       = comp-type	of f190-comp-codes
+        item process-seq     = process-seq	of f190-comp-codes 
+
+;        item factor          = x-factor
+        item factor          = w-factor
+
+        item factor-override = " "
+
+;        item comp-units      = x-units
+        item comp-units      = w-comp-units
+
+;	 item amt-gross       = x-amt-mtd
+	item amt-gross       = w-amt-gross
+
+;        item amt-net         = x-amt-ytd
+        item amt-net         = w-amt-net
+
+        item compensation-status = compensation-status-accepted
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "u934  gen'd"
+
+build $obj/u934
+

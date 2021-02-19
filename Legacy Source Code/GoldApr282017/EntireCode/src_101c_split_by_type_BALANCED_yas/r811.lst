@@ -1,0 +1,611 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   1
+*                      r811.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. r811.
+installation.   rma.
+date-written. 82/08/26.
+date-compiled. 01-Jan-00 11:15.
+security.
+*
+*    files   - input    : f093     - dictionary master (b access)
+*
+*            - output   : r811     - print report file (screen)
+*
+*    program purpose:
+*               this program will create a data dictionary report of
+*               all variables in the system.
+*
+*    revision may/87 (s.b.) - coversion from aos to aos/vs.
+*                             change field size for
+*                             status clause to 2 and
+*                             feedback clause to 4.
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*   revised feb/98 j. chau  - s149 unix conversion
+*
+*
+environment division.
+input-output section.
+file-control.
+
+copy "f093_dictionary_b_mstr.slr".
+    select dictionary-b-mstr
+*       assign index to "f093_dictionary_mstr"
+*       assign data  to "f093_dictionary_mstr"
+        assign to disk "$pb_data/f093_dictionary_mstr"
+        organization is indexed
+        access mode  is dynamic
+*mf     record key   is key-dictionary-b-mstr key length is 46
+*mf                     with duplicates occurrence is dict-b-occur
+        record key   is key-dictionary-b-mstr
+                        with duplicates
+        status       is status-cobol-dict-b-mstr.
+*       infos status is status-dict-b-mstr.
+
+    select print-file
+        assign to printer print-file-name
+        file status is status-prt-file.
+data division.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   2
+*                      r811.cbl                                      )
+file section.
+
+copy "f093_dictionary_b_mstr.fd".
+fd      dictionary-b-mstr
+*       index block     contains 46 characters
+*       data block      contains 50 characters
+             block      contains 50 characters
+        record          contains 50 characters .
+*       feedback is     feedback-dict-b-mstr.
+
+01  dict-b-mstr-rec.
+    05  dict-b-key.
+        10  dict-b-pgm-name                     pic x(5).
+        10  dict-b-pgm-data                     pic x(40).
+    05  dict-b-nip1                             pic x.
+    05  dict-b-nip2                             pic x.
+    05  dict-b-nip3                             pic x.
+    05  dict-b-nip4                             pic x.
+    05  dict-b-nip5                             pic x.
+
+fd      print-file
+        record contains 132 characters.
+
+01  print-record                                pic x(132).
+working-storage section.
+
+77  err-ind                             pic 99  comp.
+77  ws-hold-variable                    pic x(40).
+77  feedback-dict-b-mstr                pic x(4).
+77  dict-b-occur                        pic 9(10).
+77  print-file-name                     pic x(4)        value
+        "r811".
+77  ws-max-nbr-lines                    pic 99          value 60.
+77  ws-max-pgms-per-line                pic 99          value 11.
+77  nbr-of-lines-to-print               pic 9.
+
+ copy "f093_key_dictionary_mstr.ws".
+01  key-dictionary-mstr.
+*        key type: 'a' = pgm name - variable (data)
+*                  'b' = variable (data) - pgm name
+    05  key-dict-type                           pic x.
+    05  key-dict-pgm-name-data.
+        10  key-dict-pgm-name                   pic x(5).
+        10  key-dict-pgm-data                   pic x(40).
+    05  key-dict-pgm-name-data-r redefines key-dict-pgm-name-data.
+        10  key-dict-pgm-data-r                 pic x(40).
+        10  key-dict-pgm-name-r                 pic x(5).
+
+01  key-dictionary-b-mstr.
+*       key type: 'b' = variable (data) - pgm name
+    05  key-dict-b-type                         pic x.
+    05  key-dict-b-pgm-data-name.
+        10  key-dict-b-pgm-data                 pic x(40).
+        10  key-dict-b-pgm-name                 pic x(5).
+
+
+01  subscripts.
+    05  ss                              pic 999         comp.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   3
+*                      r811.cbl                                      )
+    05  subs                            pic 999         comp.
+
+01  counters.
+    05  ctr-dict-reads                  pic 9(6).
+    05  ctr-lines                       pic 99.
+    05  ctr-pages                       pic 9(6).
+
+01  file-status.
+    05  common-f-status                 pic xx.
+    05  common-i-status                 pic x(11).
+    05  status-common                   pic x(11).
+    05  status-cobol-dict-b-mstr        pic xx.
+    05  status-dict-b-mstr              pic x(11) value zero.
+    05  status-prt-file                 pic xx    value zero.
+
+01  flag-eof-dict-b-mstr                pic x.
+    88  flag-eof-dict-b-mstr-y          value "Y".
+    88  flag-eof-dict-b-mstr-n          value "N".
+
+01  continue-flag                       pic x.
+*mf    88  continue                     value "Y".
+    88  continue-run                    value "Y".
+    88  dont-continue                   value "N".
+
+01  tbl-pgm-names.
+    05  tbl-pgm occurs 100 times        pic x(5).
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                "INVALID REPLY".
+        10  filler                              pic x(60)   value
+                "NO VARIABLES IN THE DICTIONARY".
+        10  filler                              pic x(60)   value
+                "*****************************************".
+        10  filler                              pic x(60)   value
+                "********************************".
+        10  filler                              pic x(60)   value
+                "********************************".
+        10  filler                              pic x(60)   value
+                "**********************************".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs  6  times.
+
+01  err-msg-comment                             pic x(60).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   4
+*                      r811.cbl (/alpha/rmabill/rmabill101c/use/sysda)
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+01  h1-head.
+    05  filler                          pic x(44)       value
+        "R811".
+    05  filler                          pic x(56)       value
+        "R . M . A .    D A T A   D I C T I O N A R Y".
+    05  filler                          pic x(9)        value
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   5
+*                      r811.cbl                                      )
+        "RUN DATE".
+    05  h1-run-date                     pic xx/xx/xx.
+    05  filler                          pic x(4)        value spaces.
+    05  filler                          pic x(5)        value
+        "PAGE".
+    05  h1-page                         pic zz,zz9.
+
+
+01  h2-head.
+    05  filler                          pic x(44)       value
+        "VARIABLE NAME".
+    05  filler                          pic x(88)       value
+        "CONTAINED IN PROGRAM(S):".
+
+
+01  h3-head.
+    05  filler                          pic x(44)       value
+        "-------------".
+    05  filler                          pic x(88)       value
+        "------------------------".
+
+
+01  print-line.
+    05  l1-print-line.
+        10  l1-var-name                 pic x(44).
+        10  l1-pgms occurs 11 times.
+            15  l1-pgm                  pic x(5).
+            15  filler                  pic x(3).
+
+screen section.
+
+01  scr-title.
+    05  blank screen.
+    05                  line 01 col 01 value    "R811".
+    05                  line 01 col 19 value    "R . M . A .   D A T A   D I C T
+    05                  line 01 col 73 pic xx/xx/xx using sys-date-long.
+
+01  scr-continue.
+    05                          line 20 col 32 value    "CONTINUE (Y/N)".
+    05  scr-ok-to-continue      line 20 col 50 pic x using continue-flag auto re
+
+01  confirm.
+    05  line 23 col 01  value " ".
+
+01  program-in-progress.
+    05                          line 22 col 32 value    "PROGRAM IN PROGRESS".
+
+01  file-status-display.
+    05  line 21 col 32 value "COBOL FILE STATUS = ".
+    05  line 21 col 52 pic xx   using common-f-status  bell blink.
+*mf    05  line 22 col 32 value "INFOS FILE STATUS = ".
+*mf    05  line 22 col 52 pic x(11) using common-i-status  bell blink.
+
+01  err-msg-line.
+    05                          line 24 col 01 value " ERROR - "  bell blink.
+    05                          line 24 col 11 pic x(60) from err-msg-comment.
+
+01  blank-line-24.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   6
+*                      r811.cbl                                      )
+    05  line 24 col 1 blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+01  scr-closing-screen.
+    05  blank screen.
+    05  line  7 col 20  value "NUMBER OF DICTIONARY READS      = ".
+    05  line  7 col 60  pic 9(7) using ctr-dict-reads.
+*   05  line  9 col 20  value "NUMBER OF DICTIONARY READS      = ".
+*   05  line  9 col 60  pic 9(7) using ctr-dict-reads.
+*   05  line 11 col 20  value "NUMBER OF DICTIONARY ADDS       = ".
+*   05  line 11 col 60  pic 9(7) using ctr-dict-add.
+*   05  line 13 col 20  value "NUMBER OF DICTIONARY DELETES    = ".
+*   05  line 13 col 60  pic 9(7) using ctr-dict-del.
+*   05  line 15 col 20  value "NUMBER OF DICTIONARY MATCHES    = ".
+*   05  line 15 col 60  pic 9(7) using ctr-dict-match.
+    05  line 21 col 20  value "PROGRAM R811 ENDING".
+    05  line 21 col 40  pic 99  from sys-yy.
+    05  line 21 col 42  value "/".
+    05  line 21 col 43  pic 99  from sys-mm.
+    05  line 21 col 45  value "/".
+    05  line 21 col 46  pic 99  from sys-dd.
+    05  line 21 col 50  pic 99  from sys-hrs.
+    05  line 21 col 52  value ":".
+    05  line 21 col 53  pic 99  from sys-min.
+    05  line 23 col 20  value "PRINT FILE IS IN FILE - ".
+    05  line 23 col 44  pic x(7) from print-file-name.
+*      KEY-DICTIONARY-B-MSTR
+*1035-E*********************                                           (   0)**
+**    Key is not wholly contained within minimum record length
+*      KEY-DICTIONARY-B-MSTR
+* 246-S*********************                                           (   6)**
+**    KEY KEY-DICTIONARY-B-MSTR missing or illegal
+procedure division.
+declaratives.
+
+err-dictionary-b-mstr  section.
+    use after standard error procedure on  dictionary-b-mstr.
+dictionary-b-mstr-proc.
+    move status-cobol-dict-b-mstr       to      common-f-status.
+    move status-dict-b-mstr             to      common-i-status.
+    display file-status-display.
+    stop run.
+
+err-print-file section.
+    use after standard error procedure on  print-file.
+print-file-proc.
+    move status-prt-file                to      common-i-status.
+    display file-status-display.
+    stop run.
+
+end declaratives.
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+    perform ab0-processing              thru ab0-99-exit
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   7
+*                      r811.cbl                                      )
+        until     flag-eof-dict-b-mstr-y.
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from    date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+    move sys-date-long                  to      h1-run-date.
+
+    display scr-title.
+
+    display scr-continue.
+
+aa0-10-acpt-continue.
+
+    accept scr-ok-to-continue.
+
+*mf    if continue
+    if continue-run
+    then
+        display program-in-progress
+    else
+        if dont-continue
+        then
+            go to az0-end-of-job
+        else
+            move 1                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            go to aa0-10-acpt-continue.
+*       endif
+*   endif
+
+*    expunge print-file.
+    open output print-file.
+    open input  dictionary-b-mstr.
+
+    move spaces                         to      print-line
+                                                tbl-pgm-names.
+
+    move zero                           to      feedback-dict-b-mstr
+                                                counters
+                                                dict-b-occur.
+
+
+    move 1                              to      subs.
+
+    move 65                             to      ctr-lines.
+
+    move spaces                         to      key-dictionary-mstr.
+    move 'B'                            to      key-dict-b-type.
+
+    perform xa0-read-dict-b-mstr-approx thru    xa0-99-exit.
+
+    move dict-b-pgm-data                to      ws-hold-variable.
+
+aa0-99-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   8
+*                      r811.cbl                                      )
+ab0-processing.
+
+    if ws-hold-variable not = dict-b-pgm-data
+    then
+        perform ba0-print-variable      thru    ba0-99-exit
+        move spaces                     to      tbl-pgm-names
+        move 1                          to      subs.
+*   (else)
+*   endif
+
+    move dict-b-pgm-name                to      tbl-pgm(subs).
+    move dict-b-pgm-data                to      ws-hold-variable.
+
+    perform xc0-read-next-dict-b-mstr   thru    xc0-99-exit.
+
+ab0-99-exit.
+    exit.
+
+
+
+ba0-print-variable.
+
+    move 2                              to      nbr-of-lines-to-print.
+
+    move 1                              to      subs.
+    move ws-hold-variable               to      l1-var-name.
+
+ba0-20-fill-dtl-line.
+
+    perform ba3-fill-dtl-line           thru    ba3-99-exit
+        varying ss from 1 by 1
+        until ss > ws-max-pgms-per-line.
+
+    add nbr-of-lines-to-print           to      ctr-lines.
+
+    if ctr-lines > ws-max-nbr-lines
+    then
+        perform ba1-print-head          thru    ba1-99-exit.
+*   (else)
+*   endif
+
+    perform ba5-print-dtl-line          thru    ba5-99-exit.
+
+    if tbl-pgm(subs) not = spaces
+    then
+        move 1                          to      nbr-of-lines-to-print
+        go to ba0-20-fill-dtl-line.
+*   (else)
+*   endif
+
+ba0-99-exit.
+   exit.
+
+
+
+ba1-print-head.
+
+    add 1                               to      ctr-pages.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page   9
+*                      r811.cbl                                      )
+    move ctr-pages                      to      h1-page.
+
+    write print-record                  from    h1-head after advancing page.
+    write print-record                  from    h2-head after advancing 2 lines.
+    write print-record                  from    h3-head after advancing 1 line.
+
+    move 4                              to      ctr-lines.
+
+ba1-99-exit.
+    exit.
+
+
+ba3-fill-dtl-line.
+
+    move tbl-pgm(subs)                  to      l1-pgm(ss).
+
+    add 1                               to      subs.
+
+ba3-99-exit.
+    exit.
+
+
+
+ba5-print-dtl-line.
+
+    write print-record                  from    print-line after advancing nbr-o
+
+    move spaces                         to      print-line.
+
+ba5-99-exit.
+    exit.
+
+
+
+xa0-read-dict-b-mstr-approx.
+
+*mf    read dictionary-b-mstr key is key-dictionary-b-mstr approximate
+*mf     invalid key
+*mf         move 2                      to      err-ind
+*mf         perform za0-common-error    thru    za0-99-exit
+*mf         go to az0-end-of-job.
+
+   start dictionary-b-mstr key is greater than or equal to key-dictionary-b-mstr
+* 314-S****************************************************************(   6)***
+**    Illegal key
+        invalid key
+            move 2                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            go to az0-end-of-job.
+   read dictionary-b-mstr next.
+
+*mf    retrieve dictionary-b-mstr key fix position
+*mf     into key-dictionary-b-mstr.
+
+    add 1                               to      ctr-dict-reads.
+
+xa0-99-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page  10
+*                      r811.cbl                                      )
+
+
+
+xc0-read-next-dict-b-mstr.
+
+    read dictionary-b-mstr next
+        at end
+            move 'Y'                    to      flag-eof-dict-b-mstr
+            go to xc0-99-exit.
+
+*mf    retrieve dictionary-b-mstr key fix position
+*mf     into key-dictionary-b-mstr.
+
+    add 1                               to      ctr-dict-reads
+                                                subs.
+
+xc0-99-exit.
+    exit.
+az0-end-of-job.
+
+    perform ba0-print-variable          thru    ba0-99-exit.
+
+    accept sys-time                     from time.
+    display scr-closing-screen.
+
+    close print-file.
+    close dictionary-b-mstr.
+
+    stop run.
+
+az0-99-exit.
+    exit.
+za0-common-error.
+
+    move err-msg (err-ind)              to      err-msg-comment.
+    display err-msg-line.
+    display confirm.
+    stop " ".
+    display blank-line-24.
+
+za0-99-exit.
+    exit.
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:15 Page  11
+*                      r811.cbl                                      )
+*                                              REF GNB-030056000AA
+*
+* Last message on page: 9
+*
+* Total Messages:     3
+* Unrecoverable :     0                    Severe  :     2
+* Errors        :     1                    Warnings:     0
+* Informational :     0                    Flags   :     0
+* Data:        3820     Code:        1906

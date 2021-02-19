@@ -1,0 +1,247 @@
+/alpha/rmabill/rmabill101/src
+Wed Jan 11 08:53:58 EST 2012
+ + + + Sourced in /alpha/rmabill/rmabill101/src + + +
+;Compiling program [/alpha/rmabill/rmabill101/src/d705c.qks]
+Q D E S I G N   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-DEVELOPMENT for customer: 0057360001 DYAD Systems Inc. UNIX
+
+> ;#> program-id.     d705c.qks
+> ;
+> ;	((C)) Dyad Technologies
+> ;
+> ;    program purpose : to allow entry/correction of web "manual review"
+> ;			comments (placed into claim "description" records)
+> ;
+> ; MODIFICATION HISTORY
+> ;    DATE   WHO  DESCRIPTION
+> ; 00/sep/14 B.E. - original
+> ; 00/sep/25 B.E. - added warning if description text longer than what fits
+> ;		   into 5 claim description recs
+> ; 00/oct/13 B.E. - clmdtl-line-no made display field, added designer procedure
+> ;		   'line' to allow input of clmdtl-line-no
+> ;		 - if any description records found, then clmhdr-manual-review
+> ;		   flag set to 'y'es
+> 
+> can clear
+> screen $pb_obj/d705c receiving w-clmhdr-doc-ohip-nbr,		&
+> 	 w-clmhdr-accounting-nbr, f002-suspend-hdr		&
+> 	 on line 19 for 5 message on line 24
+> 
+> temp w-clmhdr-doc-ohip-nbr
+> temp w-clmhdr-accounting-nbr char*8
+> temp x-nbr-desc-recs
+> temp x-warn-flag char*1
+> 
+> use $use/def_clmhdr_status.def
+> ; file   : def_clmhdr_status.def
+> ; purpose: define the suspended header record's status field
+> 
+> ; This USE file is called from the following programs:
+> ;   newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,
+> ;   r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs
+> ;   d705.qks
+> ; 00/oct/02 B.E. - change variable name from nocancel to not-completed
+> ;
+> def clmhdr-status-complete	char*1	= "C"
+> def clmhdr-status-delete	char*1	= "D"
+> def clmhdr-status-cancel	char*1	= "Y"
+> def clmhdr-status-resubmit	char*1	= "R"
+> def clmhdr-status-error		char*1	= "X"
+> def clmhdr-status-not-complete	char*1	= "N"
+> def clmhdr-status-default	char*1	= " "
+> def updated			char*1	= "U"
+> def clmhdr-status-ignor		char*1	= "I"
+> use $use/def_clmdtl_status.def
+> ; file:    def_clmhdr_status.def
+> ; purpose: define the suspended detail record's status
+> ;
+> def clmdtl-status-delete	char*1	= "D"
+> def clmdtl-status-new      	char*1	= "N"
+> def clmdtl-status-active 	char*1	= " "
+> def clmdtl-status-updated	char*1	= "U"
+> 
+> 
+> file f002-suspend-hdr master
+> 
+> file f002-suspend-desc  primary occurs 4
+> 	access viaindex suspend-dtl-id using		&
+> 	w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+>    item clmdtl-doc-ohip-nbr   initial w-clmhdr-doc-ohip-nbr fixed
+>    item clmdtl-accounting-nbr initial w-clmhdr-accounting-nbr fixed
+>    item clmdtl-status initial ' '
+> 
+> file f002-suspend-desc alias f002-desc-verify designer
+>         access viaindex suspend-dtl-id using            &
+>         w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+> 
+> file constants-mstr-rec-2 reference
+> 	access using "2"
+> 
+> title "OHIP message ends 2nd !line at exclamation in this msg"  at ,25
+> 
+> ;skip 1
+> ;align (1,4,35)
+> ;field clmdtl-doc-ohip-nbr of f002-suspend-desc          nochange   &
+> ;	pic "^^^^^^" label "Doctor Nbr (OHIP)" predisplay display
+> ;field clmdtl-accounting-nbr of f002-suspend-desc        nochange &
+> ;      id same label "Remote Site's Accounting Nbr" predisplay  display
+> ;skip 1
+> ;title " Line            " at ,2
+> ;skip
+> ;title "  Nbr Description" at ,2
+> ;skip 1
+> cluster occurs with f002-suspend-desc
+> align (1,,4)  (,,7) (,,80)
+> field clmdtl-line-no display
+> field clmdtl-suspend-desc
+> field clmdtl-status display
+> 
+> ;field clmdtl-status  of  f002-suspend-desc label "DETAIL STATUS" display
+> 
+> use $use/d705_verify_desc_length.use
+> ;
+> ; file :d705_verify_desc_length.use
+> ; purpose: warning user if the length of description text is too long
+> ;
+> ;   currently a claim can only have 5 description recs, each of length 22
+> ;   so a maximum of 110 characters will be uploaded into the claims file.
+> ;   Warn user if descriptions 3 or 4 exist or if descr #2 if greater
+> ;   than 39 characters (110 = 70 of desc#1 + 1 blank + 39 of desc#2
+> 
+> procedure internal warn-desc-max-length
+> begin
+> 
+>   let x-nbr-desc-recs  = 0
+>   let x-warn-flag = "N"
+>   while retrieving f002-desc-verify
+>   begin
+>     let x-nbr-desc-recs = x-nbr-desc-recs + 1
+> ;   info = "rec#=" + ascii(x-nbr-desc-recs) + " " + ascii(size(truncate(pack(clmdtl-suspend-desc of f002-desc-verify)))) now response
+> ;   info = "text="  + clmdtl-suspend-desc of f002-desc-verify now response
+>     if x-nbr-desc-recs = 2
+>     then
+>       begin
+> ;       (text past column 39 on 2nd rec never get processed)
+>         if 39 < size(truncate(pack(clmdtl-suspend-desc of f002-desc-verify)))
+>         then
+>             let x-warn-flag = "Y"
+>       end
+> ;   (desc records 3 and 4 never get processed)
+>     if   x-nbr-desc-recs = 3    &
+>       or x-nbr-desc-recs = 4
+>     then
+>        begin
+>        if clmdtl-suspend-desc of f002-desc-verify <> " "
+>        then
+>          let x-warn-flag = "Y"
+>        end
+>   end
+>   if x-warn-flag = "Y"
+>   then
+>     info "WARNING! There are comments longer than 110 characters that will be ignored" now response
+> end
+> 
+> 
+> procedure designer line
+> begin
+>    for f002-suspend-desc
+>    begin
+>      accept clmdtl-line-no
+>      put f002-suspend-desc
+>    end
+> end
+> 
+> procedure preupdate
+> begin
+>    let x-nbr-desc-recs = 0
+> 
+>    for f002-suspend-desc
+>    begin
+> ;    (if not specified, ensure that line-no field matches record's sequence)
+>      if clmdtl-line-no = 0
+>      then
+>        let clmdtl-line-no = occurrence
+> 
+> ;    (set status of record)
+>      if     clmdtl-status     <> clmdtl-status-delete	&
+> 	and alteredrecord
+>      then
+>        begin
+>          let clmdtl-status  = clmdtl-status-updated
+> 	 display clmdtl-status
+>        end
+>      if     clmdtl-status     <> clmdtl-status-delete	&
+> 	and newrecord
+>      then
+>        begin
+>          let clmdtl-status  = clmdtl-status-new
+> 	 display clmdtl-status
+>        end
+> 
+> ;    (count the number of description records so that this counter
+> ;     can be updated into the hdr rec)
+>      if     clmdtl-suspend-desc <> " "			&
+> 	and clmdtl-status <> clmdtl-status-delete	&
+> 	and not deletedrecord
+>      then
+>        let x-nbr-desc-recs = occurrence
+>    end
+> 
+> ;
+> ;  00/oct/05 B.E. change in use of this field
+> ;  (always place a '1' in nbr recrods instead of actual nbr of desc recs.
+> ;   This field can then be used to "S"elect on to get any claim with a desc
+> ;   which can't be done if the actual number of records is used
+> ;  let clmhdr-nbr-suspend-desc-recs of f002-suspend-hdr = x-nbr-desc-recs
+>    let clmhdr-nbr-suspend-desc-recs of f002-suspend-hdr = 1
+> 
+>    if x-nbr-desc-recs > 0
+>    then
+>      begin
+>        if clmhdr-manual-review <> "Y"
+>        then
+> 	 begin
+> 	   info = "*WARNING* - setting 'manual review' flag to 'Y'es" now response
+> 	   let clmhdr-manual-review = "Y"
+> 	 end
+>      end
+>    let clmhdr-status of f002-suspend-hdr = updated
+>    put f002-suspend-hdr
+> 
+> end
+> 
+> 
+> procedure initialize
+> begin
+> ; (warn user if comments are to large to fit into a single claim's descr recs)
+>   do warn-desc-max-length
+> end
+> 
+> build
+*W* CONSTANTS-MSTR-REC-2 accessed via CONST-REC-NBR.
+MODE:x ACTION:xxxxxxxxx OHIP message ends 2nd !line at exclamation in this msg
+01 xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   x
+02 xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   x
+03 xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   x
+04 xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   x
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+0 ERRORS  1 WARNINGS. Delete old screen /alpha/rmabill/rmabill101/obj/d705c.qkc?
+Wed Jan 11 08:54:01 EST 2012

@@ -1,0 +1,315 @@
+;#> PROGRAM-ID.     U030B_PART3.QTS
+;
+; ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : THIRD PASS OF U030B
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     06/Nov/03 M.C.         - ORIGINAL 
+;                            - create miscellaneous premium payment records from record 8
+;     07/Feb/15 M.C.	     - Since Mary put the the postdate 'termination date' in the
+; 			       doctor master, we still have to consider active doctor if the
+;			       termination date > sysdate
+;     07/apr/16 M.C.	     - change the definition of x-paid-amt for negative amount as well
+;     07/jun/13 M.C.	     - add a new request at the end of the program to create records in the
+;			       'tmp-counters-alpha' file from subfile
+can clear
+set default
+set process nolimit
+set lock record update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request evaluate_clinic_amt  on calculation errors report on edit errors report
+
+access r031a-ohip-premiums         	   	
+
+; filter and convert payment amt into numeric
+; 2007/04/16 - MC
+;def x-paid-amt zoned*8 signed = nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+def x-paid-amt zoned*8 signed = 						&
+	nconvert(dollars-paid[2:2] + dollars-paid[5:3] + dollars-paid[9:2]) * -1	&
+	if dollars-paid[1:1] = '-'						&
+	else  nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+; 2007/04/16 - end
+
+
+sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr
+
+; summarize all detail with the same doc ohip within the clinic
+temp x-payment  zoned*8 signed 
+item x-payment  = x-payment + x-paid-amt	&
+		reset at doc-ohip-nbr
+
+; write a record per doc ohip nbr per clinic
+subfile r031a_extract_data keep at doc-ohip-nbr include		&
+	doc-ohip-nbr of r031a-ohip-premiums,	&
+	iconst-clinic-nbr-1-2,			&
+	x-payment,                   		&
+	clmhdr-adj-cd
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_doctor     on calculation errors report on edit errors report
+
+access *r031a_extract_data          	        &	
+	link doc-ohip-nbr 			&
+	 to doc-ohip-nbr of f020-doctor-mstr opt
+
+sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr 
+
+temp xcount
+item xcount = xcount + 1 reset at doc-ohip-nbr
+
+subfile r031a_sort_doctor keep at doc-ohip-nbr include  &  
+	doc-ohip-nbr of r031a_extract_data,     &
+	doc-nbr,				&
+	doc-date-fac-start,			&
+	doc-date-fac-term ,			&
+	iconst-clinic-nbr-1-2,			&
+	x-payment,     		 		&
+	clmhdr-adj-cd,				&
+	doc-dept,				&
+	xcount
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_unique_doctors    on calculation errors report on edit errors report
+
+access *r031a_sort_doctor 
+
+sel if xcount = 1           
+
+subfile r031a_select_doctor keep include r031a_sort_doctor
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_multiple_doctors  on calculation errors report on edit errors report
+
+access *r031a_sort_doctor 	&
+	link doc-ohip-nbr	&
+	 to doc-ohip-nbr of f020-doctor-mstr opt
+
+; select multiple with active doctors only
+sel if xcount > 1           		&
+; 2007/02/15 - MC
+; and doc-date-fac-term of f020-doctor-mstr = 0		&
+  and (     doc-date-fac-term of f020-doctor-mstr = 0		&
+        or  doc-date-fac-term of f020-doctor-mstr > sysdate	&
+      )								&
+; 2007/02/15 - end
+  and  doc-dept of f020-doctor-mstr <> 31		&
+  and (   (     iconst-clinic-nbr-1-2 = doc-clinic-nbr  &
+            and doc-nx-avail-batch <> 0)                &
+        or (    iconst-clinic-nbr-1-2 = doc-clinic-nbr-2   &
+            and doc-nx-avail-batch-2 <> 0)              &
+        or (    iconst-clinic-nbr-1-2 = doc-clinic-nbr-3   &
+            and doc-nx-avail-batch-3 <> 0)              &
+        or (    iconst-clinic-nbr-1-2 = doc-clinic-nbr-4   &
+            and doc-nx-avail-batch-4 <> 0)              &
+        or (    iconst-clinic-nbr-1-2 = doc-clinic-nbr-5   &
+            and doc-nx-avail-batch-5 <> 0)              &
+        or (    iconst-clinic-nbr-1-2 = doc-clinic-nbr-6   &
+            and doc-nx-avail-batch-6 <> 0)               &
+      )
+
+
+subfile r031a_multiple_doctor keep include  	&
+	doc-ohip-nbr of r031a_sort_doctor,      &
+	doc-nbr of f020-doctor-mstr,		&
+	doc-date-fac-start of f020-doctor-mstr,	&
+	doc-date-fac-term of f020-doctor-mstr,	&
+	iconst-clinic-nbr-1-2,			&
+	x-payment,   			 	&
+	clmhdr-adj-cd,				&
+	xcount,					&
+	doc-dept of f020-doctor-mstr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_filter_mult_docs  on calculation errors report on edit errors report
+
+access *r031a_multiple_doctor
+
+sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr on doc-dept d on doc-date-fac-start
+
+subfile r031a_select_doctor keep append at doc-ohip-nbr include 		&
+	doc-ohip-nbr,                           &
+	doc-nbr,				&
+	doc-date-fac-start,			&
+	doc-date-fac-term ,			&
+	iconst-clinic-nbr-1-2,			&
+	x-payment,       	 		&
+	clmhdr-adj-cd,				&
+	doc-dept,				&
+	xcount
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request convert_clinic       on calculation errors report on edit errors report
+
+access *r031a_select_doctor     
+
+
+;convert the clinic to user's expectation
+def x-clinic zoned*2 unsigned = 22 if 	iconst-clinic-nbr-1-2 = 84	&
+				     or iconst-clinic-nbr-1-2 = 96	&
+			else   iconst-clinic-nbr-1-2
+
+
+sort on x-clinic on doc-ohip-nbr on doc-nbr
+
+;summarize the records with the same doc-nbr, doc-ohip-nbr & x-clinic
+temp x-total-paid-amt  zoned*8 signed 
+item x-total-paid-amt = x-total-paid-amt +  x-payment reset at doc-nbr
+
+subfile r031a_convert_doctor keep at doc-nbr include	&
+	r031a_select_doctor, x-clinic, x-total-paid-amt
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_active_doctor     on calculation errors report on edit errors report
+
+access *r031a_convert_doctor
+
+; 2007/02/15 - MC
+;sel if doc-date-fac-term = 0
+sel if doc-date-fac-term = 0 or doc-date-fac-term > sysdate
+; 2007/02/15 - end
+
+; select the active doctors only
+subfile r031a_active_doctor keep include r031a_convert_doctor
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request calculate_batch_nbr  on calculation errors report on edit errors report
+
+access *r031a_active_doctor		
+
+sorted on x-clinic
+
+temp x-count
+  item x-count count reset at x-clinic
+
+temp x-batch-count
+  item x-batch-count = ceiling(x-count / 99)   &
+	reset at x-clinic
+
+subfile r031a_batch_nbr keep include		&
+	r031a_active_doctor, x-count, x-batch-count
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request create_payment_recs  on calculation errors report on edit errors report
+
+access *r031a_batch_nbr      		&
+	link x-clinic 			&
+	 to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+sorted on x-clinic on x-batch-count 
+
+def x-pay-batch-nbr zoned*3 unsigned = nconv(iconst-clinic-pay-batch-nbr[4:3])
+
+temp x-batch-nbr zoned*3 unsigned
+item x-batch-nbr = x-pay-batch-nbr + x-batch-count   &
+        at x-batch-count                             &
+               reset at x-clinic to  x-pay-batch-nbr
+
+define x-clinic-batch-nbr char*8 = ascii(x-clinic,2) + iconst-clinic-pay-batch-nbr[1:3] + ascii(x-batch-nbr,3)
+
+define x-mod       = mod(x-count,99)
+
+define x-claim-nbr = x-mod if x-mod <> 0 else 99
+
+output f001-batch-control-file add at x-batch-count on errors report
+   item batctrl-batch-nbr          initial x-clinic-batch-nbr
+   item batctrl-batch-type         initial 'P'
+   item batctrl-adj-cd             initial 'M'
+   item batctrl-adj-cd-sub-type    initial '0'
+   item batctrl-last-claim-nbr     final x-claim-nbr
+   item batctrl-clinic-nbr         initial iconst-clinic-nbr 
+   item batctrl-date-batch-entered initial ascii(sysdate,8)
+   item batctrl-date-period-end    initial ascii(iconst-date-period-end,8)
+   item batctrl-loc		   initial 'MISC'
+   item batctrl-agent-cd           initial 0
+   item batctrl-cycle-nbr          initial iconst-clinic-cycle-nbr
+   item batctrl-amt-act            subtotal x-total-paid-amt 
+   item batctrl-amt-est            subtotal x-total-paid-amt 
+   item batctrl-ar-yy-mm           initial '000000'
+   item batctrl-calc-tot-rev       subtotal x-total-paid-amt 
+   item batctrl-manual-pay-tot     subtotal x-total-paid-amt
+   item batctrl-batch-status        initial '1'
+   item batctrl-nbr-claims-in-batch final x-claim-nbr
+
+output f002-claims-mstr alias f002-adj-hdr add noitems on errors report
+;Preset claim header data from batctrl record
+   item key-clm-type                 initial 'B'
+   item key-clm-batch-nbr            initial batctrl-batch-nbr  
+   item key-clm-claim-nbr     	     initial x-claim-nbr
+   item key-clm-serv-code            initial '00000'
+   item key-clm-adj-nbr              initial '0'
+   item clmhdr-loc                   initial "MISC" 
+   item clmhdr-doc-dept		     initial doc-dept
+   item clmhdr-batch-type            initial batctrl-batch-type
+   item clmhdr-adj-cd-sub-type       initial batctrl-adj-cd-sub-type
+   item clmhdr-adj-cd                initial batctrl-adj-cd
+   item clmhdr-date-period-end       initial nconvert(batctrl-date-period-end)
+   item clmhdr-cycle-nbr             initial batctrl-cycle-nbr
+   item clmhdr-batch-nbr             initial ascii(x-clinic,2) + doc-nbr + batctrl-batch-nbr[3:3]
+   item clmhdr-claim-nbr	     initial 01
+   item clmhdr-oma-suff-adj 	     initial '000000'
+   item clmhdr-i-o-pat-ind           initial 'O'  
+   item clmhdr-agent-cd              initial batctrl-agent-cd   
+   item clmhdr-date-admit            initial '00000000'
+   item clmhdr-date-cash-tape-payment initial ascii(sysdate,8)
+   item clmhdr-date-sys            initial ascii(sysdate,8)
+   item clmhdr-tape-submit-ind     initial 'N'
+   item clmhdr-manual-and-tape-payments initial x-total-paid-amt
+   item clmhdr-orig-batch-nbr      initial batctrl-batch-nbr
+   item clmhdr-orig-claim-nbr      initial x-claim-nbr
+   item key-p-clm-type             initial 'Z'
+
+output f002-claims-mstr alias f002-adj-dtl add noitems on errors report
+   item key-clm-type               initial 'B'
+   item key-clm-batch-nbr          initial batctrl-batch-nbr 
+   item key-clm-claim-nbr          initial x-claim-nbr
+   item key-clm-serv-code          initial 'AGEP' 
+   item key-clm-adj-nbr            initial '0'
+   item clmdtl-batch-nbr           initial clmhdr-batch-nbr of f002-adj-hdr
+   item clmdtl-claim-nbr           initial clmhdr-claim-nbr of f002-adj-hdr
+   item clmdtl-oma-cd              initial 'AGEP' 
+   item clmdtl-oma-suff            initial ' ' 
+   item clmdtl-adj-nbr             initial 1
+   item clmdtl-agent-cd            initial clmhdr-agent-cd of f002-adj-hdr
+   item clmdtl-adj-cd              initial clmhdr-adj-cd of f002-adj-hdr
+   item clmdtl-sv-date             initial ascii(sysdate,8)
+   item clmdtl-nbr-serv            initial 0
+   item clmdtl-consec-dates        initial 0
+   item clmdtl-date-period-end     initial ascii(clmhdr-date-period-end of f002-adj-hdr,8)
+   item clmdtl-cycle-nbr           initial clmhdr-cycle-nbr of f002-adj-hdr
+   item clmdtl-fee-oma             initial x-total-paid-amt 
+   item clmdtl-fee-ohip            initial x-total-paid-amt 
+   item clmdtl-orig-batch-id 	   initial clmhdr-orig-batch-id of f002-adj-hdr
+   item key-p-clm-type             initial 'Z'
+
+output iconst-mstr-rec update at x-clinic on errors report
+   item iconst-clinic-pay-batch-nbr     final iconst-clinic-pay-batch-nbr[1:3] + ascii(x-batch-nbr,3)
+
+subfile r031a_pay_batches keep at x-batch-count     &
+       include batctrl-batch-nbr, batctrl-manual-pay-tot
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 2007/06/13 - MC
+
+request transfer_to_tmp_file on calculation errors report on edit errors report
+
+access *r031a_select_doctor
+
+output tmp-counters-alpha add on errors report
+   item tmp-counter-key-alpha final ascii(iconst-clinic-nbr-1-2,2)+ ascii(doc-ohip-nbr,6)
+
+; 2007/06/13 - end
+
+build $pb_obj/u030b_part3

@@ -1,0 +1,344 @@
+; Program: u933a_part2.qts
+; Purpose: create payroll transactions for ICU doctors
+
+;			  
+; 2001/apr/24 B.E.	- split u933.qts into u933a_part1/2 to create
+;			  this pgm.
+;			  This pgm must run in the ICU Payroll directory!
+;
+
+can clear
+run u933a_part2
+
+set process nolimit
+set lock file update
+
+global temp advout-seq     zoned*2 unsigned
+global temp advout-seq-rpt zoned*2 unsigned
+global temp advout-type    char*1
+global temp advout-group   char*1
+global temp advout-factor  numeric
+global temp defic-seq      zoned*2 unsigned
+global temp defic-seq-rpt  zoned*2 unsigned
+global temp defic-type     char*1
+global temp defic-group    char*1
+global temp defic-factor   numeric
+
+;---------------------------------------------------------------------
+request u116_a_get_advout                    &
+                on edit        errors report &
+                on calculation errors report
+;------------------------------------------------------------
+access f190-comp-codes
+choose comp-code "ADVOUT"
+item advout-seq     =  process-seq
+item advout-seq-rpt =  reporting-seq
+item advout-type    =  comp-type
+item advout-group   =  comp-code-group
+item advout-factor  =  factor
+
+;---------------------------------------------------------------------
+request u116_a_get_defic                     &
+                on edit        errors report &
+                on calculation errors report
+;------------------------------------------------------------
+access f190-comp-codes
+choose comp-code "DEFIC"
+item defic-seq      =  process-seq
+item defic-seq-rpt  =  reporting-seq
+item defic-type     =  comp-type
+item defic-group    =  comp-code-group
+item defic-factor   =  factor
+
+
+;---------------------------------------------------------------------
+request u933_4_calculate_comp_codes
+;------------------------------------------------------------
+
+set process nolimit
+
+access *u933_totals						&
+   link doc-nbr							&
+     to doc-nbr of f020-doctor-mstr opt 			&
+   link 81							&
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt		&
+   link  6							&
+     to  constants-mstr-rec-6                             	&
+   link doc-nbr of u933_totals,					&
+        current-ep-nbr of constants-mstr-rec-6,			&
+        advout-seq,                                             &
+        "ADVOUT"                                                &
+     to doc-nbr,                                                &
+        ep-nbr,                                                 &
+        process-seq,                                            &
+        comp-code    of f110-compensation                       &
+                  alias f110-advout          opt
+
+use $use/icu_depts.def nol
+
+def x-clawback-percent = parm prompt  "CLAWBACK % (99.99): "
+;edit x-clawback-percent input scale 2
+def x-charge-per-claim = parm prompt "RMA CHARGE PER CLAIM: "
+;edit x-charge-per-claim input scale 2
+
+; (NOTE adjustments already negative - so add then don't subtract) 
+def x-net-fees 		= (  tot-fees-billed 			&
+			   + tot-adjustments			&
+			  )
+def x-less-clawback 	= round (  (  x-net-fees  		&
+   			            * x-clawback-percent	&
+			           )				&
+		                  / 100				&
+				)
+
+def x-tot-billing 	= x-net-fees - x-less-clawback
+def x-tot-billing-at-95%= round (x-tot-billing * .95)
+def x-amt-holdback-icu	= x-tot-billing - x-tot-billing-at-95%
+def x-rma-icu-charge 	= tot-nbr-claims * (x-charge-per-claim * 100)
+
+use $use/gst.use nol
+def x-gst 		= round ((x-rma-icu-charge * gst-percent) / 100)
+
+def x-tot-exp 		= x-rma-icu-charge + x-gst
+def x-net 		= x-tot-billing-at-95% - x-tot-exp
+
+
+temp x-comp-code char*6
+temp x-factor
+temp x-units
+temp x-amt-mtd
+temp x-amt-ytd
+
+item x-comp-code= "NBRCLM"
+item x-factor	= x-charge-per-claim * 10000
+item x-units	= tot-nbr-claims
+item x-amt-mtd	= tot-nbr-claims * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= tot-nbr-claims * 100
+
+subfile u933a2  alias  u933a2-nbrclm keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "NBRSVC"
+item x-factor	= 0
+item x-units	= tot-nbr-svcs
+item x-amt-mtd	= tot-nbr-svcs * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= tot-nbr-svcs * 100
+
+
+subfile u933a2  alias  u933a2-nbrsvc keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILICU"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= tot-fees-billed
+item x-amt-ytd	= tot-fees-billed
+
+subfile u933a2  alias  u933a2-bilicu keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ADJICU"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= tot-adjustments
+item x-amt-ytd	= tot-adjustments
+
+subfile u933a2  alias  u933a2-adjicu keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "NETBIL"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-net-fees
+item x-amt-ytd	= x-net-fees
+
+subfile u933a2  alias  u933a2-netbil keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "CLAWBK"
+item x-factor	= x-clawback-percent * 100
+item x-units	= 0
+item x-amt-mtd	= x-less-clawback
+item x-amt-ytd	= x-less-clawback
+
+subfile u933a2  alias  u933a2-clawbk keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTBIL"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing
+item x-amt-ytd	= x-tot-billing
+
+subfile u933a2  alias  u933a2-totbil keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "HOLDIC"
+item x-factor	= 500	; 5%  
+item x-units	= 0
+item x-amt-mtd	= x-amt-holdback-icu
+item x-amt-ytd	= x-amt-holdback-icu
+
+subfile u933a2  alias  u933a2-holdic keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILL95"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing-at-95%
+item x-amt-ytd	= x-tot-billing-at-95%
+
+subfile u933a2  alias  u933a2-bill95 keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+
+
+;
+;ICU Charges and expense only for non-RMA doctors
+;
+
+
+item x-comp-code= "ICUCHR"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-rma-icu-charge
+item x-amt-ytd	= x-rma-icu-charge
+
+subfile u933a2  alias  u933a2-rmachr keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ICUGST"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-gst
+item x-amt-ytd	= x-gst
+
+subfile u933a2  alias  u933a2-icugst keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTEXP"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-exp
+item x-amt-ytd	= x-tot-exp
+
+subfile u933a2  alias  u933a2-totexp keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+; (advances are taken off potential pay for NON-RMA doctors only)
+def x-amt-net-f110-advout numeric*8                         	&
+       = amt-net  of f110-advout   				&
+		if     record f110-advout exists 		&
+                   and doc-dept = icu-dept-1			&
+    else 0
+
+; 'basic' potential pay calculation is the 'net' amount if non-rma doctor 
+; otherwise show the 'net revenue' for rma doctors
+item x-comp-code= "PAYPOT"
+item x-factor	= 0
+item x-units	= 0
+
+; (basic potential pay calculation)
+def  x-paypot-1	= x-net 					&
+			if doc-dept = icu-dept-1	 	&	
+            else  x-tot-billing-at-95%
+
+; (for non-rma doctor's subtract any advances coming into this EP)
+def  x-paypot-2 = x-paypot-1					&
+			if   x-amt-net-f110-advout = 0		&
+	     else   x-paypot-1 					&
+	          - x-amt-net-f110-advout
+
+; (if Advances greater than amt to be paid, create a deduction that will
+;  be processed in Deductions processing and reduce PAY EFT)
+def x-amt-defic integer*8 signed size 4                      	&
+        = 0		if x-paypot-2 >= 0                   	&
+     else abs(x-paypot-2)
+; (if Advances where greater than amt to be paid, pay zero)
+def x-paypot-3 integer*8 signed size 4                    	&
+        = x-paypot-2	if x-paypot-2 >= 0               	&
+     else 0
+
+item x-amt-mtd	= x-paypot-1 
+item x-amt-ytd	= x-paypot-3 
+
+subfile u933a2  alias  u933a2-paypot keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "DEFIC"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-amt-defic
+item x-amt-ytd	= x-amt-defic 
+
+subfile u933a2  alias  u933a2-defic keep			&
+ if doc-dept = icu-dept-1					&
+   and x-amt-defic > 0						&
+     include							&
+	doc-nbr of u933_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+subfile u933a1     keep include                    			&
+        doc-nbr of u933_totals,                    			&
+        doc-name, doc-dept, tot-nbr-claims, tot-nbr-svcs, 		&
+	tot-fees-billed, tot-adjustments, x-less-clawback, 		&
+	x-tot-billing, x-tot-billing-at-95%, x-rma-icu-charge, 		&
+	x-gst, x-tot-exp, x-net, iconst-date-period-end
+
+
+subfile debug_u933a keep include			&
+  doc-nbr of u933_totals,				&
+  doc-dept of f020-doctor-mstr,				&
+  current-ep-nbr,					&
+  tot-nbr-claims of u933_totals,			&
+  x-clawback-percent,					&
+  x-charge-per-claim,					&
+  tot-fees-billed of u933_totals,			&
+  tot-adjustments of u933_totals,			&
+  x-net-fees,						&
+  x-less-clawback,					&
+  x-tot-billing,					&
+  x-tot-billing-at-95%,					&
+  x-amt-holdback-icu,					&
+  x-rma-icu-charge,					&
+  x-gst,						&
+  x-tot-exp,						&
+  x-net,						&
+  amt-net  of f110-advout,				&
+  x-amt-net-f110-advout,				&
+  x-paypot-1,						&
+  x-paypot-2,						&
+  x-amt-defic,						&
+  x-paypot-3
+
+
+build $obj/u933a_part2

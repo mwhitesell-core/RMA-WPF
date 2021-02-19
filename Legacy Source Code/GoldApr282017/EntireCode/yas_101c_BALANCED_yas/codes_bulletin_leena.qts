@@ -1,0 +1,229 @@
+;doc     : codes_bulletin_leena              
+;purpose : select certain codes for clinic 22 and 34 
+;          to calculate the eligible codes for 2008 physician services agreement amount for each doc
+;          report by doc, by service date 20090401 - 20100331  seperate column for 20100401 - 20110331
+;          ******* INCLUDE ADJUSTMENTS *******
+;          ***  ADJUSTMENT is included for if you select service date otherwise you have to change it for the PED selection
+;who     : For Leena
+
+;
+; *************************************************************
+
+;Date		Who	       Description
+;2012/01/03	Yasemin	       dwayne_newcodes.qts  
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22000000" to "22ZZZ999",      &
+                                              "34000000" to "34ZZZ999",      &
+                                              "33000000" to "33ZZZ999",      &
+                                              "36000000" to "36ZZZ999",      &
+                                              "42000000" to "42ZZZ999",      &
+                                              "44000000" to "44ZZZ999",      &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'    
+
+subfile bulletin     keep include      &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+clmhdr-loc        
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *bulletin                                                   &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr         &
+          of f002-claims-mstr
+
+def x-code cha*5 = clmdtl-id[11:5]
+
+select f002-claims-mstr if                    &
+            clmdtl-sv-date     >= '20090401'  &
+       and  clmdtl-sv-date     <= '20110331'  &
+       and  (   x-code         =  "G140A"    & ; 2008 physician services agreement-eligible codes
+             or x-code         =  "G209A"    & ;   
+             or x-code         =  "G332A"    & ;   
+             or x-code         =  "G414A"    & ;   
+             or x-code         =  "G416A"    & ;   
+             or x-code         =  "G455A"    & ;   
+             or x-code         =  "G540A"    & ;   
+             or x-code         =  "G542A"    & ;   
+             or x-code         =  "G554A"    & ;   
+             or x-code         =  "G810A"    & ;   
+             or x-code         =  "G812A"    & ;   
+             or x-code         =  "G813A"    & ;   
+             or x-code         =  "J189C"    & ;   
+             or x-code         =  "J333B"    & ;   
+             or x-code         =  "J489C"    & ;   
+             or x-code         =  "J683B"    & ;   
+             or x-code         =  "J684B"    & ;   
+             or x-code         =  "J883B"    & ;   
+             or x-code         =  "J884B"    & ;   
+	    )                                & 
+        and  clmdtl-adj-nbr     =  0	       ; regular claim detail only 
+
+;       and  clmdtl-adj-nbr     =  1	       ; adjustment or miscellaneous payment detail only
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-prof-fee = clmdtl-fee-ohip - clmdtl-amt-tech-billed & 
+	if key-clm-batch-nbr[1:2] > '60' and key-clm-batch-nbr[1:2] <= '66'  &
+     else clmdtl-fee-ohip
+
+def x-fee = x-prof-fee  / x-nbr-svcs
+
+
+; regular claim detail (clmdtl-adj-nbr = 0) should have non-zero nbr-of-serv
+; but for adjustment claim and misc payment  detail(clmdtl-adj-nbr = 1) nbr-serv and consecute date are always ZERO
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee     &
+                if clmdtl-adj-nbr = 0                   &
+        else    x-prof-fee           
+
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee  
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee 
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee 
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+subfile bulletin1      keep include        &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-1                      ,&
+x-sv-date-1                              ,&
+x-sv-nbr1                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of bulletin           
+
+subfile bulletin1 alias bulletin_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-2                      ,&
+x-sv-date-2                              ,&
+x-sv-nbr2                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of bulletin          
+
+subfile bulletin1 alias bulletin_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-3                      ,&
+x-sv-date-3                              ,&
+x-sv-nbr3                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of bulletin          
+
+subfile bulletin1 alias bulletin_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-4                      ,&
+x-sv-date-4                              ,&
+x-sv-nbr4                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of bulletin           
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *bulletin1                                                       &
+  link clmdtl-id[3:3] to doc-nbr of f020-doctor-mstr opt                
+
+def x-clinic cha*2 = clmdtl-id[1:2]
+def x-doc    cha*3 = clmdtl-id[3:3]
+def x-yymm   cha*6 = x-sv-date-1[1:6]
+
+sort on x-doc 
+
+temp x-2010     zoned*7
+item x-2010     = x-2010 + x-clmdtl-fee-ohip-1        &     
+                  if    x-sv-date-1 >= "20090401"     &
+                    and x-sv-date-1 <= "20100331"     &
+                  reset at x-doc
+
+temp x-2011     zoned*7
+item x-2011     = x-2011 + x-clmdtl-fee-ohip-1        &     
+                  if    x-sv-date-1 >= "20100401"     &
+                    and x-sv-date-1 <= "20110331"     &
+                  reset at x-doc
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile bulletin2 portable keep at x-doc include     &
+doc-dept                                            ,&
+comma                                               ,&
+x-doc                                               ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-2010                                              ,&
+comma                                               ,&
+x-2011                                              ,&
+x-cr
+
+build $obj/codes_bulletin_leena

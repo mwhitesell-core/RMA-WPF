@@ -1,0 +1,101 @@
+; DOC: R138_CSV.QZS
+; DOC: DEFICIT REPORT
+; DOC: SORT BY COMPANY/DEPT
+; DOC: RUN FOR: Ross  
+;
+;PROGRAM PURPOSE : DEFICIT REPORT FOR PAYROLL
+;
+;DATE           WHO       DESCRIPTION
+;2015/Aug/11	MC	  ORIGINAL - this program will be run in $cmd/teb3; thus ep nbr has changed (+1)  
+;
+can clear
+set rep nolimit
+set rep device disc name r138_csv
+set page length 0  width 132
+set nohead
+
+
+access constants-mstr-rec-6			&
+	link  current-ep-nbr            	&
+	 to   ep-nbr  of f110-compensation	&
+	link  doc-nbr				&
+	 to   doc-nbr of f020-doctor-mstr opt  	&
+	link  doc-dept				&
+	 to   dept-nbr of f070-dept-mstr opt
+
+choose const-rec-nbr 6
+
+sel if comp-code = 'DEFIC'
+
+sort on dept-company on doc-dept on doc-nbr
+
+
+def x-delimiter char*1 = "~"
+
+def x-period char*1 = "."
+
+def x-amt-mtd-sign char*1 = "-"           	if amt-net < 0       &
+                else " "
+def x-amt-mtd-dollars = abs(amt-net) / 100 	if amt-net <> 0      &
+                else  0
+def x-amt-mtd-cents   = mod(abs(amt-net),100)   if amt-net <> 0      &
+                else  0
+
+
+def x-company	   char*1  = ascii(dept-company) 
+
+def x-dept         char*4  = '"' + ascii(doc-dept,2) + '"'
+
+def x-doc-nbr      char*5  = '"' + doc-nbr     + '"'
+
+def x-ep-nbr       char*6  = ascii(ep-nbr)       
+
+def x-pay-code     char*2  = doc-ep-pay-code + doc-ep-pay-sub-code
+
+def x-amt-mtd-alpha char*10 =  pack(trunc(lj(x-amt-mtd-sign +       		&
+                                              ascii(x-amt-mtd-dollars) +     	&
+                                              x-period +                        &
+                                              ascii(x-amt-mtd-cents,2))))
+
+
+def x-line char*132 =                                   &
+        lj(pack(                                        &
+                x-company       +                       &
+                x-delimiter  +                          &
+                x-dept          +                       &
+                x-delimiter  +                          &
+                x-doc-nbr       +                       &
+                x-delimiter  +                          &
+                doc-name        +                       &
+                x-delimiter  +                          &
+                x-amt-mtd-alpha    +                    &
+                x-delimiter  +                          &
+                x-ep-nbr       +                        &
+                x-delimiter  +                          &
+                x-pay-code                              &
+                ) )
+
+
+initial heading							&
+        tab  1  'COMPANY'                                       &
+	tab  8  x-delimiter					&
+        tab  9  'DEPT'                               		&
+	tab 13  x-delimiter					&
+        tab 14  'DOC#'                               		&
+	tab 18  x-delimiter					&
+        tab 19  'DOC NAME'                           		&
+	tab 27  x-delimiter					&
+        tab 28  'DEFICIT AMT'                                   &
+	tab 39  x-delimiter					&
+	tab 40  'EP NBR'  					&
+	tab 46  x-delimiter					&
+        tab 47  'PAY CODE' 
+
+
+report tab 01 x-line
+ 
+;------------------------------
+  
+
+build $pb_obj/r138_csv   
+

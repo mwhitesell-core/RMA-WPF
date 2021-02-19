@@ -1,0 +1,70 @@
+; DOC: costreject.qzs
+; DOC:
+; DOC:
+; DOC: RUN FOR: Created for Chris Costanza
+;
+;PROGRAM PURPOSE : report if reason code not blank by doc number
+
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;99/03/28   YASEMIN      ORIGINAL
+;
+can clear
+set rep nolimit
+set page length 62 width 80
+set rep device disc name costreject
+set noformfee
+set nohead
+
+access f002-claims-mstr		&
+	link (nconvert(clmhdr-claim-id[4:3]))	&
+	to doc-nbr of f020-doctor-mstr opt	&
+	link clmhdr-status-ohip to rat-code of f096-ohip-pay-code opt
+
+;select headers only
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, &
+	key-clm-serv-code '00000', key-clm-adj-nbr '0'   
+
+select f002-claims-mstr if 			&
+	     clmhdr-date-period-end >= 980801	& ; within range
+        and  clmhdr-date-period-end <= 990131	&
+	and  clmhdr-status-ohip <> "  "		& ;rejection
+	and  clmhdr-status-ohip <> "00"          &
+        and  clmhdr-status-ohip <> "EV"          &
+        and  clmhdr-status-ohip <> "40"          &
+        and  clmhdr-status-ohip <> "48"          &
+        and  clmhdr-status-ohip <> "51"          &
+        and  clmhdr-status-ohip <> "I5"          &
+        and  clmhdr-status-ohip <> "80"          
+
+;and sel if doc-date-fac-term = 000000 or doc-date-fac-term >= sysdate
+
+select if not record f096-ohip-pay-code exists                    &	
+        and (clmhdr-status-ohip <> "35" or (clmhdr-doc-dept = 5   &
+                                         or clmhdr-doc-dept = 2))                                                           
+                              
+ def x-doc-nbr  char*3  = clmhdr-claim-id[4:3]	
+  def x-claim-id char*11 = clmhdr-claim-id[1:11] 
+; def x-claim-id char*11 = clmhdr-claim-id[4:11] 
+
+sort   on x-doc-nbr	&
+       on x-claim-id
+
+def x-coma cha*1 = ","
+
+footing at x-doc-nbr                          &
+  tab 1    doc-nbr fill "0"                   &
+  tab 4    x-coma                             &
+  tab 5    doc-name                           &
+  tab 29   x-coma                             &
+  tab 30   doc-inits                          &
+  tab 33   x-coma                             & 
+  tab 34   doc-dept                           &
+  tab 36   x-coma                             &
+  tab 37   count                              &
+; tab 60   clmhdr-status-ohip                 &
+; tab 64   x-claim-id                         &
+skip 1
+
+build $obj/costreject

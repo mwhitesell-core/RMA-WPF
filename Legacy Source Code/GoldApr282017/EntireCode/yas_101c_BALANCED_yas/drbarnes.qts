@@ -1,0 +1,81 @@
+;doc     : drbarnes.qts
+;purpose : report dor dr.barnes 481, A135,A435,A136,A133,A134 abd A138
+;          for July 1, 2002 to Dec.31, 2002
+;who     : Dr. Russell and Dwayne Martin
+
+
+;Date           Who             Description
+;2003/05/06     Yasemin         Original
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access f002-claims-mstr         &
+        link (nconvert(clmhdr-claim-id[4:3]))   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220481000 to 220481999,   &
+        key-clm-claim-nbr
+
+select f002-claims-mstr if                     &
+               clmdtl-sv-date >= "20020701"    &
+      and      clmdtl-sv-date <= "20021231"    &
+      and      clmdtl-oma-cd      <> "0000"    & ; details only
+      and      clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+      and      clmdtl-oma-cd      <> "PAID"    & ; details only
+      and      clmdtl-oma-cd      <> "MICM"    & ; details only
+      and      clmdtl-oma-cd      <> "MISJ"    & ; details only
+      and      clmdtl-oma-cd      <> "MISC"    & ; details only
+      and      clmdtl-oma-cd      <> "MICV"    & ; details only
+      and      clmdtl-oma-cd      <> "MISP"    & ; details only
+      and      clmdtl-oma-cd      <> "MOHR"    & ; "  "
+      and      clmdtl-oma-cd      <> "MICB"    & ; "  "
+      and      clmdtl-oma-cd      <> "MIBR"    & ; "  "
+      and      clmdtl-oma-cd      <> "MINH"    & ; "  "
+      and      clmdtl-oma-cd      <> "MHSC"    & ; "  "
+      and      clmdtl-oma-cd      <> "NHSC"    & ; "  "
+      and (    clmdtl-oma-cd       = "A135"    &
+            or clmdtl-oma-cd       = "A435"    &
+            or clmdtl-oma-cd       = "A136"    &
+            or clmdtl-oma-cd       = "A133"    &
+            or clmdtl-oma-cd       = "A134"    &
+            or clmdtl-oma-cd       = "A138" )
+
+def x-doc-name char*15 = pack(doc-name +" "+ doc-inits)
+
+def x-yyyymm char*6 = clmdtl-sv-date[1:6]        
+
+def comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+sort on doc-nbr 
+
+temp x-2002 num*7
+item x-2002  = x-2002 + clmdtl-fee-ohip /100                        &
+              if (x-yyyymm >= "200207" and x-yyyymm <= "200212")  &
+              reset at doc-nbr
+
+subfile drbarnes portable keep at doc-nbr include	&
+  doc-nbr,                      &
+  comma,			&
+  doc-dept,                     &
+  comma,			&
+  doc-name,                     &
+  comma,			&
+  doc-inits,                    &
+  comma,			&
+  x-2002,                       &
+  x-cr
+
+
+build $pb_obj/drbarnes
+

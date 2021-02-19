@@ -1,0 +1,398 @@
+;#> program-id.     r124a_mp.qzs
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Print the STATEMENT OF EARNINGS for the physician
+;             - PHASE I: create subfile of MTD and YTD values plus
+;                        messages from f119-YTD file.
+
+;    MODIFICATION HISTORY
+;   DATE    WHO      DESCRIPTION
+; 00/nov/15 B.E. - cloned from r125a.qzs
+;		 - modified to suppress printing of statement for doctors
+;		   with $0 monthly EFT deposit
+; 03/jan/15 B.E. - exclude YTDEAR from being selected for printing in this rpt
+; 03/nov/20 M.C. - alpha doc-nbr, modify x-doc-id-info
+; 03/nov/25 b.e. - changed select to only print statement if there is a 
+;		   payment for current month 
+; 07/mar/26 b.e. - replace leading part of bank account with "**"
+;                  to make the full account number not visible
+
+cancel clear
+set default
+set report nolimit
+
+access f119-doctor-ytd                                          &
+        link comp-code of f119-doctor-ytd                       &
+        to   comp-code of f190-comp-codes             opt       &
+        link doc-nbr to doc-nbr of f020-doctor-mstr   opt       &
+        link doc-nbr to doc-nbr of f020-doctor-extra  opt       &
+        link doc-dept of f020-doctor-mstr                       &
+        to   dept-nbr of f070-dept-mstr opt                     &
+        link (  ascii(doc-bank-nbr    of f020-doctor-mstr,4)	&
+              + ascii(doc-bank-branch of f020-doctor-mstr,5) )  &
+        to   bank-cd of f080-bank-mstr opt                      &
+        link (6) to const-rec-nbr of constants-mstr-rec-6
+
+use $pb_src/f119_doctor_ytd.def nol
+
+; (select all comp-codes for processing except for:
+;  YTDEAR (B.E. 2003/01/15 Mary asked to not show anything in the 
+;		this section - was labelled "CLINIC CEILING PAYMENT" 
+;		and currently this is the only comp code to appear)
+; and also exclude STATUS which is wanted
+; only if amt is non-zero. Also include messages)
+; DON'T SELECT DOCTOR UNLESS THEY HAVE A NON-ZERO DEPOSIT
+select if     doc-payeft <> 0					     	&
+	 and (    rec-type = f119-rec-msg                     	     	&
+              or (    (comp-code-group of f190-comp-codes <> "Z")  	&
+	           and (comp-code of f119-doctor-ytd <> "GTYPEA")	&
+	           and (comp-code of f119-doctor-ytd <> "YTDEAR")	&
+	           and (    amt-mtd of f119-doctor-ytd <> 0 	     	&
+	                or  amt-ytd of f119-doctor-ytd <> 0            	&
+		       )						&
+	          )        					     	&
+	      )
+
+
+use $pb_src/printer_codes.def nol
+
+; **YAS DEFINES NEXT 18 DEFINE STATEMENTS AND ADD TO SUBFILE AUG/95
+
+def x-deposit int*8 signed size 4 = doc-payeft
+def x-deposit-date date = doc-ep-date-deposit
+def x-ped int*8 signed size 4 = doc-ep-ped
+
+;def x-bank-account cha*12 = doc-bank-acct
+def x-bank-account cha*12 = lj(doc-bank-acct)
+def x-bank-account-privacy-masked cha*12                                        &
+       = "************"                         if x-bank-account[01:1] = " "   &
+  else   "************"                         if x-bank-account[02:1] = " "   &
+  else   "************"                         if x-bank-account[03:1] = " "   &
+  else   "************"                         if x-bank-account[04:1] = " "   &
+  else   "************"                         if x-bank-account[05:1] = " "   &
+  else   "********"      +(x-bank-account[2:4]) if x-bank-account[06:1] = " "   &
+  else   "********"      +(x-bank-account[3:4]) if x-bank-account[07:1] = " "   &
+  else   "********"      +(x-bank-account[4:4]) if x-bank-account[08:1] = " "   &
+  else   "********"      +(x-bank-account[5:4]) if x-bank-account[09:1] = " "   &
+  else   "********"      +(x-bank-account[6:4]) if x-bank-account[10:1] = " "   &
+  else   "********"      +(x-bank-account[7:4]) if x-bank-account[11:1] = " "   &
+  else   "********"      +(x-bank-account[8:4]) if x-bank-account[12:1] = " "   &
+  else   "********"      +(x-bank-account[9:4])
+
+def x-bank char*30 = bank-name
+def x-branch char*30 = bank-address1
+
+def x-ytdcea-pos-prt cha*3  = ytdcea-prt-format[1:3]
+def x-ytdcea-val-prt cha*10 = ytdcea-prt-format[4:10]
+
+def x-ceicea-pos-prt cha*3  = ceicea-prt-format[1:3]
+def x-ceicea-val-prt cha*10 = ceicea-prt-format[4:10]
+
+def x-ytdcex-pos-prt cha*3  = ytdcex-prt-format[1:3]
+def x-ytdcex-val-prt cha*10 = ytdcex-prt-format[4:10]
+
+def x-ceicex-pos-prt cha*3  = ceicex-prt-format[1:3]
+def x-ceicex-val-prt cha*10 = ceicex-prt-format[4:10]
+
+;def x-date-title char*49 =  &
+;             "For the Fiscal Year July 1, " +		&
+;		ascii(first-ep-nbr-of-cal-yr,6)[1:4]  +		&
+;             " to June 30, " + ascii(last-ep-nbr-of-cal-yr,6)[1:4]
+
+def x-dept-name char*30 = dept-name if record f070-dept-mstr exists &
+                     else "UNKNOWN DEPARTMENT"
+
+define x-full-part-ind char*25				&
+     = "GFT"        if doc-full-part-ind = "F" &
+  else "CLINICAL SCHOLAR" if doc-full-part-ind = "C" &
+  else "PLASTIC SURGERY"  if doc-full-part-ind = "S" &
+  else "Non-GFT"        if doc-full-part-ind = "P" &
+  else "CLASSIFICATION UNKNOWN"
+
+define x-doc-id-info char*50 =  "Dr. "                              &
+                              + truncate(doc-inits) + " "           &
+                              + truncate(doc-name) + "    "         &
+                              + ascii(doc-dept,2) + "-"             &
+; 2003/11/20 - MC - alpha doc
+;                              + ascii(doc-nbr ,3) + "  "            
+                              + doc-nbr + "  "            
+; 2003/11/20 - end
+;                              + x-full-part-ind
+
+; MC ADDED 8 DEFINE ITEMS
+
+def x-ytdreq-pos-prt cha*3  = ytdreq-prt-format[1:3]
+def x-ytdreq-val-prt cha*10 = ytdreq-prt-format[4:10]
+
+def x-ceireq-pos-prt cha*3  = ceireq-prt-format[1:3]
+def x-ceireq-val-prt cha*10 = ceireq-prt-format[4:10]
+
+def x-ytdtar-pos-prt cha*3  = ytdtar-prt-format[1:3]
+def x-ytdtar-val-prt cha*10 = ytdtar-prt-format[4:10]
+
+def x-ceitar-pos-prt cha*3  = ceitar-prt-format[1:3]
+def x-ceitar-val-prt cha*10 = ceitar-prt-format[4:10]
+
+def x-period char*1 = "."
+
+def x-mtd-dollars                                               &
+      = amt-mtd of f119-doctor-ytd / 100                        &
+                        if    rec-type = "A"                    &
+                          and comp-code <> "GTYPEA"             &
+   else 0
+def x-mtd-cents                                                 &
+      = mod(abs(amt-mtd of f119-doctor-ytd),100)                &
+                        if    rec-type = "A"                    &
+                          and comp-code <> "GTYPEA"             &
+   else 0
+
+def x-ytd-dollars                                               &
+      = amt-mtd of f119-doctor-ytd / 100                        &
+                        if    rec-type  = "A"                   &
+                          and comp-code = "GTYPEA"              &
+   else abs(amt-ytd of f119-doctor-ytd) / 100                   &
+                        if    rec-type  = "A"                   &
+                          and comp-code = "STATUS"              &
+   else amt-ytd of f119-doctor-ytd / 100                        &
+                        if rec-type = "A"                       &
+   else 0
+def x-ytd-cents                                                 &
+      = mod(abs(amt-mtd of f119-doctor-ytd),100)                &
+                        if    rec-type  = "A"                   &
+                        and comp-code = "GTYPEA"                &
+   else mod(abs(amt-ytd of f119-doctor-ytd),100)                &
+                        if rec-type = "A"                       &
+   else 0
+
+; (DETERMINE HOW MANY NUMBERS TO BE PRINTED, OFFSET BY WIDTH OF 1 NUMBER. IE 21)
+def x-mtd-dollars-abs int*8 = abs(x-mtd-dollars)
+def x-ytd-dollars-abs int*8 = abs(x-ytd-dollars)
+def x-mtd-ctr1        num*1 =  21 if x-mtd-dollars-abs < 10     &
+                        else   42 if x-mtd-dollars-abs < 100    &
+                        else   63 if x-mtd-dollars-abs < 1000   &
+                        else   84 if x-mtd-dollars-abs < 10000  &
+                        else  105 if x-mtd-dollars-abs < 100000 &
+                        else  126 ;   IF X-MTD-DOLLARS-ABS < 100000
+
+def x-ytd-ctr1        num*1 =  21 if x-ytd-dollars-abs < 10     &
+                        else   42 if x-ytd-dollars-abs < 100    &
+                        else   63 if x-ytd-dollars-abs < 1000   &
+                        else   84 if x-ytd-dollars-abs < 10000  &
+                        else  105 if x-ytd-dollars-abs < 100000 &
+                        else  126 ;   IF X-YTD-DOLLARS-ABS < 100000
+
+; (CHECK IF NEGATIVE SIGN WILL BE PRINTED)
+def x-mtd-ctr2 num*1 = x-mtd-ctr1 + 14 if x-mtd-dollars < 0      &
+                  else x-mtd-ctr1
+def x-mtd-sign char*1 = "-"            if x-mtd-dollars < 0      &
+                   else " "
+def x-ytd-ctr2 num*1 = x-ytd-ctr1 + 14 if x-ytd-dollars < 0      &
+                  else x-ytd-ctr1
+def x-ytd-sign char*1 = "-"            if x-ytd-dollars < 0      &
+                   else " "
+
+; (CHECK IF COMMA REQUIRED FOR VALUE)
+def x-mtd-ctr3 num*1 = x-mtd-ctr2 if x-mtd-dollars-abs < 1000   &
+                  else x-mtd-ctr2 + 14
+def x-ytd-ctr3 num*1 = x-ytd-ctr2 if x-ytd-dollars-abs < 1000   &
+                  else x-ytd-ctr2 + 14
+
+; (If printing any "TOT"al line (COMP-CODE = "TOTxxx") except for
+;  'total advances' (TOTADV), then UNDERLINE the previously printed line
+;   then print total)
+
+def x-mtd-lit1 char*88              &
+     = hpiii-column-100             & ; position to column for decimal alignment
+         if   comp-code[1:3] <> "TOT"    &
+           or comp-code      =  "TOTADV" &
+  else hpiii-column-100             & ; position to column
+     + hpiii-up-a-row               & ; up a row
+     + hpiii-backward-dot-135       & ; back up dots
+     + hpiii-underline-on           & ; underline on
+     + hpiii-forward-dot-195        & ; forward dots (underlining)
+     + hpiii-underline-off          & ; underline off
+     + hpiii-down-a-row             & ; down a row
+     + hpiii-column-100               ; re-position to column for decimal alignment
+
+def x-ytd-lit1 char*88              &
+     = hpiii-column-153             & ; position to column for decimal alignment
+         if   comp-code[1:3] <> "TOT"    &
+           or comp-code      =  "TOTADV" &
+  else hpiii-column-153             & ; position to column
+     + hpiii-up-a-row               & ; up a row
+     + hpiii-backward-dot-135       & ; back up dots
+     + hpiii-underline-on           & ; underline on
+     + hpiii-forward-dot-195        & ; forward dots (underlining)
+     + hpiii-underline-off          & ; underline off
+     + hpiii-down-a-row             & ; down a row
+     + hpiii-column-153               ; re-position to column for decimal alignment
+
+
+def x-mtd-lit2 char*10 = x-esc + '*p-' + truncate(ascii(x-mtd-ctr3,3)) + 'X'
+def x-ytd-lit2 char*10 = x-esc + '*p-' + truncate(ascii(x-ytd-ctr3,3)) + 'X'
+
+; (REMOVE LEADING ZEROS FROM DOLLAR VALUE AND REPLACE WITH SPACES)
+def x-mtd-dollars-abs-a char*6 = ascii(x-mtd-dollars-abs,6)
+def x-ytd-dollars-abs-a char*6 = ascii(x-ytd-dollars-abs,6)
+def x-mtd-dollars-abs-b char*7                                               &
+      =  x-mtd-sign + x-mtd-dollars-abs-a      if x-mtd-dollars-abs > 99999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[2:5] if x-mtd-dollars-abs >  9999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[3:4] if x-mtd-dollars-abs >   999  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[4:3] if x-mtd-dollars-abs >    99  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[5:2] if x-mtd-dollars-abs >     9  &
+   else  x-mtd-sign + x-mtd-dollars-abs-a[6:1]
+def x-ytd-dollars-abs-b char*7                                               &
+      =  x-ytd-sign + x-ytd-dollars-abs-a      if x-ytd-dollars-abs > 99999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[2:5] if x-ytd-dollars-abs >  9999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[3:4] if x-ytd-dollars-abs >   999  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[4:3] if x-ytd-dollars-abs >    99  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[5:2] if x-ytd-dollars-abs >     9  &
+   else  x-ytd-sign + x-ytd-dollars-abs-a[6:1]
+def x-mtd-dollars-abs-char char*7 = rj(x-mtd-dollars-abs-b)
+def x-ytd-dollars-abs-char char*7 = rj(x-ytd-dollars-abs-b)
+
+; (build print format of amount with comma in number if number $1000 or more)
+define x-mtd-prt-dollars char*8                                                &
+     =" " + x-mtd-dollars-abs-char                 if x-mtd-dollars-abs < 1000 &
+  else      x-mtd-dollars-abs-char[1:4] + "," + x-mtd-dollars-abs-char[5:3]
+
+define x-ytd-prt-dollars char*8                                                &
+     = " " + x-ytd-dollars-abs-char                if x-ytd-dollars-abs < 1000 &
+  else       x-ytd-dollars-abs-char[1:4] + "," + x-ytd-dollars-abs-char[5:3]
+
+define x-mtd-prt-cents   char*2 = ascii(x-mtd-cents,2)
+define x-ytd-prt-cents   char*2 = ascii(x-ytd-cents,2)
+
+
+
+; (COUNT THE NUMBER OF COMP-CODE LINES PRINTED SO THAT SHADING
+;  AREA CAN BE DETERMINED FOR LASER PRINTER.  THE TWO COUNTERS SHOW
+;  THE NUMBER OF LINES PRINTED WHEN SHADING SHOULD START (INCREQ) AND
+;  WHEN IS SHOULD END (STATUS)
+
+def x-count-increq = 1 if comp-code-group <= "J"                &
+                else 0
+def x-count-status = 1 if comp-code-group <= "L"                &
+                else 0
+def x-count-increq-status = 1 if comp-code-group >= "J" 	&
+			and      comp-code-group <= "L"
+def x-increq = 1 if comp-code-group = 'J'
+def x-inctar = 1 if comp-code-group = 'K'
+def x-status = 1 if comp-code-group = 'L'
+
+
+@if dg and hsc
+
+define x-msg-text char*50                                                  &
+     = "Your YTD Ceiling Payments are underpaid by "                   &
+              if comp-code of f119-doctor-ytd="STATUS" and amt-ytd > 0 &
+  else "Your YTD Ceiling Payments are overpaid by "                    &
+              if comp-code of f119-doctor-ytd="STATUS" and amt-ytd < 0 &
+  else "Current Earnings Payable"                                      &
+              if    comp-code of f119-doctor-ytd = "PAYPOT"            &
+  else text of f119-doctor-ytd                                         &
+;             IF COMP-CODE-GROUP OF F190-COMP-CODES = "K"              &
+              if rec-type = f119-rec-msg                               &
+  else desc-long of f190-comp-codes
+
+@elseif dg and rma
+define x-msg-text char*50                                              &
+;    = "Your YTD Ceiling Payments are underpaid by "                   &
+;             IF COMP-CODE OF F119-DOCTOR-YTD="STATUS" AND AMT-YTD > 0 &
+    =  "Your YTD Ceiling Payments are overpaid by "                    &
+              if comp-code of f119-doctor-ytd="STATUS" and amt-ytd < 0 &
+  else "Current Ceiling Payable"                                      &
+              if    comp-code of f119-doctor-ytd = "PAYPOT"            &
+  else text of f119-doctor-ytd                                         &
+;             IF COMP-CODE-GROUP OF F190-COMP-CODES = "K"              &
+              if rec-type = f119-rec-msg                               &
+  else desc-long of f190-comp-codes
+@else
+ERROR - REQUIRES CONDITIONAL COMPILE - use bqzs macro!!!
+@endif
+
+define x-line-text char*190                                     &
+    =  x-msg-text                                               &
+     + truncate(x-ytd-lit1)                                     &
+     + truncate(x-ytd-lit2)                                     &
+     + truncate(lj(x-ytd-prt-dollars))                          &
+     + x-period                                                 &
+     + x-ytd-prt-cents  if    rec-type of f119-doctor-ytd = "A" &
+			  and (   comp-code = "YTDEAR"	        &
+			       or comp-code = "INCREQ"          &
+			       or comp-code = "INCTAR"          &
+			       or comp-code = "STATUS"          &
+			       or comp-code = "GTYPEA")         &
+ else  x-msg-text                                               &
+     + truncate(x-mtd-lit1)                                     &
+     + truncate(x-mtd-lit2)                                     &
+     + truncate(lj(x-mtd-prt-dollars))                 		&
+     + x-period                                                 &
+     + x-mtd-prt-cents  if    rec-type of f119-doctor-ytd = "A" &
+			  and (   comp-code = "ADVOUT"          &
+			       or comp-code = "ADVANC")         &
+ else  x-msg-text                                               &
+     + truncate(x-mtd-lit1)                                     &
+     + truncate(x-mtd-lit2)                                     &
+     + truncate(lj(x-mtd-prt-dollars))                     	&
+     + x-period                                                 &
+     + x-mtd-prt-cents                                          &
+     + truncate(x-ytd-lit1)                                     &
+     + truncate(x-ytd-lit2)                                     &
+     + truncate(lj(x-ytd-prt-dollars))                          &
+     + x-period                                                 &
+     + x-ytd-prt-cents  if rec-type of f119-doctor-ytd = "A"    &
+ else text of f119-doctor-ytd
+
+sorted on doc-nbr of f119-doctor-ytd
+
+set subfile name r124a keep
+
+report summary                                                  &
+  doc-nbr               of f119-doctor-ytd                      &
+  comp-code             of f119-doctor-ytd                      &
+  comp-code-group       of f190-comp-codes                      &
+  process-seq           of f119-doctor-ytd                      &
+  x-count-increq subtotal reset at doc-nbr                      &
+  x-count-status  subtotal reset at doc-nbr                     &
+  x-line-text                                                   &
+  x-deposit                                                     &
+  x-deposit-date                                                &
+  x-ped                                                         &
+; 2007/jan/18 replaced account with masked value
+;  x-bank-account                                                &
+  x-bank-account-privacy-masked                                 &
+  x-bank                                                        &
+  x-branch                                                      &
+  x-dept-name                                                   &
+  x-full-part-ind                                               &
+  x-doc-id-info                                                 &
+;  x-date-title                                                  &
+  first-ep-nbr-of-cal-yr					&
+  last-ep-nbr-of-cal-yr						&
+  x-ytdcea-pos-prt                                              &
+  x-ytdcea-val-prt                                              &
+  x-ceicea-pos-prt                                              &
+  x-ceicea-val-prt                                              &
+  x-ytdcex-pos-prt                                              &
+  x-ytdcex-val-prt                                              &
+  x-ceicex-pos-prt                                              &
+  x-ceicex-val-prt						&
+  x-ytdreq-pos-prt                                              &
+  x-ytdreq-val-prt                                              &
+  x-ceireq-pos-prt                                              &
+  x-ceireq-val-prt                                              &
+  x-ytdtar-pos-prt                                              &
+  x-ytdtar-val-prt                                              &
+  x-ceitar-pos-prt                                              &
+  x-ceitar-val-prt						&
+  doc-dept							&
+  x-count-increq-status subt reset at doc-nbr			&
+  x-increq       subt  reset at doc-nbr				&
+  x-inctar       subt  reset at doc-nbr				&
+  x-status       subt  reset at doc-nbr	
+
+build $pb_obj/r124a_mp
+
+  

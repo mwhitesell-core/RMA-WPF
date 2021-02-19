@@ -1,0 +1,63 @@
+;doc     : billdirects.qzs
+;purpose : create report to print agent 6 claims with reprint flag = N
+;          and balance due ne 0
+;
+;who     : Susan LeMee 
+
+
+;Date           Who             Description
+;2000/06/13     Yasemin         Original
+;2000/09/06     Yasemin         Add reffer fieled
+
+
+can clear
+set rep nolimit
+set rep page length 62
+set rep dev disc name billdirects
+set formfeed
+
+
+access f002-claims-mstr                        &
+   link clmhdr-pat-ohip-id-or-chart            &
+     to key-pat-mstr of f010-pat-mstr   opt             
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr ,	key-clm-claim-nbr,  &
+	key-clm-serv-code '00000',  key-clm-adj-nbr '0'
+
+define x-bal-due int*8 pic "^^^,^^^.^^" = clmhdr-tot-claim-ar-ohip + &
+                         clmhdr-manual-and-tape-payments
+
+
+select if    clmhdr-agent-cd = 6        &
+         and clmhdr-reprint-flag = "N"  &
+         and x-bal-due <> 0
+
+def x-pat-name char*20 = pack(pat-surname+", "+pat-given-name)
+
+def x-claim cha*10 = clmhdr-claim-id[1:2]+clmhdr-claim-id[4:8]
+
+sort on x-pat-name & 
+     on x-claim
+
+page heading 						  	&
+       tab  1  sysdate                            		&
+       tab 12  "Agent 6 Claims with reprint flag 'N'"    	&
+       tab 60  syspage                            		&
+skip 2 tab  1  "Patient Name"					&
+       tab 30  "Claim No."                                      &
+       tab 45  "Service date"            			&
+       tab 60  "Reference"              			&
+skip 1 tab  1  "===================="                           &
+       tab 30  "=========="                                     &
+       tab 45  "============"            			&
+       tab 60  "=========="              			&
+skip 2
+
+report				                  &
+       tab  1  x-pat-name                         &
+       tab  30 x-claim                            &
+       tab  46 clmhdr-serv-date  pic "^^^^/^^/^^" &
+       tab  60 clmhdr-reference                   & 
+skip 1
+
+build $obj/billdirects

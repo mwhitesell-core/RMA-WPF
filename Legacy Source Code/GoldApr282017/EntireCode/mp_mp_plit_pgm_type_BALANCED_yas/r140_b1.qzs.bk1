@@ -1,0 +1,131 @@
+cancel clear
+; Program: r140_b.qzs
+; Purpose: Generate grand total report (for Kevin S.) and individual department reports for the payments
+;	to doctors from the MOH EFT file for Conversion payments
+
+; 2004/jul/01 b.e.	- original
+; 2004/aug/12 b.e.	- access f075 and use calcualted amounts rather than the base amounts in the a2s file
+; 2004/sep/14 b.e.	- changed length of report from 60 to 50 so that when
+;			  report is imported into Word to be emailed that pages
+;			  fit within Word's default page length
+; 2004/oct/16 b.e.	- added afp-submit-amt to printout
+
+
+set rep nolimit
+set report dev disc name r140_b
+;set page width 132 length 60
+set page width 132 length 50
+set rep nohead
+
+;access afp-a2s-file						&
+access f075-afp-doc-mstr 					&
+  	link doc-afp-paym-group                       		&
+	to   doc-afp-paym-group  of f074-afp-group-mstr		&
+;	link (nconvert(doc-afp-paym-solo))			&
+	link doc-nbr						&
+	to   doc-nbr    	 of f020-doctor-mstr		&
+	link doc-dept						&
+	to   dept-nbr		 of f070-dept-mstr
+
+
+select if afp-payment-amt <> 0
+
+sort	on afp-reporting-mth	&
+	on doc-afp-paym-group 	&
+	on doc-dept		&
+	on doc-name
+
+def x-doc-count = 1
+
+def x-doc-name char*35 				&
+	=   pack(  doc-name 			&
+	         + ", "				&
+	         + doc-inits			&
+	         + " ["				&
+	  	 + doc-nbr			&
+		 + "]"				&
+	        )
+
+def x-total-group-payment    = afp-payment-amt
+def x-total-group-submission = afp-submission-amt
+def x-total-dept-payment     = afp-payment-amt
+def x-total-dept-submission  = afp-submission-amt
+
+page heading 					&
+    tab 01 "r140_b"				&
+    tab 30 "Governance Detail Report"		&
+    tab 90 "Page: "				&
+    tab 95 syspage				&
+  skip 1
+
+heading at afp-reporting-mth 				&
+    tab 35 "for "					&
+    tab 39 afp-reporting-mth pic "^^^^/^^"		&
+  skip 2						&
+    tab 01 "Goverance Group: HAMILTON ACADEMIC HEALTH SCIENCES ORGANIZATION" &
+  skip 2
+
+heading at doc-afp-paym-group 		&
+    skip page				&
+    tab  1 "Group:"			&
+    tab  8 doc-afp-paym-group 		&
+    tab 12 "-"				&
+    tab 13 afp-group-name 		&
+  skip 1 
+
+heading at doc-dept			&
+  skip 1				&
+    tab   5 "Dept:"			&
+    tab  11 dept-nbr			&
+    tab  13 "-"				&
+    tab  14 dept-name			&
+  skip 2				&
+    tab  11 "Physician"			&
+    tab  70 "Billing"			&
+    tab  80 "Conversion"		&
+    tab  95 "Conversion"		&
+    tab 111 "Submission" 		&
+  skip 1				&
+    tab  11 "Name"			&
+    tab  71 "Number"			&
+    tab  82 "Rate (%)"			&
+    tab  95 "Amount ($)"		&
+    tab 111 "Amount ($)"		&
+  skip 2
+
+rep							&
+    tab  11 x-doc-name 					&
+    tab  71 doc-ohip-nbr				&
+    tab  84 afp-payment-percentage pic "^^^.^^"		&
+    tab  90 afp-payment-amt    of f075-afp-doc-mstr  pic " ^^^,^^^,^^^.^^ " &
+    tab 106 afp-submission-amt of f075-afp-doc-mstr  pic " ^^^,^^^,^^^.^^ "                       
+footing at doc-dept                     				&
+    tab  90                                          "     ---------- "	&
+    tab 106                                          "     ---------- "	&
+  skip 1								&
+    tab  11 "Total Nbr Doctors in Dept:"				&
+    tab  38  x-doc-count subt pic "^^^"					&
+    tab  90 x-total-dept-payment subt reset at doc-dept  pic " ^^^,^^^,^^^.^^ " &
+    tab 106 x-total-dept-submission subt reset at doc-dept  pic " ^^^,^^^,^^^.^^ " &
+  skip 2
+
+footing at doc-afp-paym-group           &
+    skip 1                              &
+    tab   1 "Total for Group:"                     &
+    tab  19 doc-afp-paym-group           &
+    tab  90                                          "   ============ "	&
+    tab 106                                          "   ============ "	&
+  skip 1								&
+    tab  90 x-total-group-payment subt reset at doc-afp-paym-group  pic " ^^^,^^^,^^^.^^ " &
+    tab 106 x-total-group-submission subt reset at doc-afp-paym-group  pic " ^^^,^^^,^^^.^^ "                       
+
+final footing				&
+  skip 2				&
+    tab  90                                          "   ============ "	&
+    tab 106                                          "   ============ "	&
+  skip 1								      &
+    tab  49 "Group Conversion Payment/Submission: "			      &
+    tab  90 afp-payment-amt of f075-afp-doc-mstr subt  pic " ^^^,^^^,^^^.^^ " &
+    tab 106 afp-submission-amt of f075-afp-doc-mstr subt  pic " ^^^,^^^,^^^.^^ "                       
+
+build $obj/r140_b

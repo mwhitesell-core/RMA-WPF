@@ -1,0 +1,121 @@
+; program: costing11.qzs
+; formerly:costing8.qzs
+
+; purpose: dump chargeable items from f088 so that user has hard copy
+;	   of doctor charges for answering phone calls
+
+; 00/jul/00 B.E. - original
+; 00/jul/31 B.E. - added link to const rec 7 to obtain select dates
+;		   for f088 recs - modified select statement to list only
+;		   current costing period claims
+; 03/dec/11 A.A. - alpha doctor nbr
+;
+
+set rep nolimit
+set rep dev disc name costing11
+set page width 132
+set page length 62
+set formfee  
+
+access f088-rat-rejected-claims-hist-dtl		&
+		alias f088-dtl				&
+       link (rat-rejected-claim-dtl[1:10],		&
+	    ped)					&
+         to rat-rejected-claim,				&
+	    ped			                  	&
+		of f088-rat-rejected-claims-hist-hdr	&
+			alias f088-hdr	opt		&
+	link clmhdr-doc-nbr				&
+	  to doc-nbr of f020-doctor-mstr opt		&
+	link (7)					&
+	  to const-rec-nbr of constants-mstr-rec-7
+
+select if    charge-status = "Y"					&
+	 and clmhdr-date-period-end >= 20080101                   	&
+         and clmhdr-date-period-end <= 20080630                      
+
+;select if RAT-REJECTED-CLAIM = "22000469109"
+
+sort 				   &
+     on clmhdr-doc-nbr  	   &
+     on ohip-err-code of f088-hdr  &
+     on rat-rejected-claim
+
+;     on clmhdr-doc-nbr		&
+;     on clmhdr-date-period-end	&
+;     on ohip-err-code		&
+;     on RAT-REJECTED-CLAIM
+
+page heading skip 1                             &
+    tab 01 "costing11"				&
+    tab 13 "Run Date:"				&
+    tab 22 sysdate				&
+    tab 55 "RAT Rejections - Chargeable Errors"	&
+    tab 120 "Page:"				&
+    tab 125 syspage				&
+  skip 2					&
+     tab 01 "---------------------------- H e a d e r --------------------------------" &
+    tab 79 " -------------------- D e t a i l --------------------"	&
+  skip 1					&
+    tab  01 "Doc Nbr"				&
+    tab  10 "Dept"				&
+    tab  20 "PED"  				&
+    tab  28 "Claim Nbr"				&
+    tab  39 "ERR"				&
+    tab  44 "Clm PED"				&
+    tab  54 "Svc Date"				&
+    tab  63 "Charge"				&
+    tab  70 "User"				&
+    tab  80 "Code"				&
+    tab  85 "Error"				&
+    tab  93 "billed"				&
+    tab 104 "paid"				&
+    tab 109 "adj"				&
+    tab 115 "PED"				&
+    tab 125 "Svc Date"                          &
+skip 1
+
+def x-oma-cd char*5 = CLMHDR-ADJ-OMA-CD  + CLMHDR-ADJ-OMA-SUFF
+
+heading at CLMHDR-DOC-NBR skip 3
+
+rep								        &
+  tab  01 clmhdr-doc-nbr 		print at clmhdr-doc-nbr		&
+  tab  12 doc-dept			print at clmhdr-doc-nbr		&
+  tab  16 ped  				print at rat-rejected-claim 	&
+  tab  27 rat-rejected-claim  		print at rat-rejected-claim 	&
+  tab  40 ohip-err-code of f088-hdr 	print at rat-rejected-claim 	&
+  tab  43 clmhdr-date-period-end	print at rat-rejected-claim 	&
+  tab  54 clmhdr-serv-date      	print at rat-rejected-claim 	&
+  tab  65 charge-status         	print at rat-rejected-claim 	&
+  tab  70 entry-user-id       		print at rat-rejected-claim 	&
+  tab  80 x-oma-cd							&
+  tab  88 ohip-err-code of f088-dtl					&
+  tab  91 part-dtl-amt-bill						&
+  tab 100 part-dtl-amt-paid						&
+  tab 110 auto-adj-flag   						&
+  tab 112 clmdtl-date-period-end	pic "^^^^/^^/^^"		&
+  tab 123 clmdtl-sv-date       		pic "^^^^/^^/^^"                &
+skip 1
+
+footing at ohip-err-code						&
+  tab  40 ohip-err-code of f088-hdr 					&
+  tab  43 "Total"							&
+  tab  48 count at rat-rejected-claim                                   &
+skip 1
+
+
+footing at clmhdr-doc-nbr 						&
+  tab  43 "Doctor Total"						&
+  tab  55 count at rat-rejected-claim                                   &
+skip 1
+
+final footing      						&
+skip 3								&
+  tab 01 "Total Rejections: " count at  rat-rejected-claim	&
+skip 1								&
+  tab 01 "Total Details:    " count                             &
+skip 1
+
+build $obj/costing11
+

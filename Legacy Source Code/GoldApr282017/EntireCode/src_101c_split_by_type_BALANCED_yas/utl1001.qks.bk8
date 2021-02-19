@@ -1,0 +1,169 @@
+;Program: fixf002_dtl.qks
+;       used to confirm/fix keys on claims master
+; 1998/Jul/13 B.E.      - original - cloned from fixf002_hdr
+; NEEDS ABILITY TO ADD new records - doesn't update "orig" etc key
+; stuff and when entry made the records "disappeared" and couldn't
+; be displayed again by this pgm
+; 2000/jun/13 B.E.      - removed code that re-priced line
+
+screen $pb_obj/fixf002_dtl receiving f002-claims-mstr 
+
+file f002-claims-mstr master
+
+file f002-claims-mstr alias f002-dtl  occurs 10  noitems
+  access via       key-clm-type,				   &
+		   key-clm-batch-nbr, 				   &
+		   key-clm-claim-nbr    			   &
+	using      'B',						   &
+		   key-clm-batch-nbr of f002-claims-mstr,	   &
+		   key-clm-claim-nbr of f002-claims-mstr   
+;
+; select only details (no header records)
+  select if key-clm-serv-code of f002-dtl <> "00000" and 	   &
+	    key-clm-serv-code of f002-dtl[1:4] <> 'ZZZZ'
+
+ item clmdtl-batch-nbr of f002-dtl initial key-clm-batch-nbr of f002-claims-mstr
+ item clmdtl-claim-nbr of f002-dtl initial key-clm-claim-nbr of f002-claims-mstr
+
+  item clmdtl-oma-cd    of f002-dtl final key-clm-serv-code of f002-dtl[1:4]
+  item clmdtl-oma-suff  of f002-dtl final key-clm-serv-code of f002-dtl[5:1]
+  item clmdtl-adj-nbr   of f002-dtl final nconvert(key-clm-adj-nbr of f002-dtl)
+  item clmdtl-orig-batch-id of f002-dtl initial	&
+	nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9) + &
+		   ascii(key-clm-claim-nbr of f002-claims-mstr,2))
+  item key-clm-type of f002-dtl initial 'B'
+  item key-clm-batch-nbr of f002-dtl initial key-clm-batch-nbr of f002-claims-mstr
+  item key-clm-claim-nbr of f002-dtl initial key-clm-claim-nbr of f002-claims-mstr
+  item key-p-clm-type of f002-dtl initial 'Z'
+  item key-p-clm-data of f002-dtl final clmdtl-id of f002-dtl
+
+temp t-tech-prof-fee float occurs with f002-dtl
+temp tot-nbr-serv    float occurs with f002-dtl
+temp t-silent char*1 occurs with f002-dtl
+
+  item clmdtl-fee-oma of f002-dtl   sum into	&
+	 clmhdr-tot-claim-ar-oma of f002-claims-mstr	
+  item clmdtl-fee-ohip of f002-dtl  sum into 	&
+	 clmhdr-tot-claim-ar-ohip of f002-claims-mstr
+  item clmdtl-amt-tech-billed of f002-dtl sum into &
+	 clmhdr-amt-tech-billed  of f002-claims-mstr	
+
+  item clmdtl-agent-cd of f002-dtl initial clmhdr-agent-cd of f002-claims-mstr
+  item clmdtl-date-period-end of f002-dtl initial 	&
+	ascii(clmhdr-date-period-end of f002-claims-mstr,8)
+  item clmdtl-cycle-nbr of f002-dtl initial clmhdr-cycle-nbr of f002-claims-mstr
+
+
+file f040-oma-fee-mstr reference
+   access viaindex fee-oma-cd  using key-clm-serv-code[1:4]
+
+;		1	  2	    3	      4		5	  6         7         8   
+;      123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 
+
+title "   cc-0-ddd-bbb c# oma/s adj svcDate svc $ oma   $ ohip  ln diag dd/# dd/# dd/#"
+
+align (1,,4)  (,16,17) (,,20) (,,27) (,,29) (,,38) (,,42) (,,50) 	&
+     (,,58) (,,62) (,,66) (,68,69) (,,71) (,73,74) (,,76) (,78,79)
+
+cluster occurs with f002-dtl for 2 at ,1
+field key-clm-batch-nbr of f002-dtl display pic "^^-^-^^^-^^^" predisplay
+field key-clm-claim-nbr of f002-dtl display label "-" predisplay
+field key-clm-serv-code of f002-dtl required   upshift		&
+	lookup on f040-oma-fee-mstr             DISPLAY
+field key-clm-adj-nbr of f002-dtl   default '0' DISPLAY
+field clmdtl-sv-date of f002-dtl required       DISPLAY
+field clmdtl-nbr-serv of f002-dtl default 1     DISPLAY
+field clmdtl-fee-oma of f002-dtl  pic '^^^^.^^ ' display
+field clmdtl-fee-ohip of f002-dtl  pic '^^^^.^^ ' display
+field clmdtl-line-no of f002-dtl required
+field clmdtl-diag-cd of f002-dtl  	      DISPLAY
+field clmdtl-sv-day-1 of f002-dtl 	      DISPLAY
+field clmdtl-sv-nbr-1  of f002-dtl label "/"  DISPLAY
+field clmdtl-sv-day-2 of f002-dtl             DISPLAY
+field clmdtl-sv-nbr-2 of f002-dtl label "/"   DISPLAY
+field clmdtl-sv-day-3 of f002-dtl	      DISPLAY
+field clmdtl-sv-nbr-3 of f002-dtl label "/"   DISPLAY
+field t-silent silent
+;skip
+;field clmdtl-amt-tech-billed 
+cluster
+
+; - when code is changed, the oma/ohip "fee" amounts are changed to the
+;   values of the code read in the oma fee master, however the "amt tech billed"
+;   is not updated . Recalulate "tech fee" using the following logic:
+;
+;case #1:
+;       fee-tech-ind of f040 = "Y"
+;   and oma-fee-code-suffix of detail record being updated = "B"
+;then	
+;     move the "ohip fee" to the "tech fee"
+;
+;case #2:
+;        fee-tech-ind of f040 = "Y"
+;   and oma-fee-code-suffix of detail record being updated = "C"
+;then	
+;     move 0 to "tech fee"
+;
+;case #3:
+;fee record"s icc-sec = "NM" or "DR" or "DU" or "PF"
+;then
+;    move fee record"s oma-fee-1 to "tech fee"
+;    move fee record"s oma-fee-2 to "prof fee"
+;    add "tech fee", "prof fee" giving tmp-tech-prof-fee.
+;    if tmp-tech-prof-fee = zero
+;    then
+;        move zero                               to "tech fee"
+;    else
+;        compute "tech fee" rounded =
+;                "tech fee"
+;	       * (fee-ohip / tmp-tech-prof-fee).
+;
+;otherwise:
+;    move 0 to "tech fee"
+;
+;
+;
+
+;procedure process key-clm-serv-code
+;begin
+;   let clmdtl-fee-oma  of f002-dtl  = fee-curr-a-fee-1
+;   let clmdtl-fee-ohip of f002-dtl  = fee-curr-h-fee-1
+;end
+;
+;procedure process t-silent
+;begin
+;   let tot-nbr-serv =   clmdtl-nbr-serv of f002-dtl +  &
+; 	 		clmdtl-sv-nbr-1 of f002-dtl +  &
+;			clmdtl-sv-nbr-2 of f002-dtl +  &
+;			clmdtl-sv-nbr-3 of f002-dtl
+;   let clmdtl-fee-oma  of f002-dtl = fee-curr-a-fee-1 * tot-nbr-serv
+;   let clmdtl-fee-ohip of f002-dtl = fee-curr-h-fee-1 * tot-nbr-serv
+;   display clmdtl-fee-oma  of f002-dtl
+;   display clmdtl-fee-ohip of f002-dtl
+;
+;
+;   if fee-tech-ind = 'Y' and key-clm-serv-code of f002-dtl[5:1] = 'B'
+;   then let clmdtl-amt-tech-billed of f002-dtl = clmdtl-fee-ohip of f002-dtl
+;   if fee-tech-ind = 'Y' and key-clm-serv-code of f002-dtl[5:1] = 'C'
+;   then	let clmdtl-amt-tech-billed of f002-dtl = 0
+;
+;   if fee-icc-sec = "NM" or 	&
+;      fee-icc-sec = "DR" or 	&
+;      fee-icc-sec = "DU" or 	&
+;      fee-icc-sec = "PF"
+;   then begin
+;        let t-tech-prof-fee = fee-curr-a-fee-1 + fee-curr-a-fee-2
+;	if t-tech-prof-fee = 0  
+;	then let clmdtl-amt-tech-billed of f002-dtl = 0
+;	else let clmdtl-amt-tech-billed of f002-dtl =	&
+;		(clmdtl-fee-oma of f002-dtl) * (clmdtl-fee-ohip of f002-dtl /  &
+;				      t-tech-prof-fee)  
+;	end
+;end
+
+
+
+
+build  detail list
+
+

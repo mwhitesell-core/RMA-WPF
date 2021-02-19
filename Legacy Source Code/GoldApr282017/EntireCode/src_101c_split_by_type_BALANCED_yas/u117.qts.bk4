@@ -1,0 +1,161 @@
+;#> PROGRAM         U117.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;	      CALCULATE any 'percentage' based 'deduction' type transaction
+;	      such as'TAX' for all pay codes
+;	      All percentage based deductions are applied against the 
+;	      Potential Payment amount ('PAYPOT')
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/JAN/01  ____   B.E.     - original
+;     93/MAY/20  ____   B.E.     - optimize, removed SELECT, round calc
+;     93/JUN/08  ____   B.E.     - round using ROUND function
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/June/01 	S.B.     - Added the use file
+;                        	   def_compensation_status.def to 
+;                             	   prevent hard coding of compensation-status.
+; 2001/may/22 B.E. subfile f119 made permanent for icu payroll
+; 2001/may/23 B.E. gross amount of TAX was original the total dollars taxed
+;		   which was a figure that was not used. Using this amount
+;		   also increased the gross amount of the TOTDED transaction
+;		   and this made the gross amt of the PAYEFT transaction
+;		   be lower than the net amt since the gross amount was 
+;		   calculated as TOTBIL - TOTDED. 
+;		   This gross amount now set equal to net amount.
+; 2001/nov/09 B.E. - modified this program to not process specifically 'TAX'
+;		     deductions but all 'percentage' based 'deductions'.
+; 2001/nov/27 B.E. - the nov/09 changed restricted the copying of 'fixed
+;		     amount' deductions from being copied into the f119.sf
+;		     and therefore there never appeared in f119-ytd so
+;		     changed this program to select them but only
+;		     process them into the subfile and be ignored in all
+;		     other updates
+;
+
+cancel clear
+run u117
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+global temp paypot-seq    zoned*2 unsigned
+global temp paypot-type   char*1
+global temp paypot-group  char*1
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+REQUEST U117_CONST_MSTR_GET_EP_NBR		&
+		ON EDIT        ERRORS REPORT	&
+                ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6
+CHOOSE CONST-REC-NBR 6
+
+ITEM W-CURRENT-EP-NBR        FINAL  CURRENT-EP-NBR
+ITEM W-CURRENT-EP-NBR-MINUS1 FINAL  CURRENT-EP-NBR - 1
+
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+request u117a_get_paypot                     &
+ 		on edit        errors report &
+		on calculation errors report
+access f190-comp-codes
+choose comp-code "PAYPOT"
+item paypot-seq  =  process-seq
+item paypot-type = comp-type
+
+;-------------------------------------------------------------------------------
+; PAY CODE 0/1/2/3/4
+;
+;
+request u117_calc_percentage_deductions		&
+		on edit        errors report	&
+                on calculation errors report
+
+access constants-mstr-rec-6                                     &
+        link current-ep-nbr viaindex compensation-key2          &
+        to   ep-nbr    of f110-compensation                     &
+        link comp-code of f110-compensation                     &
+        to   comp-code of f190-comp-codes     opt		&
+	link doc-nbr of f110-compensation,			      &
+	     ep-nbr  of f110-compensation,			      &
+	     paypot-seq,					      &
+	     "PAYPOT" 						      &
+	to   doc-nbr,						      &
+	     ep-nbr,						      &
+	     process-seq,					      &
+	     comp-code    of f110-compensation          	      &
+	               alias f110-paypot       optional		
+
+choose const-rec-nbr  6
+
+; ('flat' deductions have a factor = 1.0 - percentage deductions are < 1.0000)
+; select ALL deductions (B.E. 2001/nov/27
+select  if  comp-type of f190-comp-codes   =  "D"
+
+;select  if (    comp-type of f190-comp-codes   =  "D"	&
+;            and factor    of f110-compensation < 10000	&
+;	   )
+
+
+; round calc
+temp amt-net-deduc integer*8 signed size 4	 		
+item amt-net-deduc 	 						&
+    = round(  (  amt-net of f110-paypot				       	&
+	       * factor of f110-compensation)				&
+	    /10000,0,near						&
+	   ) 
+; (ensure positive)
+; DELETED this - to allow a 'bonus' calculation that is a negative deduction)
+;item amt-net-deduc 				&
+;      = 0 if amt-net-deduc < 0 			&
+;   else amt-net-deduc
+
+use $use/def_compensation_status.def
+
+subfile u117_audit keep                                     include &
+         doc-nbr   of f110-compensation		, &
+         ep-nbr    of f110-compensation		, &
+	 comp-code of f110-compensation		, &
+         paypot-seq				, &
+         amt-net   of f110-paypot         	, &
+         factor    of f110-compensation     	, &
+         amt-net-deduc
+
+; --------- deduction transaction  ---------
+; (if percentage based calculation update calculation in f110 transaction)
+output f110-compensation alias f110-update-deduc-transaction update &
+   if factor    of f110-compensation < 10000
+;	item ep-nbr          =  current-ep-nbr
+;	item ep-nbr-entry    =  current-ep-nbr
+;	item comp-code       =  comp-code   of f110-compensation
+;	item process-seq     =  process-seq of f190-comp-codes
+;	item factor          =  factor	    of f110-compensation
+	item factor-override =  "*"
+;	item comp-units      =  comp-units of f110-paypot
+
+	item amt-gross       = amt-net-deduc
+	item amt-net         = amt-net-deduc
+	item compensation-status =  compensation-status-accepted
+	item last-mod-date    =  sysdate
+	item last-mod-time    =  systime / 10000
+	item last-mod-user-id =  "U117 gen'd"
+
+define x-not-needed integer*8 signed size 4 = 0
+define x-rec-type  char*1 = "A"
+define x-comp-code char*6 = comp-code of f110-compensation
+subfile f119 keep append                                   include &
+         doc-nbr         of f110-compensation	, &
+         x-comp-code	 			, &
+         reporting-seq   of f190-comp-codes     , &
+         comp-code-group of f190-comp-codes	, &
+         x-rec-type				, &
+         x-not-needed  	 	 		, &
+         amt-net-deduc
+
+build $pb_obj/u117

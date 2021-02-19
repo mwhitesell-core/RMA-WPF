@@ -1,0 +1,100 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE COSTING3.QTS
+COMMENT "Program: costing3.qts"
+COMMENT "Purpose: determine doctor's that bill only in non-22 clinics"
+COMMENT "Method: access f050 revenue history for appropriate ped and select"
+COMMENT "any doctor with non-zero YTD values for clinic 22. Write"
+COMMENT "these doctor numbers to doc-tmp-totals file. Program costing4"
+COMMENT "will later check the doc-tmp-totals to determine if the doctor"
+COMMENT "has billed in 22 and will then ignore other non-22 billings"
+COMMENT "(which were re-entered into 22 and therefore shouldn't be"
+COMMENT "counted twice)"
+COMMENT "YTD values "
+COMMENT "DATE       BY WHOM      DESCRIPTION"
+COMMENT "99/mar/28   YASEMIN      ORIGINAL"
+COMMENT "00/jun/30  B.E.  - re-organized code"
+COMMENT "03/dec/17  A.A.  - alpha doctor nbr"
+COMMENT "05/jul/13  b.e.  - changed sorted to sort so that only 1 doctor rec"
+COMMENT "is written to output file regardless of the nbr"
+COMMENT "of clinics the doctor has records for."
+COMMENT "12/jan/18  MC1  - include clinic 23 & 24 in the selection to be the same as clinic 22"
+COMMENT "12/jun/20  MC2  - include clinic 25 in the selection to be the same as clinic 22"
+COMMENT "15/mar/10  MC3  - include clinic 26 in the selection to be the same as clinic 22"
+CANCEL CLEAR
+RUN COSTING3
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+COMMENT "File: globals_get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+GLOBAL TEMP W-CURRENT-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-CUTOFF-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED-YYMM ZONED*6
+GLOBAL TEMP W-PREVIOUS-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-PREVIOUS-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-EP-YR NUM*2
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+COMMENT "File: get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+REQUEST COSTING1_GET_REC_7 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-7
+CHOOSE CONST-REC-NBR 7
+ITEM W-CURRENT-FISCAL-START-YYMMDD = CURRENT-FISCAL-START-YYMMDD
+ITEM W-CURRENT-FISCAL-END-YYMMDD = CURRENT-FISCAL-END-YYMMDD
+ITEM W-CURRENT-COSTING-CUTOFF-YYMMDD = CURRENT-COSTING-CUTOFF-YYMMDD
+ITEM W-CURRENT-COSTING-PED = CURRENT-COSTING-PED
+ITEM W-CURRENT-COSTING-PED-YYMM = CURRENT-COSTING-PED / 100
+ITEM W-PREVIOUS-FISCAL-START-YYMMDD = PREVIOUS-FISCAL-START-YYMMDD
+ITEM W-PREVIOUS-FISCAL-END-YYMMDD = PREVIOUS-FISCAL-END-YYMMDD
+ITEM W-EP-YR = EP-YR
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+REQUEST COSTING3_1 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "obtain all revenue for appropriate period"
+ACCESS F050-DOC-REVENUE-MSTR-HISTORY LINK DOCREV-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR OPT
+COMMENT "y2k"
+COMMENT "select if ep-yr = 1999 ;and docrev-key[1:1] <>  6 "
+COMMENT "select if    ep-yr of f050-doc-revenue-mstr-history  = w-ep-yr  &"
+COMMENT "2012/01/18 - MC1"
+COMMENT "and docrev-clinic-1-2 =  '22'"
+COMMENT "2012/06/20 - MC2"
+COMMENT "2012/06/20 - end"
+COMMENT "MC3"
+COMMENT "MC3 - end"
+SELECT IF ICONST-DATE-PERIOD-END = W-CURRENT-COSTING-PED AND ( DOCREV-CLINIC-1-2 = '22' OR DOCREV-CLINIC-1-2 = '23' OR DOCREV-CLINIC-1-2 = '24' OR DOCREV-CLINIC-1-2 = '25' OR DOCREV-CLINIC-1-2 = '26' )
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "2012/01/18 - end"
+COMMENT "(select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm)"
+COMMENT "File: select_f020_active_for_costing_analysis_period.use "
+COMMENT "Purpose: "
+COMMENT "select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm"
+DEF DOC-START-YYMM ZONED*6 = DOC-DATE-FAC-START / 100
+SELECT F020-DOCTOR-MSTR IF ( DOC-DATE-FAC-START = 0000000 OR DOC-START-YYMM <= W-CURRENT-COSTING-PED-YYMM ) AND ( DOC-DATE-FAC-TERM = 00000000 OR DOC-DATE-FAC-TERM >= W-CURRENT-FISCAL-START-YYMMDD )
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "&"
+SORT ON DOCREV-DOC-NBR
+COMMENT "sorted on docrev-doc-nbr ; &"
+COMMENT "; no sort needed on clinic- only clinic 22 selected"
+COMMENT ";     on docrev-clinic-1-2 ;      d ; DESCENDING"
+SUBFILE COSTING3_DEBUG KEEP INCLUDE DOCREV-DOC-NBR OF F050-DOC-REVENUE-MSTR-HISTORY
+OUTPUT DOC-TOTALS-TMP ADD AT DOCREV-DOC-NBR
+ITEM DOC-NBR FINAL DOCREV-DOC-NBR OF F050-DOC-REVENUE-MSTR-HISTORY
+BUILD $OBJ/COSTING3
+ENDMODULE COSTING3.QTS

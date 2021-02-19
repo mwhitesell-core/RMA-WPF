@@ -1,0 +1,97 @@
+;#> PROGRAM-ID.     u130a.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             Creates the 'adjustment for conversion' of AFP inscope
+;	      billings. Regular inscope billings paid under comp code
+;	      "BILLAF". This program creates an automatic 10% charge against
+;	      that BILLAF amount.
+
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 2004/02/25            b.e.    - original
+;
+
+cancel clear
+set stacksize 500
+run u130a
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u130a_const_mstr_get_ep_nbr              &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        final  current-ep-nbr
+item w-current-ep-nbr-minus1 final  current-ep-nbr - 1
+;
+
+
+;-------------------------------------------------------------------------------
+;
+request u130a_process                           &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                                           &
+        link current-ep-nbr viaindex compensation-key2                &
+        to   ep-nbr  of f110-compensation                             &
+        link comp-code    of f110-compensation    		      &
+	to   comp-code	  of f190-comp-codes      opt
+
+choose const-rec-nbr 6
+
+select if comp-code of f110-compensation = "BILLAF"
+
+define  x-amt-net  						      	&
+    = 0 - round((amt-gross * 10)/10000,0,near) 				&
+	if record f110-compensation exists			      	&
+ else 0 - round((amt-gross * factor of f190-comp-codes  )/10000,0,near) &
+	if record f190-comp-codes   exists			      	&
+else  0
+
+use $use/def_compensation_status.def
+
+;----------- BILL ------------
+output f110-compensation add alias f110-add                          &
+    if     not record f110-compensation  exists                ;     &
+        item doc-nbr	     final  doc-nbr of f110-compensation
+        item ep-nbr          final  w-current-ep-nbr
+        item ep-nbr-entry    final  w-current-ep-nbr
+        item comp-code       final  comp-code   of f110-compensation
+        item comp-type       final  comp-type   of f110-compensation
+        item process-seq     final  process-seq of f110-compensation
+        item factor          final  factor      of f110-compensation
+        item factor-override final  " "
+        item comp-units      final  0    ; BUT COULD STORE NBR SVCS ?????!!!!
+        item amt-gross       final  amt-gross
+        item amt-net         final  x-amt-net
+        item compensation-status final  compensation-status-accepted
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+        item last-mod-user-id final  "u130a    Gen'd"
+
+output f110-compensation update alias f110-update                   &
+    if     record f110-compensation exists
+        item factor-override final  "*"
+        item comp-units      final  0    ; BUT COULD STORE NBR SVCS ?????!!!!
+        item amt-gross       final  amt-gross
+        item amt-net         final  x-amt-net
+        item compensation-status final  compensation-status-accepted
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+        item last-mod-user-id final  "u130a    Upd'd"
+
+
+build $pb_obj/u130a
+  

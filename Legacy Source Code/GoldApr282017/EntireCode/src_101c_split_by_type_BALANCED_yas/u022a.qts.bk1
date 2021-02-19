@@ -1,0 +1,173 @@
+;#> PROGRAM-ID.     U022A.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : TO WORK WITH R022A.QZS - BY CREATING A AUDIT SUBFILE
+;		       THIS USED TO BE THE FIRST RUN OF THAT PROGRAM
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     00/MAY/08 B.A.         - ORIGINAL 
+
+can clear
+set default
+set input limit 1
+
+; 2000/05/08 - B.A. begin
+; (99/aug/25 B.E. added link to pickup hospital code)
+access f002-claims-mstr                                        &
+  link floor(key-clm-batch-nbr / 10000000), clmhdr-agent-cd    &
+   to  clinic-nbr, agent-cd of contract-dtl                             &
+  link nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9)[4:3]) &
+   to doc-nbr of f020-doctor-mstr       &
+        link clmhdr-loc                                                 &
+        to   loc-nbr    of f030-locations-mstr opt
+
+use $use/def_group_nbr.use             nolist nodetail
+
+def w-date-from date = parm prompt "ENTER DATE FROM (YYYYMMDD) "
+def w-date-to   date = parm prompt "ENTER DATE TO   (YYYYMMDD) "
+
+choose key-clm-type "B"
+
+def balance-due num                            &
+     =  clmhdr-tot-claim-ar-ohip               &
+      - clmhdr-manual-and-tape-payments                &
+       if clmhdr-adj-oma-cd = "0000"           & ; perform calc only for
+  else 0                                         ; claim header recs
+
+; (if two rats have been processed since claim entered, then resubmit -
+;  if the claim was entered before the 18th cut off, then the 2nd rat
+;  that could contain payment is found within 75 day, however claims entered
+;  on or after the 18th have to wait for the 3rd tape to be processed
+;  ie. up to 90 days after entry)
+;
+; --entry mth-|--1st mth----|---2nd mth---|--3rd mth----|
+; 1   18   30 | 1   18   30 | 1   18   30 | 1   18   30 |
+; --x-           1st          2nd                      (claim entry vs rat)
+;     ---x---                 1st           2nd                (claim entry vs 
+;rat)
+;
+
+def w-days-since-entry num                     &
+     =  days(sysdate)                          &
+      - days(nconvert(clmhdr-date-sys))                &
+       if clmhdr-adj-oma-cd = "0000"           & ; perform calc only for
+  else 0                                         ; claim header recs
+
+def two-rats-processed char*1                  &
+     = "Y" if    clmhdr-date-sys[7:2] <= "18"  &
+            and w-days-since-entry   >= 75     &
+  else "Y" if    clmhdr-date-sys[7:2] >  "18"  &
+            and w-days-since-entry   >= 90     &
+  else "N"
+
+; SELECT FOR RE-SUBMISSION -
+; IF         (unpaid claim header rec going to OHIP)                   &
+;    AND     (not alternative payment group (ie. I2 'zero' payment)    &
+;    AND     (no cash date found ie. not previously paid)              &
+;    AND     (claim is not fully paid)                                 &
+; AND EITHER                                                           &
+;         (an unheld claim with 2 rats processed)                      &
+;       OR (someone has manually requested resubmit)                   &
+
+select if  (      (                                                    &
+                      clmhdr-batch-type = "C"                          &
+                 and clmhdr-adj-oma-cd = "0000"                        &
+                 and moh-flag = "Y"                                    &
+                 and  (   clmhdr-date-cash-tape-payment = " "          &
+                       or clmhdr-date-cash-tape-payment = "00000000"   &
+                      )                                                &
+                 and balance-due > 0                                   &
+                 and clmhdr-status-ohip <> "I2"                        &
+                )                                                      &
+            and (                                                      &
+                   (                                                   &
+                        two-rats-processed = "Y"                       &
+                     and clmhdr-tape-submit-ind <> "H"                 &
+                     and clmhdr-tape-submit-ind <> "C"                 &
+                   )                                                   &
+                  or  clmhdr-tape-submit-ind = "R"                     &
+                )                                                      &
+            )                                                          &
+        or (    clmhdr-tape-submit-ind = "X"                           &
+           and clmhdr-date-sys >  "20000222"                          &
+            and clmhdr-date-sys <= "20000417"                          &
+           )
+
+
+; 99/jul/22 B.E.
+def w-moh-location-code char*4                          &
+    = "    "                                            &
+           if not record f030-locations-mstr exists     &
+ else ascii(loc-ministry-loc-code,4)
+
+; Location now used to determine if hospital nbr is needed
+; regardless of patient's in/out indicator!!!
+; (hospital blank unless 'I'n patient and location code found
+;  that can be used to obtain hospital nbr)
+def w-clmhdr-hosp char*4                                        &
+    = "    "                                                    &
+;       if   clmhdr-i-o-pat-ind of f002-claims-mstr <> "I"      &
+;         or not record f030-locations-mstr exists              &
+        if   not record f030-locations-mstr exists              &
+ else ascii(loc-hospital-nbr,4)
+
+def d-sysdate date = sysdate
+
+subfile u022a1  keep include    &
+  key-clm-type,                 &
+  key-clm-batch-nbr,             &
+  key-clm-claim-nbr,            &
+  clmhdr-batch-type,            &
+  clmhdr-doc-nbr-ohip,          &
+;y2k
+  clmhdr-date-sys,              &
+  clmhdr-claim-id,              &
+  clmhdr-claim-nbr,             &
+  w-clmhdr-hosp,                        &
+;y2k
+  clmhdr-date-admit,            &
+  clmhdr-pat-ohip-id-or-chart,  &
+  clmhdr-refer-doc-nbr,         &
+  clmhdr-loc,                   &
+  clmhdr-i-o-pat-ind,           &
+  clmhdr-agent-cd,              &
+  clmhdr-tot-claim-ar-oma,      &
+  clmhdr-tot-claim-ar-ohip,     &
+  clmhdr-status-ohip,           &
+  clmhdr-doc-dept,              &
+  clmhdr-doc-spec-cd,           &
+  clmhdr-sub-nbr,               &
+  clmhdr-manual-review,         &
+  dollar-flag,                  &
+  moh-flag,                     &
+;1997/JUN/12 - KEVIN MILES - ADDED THIS FIELD TO SUBFILE
+  translated-group-nbr,         &
+; 99/11/17 - MC - include w-moh-location-code
+  w-moh-location-code
+
+;2000/05/02 - B.A. begin
+subfile r022a1_audit keep include	       			&
+               key-clm-type of f002-claims-mstr,		&
+               key-clm-batch-nbr of f002-claims-mstr,		&
+               key-clm-claim-nbr of f002-claims-mstr,		&
+               clmhdr-batch-type of f002-claims-mstr,		&
+               clmhdr-adj-oma-cd of f002-claims-mstr,		&
+               moh-flag of contract-dtl,			&
+               clmhdr-date-cash-tape-payment of f002-claims-mstr,   &
+               balance-due,                    			&
+               clmhdr-tot-claim-ar-ohip of f002-claims-mstr,	&
+               clmhdr-manual-and-tape-payments of f002-claims-mstr, &
+               clmhdr-adj-oma-cd of f002-claims-mstr,		&
+               clmhdr-status-ohip of f002-claims-mstr,		&
+               two-rats-processed,             			&
+               clmhdr-date-sys  of f002-claims-mstr,		&
+               w-days-since-entry,             			&
+               d-sysdate,                        		&
+               clmhdr-date-sys of f002-claims-mstr,		&
+               clmhdr-tape-submit-ind of f002-claims-mstr,	&
+               clmhdr-adj-oma-cd of f002-claims-mstr
+;2000/05/02 - end
+
+build $pb_obj/u022a1

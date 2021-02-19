@@ -1,0 +1,127 @@
+;Program: fixf002_dtl.qks
+;       used to confirm/fix keys on claims master
+; 1998/Jul/13 B.E.      - original - cloned from fixf002_hdr
+; NEEDS ABILITY TO ADD new records - doesn't update "orig" etc key
+; stuff and when entry made the records "disappeared" and couldn't
+; be displayed again by this pgm
+
+screen $pb_obj/fixf002_dtl
+
+file f002-claims-mstr  occurs 10  noitems
+  access via       key-clm-type,				   &
+		   key-clm-batch-nbr, 				   &
+		   key-clm-claim-nbr    			   &
+	using      'B',						   &
+		   key-clm-batch-nbr, 				   &
+		   key-clm-claim-nbr    			   &
+	request    key-clm-batch-nbr, 				   &
+		   key-clm-claim-nbr
+;
+; select only details (no header records)
+  select if key-clm-serv-code <> "00000" 
+
+  item clmdtl-batch-nbr final key-clm-batch-nbr
+  item clmdtl-claim-nbr final key-clm-claim-nbr
+  item clmdtl-oma-cd    final key-clm-serv-code[1:4]
+  item clmdtl-oma-suff  final key-clm-serv-code[5:1]
+  item clmdtl-adj-nbr   final nconvert(key-clm-adj-nbr)
+  item clmdtl-orig-batch-id final nconvert(ascii(key-clm-batch-nbr,9) + &
+					   ascii(key-clm-claim-nbr,2))
+  item key-clm-type initial 'B'
+  item key-p-clm-type initial 'Z'
+  item key-p-clm-data final clmdtl-id
+
+temp clmdtl-sv-day-1 zoned*2 unsigned occurs with f002-claims-mstr
+temp clmdtl-sv-nbr-1 zoned*1 unsigned occurs with f002-claims-mstr
+temp clmdtl-sv-day-2 zoned*2 unsigned occurs with f002-claims-mstr
+temp clmdtl-sv-nbr-2 zoned*1 unsigned occurs with f002-claims-mstr
+temp clmdtl-sv-day-3 zoned*2 unsigned occurs with f002-claims-mstr
+temp clmdtl-sv-nbr-3 zoned*1 unsigned occurs with f002-claims-mstr
+
+file f002-claims-mstr alias f002-hdr secondary  noitems 	&
+		occurs with f002-claims-mstr
+  access via 	   key-clm-type,			&
+		   key-clm-batch-nbr,			&
+		   key-clm-claim-nbr,			&
+		   key-clm-serv-code,			&
+		   key-clm-adj-nbr			&
+	using	   'B',					&
+		   key-clm-batch-nbr of f002-claims-mstr, &
+		   key-clm-claim-nbr of f002-claims-mstr, &
+		   '00000', '0'
+
+  item clmdtl-fee-oma of f002-claims-mstr   sum into	&
+	 clmhdr-tot-claim-ar-oma of f002-hdr	
+  item clmdtl-fee-ohip of f002-claims-mstr  sum into 	&
+	 clmhdr-tot-claim-ar-ohip of f002-hdr
+
+  item clmdtl-agent-cd of f002-claims-mstr initial clmhdr-agent-cd of f002-hdr
+  item clmdtl-date-period-end of f002-claims-mstr initial 	&
+	ascii(clmhdr-date-period-end of f002-hdr,8)
+  item clmdtl-cycle-nbr of f002-claims-mstr initial clmhdr-cycle-nbr of f002-hdr
+
+file f010-pat-mstr reference
+        access viaindex KEY-PAT-MSTR using clmhdr-pat-ohip-id-or-chart
+
+
+;		1	  2	    3	      4		5	  6         7         8   
+;      123456789 123456789 123456789 123456789 123456789 123456789 123456789 123456789 
+
+title "   cc-0-ddd-bbb c# oma/s adj svcDate svc $ oma   $ ohip  dd/# dd/# dd/# diag ln"
+
+align (1,,4)  (,16,17) (,,20) (,,27) (,,29) (,,38) (,,42) (,,50) 	&
+     (,,58) (,60,61) (,,63) (,65,66) (,,68) (,70,71) (,,73) (,,78)
+
+cluster occurs with f002-claims-mstr for 2 at ,1
+field key-clm-batch-nbr of f002-claims-mstr required nochange pic "^^-^-^^^-^^^" auto
+field key-clm-claim-nbr of f002-claims-mstr required nochange label "-"
+field key-clm-serv-code of f002-claims-mstr required
+field key-clm-adj-nbr of f002-claims-mstr   required
+field clmdtl-sv-date of f002-claims-mstr
+field clmdtl-nbr-serv of f002-claims-mstr
+field clmdtl-fee-oma of f002-claims-mstr  pic '^^^^.^^ '
+field clmdtl-fee-ohip of f002-claims-mstr  pic '^^^^.^^ '
+field clmdtl-sv-day-1
+field clmdtl-sv-nbr-1 label "/" 
+field clmdtl-sv-day-2
+field clmdtl-sv-nbr-2 label "/"
+field clmdtl-sv-day-3
+field clmdtl-sv-nbr-3 label "/"
+field clmdtl-diag-cd of f002-claims-mstr 
+field clmdtl-line-no of f002-claims-mstr
+;skip
+;field clmdtl-amt-tech-billed 
+cluster
+
+procedure preupdate
+begin
+   for f002-claims-mstr
+     let clmdtl-consec-dates-r = 					     &
+			   ascii(clmdtl-sv-nbr-1) +ascii(clmdtl-sv-day-1,2)  &
+			+  ascii(clmdtl-sv-nbr-2) +ascii(clmdtl-sv-day-2,2)  &
+			+  ascii(clmdtl-sv-nbr-3) +ascii(clmdtl-sv-day-3,2)  
+end
+
+procedure postfind
+begin
+   for f002-claims-mstr
+     begin
+	let clmdtl-sv-nbr-1 = nconvert(clmdtl-consec-dates-r[1:1])
+	let clmdtl-sv-day-1 = nconvert(clmdtl-consec-dates-r[2:2])
+	let clmdtl-sv-nbr-2 = nconvert(clmdtl-consec-dates-r[4:1])
+	let clmdtl-sv-day-2 = nconvert(clmdtl-consec-dates-r[5:2])
+	let clmdtl-sv-nbr-3 = nconvert(clmdtl-consec-dates-r[7:1])
+	let clmdtl-sv-day-3 = nconvert(clmdtl-consec-dates-r[8:2])
+	display clmdtl-sv-nbr-1
+	display clmdtl-sv-day-1
+	display clmdtl-sv-nbr-2
+	display clmdtl-sv-day-2
+	display clmdtl-sv-nbr-3
+	display clmdtl-sv-day-3
+	end
+   end
+
+
+build  detail list
+
+

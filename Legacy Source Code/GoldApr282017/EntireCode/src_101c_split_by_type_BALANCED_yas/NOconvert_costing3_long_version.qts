@@ -1,0 +1,93 @@
+; Program: costing3.qts
+; Purpose: determine doctor's that bill only in non-22 clinics
+; Method: access f050 revenue history for appropriate ped and using
+;	  YTD values select clinic nbrs. 
+
+;DATE       BY WHOM      DESCRIPTION
+;99/03/28   YASEMIN      ORIGINAL
+;
+cancel clear
+
+run costing3
+
+set default
+set process nolimit
+set lock file update
+
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+
+request costing3_1     &
+        on calculation errors report    &
+        on edit errors report
+
+; obtain all revenue for appropriate period
+; YAS - SHOULD WE BE IGNORING ADJUSTMENTS - MISC ETC ????
+;
+access f050-doc-revenue-mstr-history
+
+;y2k
+;select if ep-yr = 1999 ;and docrev-key[1:1] <> "6"
+select if iconst-date-period-end = w-current-costing-ped 
+
+sort on docrev-doc-nbr 	&
+     on docrev-clinic-1-2 d ; DESCENDING
+
+subfile docclinic keep at docrev-doc-nbr	&
+include docrev-doc-nbr, docrev-clinic-1-2, docrev-key
+
+
+request costing3_2a    &
+        on calculation errors report    &
+        on edit errors report
+
+; separate into 2 subfiles for - clinic 22 and non-22 clinic claims
+access *docclinic
+
+; b.e. july 20/99 - added qualification of clinic nbr
+subfile f050_22     keep if docrev-clinic-1-2 of docclinic =  '22'	&
+	include docclinic
+;subfile f050_not_22 keep if docrev-clinic-1-2 of docclinic <> '22'	&
+;	include docclinic
+
+
+; program:
+; purpose: put all doc's with values in clinic 22 into temp ISAM file
+
+request costing3_2b     &
+        on calculation errors report    &
+        on edit errors report
+
+set process nolimit
+
+access *f050_22
+
+sort on docrev-doc-nbr
+
+output doc-totals-tmp add at docrev-doc-nbr
+  item doc-nbr final docrev-doc-nbr
+
+
+
+; FOLLOWING CODE NOT NEEDED ANY MORE - costing4 checks the doc-totals-tmp
+;  file directly to include/exclude non-22 revenue without needing the subfile
+; this request created
+; purpose: put doc into subfile only if no '22' recs - ie no rec in temp file
+
+;request costing3_2c    &
+;        on calculation errors report    &
+;        on edit errors report
+;
+;access *f050_not_22	&
+;	link docrev-doc-nbr to doc-nbr of doc-totals-tmp opt
+;
+;select if not record doc-totals-tmp exists
+;
+;subfile f050_non_22_claims_only include f050_not_22
+
+build $obj/costing3

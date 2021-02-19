@@ -1,0 +1,420 @@
+;#> program-id.     r124b_mp.qzs
+;
+;  ********************************************************************
+;
+;     IF YOU MODIFY THIS PROGRAM ALSO MODIFY the year end pgm ????
+;
+;  ********************************************************************
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Print the STATEMENT OF EARNINGS for the physician
+;		 for the  * MANUAL PAYMENTS('mp') *   payment subsystem
+;
+;            PHASE II - READ SUBFILE AND CREATE ACTUAL STATEMENT
+;
+;        MODIFICATION HISTORY
+;    DATE   WHO  DESCRIPTION
+; 00/nov/13 B.E. - cloned from r124b_rma.qzs to create this 'mp' statement
+;
+
+cancel clear
+set default
+set report nolimit
+set report dev disc name r124b
+set page width 200 length 0
+set nohead
+set noformfeed
+
+access *r124a                                               
+
+; (these statements don't require printing of the following lines)
+select if    comp-code <> "INCEXP"	&
+ 	 and comp-code <> "PAYPOT"	
+
+sort   on doc-dept                                               &
+       on doc-nbr                                                &
+       on comp-code-group                                        &
+       on process-seq             
+
+use $pb_src/printer_codes.def
+
+def hp-set-top-margin char*6 =		                        &
+   hpiii-set-margin-top-part1 + "2" + hpiii-set-margin-top-part2
+
+; (CG TIMES 10 POINT)
+def hpiii-init-page-codes char*198 =                            &
+    truncate(hpiii-font-symbol-ascii)                           &
+  + truncate(hpiii-lines-per-inch)				&
+  + truncate(hpiii-font-spacing-prop)                           &
+  + truncate(hpiii-font-height-10)                              &
+  + truncate(hpiii-font-upright)                                &
+  + truncate(hpiii-medium)                                      &
+  + truncate(hpiii-cgtimes)					&
+  + hp-set-top-margin                           		
+
+
+define x-comp-code-group-desc char*100                          &
+     = hpiii-font-height-10 + hpiii-bold                        &
+;     + "* ACTUAL REVENUE (at 100%)"                        	&
+     + "PAYMENTS"		                        	&
+     + hpiii-font-height-10 + hpiii-medium                      &
+			      if comp-code-group of r124a = "A" &
+  else hpiii-font-height-10 + hpiii-bold                        &
+     + "EXPENSES"                                          	&
+     + hpiii-font-height-10 + hpiii-medium                      &
+			      if comp-code-group of r124a = "C" &
+  else hpiii-font-height-10 + hpiii-bold                        &
+     + "CLINICAL CEILING PAYMENT"                               &
+     + hpiii-font-height-10 + hpiii-medium                      &
+			      if comp-code-group of r124a = "F" &
+  else hpiii-font-height-10 + hpiii-bold                        &
+     + "DEDUCTIONS"                                         	&
+     + hpiii-font-height-10 + hpiii-medium                      &
+			      if comp-code-group of r124a = "G" &
+  else hpiii-font-height-10 + hpiii-bold                        &
+     + "CURRENT STATUS"		                              	&
+     + hpiii-font-height-10 + hpiii-medium                      &
+                              if comp-code-group of r124a = "J" &
+  else " "                    if comp-code-group of r124a = "B" &
+                              or comp-code-group of r124a = "D" &
+                              or comp-code-group of r124a = "E" &
+                              or comp-code-group of r124a = "H" &
+                              or comp-code-group of r124a = "I" &
+                              or comp-code-group of r124a = "K" &
+                              or comp-code-group of r124a = "L" &
+                              or comp-code-group of r124a = "M" &
+                              or comp-code-group of r124a = "N" &
+  else "?"
+
+
+; ('25' BELOW IS OFFSET OF "HARD CODED" LINES DOWN TO "*ACTUAL REVENUE"
+;  LINE WHICH WOULD NEED TO BE CHANGED IF UPPER PORTION OF STMNT IS CHANGED)
+;DEFINE X-PAYPOT-OFFSET = X-COUNT-PAYPOT + 25
+define x-count-diff = (x-count-status - x-count-increq)
+;98/11/19 YAS ADDED THREE MORE LINES AS PART OF FOOTING, THEREFORE
+;	ADJUST THE OFFSET BY 3 LINES
+;define x-increq-offset = x-count-diff + 15 if x-count-diff > 1 &
+;					 and  x-increq <> 0    &
+;	else             x-count-diff + 14 if x-count-diff = 1 &
+;					 and  x-increq <> 0    &
+;	else             x-count-diff + 13 if x-increq <> 0    &
+;	else             x-count-diff + 12 if x-count-diff > 1 &
+;					 and  x-inctar <> 0    &
+;	else             x-count-diff + 11 if x-count-diff = 1
+define x-increq-offset = x-count-diff +  5 if x-count-diff > 1 &
+					 and  x-increq <> 0    &
+	else             x-count-diff +  4 if x-count-diff = 1 &
+					 and  x-increq <> 0    &
+	else             x-count-diff +  3 if x-increq <> 0    &
+	else             x-count-diff +  2 if x-count-diff > 1 &
+					 and  x-inctar <> 0    &
+	else             x-count-diff +  1 if x-count-diff = 1
+					
+; (+ 1 is OFFSET to allow extra "*REVENUE" and "EXPENSES" title lines
+;  and blank lines that are forced between sections.  '* 80' is TIMES
+;  HEIGHT of each line)
+
+define x-status-offset = (x-count-diff + 2) * 80 if x-count-diff > 1 &
+						and x-increq <> 0    &
+	else		 (x-count-diff + 1.75) * 80 if x-count-diff = 1 &
+						  and  x-increq <> 0 &
+	else		 (x-count-diff + 1.5)  * 80 if x-increq <> 0 &
+	else		 (x-count-diff + 0.25) * 80
+
+define x-shading-ctrl-codes-a char*80 &  ; Done in graphic mode
+    =  x-esc + "&a13R"		& ; up to 13 row
+     + x-esc + "&a20C"		& ; go to 20th column
+     + x-esc + "*c1800A"	& ; set horizontal rectangle size in dot
+     + x-esc + "*c300B"		& ; set vertical rectangle size in dots
+;     + x-esc + "*c10G"		& ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"		& ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"		& ; fill rectangle area
+     + x-esc + "&a0C"           & ; reposition upper left corner
+     + x-esc + "&a0R"   	  ; 0 row 0 column
+
+define x-shading-ctrl-codes-b char*80 &
+;   =  x-ff                                          &
+    = " "                                            &
+	if x-count-increq-status = 0		     &
+  else x-esc + "&a-" + ascii(x-increq-offset) + "R"     &; move to start 
+							 ; of shading box
+     + x-esc + "&a0C"		& ; go to 0th column
+;    + x-esc + "*c2100A"	& ; set horizontal rectangle size in dot
+     + x-esc + "*c2000A"	& ; set horizontal rectangle size in dot
+     + x-esc + "*c" + ascii(x-status-offset) + "B"   & ;set vertical rectangle size in dots
+;     + x-esc + "*c10G"		& ; apply 10 % shade for hp printer
+     + x-esc + "*c20G"		& ; apply 20 % shade for canon copier
+     + x-esc + "*c2P"		& ; fill rectangle area
+     + x-esc + "&a+" + ascii(x-increq-offset) + "R"      ; return to position
+							 ; before printing 
+                                                         ; of shading box
+;     + x-ff
+
+; (DETERMINE NUMBER OF BLANKS LINES BEFORE EACH RECORD 'GROUP' -
+;  IF NO BLANK LINE, THEN ISSUE "UP 1 LINE" CTRL CODE TO OFFSET
+;  THE FORMFEED WHICH IS PRINTED FOR THE LINE)
+
+define x-comp-code-group-desc-ctrl char*7                       &
+    =   x-esc + "&a-1R"       				&
+                   if    comp-code-group = "B"          & ;TOTINC
+		      or comp-code-group = "D"		& ;TOTEXP
+		      or comp-code-group = "H"		& ;TOTDED
+  else  " "         if   comp-code-group = "E"          & ;INCEXP
+		      or comp-code-group = "I"		& ;PAYEFT
+		      or comp-code-group = "K"		& ;INCTAR
+		      or comp-code-group = "L"		& ;STATUS
+  else  x-lf + x-lf + x-cr				&
+		    if   comp-code-group = "M"		& ; MESSAGES
+		      or comp-code-group = "N"		& ;TOTxxx'S
+  else  x-lf + x-cr
+
+def x-title-0 char*90                     &
+    =  hpiii-font-height-14                  &
+     + hpiii-bold                            &
+     + "REGIONAL MEDICAL ASSOCIATES OF HAMILTON" &
+     + hpiii-font-height-10                  &
+     + hpiii-medium			
+
+def x-title-1 char*90                     &
+    =  hpiii-font-height-14               &  
+     + hpiii-bold                         &
+     + "STATEMENT OF"            	  &
+     + hpiii-font-height-10               &
+     + hpiii-medium			  &
+     + x-esc + "&a+80C"	  ; move cursor over so that "PAGE" is printed
+			  ; at end of line
+
+def x-title-1b char*80                    &
+    =  hpiii-font-height-18               &
+     + hpiii-bold                         &
+     + "MISCELLANEOUS PAYMENTS"           & 
+     + hpiii-font-height-10               &
+     + hpiii-medium			  &
+     + x-esc + "&a+80C"	  ; move cursor over so that "PAGE" is printed
+			  ; at end of line
+
+def x-title-2 char*80                                           &
+    =  hpiii-font-height-12                                        &
+     + hpiii-bold                                                  &
+     + x-date-title                                             &
+     + hpiii-font-height-10                                        &
+     + hpiii-medium
+
+
+
+def x-msg0a char*123 							&
+  =  hpiii-bold 							&
+   + "The 4.8% holdback shows as a single total on your monthly Revenue Analysis (R051CA) report."
+def x-msg0b char*123 							&
+  =  "Revenue (at 100%) reflects the holdback." ;+ HPIII-MEDIUM
+
+def x-msg2a char*123 							&
+  = hpiii-bold                                                  	&
+   +  "Rejections for Health card numbers & version codes are up to 1800/month - " &
+   + hpiii-font-italic							&
+   + "an increase of 100%."						&
+   + hpiii-font-upright 
+
+def x-msg2b char*123 							&
+  =  hpiii-bold                                                  	&
+   + " Please have your office obtain the current information with every visit." &
+   + hpiii-font-height-10 + hpiii-cgtimes + hpiii-medium 
+
+def x-msg3 char*123 							&
+  =  " "
+
+def x-msg_last char*123 						&
+  =  "For assistance, please call"					&
+   + hpiii-bold + hpiii-font-italic 					&
+   + "Mary Brownridge" 							&
+   + hpiii-font-upright + hpiii-medium + hpiii-cgtimes 			&
+   + "at University ext. 23350."					&
+   + x-ff
+
+;----------------------------------
+def x-ytdcea-pos-ctrl-cd char*15				&
+ 	=  x-esc + "&a080C"					&
+	 + x-esc + "*p-" + x-ytdcea-pos-prt + "X"
+def x-ytdcea-val-ctrl-cd char*17				&
+	= x-ytdcea-val-prt + x-esc + "&a095C"
+;----------------------------------
+def x-ceicea-pos-ctrl-cd char*15				&
+ 	=  x-esc + "&a080C"					&
+	 + x-esc + "*p-" + x-ceicea-pos-prt + "X"
+def x-ceicea-val-ctrl-cd char*17				&
+	= x-ceicea-val-prt + x-esc + "&a095C"
+;----------------------------------
+def x-ytdcex-pos-ctrl-cd char*15				&
+ 	=  x-esc + "&a080C"					&
+ 	 + x-esc + "*p-" + x-ytdcex-pos-prt + "X"
+def x-ytdcex-val-ctrl-cd char*17				&
+ 	= x-ytdcex-val-prt + x-esc + "&a095C"
+;----------------------------------
+;DEF X-CEICEX-POS-CTRL-CD CHAR*15				&
+;	=  X-ESC + "&a140C"					&
+;	 + X-ESC + "*p-" + X-CEICEX-POS-PRT + "X"
+;DEF X-CEICEX-VAL-CTRL-CD CHAR*10				&
+;	= X-CEICEX-VAL-PRT
+;
+;----------------------------------
+
+def x-ytdreq-pos-ctrl-cd char*15				&
+ 	=  x-esc + "&a140C"					&
+	 + x-esc + "*p-" + x-ytdreq-pos-prt + "X"
+def x-ytdreq-val-ctrl-cd char*10				&
+	= x-ytdreq-val-prt
+;----------------------------------
+def x-ceireq-pos-ctrl-cd char*15				&
+ 	=  x-esc + "&a140C"					&
+	 + x-esc + "*p-" + x-ceireq-pos-prt + "X"
+def x-ceireq-val-ctrl-cd char*10				&
+	= x-ceireq-val-prt
+;----------------------------------
+def x-ytdtar-pos-ctrl-cd char*15				&
+ 	=  x-esc + "&a140C"					&
+	 + x-esc + "*p-" + x-ytdtar-pos-prt + "X"
+def x-ytdtar-val-ctrl-cd char*10				&
+	= x-ytdtar-val-prt
+;----------------------------------
+;DEF X-CEITAR-POS-CTRL-CD CHAR*15				&
+;	=  X-ESC + "&a140C"					&
+;	 + X-ESC + "*p-" + X-CEITAR-POS-PRT + "X"
+;DEF X-CEITAR-VAL-CTRL-CD CHAR*10				&
+;	= X-CEITAR-VAL-PRT
+
+;----------------------------------
+
+def x-offset-bank-lit    char*7 				&
+ 	=  x-esc + "&a120C"					
+def x-offset-bank-val    char*7 				&
+ 	=  x-esc + "&a140C"					
+
+
+heading at doc-nbr                                               &
+   tab   1 hpiii-init-page-codes				&
+   tab 100 x-shading-ctrl-codes-a			 	 &
+  skip 1							 &
+   tab   1 'R124B'                                               &
+   tab  30 x-title-0                                             &
+;  TAB 130 "Page:"                                               &
+;  TAB 135 SYSPAGE
+   tab 198 x-line-ctrl                                           &
+skip 2                                                           &
+;   tab  55 x-title-1                                             &
+   tab  67 x-title-1                                             &
+   tab 110 hpiii-medium                                          &
+   tab 198 x-line-ctrl                                           &
+ skip 2                                                          &
+   tab  40 x-title-1b						 &
+   tab  198 x-line-ctrl                                          &
+ skip 2                                                          &
+   tab  60 x-doc-id-info                                         &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab  60 x-dept-name                                           &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab  25 "Deposit"					         &
+   tab  32 hpiii-bold                                            &
+   tab  37 x-deposit pic "^^^,^^^.^^ " trailing sign "-"         &
+   tab  60 hpiii-medium                                          &
+   tab  93 x-offset-bank-lit					 &
+   tab 100 "Bank"                                                &
+   tab 110 x-offset-bank-val					 &
+   tab 117 x-bank                                                &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab  25 "Date of Deposit"                                     &
+   tab  42 hpiii-bold                                               &
+   tab  48 x-deposit-date                                        &
+   tab  60 hpiii-medium                                             &
+   tab  93 x-offset-bank-lit					 &
+   tab 100 "Branch"                                              &
+   tab 110 x-offset-bank-val					 &
+   tab 117 x-branch                                              &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab  93 x-offset-bank-lit					 &
+   tab 100 "Account #"                                           &
+   tab 110 x-offset-bank-val					 &
+   tab 117 x-bank-account                                        &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab 198 x-line-ctrl                                           &
+ skip 2                                                          &
+   tab  50 x-title-2                                             &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab 198 x-line-ctrl                                           &
+
+
+ skip 6                                                          &
+; skip 1                                                          &
+;   tab  30 "Annual  Clinical Ceiling"                            &
+;   tab  65 x-ytdcea-pos-ctrl-cd					 &
+;   tab  80 x-ytdcea-val-ctrl-cd                                  &
+;   tab  97 "Annual  Required Revenue"                            &
+;   tab 122 x-ytdreq-pos-ctrl-cd                                  &
+;   tab 147 x-ytdreq-val-ctrl-cd                                  &
+;   tab 198 x-line-ctrl                                           &
+; skip 1                                                          &
+;   tab  30 "Monthly Clinical Ceiling"                            &
+;   tab  65 x-ceicea-pos-ctrl-cd                                  &
+;   tab  80 x-ceicea-val-ctrl-cd                                  &
+;   tab  97 "Monthly Required Revenue"                            &
+;   tab 122 x-ceireq-pos-ctrl-cd                                  &
+;   tab 147 x-ceireq-val-ctrl-cd                                  &
+;   tab 198 x-line-ctrl                                           &
+; skip 1                                                          &
+;   tab  30 "Annual Assigned Expense"                             &
+;   tab  65 x-ytdcex-pos-ctrl-cd                                  &
+;   tab  80 x-ytdcex-val-ctrl-cd                                  &
+;   tab  97 "Annual  Target Revenue"                              &
+;   tab 122 x-ytdtar-pos-ctrl-cd                                  &
+;   tab 147 x-ytdtar-val-ctrl-cd                                  &
+;   tab 198 x-line-ctrl                                           &
+;  skip 1                                                          &
+;   tab   6 "DESCRIPTION"                                         &
+   tab  77 "MONTH TO DATE"                                       &
+   tab 117 "YEAR TO DATE"                                        &
+   tab 198 x-line-ctrl                                           &
+ skip 1                                                          &
+   tab   6 "For the Period Ending:"                              &
+   tab  29 x-ped pic "^^^^/^^/^^"     				 &
+   tab 198 x-line-ctrl                                           &
+ skip 1
+
+heading at comp-code-group                                      &
+  tab  06 x-comp-code-group-desc-ctrl                           &
+  tab  12 x-comp-code-group-desc				&
+  tab 198 x-line-ctrl						
+
+report                                                           &
+  tab   6 x-line-text                                            &
+  tab 198 x-line-ctrl
+
+footing at doc-nbr                                               &
+   tab   1 x-line-ctrl                                           &
+   tab   6 x-shading-ctrl-codes-b			 	 &
+; skip 1								 &
+;   tab   6 "*A detailed list of services for the current month is enclosed with this statement." &
+;   tab 198 x-line-ctrl                                           &
+; skip 1                                                          &
+;   tab   6 "For an explanation of Assigned Expenses, call your department manager."  &
+;   tab 198 x-line-ctrl                                           &
+ skip 2                                                          &
+;   tab   6 x-msg2a                                               & 
+;   tab   6 x-msg3                                               & 
+   tab 198 x-line-ctrl						 &
+ skip 1                                                          &
+;   tab   6 x-msg2b                                               & 
+;   tab   6 x-msg3                                               & 
+   tab 198 x-line-ctrl                                           &
+ skip 2                                                          &
+   tab   6 x-msg_last						 &
+   tab 198 x-line-ctrl						
+
+build $pb_obj/r124b_mp

@@ -1,0 +1,71 @@
+; Program: u140_a
+; Purpose: Before the RA is run this program must to be to put all doctors
+;	   into the f075 file with an indication of the number of doctors
+;	   that share the same MOH OHIP Number
+;	   This f075 file is then updated with the RA payments and based upon
+;	   the split between a doctors RMA doctors of their RA Payments the
+;	   same ratio is used to divy up the single AFP payment identified
+;	   only with the doctor's OHIP number
+
+
+cancel clear
+
+run u140_a
+set process nolimit
+
+request u140_aount_f020_doc_ohip_nbr         	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access f020-doctor-mstr 
+choose doc-ohip-nbr
+
+use $src/f020_select_active.qzs
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;and select if doc-afp-paym-group <> " "
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+sorted on doc-ohip-nbr
+
+temp x-rec-count
+item x-rec-count = x-rec-count +1 	&
+	reset at doc-ohip-nbr
+
+subfile u140_a keep include		&
+  doc-ohip-nbr,				&
+  doc-nbr,				&
+  x-rec-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access *u140_a 	
+
+sort on doc-ohip-nbr 	&
+	on x-rec-count 	
+
+;select if x-rec-count > 1
+
+subfile u140_a1 keep at doc-ohip-nbr	include	&
+  doc-ohip-nbr,					&
+  doc-nbr,					&
+  x-rec-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access *u140_a1					&
+	link doc-ohip-nbr			&
+	to   doc-ohip-nbr of f020-doctor-mstr
+
+use $src/f020_select_active.qzs
+
+output f075-afp-doc-mstr alias f075-add add
+  item doc-nbr			final doc-nbr      of f020-doctor-mstr
+  item doc-ohip-nbr		final doc-ohip-nbr of u140_a1
+  item afp-duplicate-doc-count	final x-rec-count
+
+build $obj/u140_a

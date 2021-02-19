@@ -1,0 +1,137 @@
+;doc     : afp_61to65.qts   
+;purpose : create report for AFP 7 pediatrics doctors
+;          clinic 61-65 professional fees only don't print oma code if tech only
+ 
+;who     : Pat Haslett for Coleen Fotheringham
+;
+; *************************************************************
+
+;Date		Who		Description
+;2005/04/13	Yasemin		afp-peds.qts
+;2006/03/06	Yasemin		afp-peds.qts
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose   key-clm-type 'B' ,  key-clm-batch-nbr "61222@",  & 
+                                               "64222@",  &
+                                               "61784@",  &
+                                               "64784@",  &
+                                               "61D15@",  &
+                                               "64D15@",  &
+                                               "61C30@",  &
+                                               "64C30@",  &
+                                               "61706@",  &
+                                               "64706@",  &
+                                               "61738@",  &
+                                               "64738@",  &
+                                               "62212@",  &
+                                               "63212@",  &
+          key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-doc-nbr cha*3 =clmhdr-claim-id[3:3]
+def x-clinic  cha*2 =clmhdr-claim-id[1:2]
+
+select if clmhdr-batch-type  = 'C' 
+
+subfile afppeds60     keep include               &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr,&
+x-clinic                                        ,&
+clmhdr-doc-dept                                 ,&
+x-doc-nbr                                       
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *afppeds60                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr                                            
+
+select f002-claims-mstr if                      &
+            clmdtl-sv-date     >= '20040101'    &
+       and  clmdtl-sv-date     <= '20060206'    &
+       and  clmdtl-oma-cd      <> "0000"        &; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"        &; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"        &; no payments
+       and  clmdtl-oma-cd      <> "MICM"        & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"        & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+    
+sort on x-doc-nbr
+
+def x-yyyy cha*4 = clmdtl-sv-date[1:4]  
+
+;jan 1 to dec 31 2004
+temp x-2004  zoned*7 signed
+item x-2004  = x-2004 + (clmdtl-fee-ohip - clmdtl-amt-tech-billed)   &
+                    if   x-yyyy = "2004"                             &
+                    reset at x-doc-nbr
+
+;jan 1 to dec 31 2005
+temp x-2005  zoned*7 signed
+item x-2005  = x-2005 + (clmdtl-fee-ohip - clmdtl-amt-tech-billed)   &
+                    if   x-yyyy = "2005"                             &
+                    reset at x-doc-nbr
+
+;apr 1 2004 to march 31 2005
+temp x-200404  zoned*7 signed
+item x-200404  = x-200404 + (clmdtl-fee-ohip - clmdtl-amt-tech-billed)   &
+                    if       clmdtl-sv-date >= "20040401"                &
+                       and   clmdtl-sv-date <= "20050331"                &
+                    reset at x-doc-nbr
+
+;apr 1 2005 to Feb 6, 2006   
+temp x-200504  zoned*7 signed
+item x-200504  = x-200504 + (clmdtl-fee-ohip - clmdtl-amt-tech-billed)   &
+                    if       clmdtl-sv-date >= "20050401"                &
+                       and   clmdtl-sv-date <= "20060206"                &
+                    reset at x-doc-nbr
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile afppeds260 portable keep at x-doc-nbr include         &
+x-doc-nbr                                 ,&
+comma                                     ,&
+clmhdr-doc-dept  of afppeds60             ,&
+comma                                     ,&
+doc-name                                  ,&
+comma                                     ,&
+doc-inits                                 ,&
+comma                                     ,&
+x-2004                                    ,&
+comma                                     ,&
+x-2005                                    ,&
+comma                                     ,&
+x-200404                                  ,&
+comma                                     ,&
+x-200504                                  ,&
+x-cr
+
+build $obj/afp_61to65 

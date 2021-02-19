@@ -1,0 +1,1832 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   1
+*                      m099.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. m099.
+installation.   rma.
+date-written. 82/08/06.
+date-compiled. 01-Jan-00 11:14.
+security.
+*
+*    files   - input    : filename.dc  - documentation file
+*
+*    program purpose:
+*               this is an on-line documentation program that allows the
+*               user to display a selected filename.dc on the screen.
+*
+*               note:  this program must be compiled using e_batch.
+*
+*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+*  modification history:
+*  ---------------------
+*  yy/mmm/dd  whom          why (include pdr/sms if possible)
+*  ---------  ----          ---
+*
+*  83/jul/11  ian warsh     added the yearend_procedures.dc to the
+*                           m099_document_tbl.ws
+*
+*  87/may/27  shawn blair  coversion from aos to aos/vs.
+*                          change field size for
+*                          status clause to 2 and
+*                          feedback clause to 4.
+*
+*    revised dec/87 (j.l.) - pdr 356
+*                          - after error message is displayed, hit
+*                            space bar to return to keying field
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*
+environment division.
+input-output section.
+file-control.
+
+        select input-file
+                assign to input-file-name
+                file  status is input-fstat
+                infos status is input-istat.
+*  38-S*********************                                           (   0)**
+**    Paragraph or phrase repeated illegally
+data division.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   2
+*                      m099.cbl
+file section.
+
+fd  input-file
+*  40-S*******                                                         (   1)**
+**    Missing or illegal file name
+        block contains  512   characters
+        record contains 134   characters
+        recording mode  is    data-sensitive.
+
+01  input-rec.
+    05  input-rec-first-133             pic x(133).
+    05  input-rec-first-133-r redefines input-rec-first-133.
+        10  input-rec-ff.
+            15  input-first-byte        pic x.
+            15  filler                  pic x(5).
+        10  filler                      pic x(127).
+    05  filler                          pic x.
+working-storage section.
+
+77  err-ind                             pic 99  comp.
+77  ws-colon                            pic x           value ':'.
+77  ws-start-nbr                        pic 99.
+77  ws-dump-doc-reply                   pic x.
+77  ws-last-screen-entry                pic 99.
+77  ws-accept-main-menu                 pic x           value spaces.
+77  ws-pgm-value                        pic x(5).
+77  ws-main-area-desc                   pic x(30).
+*
+77  confirm-space                               pic x   value space.
+*
+
+01  ws-carr-ret                         pic x           value "<015>".
+*1007-E*************************************************************** (   2)**
+**    VALUE literal size 5 > data item size 1. Literal truncated.
+01  ws-form-feed                        pic x           value "<014>".
+*1007-E*************************************************************** (   2)**
+**    VALUE literal size 5 > data item size 1. Literal truncated.
+01  ws-line-feed                        pic x           value "<012>".
+*1007-E*************************************************************** (   2)**
+**    VALUE literal size 5 > data item size 1. Literal truncated.
+
+01  ws-accept-pgm-menu.
+    05  ws-accept-pgm-menu-1-2.
+        10  ws-accept-pgm-menu-1        pic x.
+        10  ws-accept-pgm-menu-2        pic x.
+    05  ws-accept-pgm-menu-num redefines ws-accept-pgm-menu-1-2
+                                        pic 99.
+
+01  input-file-name.
+    05  filler                          pic x(30)       value
+                ":DOCUMENTATION:DOCLIB:PGM_DOC:".
+    05  input-pgm-name                  pic x(30).
+
+01  subscripts.
+    05  subs-menu                       pic 9           comp.
+    05  subs-pgm                        pic 99          comp.
+    05  subs                            pic 99          comp.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   3
+*                      m099.cbl
+01  file-status.
+    05  input-fstat                     pic xx.
+    05  input-istat                     pic x(11).
+    05  common-f-status                 pic xx.
+    05  common-i-status                 pic x(11).
+
+01  flag                                pic x.
+    88  ok                              value "Y".
+    88  not-ok                          value "N".
+
+01  flag-eof                            pic x.
+    88  flag-eof-y                      value "Y".
+    88  flag-eof-n                      value "N".
+
+01  flag-file-found                     pic x.
+    88  flag-file-found-y               value "Y".
+    88  flag-file-found-n               value "N".
+
+
+01  flag-file-open                      pic x.
+    88  flag-file-open-y                value "Y".
+    88  flag-file-open-n                value "N".
+
+
+01  ws-tbl-program-screen-name.
+    05  ws-tbl-program-screen-name.
+        10  ws-tbl-pgm-screen-name1     pic x(5)        value 'm099b'.
+        10  ws-tbl-pgm-screen-name2     pic x(5)        value 'm099c'.
+        10  ws-tbl-pgm-screen-name3     pic x(5)        value 'm099d'.
+        10  ws-tbl-pgm-screen-name4     pic x(5)        value 'm099e'.
+        10  ws-tbl-pgm-screen-name5     pic x(5)        value 'm099f'.
+        10  ws-tbl-pgm-screen-name6     pic x(5)        value 'm099g'.
+        10  ws-tbl-pgm-screen-name7     pic x(5)        value 'm099h'.
+        10  ws-tbl-pgm-screen-name8     pic x(5)        value 'm099i'.
+        10  ws-tbl-pgm-screen-name9     pic x(5)        value 'm099j'.
+    05  ws-tbl-pgm-scr redefines ws-tbl-program-screen-name.
+        10  ws-tbl-pgm-names occurs 9 times
+                                        pic x(5).
+
+01  ws-dump-documentation.
+    05  ws-dump-doc.
+        10  ws-dump-documentation1      pic x(80).
+        10  ws-dump-documentation2      pic x(80).
+        10  ws-dump-documentation3      pic x(80).
+        10  ws-dump-documentation4      pic x(80).
+        10  ws-dump-documentation5      pic x(80).
+        10  ws-dump-documentation6      pic x(80).
+        10  ws-dump-documentation7      pic x(80).
+        10  ws-dump-documentation8      pic x(80).
+        10  ws-dump-documentation9      pic x(80).
+        10  ws-dump-documentation10     pic x(80).
+        10  ws-dump-documentation11     pic x(80).
+        10  ws-dump-documentation12     pic x(80).
+        10  ws-dump-documentation13     pic x(80).
+        10  ws-dump-documentation14     pic x(80).
+        10  ws-dump-documentation15     pic x(80).
+        10  ws-dump-documentation16     pic x(80).
+        10  ws-dump-documentation17     pic x(80).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   4
+*                      m099.cbl
+        10  ws-dump-documentation18     pic x(80).
+        10  ws-dump-documentation19     pic x(80).
+        10  ws-dump-documentation20     pic x(80).
+        10  ws-dump-documentation21     pic x(80).
+        10  ws-dump-documentation22     pic x(80).
+        10  ws-dump-documentation23     pic x(80).
+    05  ws-dump-doc-r redefines ws-dump-doc.
+        10  ws-dump-document occurs 23 times
+                                        pic x(80).
+copy "m099_document_tbl.ws".
+01  WS-TOPIC-DOCUMENT-TABLE.
+    05  WS-TOPIC-TABLE-DATA.
+        10  FILLER                              PIC X(30)       VALUE
+                "REPORT PROGRAMS".
+        10  FILLER                              PIC X(50)       VALUE
+                "R001 Batch Control  R001.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R001BALL Batches    R001B.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R002A  Balance BatchR002A.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R002BUNBalance BatchR002B.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R004 Phy.Trans. SummR004.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R005 Cash Applied   R005.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R005TT/P Cash by LocR005TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R006TT/P Cash by DocR006TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R011 REV Anal.by LocR011.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R012 REV Anal.by DocR012.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R012TT/P REV by Doc R012TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R013 REV Anal.by OmaR013.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R013TT/P REV by Loc R013TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R014 Agent Summary  R014.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R020 Phy.Lists/LabelR020.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R021 Print B/Y CardsR021.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R030 Locations PrintR030.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R040 OMA/OHIP Fee RpR040.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R051 Revenu.AnalysisR051.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R060 W.C.B. Listing R060.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R070 A/R Report     R070.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R070TA/R Tech/Prof  R070TP.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   5
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "R071 A/R Purge VerifR071.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R073 A/R Purge VerifR073.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R091 Diagnostic CodeR091.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R120 Cheque RegisterR120.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R130 Stmnts/Bank DepR130.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R150 T4's and Audit R150.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R191 Chq.R.RollAuditR191.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R211 Clm.Hist. VerifR211.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R230 Appt. Reconcil.R230.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R811 Data DictionaryR811.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "R992 Clm.File Recov.R992.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (   2)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "UPDATE PROGRAMS".
+        10  FILLER                              PIC X(50)       VALUE
+                "U010 Rev. Mstr updt.U010.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U011 Mac Pat Update.U011.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U015 Rev. Mthly RollU015.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U015TT/P Mthly Roll U015TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U020 OHIP Tape SubmtU020.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U021 Fiscal Doc DeltU021.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U022 Create resubmitU022.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U023 Jan. Doc DeleteU023.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U024 Anytime Doc DelU024.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U030 RAT Tape apply U030.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   6
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "U035 Direct Bills   U035.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U040 Fee Mstr. Roll U040.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U041 Fee Mstr.UpdateU041.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U072 A/R W/O's PurgeU072.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U093 Adj/Paymt PurgeU093.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U095 Clm.Batch PurgeU095.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U099 Pat.Outstand/clU099.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U101 Phy. Pay Calc. U101.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U102 '13 mth' Roll  U102.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U110 Rev.Mstr.ExtracU110.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U111 Chq.Reg. UpdateU111.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U190 Chq.Reg.Yr.RollU190.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U210 Clm.Histry.TapeU210.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U801 Microfiche TapeU801.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U802 Dump Fiche TapeU802.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U810AData Dict.ExtrtU810.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U810BData Dict.Updt.U810.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U991 Bat.File Recov.U991.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "U999 File ConversionU999.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   7
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+    4-S                                                                (   5)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "DATA ENTRY PROGRAMS".
+        10  FILLER                              PIC X(50)       VALUE
+                "D001 Clm. Data EntryD001.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D002 Clm. Deletion  D002.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D003 Clm. Query/Upd.D003.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D004 Adj/Paym. EntryD004.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D050 Doc. Rev. QueryD050.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D101 Man.ChequeEntryD101.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D201 Out Appt. EntryD201.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D202 In  Appt. EntryD202.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "D811 Data Dict.QueryD811.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   8
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (   6)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "MAINTENANCE PROGRAMS".
+        10  FILLER                              PIC X(50)       VALUE
+                "M010 Pat/Subscr.MstrM010.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M020 Doctor Master  M020.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M030 Locations Mstr M030.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M040 OMA Fee Master M040.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M070 Department MstrM070.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M080 Bank Master    M080.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M090 CONSTANTS Mstr M090.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M094 Message Mstr   M094.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "M095 Subdivis. Mstr M095.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page   9
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (   8)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "FILE/RECORD DEFINITIONS".
+        10  FILLER                              PIC X(50)       VALUE
+                "F001 BATCH Control  F001.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F002 CLAIMS Master  F002.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F010 PATIENT Master F010.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  10
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "F011 SUBSCRIBER MstrF011.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F020 DOCTOR Master  F020.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F030 LOCATIONS Mstr F030.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F040 OMA Fee Master F040.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F050 DOC.REVENUE MstF050.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F050TDOC. REV (T/P) F050TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F051 DOC.CASH MasterF051.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F051TDOC.CASH (T/P) F051TP.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F060 CHEQUE REG MstrF060.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F070 DEPARTMENT MstrF070.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F080 BANK Master    F080.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F090 CONSTANTS Mstr F090.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F091 DIAGNOSTIC Cds.F091.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F092 Tape Exclus.cdsF092.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F093 Data Dict. MstrF093.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F094 MSG/SUB Mstr   F094.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F201IIn Appt.Recon.MF201I.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "F201OOu.Appt.Recon.MF201O.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  11
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (   9)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "BACKUPS".
+        10  FILLER                              PIC X(50)       VALUE
+                "CRASHCrash Recovery SYSTEM_CRASH_RECOVERY.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  12
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (  11)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "MISCELLANEOUS".
+        10  FILLER                              PIC X(50)       VALUE
+                "ADJ  ADJUST/PAYMENTSADJ.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "NAMESProgram Names  PROGRAMS.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "HOSP Hospital codes HOSPITAL.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  13
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  14
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (  12)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "OPERATOR RUNS OVERVIEW".
+        10  FILLER                              PIC X(50)       VALUE
+                "RUNS Operat.OVERVIEWRUNS.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "AR   A/R Purge      PURGE_AR.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "PATIEPat/Subsc.PurgePURGE_PAT_SUBSCR.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "YEAR Year End ProcedYEAREND_PROCEDURES.DC".
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  15
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    4-S                                                                (  14)**
+**    Illegal character
+        10  FILLER                              PIC X(30)       VALUE
+                "SYSTEMS OVERVIEW".
+        10  FILLER                              PIC X(50)       VALUE
+                "SYSOVSystem OVERVIEWSYSTEM_OVERVIEW.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "     XXXXXXXXXXXXXXX????.DC".
+*       (NOTE: ABOVE 'BLANKS' INDICATE END OF THIS SECTION OF TABLE)
+
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  16
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+        10  FILLER                              PIC X(50)       VALUE
+                "???? XXXXXXXXXXXXXXX????.DC".
+    05  WS-TOPIC-TABLE-DATA-R REDEFINES WS-TOPIC-TABLE-DATA.
+        10  WS-TOPIC-MAIN-AREAS OCCURS 9 TIMES.
+            15  WS-TOPIC-MAIN-AREA-DESC         PIC X(30).
+            15  WS-TOPICS OCCURS 38 TIMES.
+                20  WS-TOPIC-PGM-NAME           PIC X(5).
+                20  WS-TOPIC-ENGLISH-DESC       PIC X(15).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  17
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+                20  WS-TOPIC-DATA-FILENAME      PIC X(30).
+    05  WS-TOPIC-TABLE-DATA-FOR-SCREEN REDEFINES WS-TOPIC-TABLE-DATA-R.
+        10  WS-TOPIC-MAIN-AREA-DESC1            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC2            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC3            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC4            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC5            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC6            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC7            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC8            PIC X(30).
+        10  FILLER                              PIC X(1900).
+        10  WS-TOPIC-MAIN-AREA-DESC9            PIC X(30).
+        10  FILLER                              PIC X(1900).
+
+01  VARIABLES.
+    05  WS-MAX-NBR-MENU-OPTIONS                 PIC 9           VALUE 9.
+    05  WS-MAX-NBR-ENTRIES                      PIC 99          VALUE 27.
+    05  WS-MAX-DOCUMENTS                        PIC 99          VALUE 38.
+*   4-S****************************************************************(  15)***
+**    Illegal character
+ 01  WS-TABLE-DATA-FOR-SCREEN.
+    05  WS-TABLE-DATA.
+        10  WS-PGM-NAME1                        PIC X(5).
+        10  WS-ENGLISH-DESC1                    PIC X(15).
+        10  WS-DATA-FILENAME1                   PIC X(30).
+        10  WS-PGM-NAME2                        PIC X(5).
+        10  WS-ENGLISH-DESC2                    PIC X(15).
+        10  WS-DATA-FILENAME2                   PIC X(30).
+        10  WS-PGM-NAME3                        PIC X(5).
+        10  WS-ENGLISH-DESC3                    PIC X(15).
+        10  WS-DATA-FILENAME3                   PIC X(30).
+        10  WS-PGM-NAME4                        PIC X(5).
+        10  WS-ENGLISH-DESC4                    PIC X(15).
+        10  WS-DATA-FILENAME4                   PIC X(30).
+        10  WS-PGM-NAME5                        PIC X(5).
+        10  WS-ENGLISH-DESC5                    PIC X(15).
+        10  WS-DATA-FILENAME5                   PIC X(30).
+        10  WS-PGM-NAME6                        PIC X(5).
+        10  WS-ENGLISH-DESC6                    PIC X(15).
+        10  WS-DATA-FILENAME6                   PIC X(30).
+        10  WS-PGM-NAME7                        PIC X(5).
+        10  WS-ENGLISH-DESC7                    PIC X(15).
+        10  WS-DATA-FILENAME7                   PIC X(30).
+        10  WS-PGM-NAME8                        PIC X(5).
+        10  WS-ENGLISH-DESC8                    PIC X(15).
+        10  WS-DATA-FILENAME8                   PIC X(30).
+        10  WS-PGM-NAME9                        PIC X(5).
+        10  WS-ENGLISH-DESC9                    PIC X(15).
+        10  WS-DATA-FILENAME9                   PIC X(30).
+        10  WS-PGM-NAME10                       PIC X(5).
+        10  WS-ENGLISH-DESC10                   PIC X(15).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  18
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+        10  WS-DATA-FILENAME10                  PIC X(30).
+        10  WS-PGM-NAME11                       PIC X(5).
+        10  WS-ENGLISH-DESC11                   PIC X(15).
+        10  WS-DATA-FILENAME11                  PIC X(30).
+        10  WS-PGM-NAME12                       PIC X(5).
+        10  WS-ENGLISH-DESC12                   PIC X(15).
+        10  WS-DATA-FILENAME12                  PIC X(30).
+        10  WS-PGM-NAME13                       PIC X(5).
+        10  WS-ENGLISH-DESC13                   PIC X(15).
+        10  WS-DATA-FILENAME13                  PIC X(30).
+        10  WS-PGM-NAME14                       PIC X(5).
+        10  WS-ENGLISH-DESC14                   PIC X(15).
+        10  WS-DATA-FILENAME14                  PIC X(30).
+        10  WS-PGM-NAME15                       PIC X(5).
+        10  WS-ENGLISH-DESC15                   PIC X(15).
+        10  WS-DATA-FILENAME15                  PIC X(30).
+        10  WS-PGM-NAME16                       PIC X(5).
+        10  WS-ENGLISH-DESC16                   PIC X(15).
+        10  WS-DATA-FILENAME16                  PIC X(30).
+        10  WS-PGM-NAME17                       PIC X(5).
+        10  WS-ENGLISH-DESC17                   PIC X(15).
+        10  WS-DATA-FILENAME17                  PIC X(30).
+        10  WS-PGM-NAME18                       PIC X(5).
+        10  WS-ENGLISH-DESC18                   PIC X(15).
+        10  WS-DATA-FILENAME18                  PIC X(30).
+        10  WS-PGM-NAME19                       PIC X(5).
+        10  WS-ENGLISH-DESC19                   PIC X(15).
+        10  WS-DATA-FILENAME19                  PIC X(30).
+        10  WS-PGM-NAME20                       PIC X(5).
+        10  WS-ENGLISH-DESC20                   PIC X(15).
+        10  WS-DATA-FILENAME20                  PIC X(30).
+        10  WS-PGM-NAME21                       PIC X(5).
+        10  WS-ENGLISH-DESC21                   PIC X(15).
+        10  WS-DATA-FILENAME21                  PIC X(30).
+        10  WS-PGM-NAME22                       PIC X(5).
+        10  WS-ENGLISH-DESC22                   PIC X(15).
+        10  WS-DATA-FILENAME22                  PIC X(30).
+        10  WS-PGM-NAME23                       PIC X(5).
+        10  WS-ENGLISH-DESC23                   PIC X(15).
+        10  WS-DATA-FILENAME23                  PIC X(30).
+        10  WS-PGM-NAME24                       PIC X(5).
+        10  WS-ENGLISH-DESC24                   PIC X(15).
+        10  WS-DATA-FILENAME24                  PIC X(30).
+        10  WS-PGM-NAME25                       PIC X(5).
+        10  WS-ENGLISH-DESC25                   PIC X(15).
+        10  WS-DATA-FILENAME25                  PIC X(30).
+        10  WS-PGM-NAME26                       PIC X(5).
+        10  WS-ENGLISH-DESC26                   PIC X(15).
+        10  WS-DATA-FILENAME26                  PIC X(30).
+        10  WS-PGM-NAME27                       PIC X(5).
+        10  WS-ENGLISH-DESC27                   PIC X(15).
+        10  WS-DATA-FILENAME27                  PIC X(30).
+    05  WS-TABLE-DATA-R REDEFINES WS-TABLE-DATA.
+        10  WS-TABLE-DATA-DISPLAY OCCURS 27 TIMES.
+            15  WS-PGM-NAME                     PIC X(5).
+            15  WS-ENGLISH-DESC                 PIC X(15).
+            15  WS-DATA-FILENAME                PIC X(30).
+    4-S                                                                (  17)**
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  19
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/m099_)
+**    Illegal character
+ 
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                "INVALID REPLY".
+        10  filler                              pic x(60)   value
+                "EMPTY DOCUMENTATION FILE".
+        10  filler                              pic x(60)   value
+                "NO MORE DATA TO DISPLAY".
+        10  filler                              pic x(60)   value
+                "DOCUMENTATION FILE NOT FOUND".
+        10  filler                              pic x(60)   value
+                "FILE IS CURRENTLY OPEN".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs  5  times.
+
+01  err-msg-comment                             pic x(60).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  20
+*                      m099.cbl (/alpha/rmabill/rmabill101c/use/sysda)
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+screen section.
+
+01  scr-main-menu.
+    05  blank screen.
+    05                  line 01 col 01 value    "M099A".
+    05                  line 01 col 20 value    "R.M.A. ON-LINE DOCUMENTATION SU
+    05                  line 01 col 73 pic xx/xx/xx from sys-date-long.
+    05                  line 03 col 18 value "INFORMATION AVAILABLE ON THE FOLLO
+    05                  line 05 col 29 value "1 -".
+    05                  line 05 col 33 pic x(30) using  ws-topic-main-area-desc1
+    05                  line 07 col 29 value "2 -".
+    05                  line 07 col 33 pic x(30) using  ws-topic-main-area-desc2
+    05                  line 09 col 29 value "3 -".
+    05                  line 09 col 33 pic x(30) using  ws-topic-main-area-desc3
+    05                  line 11 col 29 value "4 -".
+    05                  line 11 col 33 pic x(30) using  ws-topic-main-area-desc4
+    05                  line 13 col 29 value "5 -".
+    05                  line 13 col 33 pic x(30) using  ws-topic-main-area-desc5
+    05                  line 15 col 29 value "6 -".
+    05                  line 15 col 33 pic x(30) using  ws-topic-main-area-desc6
+    05                  line 17 col 29 value "7 -".
+    05                  line 17 col 33 pic x(30) using  ws-topic-main-area-desc7
+    05                  line 19 col 29 value "8 -".
+    05                  line 19 col 33 pic x(30) using  ws-topic-main-area-desc8
+    05                  line 21 col 29 value "9 -".
+    05                  line 21 col 33 pic x(30) using  ws-topic-main-area-desc9
+    05                  line 23 col 29 value "OPTION -".
+    05  scr-main-option line 23 col 38 pic x using ws-accept-main-menu auto requ
+
+01  scr-menu-title.
+    05  blank screen.
+    05                  line 01 col 01 pic x(5) using ws-pgm-value.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  21
+*                      m099.cbl                                      )
+    05                  line 01 col 20 value    "R.M.A. ON-LINE DOCUMENTATION SU
+    05                  line 01 col 73 pic xx/xx/xx from sys-date-long.
+    05                  line 03 col 01 value "INFORMATION AVAILABLE FOR :".
+    05                  line 03 col 29 pic x(30) using  ws-main-area-desc.
+
+01  scr-menu.
+    05                  line 05 col 01 value "1-".
+    05                  line 05 col 04 pic x(5) using   ws-pgm-name1.
+    05                  line 05 col 09 pic x using ws-colon.
+    05                  line 05 col 10 pic x(15) using  ws-english-desc1.
+    05                  line 05 col 28 value "10-".
+    05                  line 05 col 32 pic x(5) using   ws-pgm-name10.
+    05                  line 05 col 37 pic x using ws-colon.
+    05                  line 05 col 38 pic x(15) using  ws-english-desc10.
+    05                  line 05 col 56 value "19-".
+    05                  line 05 col 60 pic x(5) using   ws-pgm-name19.
+    05                  line 05 col 65 pic x using ws-colon.
+    05                  line 05 col 66 pic x(15) using  ws-english-desc19.
+    05                  line 07 col 01 value "2-".
+    05                  line 07 col 04 pic x(5) using   ws-pgm-name2.
+    05                  line 07 col 09 pic x using ws-colon.
+    05                  line 07 col 10 pic x(15) using  ws-english-desc2.
+    05                  line 07 col 28 value "11-".
+    05                  line 07 col 32 pic x(5) using   ws-pgm-name11.
+    05                  line 07 col 37 pic x using ws-colon.
+    05                  line 07 col 38 pic x(15) using  ws-english-desc11.
+    05                  line 07 col 56 value "20-".
+    05                  line 07 col 60 pic x(5) using   ws-pgm-name20.
+    05                  line 07 col 65 pic x using ws-colon.
+    05                  line 07 col 66 pic x(15) using  ws-english-desc20.
+    05                  line 09 col 01 value "3-".
+    05                  line 09 col 04 pic x(5) using   ws-pgm-name3.
+    05                  line 09 col 09 pic x using ws-colon.
+    05                  line 09 col 10 pic x(15) using  ws-english-desc3.
+    05                  line 09 col 28 value "12-".
+    05                  line 09 col 32 pic x(5) using   ws-pgm-name12.
+    05                  line 09 col 37 pic x using ws-colon.
+    05                  line 09 col 38 pic x(15) using  ws-english-desc12.
+    05                  line 09 col 56 value "21-".
+    05                  line 09 col 60 pic x(5) using   ws-pgm-name21.
+    05                  line 09 col 65 pic x using ws-colon.
+    05                  line 09 col 66 pic x(15) using  ws-english-desc21.
+    05                  line 11 col 01 value "4-".
+    05                  line 11 col 04 pic x(5) using   ws-pgm-name4.
+    05                  line 11 col 09 pic x using ws-colon.
+    05                  line 11 col 10 pic x(15) using  ws-english-desc4.
+    05                  line 11 col 28 value "13-".
+    05                  line 11 col 32 pic x(5) using   ws-pgm-name13.
+    05                  line 11 col 37 pic x using ws-colon.
+    05                  line 11 col 38 pic x(15) using  ws-english-desc13.
+    05                  line 11 col 56 value "22-".
+    05                  line 11 col 60 pic x(5) using   ws-pgm-name22.
+    05                  line 11 col 65 pic x using ws-colon.
+    05                  line 11 col 66 pic x(15) using  ws-english-desc22.
+    05                  line 13 col 01 value "5-".
+    05                  line 13 col 04 pic x(5) using   ws-pgm-name5.
+    05                  line 13 col 09 pic x using ws-colon.
+    05                  line 13 col 10 pic x(15) using  ws-english-desc5.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  22
+*                      m099.cbl                                      )
+    05                  line 13 col 28 value "14-".
+    05                  line 13 col 32 pic x(5) using   ws-pgm-name14.
+    05                  line 13 col 37 pic x using ws-colon.
+    05                  line 13 col 38 pic x(15) using  ws-english-desc14.
+    05                  line 13 col 56 value "23-".
+    05                  line 13 col 60 pic x(5) using   ws-pgm-name23.
+    05                  line 13 col 65 pic x using ws-colon.
+    05                  line 13 col 66 pic x(15) using  ws-english-desc23.
+    05                  line 15 col 01 value "6-".
+    05                  line 15 col 04 pic x(5) using   ws-pgm-name6.
+    05                  line 15 col 09 pic x using ws-colon.
+    05                  line 15 col 10 pic x(15) using  ws-english-desc6.
+    05                  line 15 col 28 value "15-".
+    05                  line 15 col 32 pic x(5) using   ws-pgm-name15.
+    05                  line 15 col 37 pic x using ws-colon.
+    05                  line 15 col 38 pic x(15) using  ws-english-desc15.
+    05                  line 15 col 56 value "24-".
+    05                  line 15 col 60 pic x(5) using   ws-pgm-name24.
+    05                  line 15 col 65 pic x using ws-colon.
+    05                  line 15 col 66 pic x(15) using  ws-english-desc24.
+    05                  line 17 col 01 value "7-".
+    05                  line 17 col 04 pic x(5) using   ws-pgm-name7.
+    05                  line 17 col 09 pic x using ws-colon.
+    05                  line 17 col 10 pic x(17) using  ws-english-desc7.
+    05                  line 17 col 28 value "16-".
+    05                  line 17 col 32 pic x(5) using   ws-pgm-name16.
+    05                  line 17 col 37 pic x using ws-colon.
+    05                  line 17 col 38 pic x(17) using  ws-english-desc16.
+    05                  line 17 col 56 value "25-".
+    05                  line 17 col 60 pic x(5) using   ws-pgm-name25.
+    05                  line 17 col 65 pic x using ws-colon.
+    05                  line 17 col 66 pic x(15) using  ws-english-desc25.
+    05                  line 19 col 01 value "8-".
+    05                  line 19 col 04 pic x(5) using   ws-pgm-name8.
+    05                  line 19 col 09 pic x using ws-colon.
+    05                  line 19 col 10 pic x(15) using  ws-english-desc8.
+    05                  line 19 col 28 value "17-".
+    05                  line 19 col 32 pic x(5) using   ws-pgm-name17.
+    05                  line 19 col 37 pic x using ws-colon.
+    05                  line 19 col 38 pic x(15) using  ws-english-desc17.
+    05                  line 19 col 56 value "26-".
+    05                  line 19 col 60 pic x(5) using   ws-pgm-name26.
+    05                  line 19 col 65 pic x using ws-colon.
+    05                  line 19 col 66 pic x(15) using  ws-english-desc26.
+    05                  line 21 col 01 value "9-".
+    05                  line 21 col 04 pic x(5) using   ws-pgm-name9.
+    05                  line 21 col 09 pic x using ws-colon.
+    05                  line 21 col 10 pic x(15) using  ws-english-desc9.
+    05                  line 21 col 28 value "18-".
+    05                  line 21 col 32 pic x(5) using   ws-pgm-name18.
+    05                  line 21 col 37 pic x using ws-colon.
+    05                  line 21 col 38 pic x(15) using  ws-english-desc18.
+    05                  line 21 col 56 value "27-".
+    05                  line 21 col 60 pic x(5) using   ws-pgm-name27.
+    05                  line 21 col 65 pic x using ws-colon.
+    05                  line 21 col 66 pic x(15) using  ws-english-desc27.
+
+01  scr-option-screen.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  23
+*                      m099.cbl                                      )
+    05                  line 23 col 28 value "OPTION - ".
+    05  scr-option      line 23 col 37 pic xx using ws-accept-pgm-menu auto requ
+    05                  line 23 col 39 value "          ".
+
+01  scr-option-roll-screen.
+    05                  line 23 col 28 value "OPTION OR 'R'OLL -".
+    05  scr-option-roll line 23 col 47 pic xx using ws-accept-pgm-menu auto requ
+
+01  scr-dump-documentation.
+    05  blank screen.
+    05                          line 01 col 01 pic x(80) using ws-dump-documenta
+    05                          line 02 col 01 pic x(80) using ws-dump-documenta
+    05                          line 03 col 01 pic x(80) using ws-dump-documenta
+    05                          line 04 col 01 pic x(80) using ws-dump-documenta
+    05                          line 05 col 01 pic x(80) using ws-dump-documenta
+    05                          line 06 col 01 pic x(80) using ws-dump-documenta
+    05                          line 07 col 01 pic x(80) using ws-dump-documenta
+    05                          line 08 col 01 pic x(80) using ws-dump-documenta
+    05                          line 09 col 01 pic x(80) using ws-dump-documenta
+    05                          line 10 col 01 pic x(80) using ws-dump-documenta
+    05                          line 11 col 01 pic x(80) using ws-dump-documenta
+    05                          line 12 col 01 pic x(80) using ws-dump-documenta
+    05                          line 13 col 01 pic x(80) using ws-dump-documenta
+    05                          line 14 col 01 pic x(80) using ws-dump-documenta
+    05                          line 15 col 01 pic x(80) using ws-dump-documenta
+    05                          line 16 col 01 pic x(80) using ws-dump-documenta
+    05                          line 17 col 01 pic x(80) using ws-dump-documenta
+    05                          line 18 col 01 pic x(80) using ws-dump-documenta
+    05                          line 19 col 01 pic x(80) using ws-dump-documenta
+    05                          line 20 col 01 pic x(80) using ws-dump-documenta
+    05                          line 21 col 01 pic x(80) using ws-dump-documenta
+    05                          line 22 col 01 pic x(80) using ws-dump-documenta
+    05                          line 23 col 01 pic x(80) using ws-dump-documenta
+    05  scr-dump-doc-continue-lit line 24 col 65 value "CONTINUE(Y/N)".
+    05  scr-dump-doc-continue   line 24 col 79 pic x using ws-dump-doc-reply aut
+
+
+01  confirm.
+    05  line 23 col 01  value " ".
+
+01  file-status-display.
+    05  line 21 col 32  value   "COBOL FILE STATUS = ".
+    05  line 21 col 52  pic xx  using common-f-status  bell blink.
+    05  line 22 col 32  value   "INFOS FILE STATUS = ".
+    05  line 22 col 50  pic x(11) using common-i-status  bell blink.
+
+01  err-msg-line.
+    05                          line 24 col 01 value " ERROR - "  bell blink.
+    05                          line 24 col 10 pic x(60) from err-msg-comment.
+
+01  blank-line-24.
+    05  line 24 col 1 blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+01  scr-closing-screen.
+    05  blank screen.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  24
+*                      m099.cbl                                      )
+    05                          line 20 col 10 value "PROGRAM M099 ENDING".
+    05                          line 20 col 30 pic xx/xx/xx from sys-date-long.
+
+
+01  scr-top-screen-position.
+    05  blank screen.
+    05  line 01 col 01.
+*
+01   scr-confirm        line 23 col 1 pic x using confirm-space auto.
+*
+*      INFOS
+* 250-S*****                                                           (  18)**
+**    STATUS field INFOS missing or illegal
+procedure division.
+declaratives.
+
+err-input-file  section.
+    use after standard error procedure on  input-file.
+*  40-S**********************************************                  (  24)**
+**    Missing or illegal file name
+input-file-proc.
+    if input-istat = 25
+    then
+        move 'n'                        to      flag-file-found
+    else
+        if input-istat = 204
+        then
+            move 'y'                    to      flag-file-open
+        else
+            move input-fstat            to      common-f-status
+            move input-istat            to      common-i-status
+            display file-status-display
+            stop run.
+*       endif
+*   endif
+
+end declaratives.
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+
+    perform ab0-processing              thru ab0-99-exit
+        until ws-accept-main-menu = '*'.
+
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from    date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+    move spaces                         to      ws-table-data-for-screen.
+*  12-S****************************************************************(  24)**
+**    Operand WS-TABLE-DATA-FOR-SCREEN is not declared
+
+aa0-99-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  25
+*                      m099.cbl                                      )
+ab0-processing.
+
+    move spaces                         to      ws-accept-main-menu.
+    display scr-main-menu.
+
+ab0-10-accept-main-option.
+
+    accept scr-main-option.
+
+    if ws-accept-main-menu = '*'
+    then
+        go to ab0-99-exit
+    else
+        if    ws-accept-main-menu numeric
+          and ws-accept-main-menu not = zero
+        then
+            move ws-accept-main-menu    to      subs-menu
+        else
+            move 1                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            go to ab0-10-accept-main-option.
+*       endif
+*   endif
+
+    move spaces                         to      ws-accept-pgm-menu.
+
+    perform ba0-pgm-menu                        thru    ba0-99-exit
+        until   ws-accept-pgm-menu-1 = '*'
+             or ws-accept-pgm-menu-2 = '*'.
+
+ab0-99-exit.
+    exit.
+ba0-pgm-menu.
+
+    move 1                              to      ws-start-nbr.
+    move spaces                         to      ws-table-data-for-screen.
+*  12-S****************************************************************(  24)**
+**    Operand WS-TABLE-DATA-FOR-SCREEN is not declared
+    move ws-topic-main-area-desc(subs-menu)
+                                        to      ws-main-area-desc.
+
+    perform xb0-fill-screen-data        thru    xb0-99-exit
+        varying subs from 1 by 1
+        until   subs            > ws-max-nbr-entries
+             or ws-topic-pgm-name(subs-menu,ws-start-nbr) = spaces
+             or ws-start-nbr    > ws-max-documents.
+*  12-S*******************************************                     (  25)**
+**    Operand WS-MAX-DOCUMENTS is not declared
+
+    move ws-tbl-pgm-names(subs-menu)    to      ws-pgm-value.
+
+    display scr-menu-title.
+
+ba0-10-display-pgm-menu.
+
+    display scr-menu.
+
+ba0-15-check-for-option.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  26
+*                      m099.cbl                                      )
+
+    move spaces                         to      ws-accept-pgm-menu.
+
+    if   ws-start-nbr > ws-max-documents
+*  12-S*********************************                               (  25)**
+**    Operand WS-MAX-DOCUMENTS is not declared
+      or ws-topic-pgm-name(subs-menu,ws-start-nbr) = spaces
+    then
+        display scr-option-screen
+        accept scr-option
+    else
+* 562-S*                                                               (  26)**
+**    An "ELSE" phrase did not have a matching IF and was discarded.
+        display scr-option-roll-screen
+        accept  scr-option-roll.
+*   endif
+
+    if   ws-accept-pgm-menu-1 = '*'
+      or ws-accept-pgm-menu-2 = '*'
+    then
+        go to ba0-99-exit.
+*   (else)
+*   endif
+
+    if   ws-accept-pgm-menu-1 = 'r'
+      or ws-accept-pgm-menu-2 = 'r'
+    then
+        if ws-topic-pgm-name(subs-menu,ws-start-nbr) not = spaces
+        then
+            move spaces                 to      ws-table-data-for-screen
+*  12-S****************************************************************(  26)**
+**    Operand WS-TABLE-DATA-FOR-SCREEN is not declared
+            perform xb0-fill-screen-data thru   xb0-99-exit
+                varying subs from 1 by 1
+                until   subs            > ws-max-nbr-entries
+                     or ws-topic-pgm-name(subs-menu,ws-start-nbr) = spaces
+                     or ws-start-nbr    > ws-max-documents
+*  12-S***************************************************             (  26)**
+**    Operand WS-MAX-DOCUMENTS is not declared
+            move spaces                 to      ws-accept-pgm-menu
+            go to ba0-10-display-pgm-menu
+        else
+            move 3                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            go to ba0-15-check-for-option
+*       endif
+    else
+        next sentence.
+*   endif
+
+    if    (    ws-accept-pgm-menu-1   numeric
+           and ws-accept-pgm-menu-1 not = zero )
+      and ws-accept-pgm-menu-2 = spaces
+    then
+        move ws-accept-pgm-menu-1       to      ws-accept-pgm-menu-2
+        move zero                       to      ws-accept-pgm-menu-1
+    else
+        if    ws-accept-pgm-menu-1 = spaces
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  27
+*                      m099.cbl                                      )
+          and (    ws-accept-pgm-menu-2   numeric
+               and ws-accept-pgm-menu-2 not = zero )
+        then
+            move zero                   to      ws-accept-pgm-menu-1
+        else
+            if    ws-accept-pgm-menu numeric
+              and ws-accept-pgm-menu not = zero
+              and ws-accept-pgm-menu not = '0 '
+              and ws-accept-pgm-menu not = ' 0'
+            then
+                next sentence
+            else
+                move 1                  to      err-ind
+                perform za0-common-error
+                                        thru    za0-99-exit
+                go to ba0-15-check-for-option.
+*          endif
+*       endif
+*   endif
+
+    move ws-accept-pgm-menu-num         to      subs-pgm.
+
+    if subs-pgm > ws-last-screen-entry
+    then
+        move spaces                     to      ws-accept-pgm-menu
+        move 1                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to ba0-15-check-for-option.
+*   (else)
+*   endif
+
+    move ws-data-filename(subs-pgm)     to      input-pgm-name.
+*  12-S******************                                              (  26)**
+**    Operand WS-DATA-FILENAME is not declared
+
+    move 'y'                            to      flag-file-found.
+    move 'n'                            to      flag-file-open.
+    open input input-file.
+*  40-S******************                                              (  27)**
+**    Missing or illegal file name
+
+    if flag-file-found-n
+    then
+        move 4                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to ba0-15-check-for-option
+    else
+        if flag-file-open-y
+        then
+            move 5                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            go to ba0-15-check-for-option
+        else
+            next sentence.
+*       endif
+*   endif
+
+    move 'n'                            to      flag-eof.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  28
+*                      m099.cbl                                      )
+    perform xa0-read-rec                thru    xa0-99-exit.
+    if flag-eof-y
+    then
+        move 2                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        close input-file
+*  40-S*****************                                               (  27)**
+**    Missing or illegal file name
+        go to ba0-10-display-pgm-menu.
+*   (else)
+*   endif
+
+    if input-first-byte = ws-form-feed
+    then
+        perform xa0-read-rec            thru    xa0-99-exit
+        if flag-eof-y
+        then
+            move 2                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            close input-file
+*  40-S*********************                                           (  28)**
+**    Missing or illegal file name
+            go to ba0-10-display-pgm-menu
+        else
+            next sentence
+*       endif
+    else
+        next sentence.
+*   endif
+
+ba0-20-read-23-recs.
+
+    move spaces                         to      ws-dump-documentation.
+
+    perform ba1-read-move-recs          thru    ba1-99-exit
+        varying subs from 1 by 1
+        until   subs > 23
+             or flag-eof-y.
+
+    move 'y'                            to      ws-dump-doc-reply.
+
+    display scr-dump-documentation.
+
+*   display scr-top-screen-position.
+*   display ws-dump-documentation1.
+*   display ws-dump-documentation2.
+*   display ws-dump-documentation3.
+*   display ws-dump-documentation4.
+*   display ws-dump-documentation5.
+*   display ws-dump-documentation6.
+*   display ws-dump-documentation7.
+*   display ws-dump-documentation8.
+*   display ws-dump-documentation9.
+*   display ws-dump-documentation10.
+*   display ws-dump-documentation11.
+*   display ws-dump-documentation12.
+*   display ws-dump-documentation13.
+*   display ws-dump-documentation14.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  29
+*                      m099.cbl                                      )
+*   display ws-dump-documentation15.
+*   display ws-dump-documentation16.
+*   display ws-dump-documentation17.
+*   display ws-dump-documentation18.
+*   display ws-dump-documentation19.
+*   display ws-dump-documentation20.
+*   display ws-dump-documentation21.
+
+*   display scr-dump-doc-continue-lit.
+*   display scr-dump-doc-continue.
+
+
+ba0-30-continue-dump.
+
+    accept scr-dump-doc-continue.
+    if ws-dump-doc-reply =   'y'
+                          or 'n'
+    then
+        if ws-dump-doc-reply = 'y'
+        then
+            if flag-eof-y
+            then
+                move 3                  to      err-ind
+                perform za0-common-error
+                                        thru    za0-99-exit
+            else
+                go to ba0-20-read-23-recs
+*           endif
+        else
+            next sentence
+*       endif
+    else
+        move 1                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to ba0-30-continue-dump.
+*   endif
+
+    close input-file.
+*  40-S*************                                                   (  28)**
+**    Missing or illegal file name
+
+ba0-99-exit.
+    exit.
+
+
+
+ba1-read-move-recs.
+
+    move input-rec                      to      ws-dump-document(subs).
+
+ba1-10-read-rec.
+
+    perform xa0-read-rec                thru    xa0-99-exit.
+    if flag-eof-y
+    then
+        next sentence
+    else
+        if input-first-byte = ws-form-feed
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  30
+*                      m099.cbl                                      )
+        then
+            move 24                     to      subs
+        else
+            next sentence.
+*       endif
+*   endif
+
+ba1-99-exit.
+    exit.
+xa0-read-rec.
+
+    move spaces                         to      input-rec.
+
+    read input-file
+*  40-S************                                                    (  29)**
+**    Missing or illegal file name
+        at end
+            move 'y'                    to      flag-eof
+            go to xa0-99-exit.
+
+    move 'n'                            to flag-eof.
+
+xa0-99-exit.
+    exit.
+
+
+xb0-fill-screen-data.
+
+    move ws-topic-pgm-name(subs-menu,ws-start-nbr)
+                                        to      ws-pgm-name(subs).
+    move ws-topic-english-desc(subs-menu,ws-start-nbr)
+                                        to      ws-english-desc(subs).
+    move ws-topic-data-filename(subs-menu,ws-start-nbr)
+                                        to      ws-data-filename(subs).
+*  12-S*********************************************************       (  30)**
+**    Operand WS-DATA-FILENAME is not declared
+
+    move subs                           to      ws-last-screen-entry.
+
+    add 1                               to      ws-start-nbr.
+
+xb0-99-exit.
+    exit.
+az0-end-of-job.
+
+    display blank-screen.
+    call program "menu".
+
+az0-99-exit.
+    exit.
+za0-common-error.
+
+    move err-msg (err-ind)              to      err-msg-comment.
+    display err-msg-line.
+
+    accept scr-confirm.
+
+*   display confirm.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jan-00 11:14 Page  31
+*                      m099.cbl                                      )
+*   stop " ".
+    display blank-line-24.
+
+za0-99-exit.
+    exit.
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Last message on page: 30
+*
+* Total Messages:    31
+* Unrecoverable :     0                    Severe  :    28
+* Errors        :     3                    Warnings:     0
+* Informational :     0                    Flags   :     0
+* Data:       27108     Code:        3303

@@ -1,0 +1,35 @@
+; run this program before the qts to ensure updates are correct
+cancel clear
+set rep nolimit
+set rep dev disc name u041_dump_min_max
+set page width 132
+set page length 0
+
+access f040-oma-fee-mstr
+;rep FEE-OMA-CD FEE-DESC FEE-ICC-CODE 
+;select if FEE-OMA-CD = "C265" or FEE-OMA-CD = "C185"
+
+; do some calcs to ensure fee hasn't change by more than 20% - otherwise the min/max must not be a single unit but a multiple 
+; of the base amount and thus must handled by manually
+
+define x-20-percent = FEE-CURR-H-MIN *.2
+define x-test-amt   = FEE-CURR-H-MIN + x-20-percent
+
+;2010 C183 has > 20 increase - allow it
+define x-flag char*1 = "*" if		x-test-amt < FEE-CURR-A-FEE-1 	&
+			        AND	fee-oma-cd <> "C183"		&
+		 else  " "
+
+;rep FEE-OMA-CD   FEE-CURR-A-FEE-1  FEE-CURR-H-FEE-1 FEE-CURR-A-FEE-2 FEE-CURR-H-FEE-2 FEE-CURR-A-MIN FEE-CURR-H-MIN FEE-CURR-A-MAX FEE-CURR-H-MAX
+
+rep FEE-OMA-CD   FEE-CURR-A-FEE-1  FEE-CURR-H-FEE-1 FEE-CURR-A-FEE-2 FEE-CURR-H-FEE-2  FEE-CURR-H-MIN FEE-CURR-H-MAX x-test-amt &
+	x-flag
+
+select if  FEE-CURR-A-FEE-1  = FEE-CURR-H-FEE-1	&
+	and FEE-CURR-H-MIN   <> 0  &
+	and FEE-CURR-H-MAX   <> 0 &
+	and FEE-CURR-H-MIN   = FEE-CURR-H-MAX &
+	and FEE-CURR-A-FEE-1 <> FEE-CURR-H-MIN
+sort on FEE-ICC-CODE on fee-oma-cd
+
+build $obj/u041_dump_min_max

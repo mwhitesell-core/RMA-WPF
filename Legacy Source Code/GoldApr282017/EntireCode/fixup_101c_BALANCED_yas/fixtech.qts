@@ -1,0 +1,106 @@
+; 2000/aug/22 M.C.	- select specific records for technical amt billed
+
+cancel clear
+set lock file update
+
+
+request one
+access f002-claims-mstr
+choose  key-clm-type 'B', key-clm-batch-nbr 640000001, key-clm-claim-nbr &
+1, 2,  5, 6, 8
+sel if clmdtl-oma-cd <> '0000'
+output f002-claims-mstr update on errors report
+   item clmdtl-amt-tech-billed final clmdtl-fee-ohip
+
+
+subfile f002dtl keep         include  &
+	key-clm-type, key-clm-batch-nbr, &
+	key-clm-claim-nbr, clmhdr-claim-id,  clmdtl-amt-tech-billed
+
+request two
+access f002-claims-mstr
+choose  key-clm-type 'B', key-clm-batch-nbr 640000001, key-clm-claim-nbr &
+    4, 9          
+sel if clmdtl-oma-cd <> '0000'
+output f002-claims-mstr update on errors report
+   item clmdtl-amt-tech-billed final -285        
+
+
+subfile f002dtl keep  append include  &
+	key-clm-type, key-clm-batch-nbr, &
+	key-clm-claim-nbr, clmhdr-claim-id,  clmdtl-amt-tech-billed
+
+request twoa
+access f002-claims-mstr
+choose  key-clm-type 'B', key-clm-batch-nbr 640000022, key-clm-claim-nbr &
+     80, 81, 83, 84, 85
+sel if clmdtl-oma-cd <> '0000'
+output f002-claims-mstr update on errors report
+   item clmdtl-amt-tech-billed final clmdtl-fee-ohip
+
+
+subfile f002dtl keep  append include  &
+	key-clm-type, key-clm-batch-nbr, &
+	key-clm-claim-nbr, clmhdr-claim-id,  clmdtl-amt-tech-billed
+
+request twob
+access f002-claims-mstr
+choose  key-clm-type 'B', key-clm-batch-nbr 640000022, key-clm-claim-nbr &
+     87           
+sel if clmdtl-oma-cd <> '0000'
+output f002-claims-mstr update on errors report
+   item clmdtl-amt-tech-billed final -285        
+
+subfile f002dtl keep  append include  &
+	key-clm-type, key-clm-batch-nbr, &
+	key-clm-claim-nbr, clmhdr-claim-id,  clmdtl-amt-tech-billed
+
+request twoc
+access f002-claims-mstr
+choose  key-clm-type 'B', key-clm-batch-nbr 650000002, key-clm-claim-nbr &
+	51
+sel if clmdtl-oma-cd <> '0000'
+output f002-claims-mstr update on errors report
+   item clmdtl-amt-tech-billed final clmdtl-fee-ohip
+
+
+subfile f002dtl keep  append include  &
+	key-clm-type, key-clm-batch-nbr, &
+	key-clm-claim-nbr, clmhdr-claim-id,  clmdtl-amt-tech-billed
+
+
+request three
+access *f002dtl link key-clm-type, key-clm-batch-nbr, &
+	key-clm-claim-nbr,	'00000' 	&
+	to key-clm-type, key-clm-batch-nbr, 	&
+	key-clm-claim-nbr, key-clm-serv-code of f002-claims-mstr
+
+output f002-claims-mstr update on errors report
+   item clmhdr-amt-tech-billed final clmdtl-amt-tech-billed of f002dtl
+
+request four
+access *f002dtl link key-clm-type, nconvert(clmhdr-claim-id[1:9]), &
+	nconvert(clmhdr-claim-id[10:2]), clmhdr-claim-id[12:5], '1' &
+	to key-clm-type, key-clm-batch-nbr, 	&
+	key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr  of f002-claims-mstr
+
+output f002-claims-mstr update on errors report
+   item clmdtl-amt-tech-billed final clmdtl-amt-tech-billed of f002dtl
+
+request five
+access *f002dtl link key-clm-type, nconvert(clmhdr-claim-id[1:9]), &
+	nconvert(clmhdr-claim-id[10:2]), '00000', '0'               &
+	to key-clm-type, key-clm-batch-nbr, 	&
+	key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr  of f002-claims-mstr
+
+def x-claim char*11 = clmhdr-claim-id[1:11]
+sort on x-claim
+
+temp x-tech-amt  integer signed size 4
+item x-tech-amt = x-tech-amt + clmdtl-amt-tech-billed of f002dtl  &
+	reset at x-claim
+
+output f002-claims-mstr update at x-claim on errors report
+   item clmhdr-amt-tech-billed subtotal clmdtl-amt-tech-billed of f002dtl
+
+build $obj/fixtech

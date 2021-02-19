@@ -1,0 +1,76 @@
+;
+; 91.12.12	M. CHAN		- ORIGINAL
+;				- GENERATE A REPORT THAT WILL SHOW ALL
+;				  CLAIMS THAT DID NOT GET AUTOMATICALLY
+;				  ADJUSTED FROM U030_AUTO_ADJ SUBFILE
+;				  DUE TO NO LINKAGE TO THE DETAIL
+; 94.01.13	M. CHAN		- SMS 144
+;				- USE U0E0_TOT_CLAIMS INSTEAD OF
+;				  U030_AUTO_ADJU SUBFILE, AND ADD THE
+;				  SELECTION CRITERIA AND CHANGE THE
+;				  REPORT CONTENT A LITTLE
+
+can clear
+set default
+set report nolimit
+
+;ACCESS *U030_AUTO_ADJ			&
+access *u030_tot_claims			&
+	link  part-hdr-claim-id 	&
+	 to   part-adj-claim-id of part-adj-batch opt
+
+sel if not record part-adj-batch  exists
+
+set subfile name u030_not_auto_adj keep
+
+;REP SUMM PART-HDR-CLAIM-ID KEY-CLM-SERV-CODE PART-HDR-AMT-BILL &
+;	 PART-HDR-AMT-PAID PART-DTL-EXPLAN-CD    &
+;	 PART-DTL-SERV-DATE PART-HDR-CLINIC-NBR
+rep summ part-hdr-claim-id x-adj-serv-code x-part-bal        &
+	 part-hdr-clinic-nbr part-hdr-explan-cd
+
+build $pb_obj/r030i1
+
+
+set default
+set rep nolimit
+;SET REP DEV DISC NAME RU030E
+set rep dev disc name ru030f
+set page length 60 width 132
+set formfeed
+
+access *u030_not_auto_adj
+
+;DEF X-BAL-DIFF = PART-HDR-AMT-BILL - PART-HDR-AMT-PAID
+
+page heading 					&
+; TAB   1 "RU030E/"				&
+  tab   1 "RU030F/"				&
+  tab   8 part-hdr-clinic-nbr			&
+  tab  42 "NON-AUTOMATIC ADJUSTED CLAIMS  - AS AT" &
+;y2k
+  tab  75 sysdate				&
+  tab 120 "PAGE"				&
+  tab 126 syspage				&
+skip 2						&
+; TAB   1 "CLAIM NO     OMA CODE    SERV DATE"  &
+  tab   1 "CLAIM NO     OMA CODE"               &
+  tab  39 "BALANCE   EXPLAN CD"			&
+skip 3
+
+report						&
+  tab   1 part-hdr-claim-id pic "^^^^^^^^^^^"   &
+; TAB  15 KEY-CLM-SERV-CODE                     &
+  tab  15 x-adj-serv-code                     	&
+; TAB  26 PART-DTL-SERV-DATE			&
+  tab  36 x-part-bal pic "^^^,^^^.^^ " trail "-" &
+; TAB  52 PART-DTL-EXPLAN-CD
+  tab  52 part-hdr-explan-cd
+
+final footing 					&
+skip 3						&
+  tab   1 "# OF CLAIMS"				&
+  tab  15 count pic "^^,^^^"			&
+  tab  35 x-part-bal subt pic "^^^^,^^^.^^ " trail "-"
+
+build $pb_obj/r030i2

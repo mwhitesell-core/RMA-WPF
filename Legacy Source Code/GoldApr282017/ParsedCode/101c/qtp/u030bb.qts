@@ -1,0 +1,290 @@
+;#> Program-id.     u030bb.qts
+;
+; ((C)) Dyad Technologies
+;
+;  Program Purpose:  - RMA charges doctors for researching and correcting
+;		       claims rejected on the RAT if they can't be
+;		       automatically adjusted.  An incorrect claim usually has
+;		       an OHIP error code however any claim not fully paid
+;		       can be considered to be in error and requiring work.
+;		     - So that these rejects can be tracked and costed
+;		       this pgm adds the rejected claims to f088-hdr/dtl files.
+;		       For costing purposes only the header is accessed however
+;		       the details can be viewed and the 'charge' indicator
+;		       at the header level can be manually changed (m088).
+;		     - The first request updates the f088-hdr record and
+;		       sets a error code or 'blank' and a charge status of "NO".
+;		     - The 2nd request updates the f088-dtl records.
+;		     - The 3rd request prompts for the RAT processing date and
+;		       uses this date to select the f088-dtl records for the
+;		       RAT being processed.  The selected detail records are
+;		       filtered based upon 'charge/no charge' rules supplied
+;		       by thekla/lori etc.  The chargeable details are extracted
+;		       into a subfile and then used to update the header record
+;		       with a charge status of "Y"es and with an OHIP error 
+;		       code that matches the highest valued detail of the claim.
+;                    - NOTE #1: unable to add new request on u030b as too
+;                       many files would be declared so this separate
+;                       program was created.
+;
+; MODIFICATION HISTORY
+;     DATE    WHO    DESCRIPTION
+; 2000/jan/21 B.A.   - original
+; 2000/mar/10 B.E.   - add new fields to f088, obtain claims's PED via f002
+; 2000/mar/30 M.C.   - change the linkage syntax    
+;		     - add 3 define items and select statement in request
+;		       f088_add_dtl....
+; 2001/nov/16 B.E.   - transfer last 'request' of u030b into u030bb to 
+;		       reduce complexity/size of u030b
+; 2002/sep/09 M.C.   - undo the transfer done on 2001/nov/16 by Brad
+;		     - transfer back the first 'request' from u030bb to u030b for
+;		       updating amount in clmhdr
+;		     - u030b_special2.qts has already included this logic of updating
+;		       clmhdr amount.  If u030b_special1/2.qts are run to replace u030b.qts,
+;		       currently update clmhdr amount will be double.
+;		     - comment out the request instead of deleting it                    
+; 2003/dec/19 A.A.   - alpha doctor nbr
+;
+; 2010/Apr/07 MC1   - use set lock record update
+
+can clear
+run u030bb
+
+set default
+; 2010/04/07 - MC1
+;set lock file update
+set lock record update
+; 2010/04/07 - end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;request get_clinics_PED on calculation errors report & 
+;                        on edit errors report
+; get the current PED of the Clinic being processed for update into f088 hdr
+
+use $use/get_iconst_clinic_values_globals.qts	;nol
+use $use/get_iconst_clinic_values.qts		;nol
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+set process nolimit
+; (2001/nov/16 B.E. moved below request from u030b to this module
+;  on the assumption that u030b was too big and complex with it in it)
+
+;-------------------------------------------------------------------------
+; 2002/09/09 - MC - comment the following request, it has moved back to 
+;		    the end of u030b.qts
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;request update_claim_bal on calculation errors report on edit errors report
+                           ;  Update the adjusted balance to the
+                    ;  original claim header
+
+;access *u030_update_clmhdr                           &
+;   link  'B', nconvert(part-hdr-claim-id[1:9]),        &
+;        nconvert(part-hdr-claim-id[10:2]), '00000', '0' &
+;    to   key-clm-type, key-clm-batch-nbr,             &
+;        key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr &
+;         of f002-claims-mstr
+; 98/Sep/10 added sort in order to reset x-found-80-code counter
+;sorted on part-hdr-claim-id 
+
+; B.E. 98/Sep/10
+; For clinics 60 thru 65, 
+; if any of the details had an ohip reason code of '80' then all
+; of the adjustment is applied against the tech component of claim
+; Counter will be > 0 if any 80 codes found for claim
+;temp x-found-80-code
+;item x-found-80-code = x-found-80-code + 1 		&
+;	if    part-dtl-explan-cd = "80"			&
+;	  and part-hdr-claim-id[1:2] >= "60"		&
+;	  and part-hdr-claim-id[1:2] <= "65"		&
+;		reset at part-hdr-claim-id
+
+;define x-ohip-bal int*7 signed =                    	&
+;       x-claim-bal * -1
+
+;define x-tot-claim-ar-oma int*7 signed =                &
+;  round(  (  clmhdr-tot-claim-ar-oma 			&
+;           * x-ohip-bal)				&
+;        / clmhdr-tot-claim-ar-ohip  )
+
+; if any reason codes = 80 then the full amount
+; of writeoff is applied against the tech portion, otherwise
+; based upon ratio of original ohip billed to original tech billed
+;define x-amt-tech-billed  int*7 signed =                &
+;  round(  (  clmhdr-amt-tech-billed			&
+;           * x-ohip-bal) 				&
+;	/ clmhdr-tot-claim-ar-ohip  )			&
+;		if x-found-80-code = 0			&
+; else	x-ohip-bal
+  	
+;subfile u030brad keep include	&
+;x-found-80-code,		&
+;u030_update_clmhdr,		&
+;clmhdr-tot-claim-ar-oma,	&
+;x-tot-claim-ar-oma,		&
+;clmhdr-tot-claim-ar-ohip,	&
+;x-ohip-bal,			&
+;clmhdr-amt-tech-billed,		&
+;x-amt-tech-billed       
+ 
+;output f002-claims-mstr  update on errors report
+;   item clmhdr-tot-claim-ar-oma    subtotal x-tot-claim-ar-oma
+;   item clmhdr-tot-claim-ar-ohip   subtotal x-ohip-bal
+;   item clmhdr-amt-tech-billed     subtotal x-amt-tech-billed
+
+;2002/09/09 - end
+
+
+;-------------------------------------------------------------------------
+; REQUEST 1 - add header records
+;-------------------------------------------------------------------------
+
+request u030bb_add_hdr				&
+		on calculation errors report 	& 
+                on edit errors report
+
+; (link to claims hdr to obtain claim's PED - NOTE: this step could be
+;  eliminated if u030b.qts put the ped in the part-paid-hdr file)
+
+access *u030_no_adj                              & 
+     link part-hdr-claim-id                      &
+       to part-hdr-claim-id of part-paid-hdr     &
+     link 'B', 					 &
+;! 	   nconvert(part-hdr-claim-id[1:9]),	 &
+ 	   (part-hdr-claim-id[1:8]),	 &
+; 2000/03/30 - MC wrong  linkage
+;          nconvert(part-hdr-claim-id[7:2]),	 &
+;!           nconvert(part-hdr-claim-id[10:2]),    &
+           nconvert(part-hdr-claim-id[9:2]),    &
+	   '00000', 				 &
+	   '0'       			 	 &
+       to key-clm-type, 			 &
+	  key-clm-batch-nbr, 			 &
+	  key-clm-claim-nbr,      		 & 
+	  key-clm-serv-code, 			 &
+	  key-clm-adj-nbr of f002-claims-mstr   opt
+
+use $use/f088_charge_status.def nol
+
+output f088-rat-rejected-claims-hist-hdr alias f088-hdr-add add on errors report
+
+;! item clmhdr-batch-nbr final nconv(part-hdr-claim-id of part-paid-hdr[1:9])
+;! item clmhdr-claim-nbr final nconv(part-hdr-claim-id of part-paid-hdr[10:2])
+;! item clmhdr-doc-nbr   final nconv(part-hdr-claim-id of part-paid-hdr[4:3])
+ item clmhdr-batch-nbr final part-hdr-claim-id of part-paid-hdr[1:8]
+ item clmhdr-claim-nbr final nconv(part-hdr-claim-id of part-paid-hdr[9:2])
+ item clmhdr-doc-nbr   final part-hdr-claim-id of part-paid-hdr[3:3]
+
+; (even if the ohip-error-code is 00 or blank the claim may be researched if 
+;  the amt paid <> billed so these values are stored)
+ item part-hdr-amt-bill of f088-hdr-add                         &
+	final part-hdr-amt-bill of u030_no_adj 
+ item part-hdr-amt-paid of f088-hdr-add				&
+	final part-hdr-amt-paid of u030_no_adj 
+ item ohip-err-code final ' '; actual error code not stored - the existance
+			     ; of this record is based upon u030b determined
+			     ; full payment was not made and no automatic
+			     ; adjustment can be made - therefore RMA research
+			     ; research is needed
+			     ; If subsequently RMA determines that the doctor
+			     ; is NOT responsible for the error they can
+			     ; cancel charges using "X" in charge field
+ item charge-status final not-charged	; later pass determines if chargable
+					; 
+
+ item ped 			  of f088-hdr-add	&
+     final w-ped 
+ item clmhdr-date-period-end	  of f088-hdr-add	&
+     final clmhdr-date-period-end of f002-claims-mstr
+
+ item clmhdr-serv-date 		of f088-hdr-add		&
+     final part-hdr-serv-date	of part-paid-hdr
+
+ item entry-date      final sysdate
+ item entry-time-long final systime
+ item entry-user-id   final 'u030bb'
+
+
+;-------------------------------------------------------------------------
+; REQUEST 2 - add detail records
+;-------------------------------------------------------------------------
+request u030bb_add_dtl_ignore_duplicate_key_error	    &
+			       on calculation errors report &
+                               on edit errors report
+; NOTE: d001 allows 'repetitive' service entries on a single record. When these
+;	claims are sent to OHIP the repetitive services are "exploded" into
+;	separate records. Therefore when records are read from the RAT it is
+;	possible to get duplicates based upon link via service code only
+
+access *u030_no_adj                                                          &
+  link part-hdr-clinic-nbr,  part-hdr-claim-nbr                              &
+    to part-dtl-clinic-nbr, part-dtl-claim-nbr of part-paid-dtl 	     &
+     link 'B',                                   &
+;!           nconvert(part-hdr-claim-id[1:9]),     &
+           (part-hdr-claim-id[1:8]),     &
+; 2000/03/30 - MC wrong  linkage
+;          nconvert(part-hdr-claim-id[7:2]),	 &
+;!           nconvert(part-hdr-claim-id[10:2]),    &
+           nconvert(part-hdr-claim-id[9:2]),    &
+	   part-dtl-oma-cd[1:5],		 &
+           '0'                          	 &
+       to key-clm-type,                          &
+          key-clm-batch-nbr,                     &
+          key-clm-claim-nbr,                     &
+          key-clm-serv-code, 			 &
+	  key-clm-adj-nbr of f002-claims-mstr   opt
+
+; 2000/03/30 - MC - defined 3 consecutive dates and select statements
+
+def consec-date-1 date =  nconvert(clmdtl-sv-date[1:6]+    &
+				   clmdtl-consec-dates-r[2:2])  &
+	if clmdtl-sv-day(1) <> 0
+
+def consec-date-2 date =  nconvert(clmdtl-sv-date[1:6]+    &
+				   clmdtl-consec-dates-r[5:2])  &
+	if clmdtl-sv-day(2) <> 0
+
+def consec-date-3 date =  nconvert(clmdtl-sv-date[1:6]+    &
+				   clmdtl-consec-dates-r[8:2])  &
+	if clmdtl-sv-day(3) <> 0
+
+select if part-dtl-serv-date = nconvert(clmdtl-sv-date) or	&
+	  part-dtl-serv-date = consec-date-1  or	&  
+	  part-dtl-serv-date = consec-date-2  or	&  
+	  part-dtl-serv-date = consec-date-3
+
+
+output f088-rat-rejected-claims-hist-dtl alias f088-dtl-add add on errors report
+
+;! item clmhdr-batch-nbr    final nconv(part-dtl-claim-id  of part-paid-dtl[1:9])
+;! item clmhdr-claim-nbr    final nconv(part-dtl-claim-id  of part-paid-dtl[10:2])
+ item clmhdr-batch-nbr    final part-dtl-claim-id  of part-paid-dtl[1:8]
+ item clmhdr-claim-nbr    final nconv(part-dtl-claim-id  of part-paid-dtl[9:2])
+ item clmhdr-adj-oma-cd   final part-dtl-oma-cd[1:4]
+ item clmhdr-adj-oma-suff final part-dtl-oma-cd[5:1]
+ item clmhdr-adj-adj-nbr  final '0'
+
+ item ped 		   of f088-dtl-add    &
+     final w-ped 
+
+ item ohip-err-code final part-dtl-explan-cd 
+
+; 2000/mar/06 B.E.
+ item       part-dtl-amt-paid of f088-dtl-add				&
+     final  part-dtl-amt-paid of part-paid-dtl
+ item       part-dtl-amt-bill of f088-dtl-add				&
+     final  part-dtl-amt-bill of part-paid-dtl
+ item auto-adj-flag	final "N"
+
+;! item clmhdr-doc-nbr  final nconv(part-dtl-claim-id of part-paid-dtl[4:3])
+ item clmhdr-doc-nbr  final part-dtl-claim-id of part-paid-dtl[3:3]
+
+ item clmdtl-date-period-end  	final clmdtl-date-period-end of f002-claims-mstr
+ item clmdtl-sv-date  		final asc(part-dtl-serv-date,8) 
+ item entry-date     		final sysdate
+ item entry-time-long final systime
+ item entry-user-id final 'u030bb'
+
+
+build $pb_obj/u030bb

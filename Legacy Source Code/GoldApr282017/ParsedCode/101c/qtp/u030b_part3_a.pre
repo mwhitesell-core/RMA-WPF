@@ -1,0 +1,265 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U030B_PART3_A.QTS
+COMMENT "#> PROGRAM-ID.     U030B_PART3_A.QTS"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PROGRAM PURPOSE : THIRD PASS OF U030B"
+COMMENT "NOTE: YOU MAY HAVE TO MODIFY THIS PROGRAM IF YOU RECEIVE DATA CONVERSION ON X-BATCH-AMOUNT IN REQUEST CALCULATE_BATCH_NBR."
+COMMENT "Find out the highest premium amount from r031c.txt, whatever the amount is, round up of 5K, 10K, 15K, 20K, 25K etc."
+COMMENT "For example, if the highest premium amount is  4500, then change change-batch-flag to ' <= 9500000'"
+COMMENT "if the highest premium amount is  9500, then change change-batch-flag to ' <= 9000000'"
+COMMENT "if the highest premium amount is 13500, then change change-batch-flag to ' <= 8500000'"
+COMMENT "if the highest premium amount is 18500, then change change-batch-flag to ' <= 8000000'"
+COMMENT "if the highest premium amount is 22500, then change change-batch-flag to ' <= 7500000'"
+COMMENT "if the highest premium amount is 26000, then change change-batch-flag to ' <= 7000000'"
+COMMENT "if the highest premium amount is 32500, then change change-batch-flag to ' <= 6500000'  etc."
+COMMENT "Now since we automate the solution as Brad suggested, I have defined all possible check up to > 90K."
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE   WHO          DESCRIPTION"
+COMMENT "06/Nov/03 M.C.         - ORIGINAL "
+COMMENT "- create miscellaneous premium payment records from record 8"
+COMMENT "07/Feb/15 M.C.      - Since Mary put the the postdate 'termination date' in the"
+COMMENT "doctor master, we still have to consider active doctor if the"
+COMMENT "termination date > sysdate"
+COMMENT "07/apr/16 M.C.      - change the definition of x-paid-amt for negative amount as well"
+COMMENT "07/jun/13 M.C.      - add a new request at the end of the program to create records in the"
+COMMENT "'tmp-counters-alpha' file from subfile"
+COMMENT "09/mar/09 M.C.      - add clinic 37 payment to apply to clinic 22  "
+COMMENT "09/mar/23 M.C.      - use clmhdr-adj-cd instead of hardcode 'AGEP' because AGEP & MOHR can use"
+COMMENT "this program"
+COMMENT "09/apr/01 M.C.      - use x-adj-cd instead of clmhdr-adj-cd"
+COMMENT "09/apr/20 M.C.      - u030b_part3.qts split into u030b_part3_a/b.qts"
+COMMENT "09/jul/20 M.C.      - add clinic 78, 79 & 88 payment to apply to clinic 22  "
+COMMENT "09/nov/05 BE/MC        - modify the last request to set each batch is <= 99 claims and the batch amount <= $95,000.00"
+COMMENT "12/Apr/19 MC1          - modify the last request 'calculate_batch_nbr'  to set batch amount <= $90,000.00, "
+COMMENT "encounter the next record is over $9000"
+COMMENT "13/Mar/06 MC2      - exclude records if payment is zero"
+COMMENT "13/Mar/27 MC3      - apply payments to the doctors with dept 76 in clinic 22 for multiple doctors"
+COMMENT "- add 4 new passes split_mult_doc, filter_22_docs_part1/2/3"
+COMMENT "- create records in tmp-doctor-alpha if doctors have dept 76 in clinic 22"
+COMMENT "13/Aug/26 MC4          - write records in tmp-doctor-alpha at control break if doctors have dept 76 in clinic 22"
+COMMENT "15/Mar/16 MC5          - modify the last request 'calculate_batch_nbr' to set batch amount <= $70,000.00, "
+COMMENT "according to r031c.txt, the highest premium amount is 28,548.41"
+COMMENT "- add a new request to determine highest premium amount before the last request"
+COMMENT "- Brad suggested to automate the w-check-amt,have defined all possible highest premium amount "
+COMMENT "for a doctor is >  $90,000.00"
+COMMENT "15/Jun/08 MC6      - use absolute to determine the highest premium amount"
+COMMENT "16/Jun/06 MC7      - add pay-this-doctor-ohip-premium in the sort so that for the doctors have set to 'Y'"
+COMMENT "will be selected if active for multiple active doctors "
+COMMENT "- add f020-doctor-extra in the access"
+COMMENT "16/Jul/11 MC8      - no need to check for highest amount "
+COMMENT "16/Jul/14 MC9      - change amount field from zoned*7 to zoned*9"
+COMMENT "16/Jul/28 MC10      - transfer the last request from u030b_part3_b.qts to here as Yasemin requested"
+COMMENT "to generate ru030n.txt as part of AGEP/MOHD_part1"
+CAN CLEAR
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST EVALUATE_CLINIC_AMT ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS R031A-OHIP-PREMIUMS
+COMMENT "filter and convert payment amt into numeric"
+COMMENT "2007/04/16 - MC"
+COMMENT "def x-paid-amt zoned*8 signed = nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])"
+DEF X-PAID-AMT ZONED*8 SIGNED = NCONVERT(DOLLARS-PAID[2:2] + DOLLARS-PAID[5:3] + DOLLARS-PAID[9:2]) * -1 IF DOLLARS-PAID[1:1] = '-' ELSE NCONVERT(DOLLARS-PAID[1:3] + DOLLARS-PAID[5:3] + DOLLARS-PAID[9:2])
+COMMENT "2007/04/16 - end"
+COMMENT "2009/04/01 - MC - add define and include x-adj-cd in sort statement"
+DEF X-ADJ-CD CHAR*5 = 'AGEP' IF CLMHDR-ADJ-CD = 'AGE3' ELSE CLMHDR-ADJ-CD
+COMMENT "sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr"
+SORT ON ICONST-CLINIC-NBR-1-2 ON X-ADJ-CD ON DOC-OHIP-NBR
+COMMENT "2009/04/01 - end"
+COMMENT "summarize all detail with the same doc ohip within the clinic"
+TEMP X-PAYMENT ZONED*8 SIGNED
+ITEM X-PAYMENT = X-PAYMENT + X-PAID-AMT RESET AT DOC-OHIP-NBR
+COMMENT "write a record per doc ohip nbr per adj-cd per clinic"
+COMMENT "2009/04/01 - MC"
+COMMENT "clmhdr-adj-cd"
+SUBFILE R031A_EXTRACT_DATA KEEP AT DOC-OHIP-NBR INCLUDE DOC-OHIP-NBR OF R031A-OHIP-PREMIUMS, ICONST-CLINIC-NBR-1-2, X-PAYMENT, X-ADJ-CD
+COMMENT "2009/04/01 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST SEL_DOCTOR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_EXTRACT_DATA LINK DOC-OHIP-NBR TO DOC-OHIP-NBR OF F020-DOCTOR-MSTR OPT
+COMMENT "2009/04/01 - MC"
+COMMENT "sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr "
+SORTED ON ICONST-CLINIC-NBR-1-2 ON X-ADJ-CD ON DOC-OHIP-NBR
+COMMENT "2009/04/01 - end"
+COMMENT "2013/03/27 - MC3"
+SEL IF X-PAYMENT <> 0
+COMMENT "2013/03/27 - end"
+TEMP XCOUNT
+ITEM XCOUNT = XCOUNT + 1 RESET AT DOC-OHIP-NBR
+COMMENT "2009/04/01 - MC"
+COMMENT "clmhdr-adj-cd,    &"
+COMMENT "2009/04/01 - end"
+SUBFILE R031A_SORT_DOCTOR KEEP AT DOC-OHIP-NBR INCLUDE DOC-OHIP-NBR OF R031A_EXTRACT_DATA, DOC-NBR, DOC-DATE-FAC-START, DOC-DATE-FAC-TERM , ICONST-CLINIC-NBR-1-2, X-PAYMENT, X-ADJ-CD, DOC-DEPT, XCOUNT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST SEL_UNIQUE_DOCTORS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_SORT_DOCTOR
+SEL IF XCOUNT = 1
+SUBFILE R031A_SELECT_DOCTOR KEEP INCLUDE R031A_SORT_DOCTOR
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST SEL_MULTIPLE_DOCTORS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_SORT_DOCTOR LINK DOC-OHIP-NBR TO DOC-OHIP-NBR OF F020-DOCTOR-MSTR OPT
+COMMENT "select multiple with active doctors only"
+COMMENT "2007/02/15 - MC"
+COMMENT "and doc-date-fac-term of f020-doctor-mstr = 0  &"
+COMMENT "2007/02/15 - end"
+SEL IF XCOUNT > 1 AND ( DOC-DATE-FAC-TERM OF F020-DOCTOR-MSTR = 0 OR DOC-DATE-FAC-TERM OF F020-DOCTOR-MSTR > SYSDATE ) AND DOC-DEPT OF F020-DOCTOR-MSTR <> 31 AND ( ( ICONST-CLINIC-NBR-1-2 = DOC-CLINIC-NBR AND DOC-NX-AVAIL-BATCH <> 0) OR ( ICONST-CLINIC-NBR-1-2 = DOC-CLINIC-NBR-2 AND DOC-NX-AVAIL-BATCH-2 <> 0) OR ( ICONST-CLINIC-NBR-1-2 = DOC-CLINIC-NBR-3 AND DOC-NX-AVAIL-BATCH-3 <> 0) OR ( ICONST-CLINIC-NBR-1-2 = DOC-CLINIC-NBR-4 AND DOC-NX-AVAIL-BATCH-4 <> 0) OR ( ICONST-CLINIC-NBR-1-2 = DOC-CLINIC-NBR-5 AND DOC-NX-AVAIL-BATCH-5 <> 0) OR ( ICONST-CLINIC-NBR-1-2 = DOC-CLINIC-NBR-6 AND DOC-NX-AVAIL-BATCH-6 <> 0) )
+COMMENT "2009/04/01 - MC"
+COMMENT "clmhdr-adj-cd,    &"
+COMMENT "2009/04/01 - end"
+SUBFILE R031A_MULTIPLE_DOCTOR KEEP INCLUDE DOC-OHIP-NBR OF R031A_SORT_DOCTOR, DOC-NBR OF F020-DOCTOR-MSTR, DOC-DATE-FAC-START OF F020-DOCTOR-MSTR, DOC-DATE-FAC-TERM OF F020-DOCTOR-MSTR, ICONST-CLINIC-NBR-1-2, X-PAYMENT, X-ADJ-CD, XCOUNT, DOC-DEPT OF F020-DOCTOR-MSTR
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "2013/03/27 - MC3 "
+REQUEST SPLIT_MULT_DOCS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_MULTIPLE_DOCTOR
+SUBFILE R031A_MULT_22_CLINIC_DOCTORS KEEP IF ICONST-CLINIC-NBR-1-2 OF R031A_MULTIPLE_DOCTOR = 22 INCLUDE R031A_MULTIPLE_DOCTOR
+SUBFILE R031A_MULT_OTHER_CLINIC_DOCTORS KEEP IF ICONST-CLINIC-NBR-1-2 OF R031A_MULTIPLE_DOCTOR <> 22 INCLUDE R031A_MULTIPLE_DOCTOR
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST FILTER_22_DOCS_PART1 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_MULT_22_CLINIC_DOCTORS
+COMMENT "2013/08/26 - MC4  - doctor can have both MOHD1 & MOHD2"
+SORT ON DOC-OHIP-NBR ON DOC-NBR
+SEL IF DOC-DEPT = 76
+COMMENT "output  tmp-doctor-alpha add if doc-dept = 76 on errors report"
+OUTPUT TMP-DOCTOR-ALPHA ADD AT DOC-NBR ON ERRORS REPORT
+COMMENT "2013/08/26 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST FILTER_22_DOCS_PART2 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_MULT_22_CLINIC_DOCTORS LINK DOC-OHIP-NBR TO DOC-OHIP-NBR OF TMP-DOCTOR-ALPHA OPT
+SEL IF NOT RECORD TMP-DOCTOR-ALPHA EXISTS
+SUBFILE R031A_MULT_OTHER_CLINIC_DOCTORS APPEND INCLUDE R031A_MULT_22_CLINIC_DOCTORS
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST FILTER_22_DOCS_PART3 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_MULT_22_CLINIC_DOCTORS LINK DOC-OHIP-NBR, DOC-NBR TO DOC-OHIP-NBR, DOC-NBR OF TMP-DOCTOR-ALPHA
+SUBFILE R031A_MULT_OTHER_CLINIC_DOCTORS APPEND INCLUDE R031A_MULT_22_CLINIC_DOCTORS
+COMMENT "2013/03/27 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST SEL_FILTER_MULT_DOCS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "2013/03/27 - MC3"
+COMMENT "access *r031a_multiple_doctor"
+COMMENT "MC7"
+ACCESS *R031A_MULT_OTHER_CLINIC_DOCTORS LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-EXTRA OPT
+COMMENT "MC7 - end"
+COMMENT "2013/03/27 - end"
+COMMENT "2009/04/01 - MC - include x-adj-cd"
+COMMENT "sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr on doc-dept d on doc-date-fac-start"
+COMMENT "MC7"
+COMMENT "sort on iconst-clinic-nbr-1-2 on x-adj-cd on doc-ohip-nbr on doc-dept d on doc-date-fac-start"
+SORT ON ICONST-CLINIC-NBR-1-2 ON X-ADJ-CD ON DOC-OHIP-NBR ON PAY-THIS-DOCTOR-OHIP-PREMIUM ON DOC-DEPT D ON DOC-DATE-FAC-START
+COMMENT "MC7 - end"
+COMMENT "2009/04/01 - end"
+COMMENT "MC7"
+COMMENT "doc-nbr,    &"
+COMMENT "MC7 - end"
+COMMENT "2009/04/01 - MC"
+COMMENT "clmhdr-adj-cd,    &"
+COMMENT "2009/04/01 - end"
+SUBFILE R031A_SELECT_DOCTOR KEEP APPEND AT DOC-OHIP-NBR INCLUDE DOC-OHIP-NBR, DOC-NBR OF R031A_MULT_OTHER_CLINIC_DOCTORS, DOC-DATE-FAC-START, DOC-DATE-FAC-TERM , ICONST-CLINIC-NBR-1-2, X-PAYMENT, X-ADJ-CD, DOC-DEPT, XCOUNT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST CONVERT_CLINIC ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_SELECT_DOCTOR
+COMMENT "convert the clinic to user's expectation"
+COMMENT "2009/mar/09 - MC include clinic 37"
+COMMENT "2009/mar/09 - end"
+COMMENT "2009/jul/20 - MC include clinic 78, 79 & 88"
+COMMENT "2009/jul/20 - end"
+DEF X-CLINIC ZONED*2 UNSIGNED = 22 IF ICONST-CLINIC-NBR-1-2 = 84 OR ICONST-CLINIC-NBR-1-2 = 96 OR ICONST-CLINIC-NBR-1-2 = 37 OR ICONST-CLINIC-NBR-1-2 = 78 OR ICONST-CLINIC-NBR-1-2 = 79 OR ICONST-CLINIC-NBR-1-2 = 88 ELSE ICONST-CLINIC-NBR-1-2
+COMMENT "2009/04/01 - MC"
+COMMENT "sort on x-clinic on doc-ohip-nbr on doc-nbr"
+SORT ON X-CLINIC ON ICONST-CLINIC-NBR-1-2 ON X-ADJ-CD ON DOC-OHIP-NBR ON DOC-NBR
+COMMENT "2009/04/01 - end"
+COMMENT "summarize the records with the same doc-nbr, doc-ohip-nbr, x-adj-cd &  x-clinic"
+TEMP X-TOTAL-PAID-AMT ZONED*8 SIGNED
+ITEM X-TOTAL-PAID-AMT = X-TOTAL-PAID-AMT + X-PAYMENT RESET AT DOC-NBR
+SUBFILE R031A_CONVERT_DOCTOR KEEP AT DOC-NBR INCLUDE R031A_SELECT_DOCTOR, X-CLINIC, X-TOTAL-PAID-AMT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST SEL_ACTIVE_DOCTOR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_CONVERT_DOCTOR
+COMMENT "2007/02/15 - MC"
+COMMENT "sel if doc-date-fac-term = 0"
+COMMENT "2013/03/06 - MC2 - exclude payment = 0"
+COMMENT "sel if doc-date-fac-term = 0 or doc-date-fac-term > sysdate"
+SEL IF (DOC-DATE-FAC-TERM = 0 OR DOC-DATE-FAC-TERM > SYSDATE) AND X-TOTAL-PAID-AMT <> 0
+COMMENT "2013/03/06 - end"
+COMMENT "2007/02/15 - end"
+COMMENT "select the active doctors only"
+SUBFILE R031A_ACTIVE_DOCTOR KEEP INCLUDE R031A_CONVERT_DOCTOR
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST CALCULATE_RUNNING_AMT ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_ACTIVE_DOCTOR
+SORTED ON X-CLINIC
+TEMP X-AMT ZONED*9 SIGNED
+ITEM X-AMT = X-AMT + X-TOTAL-PAID-AMT RESET AT X-CLINIC
+SUBFILE R031A_RUNNING_AMT KEEP INCLUDE R031A_ACTIVE_DOCTOR, X-AMT
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "MC5"
+REQUEST DETERMINE_HIGHEST_AMT ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_ACTIVE_DOCTOR
+COMMENT "MC6 - define the absolute amt"
+DEF X-ABS-AMT = ABS(X-TOTAL-PAID-AMT)
+COMMENT "sort on x-total-paid-amt"
+SORT ON X-ABS-AMT
+COMMENT "MC6 - end"
+COMMENT "subfile r031a_highest_amt at final include r031a_active_doctor"
+SUBFILE R031A_HIGHEST_AMT KEEP AT FINAL INCLUDE R031A_ACTIVE_DOCTOR, X-ABS-AMT
+COMMENT "MC5 - end"
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+REQUEST CALCULATE_BATCH_NBR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "MC5"
+COMMENT "access *r031a_running_amt"
+ACCESS *R031A_RUNNING_AMT LINK TO RECORD 0 OF *R031A_HIGHEST_AMT
+COMMENT "MC5 - end"
+SORTED ON X-CLINIC
+COMMENT "MC5 - assuming the highest amount for the doctor  > $45000.00, round up to the next 5K ($50,000.00)"
+COMMENT "define x-check-amt = 100000 - the round up amount (50000) = 50000 * 100"
+COMMENT "MC6 - use x-abs-amt instead of x-total-paid-amt"
+DEFINE X-CHECK-AMT ZONED*7 NUMERIC = 500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 9000000 ELSE 1000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 8500000 ELSE 1500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 8000000 ELSE 2000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 7500000 ELSE 2500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 7000000 ELSE 3000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 6500000 ELSE 3500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 6000000 ELSE 4000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 5500000 ELSE 4500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 5000000 ELSE 5000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 4500000 ELSE 5500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 4000000 ELSE 6000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 3500000 ELSE 6500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 3000000 ELSE 7000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 2500000 ELSE 7500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 2000000 ELSE 8000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 1500000 ELSE 8500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 1000000 ELSE 9000000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 500000 ELSE 9500000 IF X-ABS-AMT OF R031A_HIGHEST_AMT > 0
+COMMENT "MC5 - end"
+TEMP X-BATCH-COUNT-BEFORE
+TEMP X-BATCH-COUNT-AFTER
+TEMP X-COUNT
+TEMP X-CLAIM-COUNT
+TEMP X-BATCH-COUNT
+COMMENT "MC9"
+COMMENT "temp x-batch-amount zoned*7 numeric"
+TEMP X-BATCH-AMOUNT ZONED*9 NUMERIC
+COMMENT "MC9 - end"
+ITEM X-BATCH-COUNT-BEFORE = X-BATCH-COUNT
+TEMP CHANGE-BATCH-FLAG CHAR*1
+COMMENT "2012/04/19 - MC1"
+COMMENT "item change-batch-flag =  N  if x-batch-amount <= 9500000      &"
+COMMENT "MC5 - change to <= 7000000   , automate to check with x-check-amt instead of hardcode"
+COMMENT "item change-batch-flag =  N  if x-batch-amount <= 9000000      &"
+COMMENT "MC6 - check with absolute amt"
+COMMENT "item change-batch-flag =  N  if x-batch-amount <= x-check-amt  &"
+DEF X-ABS-BATCH-AMT = ABS(X-BATCH-AMOUNT)
+COMMENT "MC8"
+COMMENT "item change-batch-flag =  N  if x-abs-batch-amt <= x-check-amt  &"
+COMMENT "MC6 - end"
+COMMENT "MC5 - end"
+COMMENT "2012/04/19 - end"
+COMMENT "and x-claim-count < 99  &"
+COMMENT "MC8 - end"
+ITEM CHANGE-BATCH-FLAG = "N" IF X-CLAIM-COUNT < 99 AND X-BATCH-COUNT <> 0 ELSE "Y"
+ITEM X-BATCH-AMOUNT = X-BATCH-AMOUNT + X-TOTAL-PAID-AMT IF CHANGE-BATCH-FLAG = "N" ELSE X-TOTAL-PAID-AMT RESET AT X-CLINIC
+ITEM X-CLAIM-COUNT = X-CLAIM-COUNT + 1 IF CHANGE-BATCH-FLAG = "N" ELSE 1
+ITEM X-BATCH-COUNT = X-BATCH-COUNT + 1 IF CHANGE-BATCH-FLAG = "Y" ELSE X-BATCH-COUNT-BEFORE RESET AT X-CLINIC
+ITEM X-COUNT COUNT RESET AT X-CLINIC
+ITEM X-BATCH-COUNT-AFTER = X-BATCH-COUNT
+SUBFILE R031A_BATCH_NBR KEEP INCLUDE R031A_RUNNING_AMT, X-COUNT, X-BATCH-COUNT, X-CLAIM-COUNT
+SUBFILE R031A_DEBUG_BATCH_NBR KEEP INCLUDE R031A_RUNNING_AMT, X-COUNT, X-BATCH-COUNT-BEFORE , X-BATCH-COUNT, X-CLAIM-COUNT, X-BATCH-AMOUNT, X-BATCH-COUNT-AFTER
+COMMENT ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+COMMENT "MC10"
+REQUEST TRANSFER_TO_TMP_FILE ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *R031A_ACTIVE_DOCTOR
+OUTPUT TMP-COUNTERS-ALPHA ADD ON ERRORS REPORT
+ITEM TMP-COUNTER-KEY-ALPHA FINAL ASCII(ICONST-CLINIC-NBR-1-2,2)+ X-ADJ-CD + ASCII(DOC-OHIP-NBR,6)
+COMMENT "MC10 - end"
+BUILD $PB_OBJ/U030B_PART3_A
+ENDMODULE U030B_PART3_A.QTS

@@ -1,0 +1,44 @@
+; Program: u140_b
+; Purpose: After the RA is run and f075 updated with RA payments this program
+;	   will determine the percentage by RMA doctor number of the RA
+;	   payments at the doctor's OHIP number level.
+;	   Later programs will use this percentage to split the AFP payment
+
+cancel clear
+
+run u140_b
+set process nolimit
+
+request f075_calc_ra_total                   &
+                on edit        errors report &
+                on calculation errors report
+
+access f075-afp-doc-mstr
+
+sorted by doc-ohip-nbr
+
+temp x-ra-total
+item x-ra-total				&
+	= x-ra-total + ra-payment-amt	&
+		reset at doc-ohip-nbr
+
+subfile u140_b keep include 		&
+  doc-ohip-nbr,				&
+  x-ra-total
+
+
+request f075_update_doc_recs_with_ra_total   &
+                on edit        errors report &
+                on calculation errors report
+
+access *u140_b				&
+   link doc-ohip-nbr			&
+     to doc-ohip-nbr of f075-afp-doc-mstr
+
+def x-ra-percentage			&
+	= ra-payment-amt / ra-payment-amt-total
+
+output f075-afp-doc-mstr alias f075-update update
+  item ra-payment-amt-total	final x-ra-total
+  item afp-payment-percentage	final x-ra-percentage
+

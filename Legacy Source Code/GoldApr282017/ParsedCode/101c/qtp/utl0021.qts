@@ -1,0 +1,93 @@
+; PROGRAM: utl0021
+;
+;PURPOSE: report on descrepances between f020 TOT screen fields and associated f119 mtd/ytd values
+;
+; 2015/Apr/02	- link to constants-mstr-rec-6 & f112 to get the doc-pay-code
+
+cancel clear
+set lock record update
+set process nolimit
+
+run utl0021
+
+; f020
+;doc-ytdear   YTDEAR ytd f119
+;doc-ytdinc   TOTINC ytd f119
+;doc-ceicex   CEIEXP mtd f119    
+;doc-ytdcex   CEIEXP ytd f119
+
+request one on edit errors report on calculation errors report
+
+access f119-doctor-ytd							&
+	link doc-nbr 							&
+	 to  doc-nbr of f020-doctor-mstr				&
+	link 6								&
+	 to const-rec-nbr of constants-mstr-rec-6			&
+	link doc-nbr, (current-ep-nbr - 1)				&
+	 to  doc-nbr, ep-nbr of f112-pycdceilings opt
+
+choose doc-nbr, comp-code 'YTDEAR', 'TOTINC', 'CEIEXP', rec-type 'A'
+
+sort on doc-nbr
+
+temp x-ytdear zoned*9 numeric
+item x-ytdear = x-ytdear + amt-ytd if comp-code = 'YTDEAR' reset at doc-nbr
+
+temp x-totinc-ytd zoned*9 numeric
+item x-totinc-ytd = x-totinc-ytd + amt-ytd if comp-code = 'TOTINC' reset at doc-nbr
+
+temp x-totinc-mtd zoned*9 numeric
+item x-totinc-mtd = x-totinc-mtd + amt-mtd if comp-code = 'TOTINC' reset at doc-nbr
+
+temp x-ceiexp-mtd zoned*9 numeric
+item x-ceiexp-mtd = x-ceiexp-mtd + amt-mtd if comp-code = 'CEIEXP' reset at doc-nbr
+
+temp x-ceiexp-ytd zoned*9 numeric
+item x-ceiexp-ytd = x-ceiexp-ytd + amt-ytd if comp-code = 'CEIEXP' reset at doc-nbr
+
+
+subfile utl0021 keep at doc-nbr include				&
+		doc-nbr of f119-doctor-ytd, 			&
+		doc-dept of f020-doctor-mstr,			&
+		doc-pay-code of f112-pycdceilings,		&
+		doc-totinc-g of f020-doctor-mstr,		&
+		x-totinc-mtd, x-totinc-ytd,			&
+		doc-totinc of f020-doctor-mstr,			&
+		doc-ytdinc of f020-doctor-mstr,			&
+		doc-ytdinc-g of f020-doctor-mstr,	 	&
+		x-ceiexp-mtd, x-ceiexp-ytd, x-ytdear,           &
+		doc-ytdear of f020-doctor-mstr,			&
+		doc-ytdcex of f020-doctor-mstr,			&
+		doc-ceicex of f020-doctor-mstr
+
+request two on edit errors report on calculation errors report
+
+; f020
+;DOC-CEICEA OF F020-DOCTOR-MSTR should be net amount of CEIEAR of f110
+;DOC-YTDCEA OF F020-DOCTOR-MSTR should be net amount of YTDCEA of f110                             
+
+access constants-mstr-rec-6                                     &
+        link (current-ep-nbr - 1)                               &
+          to   ep-nbr  of f110-compensation                     &
+        link doc-nbr of f110-compensation                       &
+          to   doc-nbr of f020-doctor-mstr                      
+
+choose const-rec-nbr 6
+
+sel f110-compensation  if comp-code = 'CEIEAR' or comp-code = 'YTDCEA'   
+
+sort on doc-nbr of f110-compensation
+
+temp x-ceicea-net zoned*9 numeric
+item x-ceicea-net = x-ceicea-net + amt-net if comp-code = 'CEIEAR' reset at doc-nbr
+
+temp x-ytdcea-net zoned*9 numeric
+item x-ytdcea-net = x-ytdcea-net + amt-net if comp-code = 'YTDCEA' reset at doc-nbr
+
+subfile utl0021_f110 keep at doc-nbr include			&
+		doc-nbr of f110-compensation,			&
+		x-ceicea-net, x-ytdcea-net,			&
+		doc-ceicea of f020-doctor-mstr,			&
+		doc-ytdcea of f020-doctor-mstr
+
+build $obj/utl0021

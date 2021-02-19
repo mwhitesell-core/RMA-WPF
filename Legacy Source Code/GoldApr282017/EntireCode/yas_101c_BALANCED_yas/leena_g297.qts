@@ -1,0 +1,86 @@
+;doc     : leena_g297.qts
+;purpose : report claims with oma code of G297 and Z442 
+;          report doc# and name and batch number keying date oct1 until today
+;who     : Leena Jaanimagi
+
+
+;Date		Who		Description
+;2001/11/20	Yasemin		Original
+
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                           
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr, &
+                            key-clm-serv-code, key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                   &
+            clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0           & ; ignore adjustments
+       and (clmdtl-oma-cd      = "G297"      &
+            or clmdtl-oma-cd   = "Z442")
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+sorted on clmdtl-id
+
+subfile leenag297 keep include             &
+clmdtl-id              of f002-claims-mstr,&
+key-clm-batch-nbr      of f002-claims-mstr,&
+key-clm-claim-nbr      of f002-claims-mstr,&
+x-doc-nbr
+
+request two
+
+access *leenag297					        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&	
+	key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+sel if clmhdr-batch-type = 'C' and clmhdr-date-sys ge '20011001'
+
+
+subfile leenag297a keep include leenag297
+
+request three
+
+access *leenag297a     &
+ link x-doc-nbr to doc-nbr of f020-doctor-mstr
+
+def x-batch cha*10 = clmdtl-id[1:2]+clmdtl-id[4:8]
+def comma cha*1 = "~"
+
+sorted on clmdtl-id
+
+subfile leenagG297aa keep at clmdtl-id  include    &
+x-doc-nbr                                         ,&
+comma                                             ,&
+doc-name                                          ,&
+comma                                             ,&
+doc-inits                                         ,&
+comma                                             ,&
+x-batch                                          
+
+build $obj/leenag297

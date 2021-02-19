@@ -1,0 +1,89 @@
+; DOC: JOHN.QZS
+; DOC: REPORT BILLINGS AGENT 0 CLASS FULL & SCHOLARS BY MTD YTD FIGURES
+; DOC: CREATED FOR PAUL DANAHUE
+;
+;PROGRAM PURPOSE :
+;
+;DATE       BY WHOM   DESCRIPTION
+;93/09/27   YASEMIN   ORIGINAL
+;94/01/25   YASEMIN   MODIFY FOR 1994
+;                     RUN JOHNTEMP.QZS TO CREATE JOHNA.SF+
+;                     THEN DEL JOHN.SF+ AND RENAME JOHNA.SF+ TO JOHN.SF+
+;95/03/29   YASEMIN   MODIFY FOR 1995 (SEE ABOVE MESSAGE)
+;96/03/25   YASEMIN   MODIFY FOR 1996 (SEE ABOVE MESSAGE)
+;97/04/18   YASEMIN   MODIFY FOR 1997 (SEE ABOVE MESSAGE)
+;98/04/16   YASEMIN   MODIFY FOR 1998 (SEE ABOVE MESSAGE)
+;99/03/25   YASEMIN   MODIFY FOR 1999 (SEE ABOVE MESSAGE)
+;99/11/30   YASEMIN   y2k
+;00/01/03   B.E/Yas   - y2k fix of mm/dd
+;00/03/30   Yasemin   - modify for 2000 
+;01/03/23   Yasemin   - modify for 2001
+;02/03/25   Yasemin   - modify for 2002
+;mar/27/03  yasemin   - modify for 2003
+;
+can clear
+set default
+set rep nolimit
+		
+access *claims_subfile                     &
+  link (nconvert(clmdtl-id[4:3]))          &
+    to doc-nbr of f020-doctor-mstr opt
+
+select if     clmhdr-agent-cd = 0                       &
+          and clmdtl-id[12:4] <> '0000'	                &
+          and clmdtl-id[12:4] <> 'ZZZZ'		        &
+          and clmdtl-id[12:4] <> 'PAID'	                &
+          and clmdtl-id[12:4] <> 'MISC'                 &
+          and (doc-full-part-ind = 'F' or doc-full-part-ind = 'C')
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+def x-doc-name char*27 = pack(doc-name +" "+ doc-inits)
+
+def x-mm cha*2 = clmdtl-date-period-end[5:2]
+
+def x-dd cha*2 = clmdtl-date-period-end[7:2]
+
+def x-yyyy cha*4 = clmdtl-date-period-end[1:4]
+
+def x-mmm   cha*9 = "JANUARY"   if x-mm  = "01"      &
+               else "FEBRUARY"  if x-mm  = "02"      &
+               else "MARCH"     if x-mm  = "03"      &
+               else "APRIL"     if x-mm  = "04"      &
+               else "MAY"       if x-mm  = "05"      &
+               else "JUNE"      if x-mm  = "06"      &
+              ;ELSE "JUNE"      IF X-MM  = "06" AND X-DD < "30"  &
+              ;ELSE "YEAREND"   IF X-MM  = "06" AND X-DD = "30"  &
+               else "JULY"      if x-mm  = "07"      &
+               else "AUGUST"    if x-mm  = "08"      &
+               else "SEPTEMBER" if x-mm  = "09"      &
+               else "OCTOBER"   if x-mm  = "10"      &
+               else "NOVEMBER"  if x-mm  = "11"      &
+               else "DECEMBER"  if x-mm  = "12"
+
+def x-mth-apr02-mar03 num*7				           &
+      = clmdtl-fee-ohip if   (x-yyyy = '2002' and x-mm > '03')     &
+                          or (x-yyyy = '2003' and x-mm <='03')     &
+                        else 0
+
+def x-mth-apr03-mar04 num*7				           &
+      = clmdtl-fee-ohip if   (x-yyyy = '2003' and x-mm > '03')     &
+                          or (x-yyyy = '2004' and x-mm <='03')     &
+                        else 0
+
+
+sorted on x-doc-nbr on x-yyyy on x-mm
+
+set subfile name john keep at x-mm append
+
+report summary	                &
+  clmhdr-doc-dept               &
+  x-doc-nbr                     &
+  clmdtl-fee-ohip subtotal      &
+  x-mm                          &
+  x-yyyy                        &
+  x-mth-apr02-mar03  subtotal   &
+  x-mth-apr03-mar04  subtotal
+
+
+build $pb_obj/john

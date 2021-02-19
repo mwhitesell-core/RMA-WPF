@@ -1,0 +1,63 @@
+;#> program-id.     r022a5.qzs
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SELECT CLAIMS FOR RE-SUBMIT
+;		       IF CHANGES REQUIRED FOR HOSPITAL CODES, MAKE
+;		       SURE TO CHANGE IN HOSPITAL_CODE.DEF
+;
+;    MODIFICATION HISTORY
+;    DATE   WHO          DESCRIPTION
+; 00/sep/18 B.E.        - moved from r022a.qzs into separate source module
+; 03/nov/13 M.C.	- include pat-birth-date, pat-version-cd & clmhdr-loc
+;			  into the subfile u022a4
+
+cancel clear
+set default
+set rep nolimit
+
+access *u020a1	&
+  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),	&
+             (nconvert(clmhdr-claim-id[10:2])))	&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr	&
+	of f002-claims-mstr
+
+select u020a1 if batctrl-batch-type = "C"			&
+;	AND (BATCTRL-AGENT-CD = 0 OR BATCTRL-AGENT-CD = 2)	&
+	and moh-flag = "Y"					&
+	and clmhdr-manual-review = "Y"
+
+
+select f002-claims-mstr if clmhdr-adj-oma-cd[1:4] <> "0000" &
+		       and clmhdr-adj-oma-cd[1:4] <> "ZZZZ"
+
+; 97/08/18 - M.C.
+;SORTED ON CLMHDR-CLAIM-ID
+sort on translated-group-nbr on clmhdr-claim-id
+
+set subfile name u022a4 at clmhdr-claim-id keep
+report summary			&
+  batctrl-doc-nbr-ohip		&
+  batctrl-agent-cd		&
+  batctrl-clinic-nbr		&
+  clmhdr-claim-id		&
+  iconst-clinic-nbr-1-2         &
+  clmhdr-doc-spec-cd		&
+  pat-health-nbr		&
+;y2k
+  w-pat-ohip-mmyy		&
+  pat-prov-cd			&
+;y2k
+  clmdtl-sv-date		&
+  moh-flag			&
+  dollar-flag                   &
+; kevin miles 1997/Jun/30
+  translated-group-nbr		&
+; 2003/11/13 - MC
+  pat-birth-date		&
+  pat-version-cd		&
+  clmhdr-loc
+; 2003/11/13 - end
+
+
+build $pb_obj/r022a5

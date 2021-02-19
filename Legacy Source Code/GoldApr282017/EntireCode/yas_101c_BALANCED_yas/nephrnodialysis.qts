@@ -1,0 +1,120 @@
+;doc     : nephrnodialysis.qts
+;purpose : report acute and new chronic dialysis codes by doctor run it 3 times
+;          july 1 to feb 28 2001, july 1 to feb 28 2002 and july 1 to feb28 2003
+;          there is a second pass nephrcodes2.qts
+;who     : Dr. Russell
+
+
+;Date           Who             Description
+;2003/05/01     Yasemin         Original
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access f002-claims-mstr         &
+        link (nconvert(clmhdr-claim-id[4:3]))   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220839000 to 220839999,   &
+                                              220481000 to 220481999,   &
+                                              220078000 to 220078999,   &
+                                              220188000 to 220188999,   &
+                                              220403000 to 220403999,   &
+                                              220886000 to 220886999,   &
+                                              220279000 to 220279999,   &
+                                              220792000 to 220792999,   &
+                                              220879000 to 220879999,   &
+                                              220455000 to 220455999,   &
+                                              220928000 to 220928999,   &
+                                              220055000 to 220055999,   &
+                                              220662000 to 220662999,   &
+                                              220459000 to 220459999,   &
+                                              220425000 to 220425999,   &
+                                              220967000 to 220967999,   &
+                                              220448000 to 220448999,   &
+                                              220524000 to 220524999,   &
+        key-clm-claim-nbr
+
+select f002-claims-mstr if                     &
+               clmdtl-sv-date >= "20000701"    &
+      and      clmdtl-sv-date <= "20030228"    &
+      and      clmdtl-oma-cd      <> "0000"    & ; details only
+      and      clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+      and      clmdtl-oma-cd      <> "PAID"    & ; details only
+      and      clmdtl-oma-cd      <> "MICM"    & ; details only
+      and      clmdtl-oma-cd      <> "MISJ"    & ; details only
+      and      clmdtl-oma-cd      <> "MISC"    & ; details only
+      and      clmdtl-oma-cd      <> "MICV"    & ; details only
+      and      clmdtl-oma-cd      <> "MISP"    & ; details only
+      and      clmdtl-oma-cd      <> "MOHR"    & ; "  "
+      and      clmdtl-oma-cd      <> "MICB"    & ; "  "
+      and      clmdtl-oma-cd      <> "MIBR"    & ; "  "
+      and      clmdtl-oma-cd      <> "MINH"    & ; "  "
+      and      clmdtl-oma-cd      <> "MHSC"    & ; "  "
+      and      clmdtl-oma-cd      <> "NHSC"   
+;      and      clmdtl-oma-cd      <> "R849"    &
+;      and      clmdtl-oma-cd      <> "G325"    &
+;      and      clmdtl-oma-cd      <> "G323"    &
+;      and      clmdtl-oma-cd      <> "G330"    &
+;      and      clmdtl-oma-cd      <> "G331"    &
+;      and      clmdtl-oma-cd      <> "G860"    &
+;      and      clmdtl-oma-cd      <> "G862"    &
+;      and      clmdtl-oma-cd      <> "G863"    &
+;      and      clmdtl-oma-cd      <> "G864"    &
+;      and      clmdtl-oma-cd      <> "G865"    &
+;      and      clmdtl-oma-cd      <> "G866"    
+;      and      clmdtl-adj-nbr      =  0        ; regular details only
+
+def x-doc-name char*15 = pack(doc-name +" "+ doc-inits)
+
+def x-yyyymm char*6 = clmdtl-sv-date[1:6]        
+
+def comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+sort on doc-nbr 
+
+temp x-2001 num*7
+item x-2001  = x-2001 + clmdtl-fee-ohip /100                        &
+              if (x-yyyymm >= "200007" and x-yyyymm <= "200102")  &
+              reset at doc-nbr
+
+temp x-2002 num*7
+item x-2002  = x-2002 + clmdtl-fee-ohip /100                        &
+              if (x-yyyymm >= "200107" and x-yyyymm <= "200202")  &
+              reset at doc-nbr
+
+temp x-2003 num*7
+item x-2003  = x-2003 + clmdtl-fee-ohip /100                        &
+              if (x-yyyymm >= "200207" and x-yyyymm <= "200302")  &
+              reset at doc-nbr
+
+
+subfile nephrnodialysis portable keep at doc-nbr include	&
+  doc-nbr,                      &
+  comma,			&
+  doc-dept,                     &
+  comma,			&
+  doc-name,                     &
+  comma,			&
+  doc-inits,                    &
+  comma,			&
+  x-2001,                       &
+  comma,			&
+  x-2002,                       &
+  comma,			&
+  x-2003,                       &
+  x-cr
+
+
+build $pb_obj/nephrnodialysis
+

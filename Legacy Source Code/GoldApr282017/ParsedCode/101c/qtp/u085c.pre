@@ -1,0 +1,46 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U085C.QTS
+COMMENT "Program: u085c "
+COMMENT "Purpose: create letters to patients requesting update of health card "
+COMMENT "eligibility information. All claims  of the patient are"
+COMMENT "listed in the body of the letter along with doctor's"
+COMMENT "name"
+COMMENT "- NOTE: only claims that have NOT be flagged as confidential"
+COMMENT "( Y  for ministry,  R  for rma flagged) will be "
+COMMENT "printed."
+COMMENT "- If ALL claims are confidential NO letter is genereated"
+COMMENT "00/sep/14    B.E.    - reduce to a max of 5 the number of doctors reported "
+COMMENT "on any individual letter to a patient. This is "
+COMMENT "accomplished by outputing a doc-nbr-count field"
+COMMENT "that is reset at the start of each patient."
+COMMENT "03/dec/15 A.A. - alpha doctor nbr"
+CANCEL CLEAR
+SET DEF
+SET PROCESS NOLIMIT
+COMMENT "2013/11/07 - MC"
+COMMENT "set lock file update"
+SET LOCK RECORD UPDATE
+COMMENT "2013/11/07 - end"
+COMMENT "!        (nconvert(ascii(claim-nbr,10)[1:2] +  0  + ascii(claim-nbr,10)[3:6])), &"
+COMMENT "!        (nconvert(ascii(claim-nbr,10)[9:2])),                   &"
+ACCESS *U085B LINK "B", (CLAIM-NBR[1:8]), (NCONVERT(CLAIM-NBR[9:2])), "00000", "0" TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR OPT
+SELECT IF CLMHDR-CONFIDENTIAL-FLAG <> "R" AND CLMHDR-CONFIDENTIAL-FLAG <> "Y"
+SORT ON CLMHDR-PAT-OHIP-ID-OR-CHART ON DOC-NBR
+COMMENT "! temp x-old-doc-nbr zoned*3"
+TEMP X-OLD-DOC-NBR CHAR*3
+TEMP X-OLD-PAT-ID CHAR*16
+TEMP X-DOC-CHANGED CHAR*1
+TEMP X-DOC-NBR-COUNT ZONED*7
+ITEM X-DOC-CHANGED = "Y" IF CLMHDR-PAT-OHIP-ID-OR-CHART <> X-OLD-PAT-ID OR DOC-NBR <> X-OLD-DOC-NBR ELSE "N"
+ITEM X-DOC-NBR-COUNT = X-DOC-NBR-COUNT + 1 IF X-DOC-CHANGED = "Y" ELSE X-DOC-NBR-COUNT RESET AT CLMHDR-PAT-OHIP-ID-OR-CHART
+ITEM X-OLD-DOC-NBR = DOC-NBR
+ITEM X-OLD-PAT-ID = CLMHDR-PAT-OHIP-ID-OR-CHART
+SUBFILE U085C KEEP INCLUDE U085B, X-OLD-DOC-NBR, X-DOC-CHANGED, X-DOC-NBR-COUNT
+BUILD $PB_OBJ/U085C
+ENDMODULE U085C.QTS

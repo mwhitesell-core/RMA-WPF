@@ -1,0 +1,53 @@
+cancel clear
+set process nolimit
+set lock file update
+
+request one on calculation errors report on edit errors report
+access f002-claims-mstr
+choose key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr,	&
+	key-clm-serv-code '00000', key-clm-adj-nbr '0'
+select if clmhdr-batch-type = 'C'
+subfile extf002hdr keep include		&
+	key-clm-type,			&
+	key-clm-batch-nbr,		&
+	key-clm-claim-nbr
+
+
+request two on calculation errors report on edit errors report
+access *extf002hdr link to f002-claims-mstr
+select if clmdtl-oma-cd <> '0000' 	&
+    and   clmdtl-oma-cd <> 'ZZZZ'	&
+    and   clmdtl-adj-nbr = 0
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+def x-date zoned*8 unsigned = nconvert(clmdtl-sv-date)
+
+temp x-sv-date zoned*8 unsigned 
+item x-sv-date minimum x-date reset at key-clm-claim-nbr
+
+subfile extdtldate keep include			&
+        key-clm-type of extf002hdr,		&
+	key-clm-batch-nbr of extf002hdr,	&
+	key-clm-claim-nbr of extf002hdr,	&
+	key-clm-serv-code, key-clm-adj-nbr,	&
+	clmdtl-id, x-date 
+
+subfile extf002dtl keep at key-clm-claim-nbr include 	&
+	key-clm-type of extf002hdr,		&
+	key-clm-batch-nbr of extf002hdr,	&
+	key-clm-claim-nbr of extf002hdr,	&
+	x-sv-date
+
+
+request three on calculation errors report on edit errors report
+access *extf002dtl				&
+      link key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+	    '00000', '0'			&
+	to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,		&
+	    key-clm-serv-code, key-clm-adj-nbr	of f002-claims-mstr
+output f002-claims-mstr update on errors report  
+   item clmhdr-serv-date final x-sv-date
+
+
+build $pb_obj/fix_f002_hdr_serv_date
+

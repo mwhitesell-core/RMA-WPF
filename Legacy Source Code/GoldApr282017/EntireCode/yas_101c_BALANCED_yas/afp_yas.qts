@@ -1,0 +1,98 @@
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *yas                                                              &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220385000 to 220385999,     &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+
+
+select f002-claims-mstr if                   &
+            clmdtl-date-period-end >= '20030101' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <>  "PAID"     ; no payments
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-yyyymm cha*6 = clmdtl-date-period-end[1:6]        
+
+
+def x-code cha*4 = "Y" if clmdtl-oma-cd = "MICM"    &
+                       or clmdtl-oma-cd = "MISJ"    &
+                       or clmdtl-oma-cd = "MISC"    &
+                       or clmdtl-oma-cd = "MICV"    &
+                       or clmdtl-oma-cd = "MISP"    &
+                       or clmdtl-oma-cd = "MICB"    &
+                       or clmdtl-oma-cd = "MIBR"    &
+                       or clmdtl-oma-cd = "MINH"    &
+                       or clmdtl-oma-cd = "MHSC"    &
+                       or clmdtl-oma-cd = "NHSC"    &
+                       or clmdtl-oma-cd = "MOHR"    &
+     else "N"
+
+sort on x-doc-nbr    
+
+temp x-jan-2003-0  num*7
+item x-jan-2003-0   = x-jan-2003-0  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-2  num*7
+item x-jan-2003-2   = x-jan-2003-2  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-6  num*7
+item x-jan-2003-6   = x-jan-2003-6  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-9  num*7
+item x-jan-2003-9   = x-jan-2003-9  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+temp x-jan-2003-p  num*7
+item x-jan-2003-p   = x-jan-2003-p  + clmdtl-fee-ohip     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr 
+
+
+subfile   yas1  keep at x-doc-nbr include          &
+x-doc-nbr                                           ,&
+x-jan-2003-0                                        ,&
+x-jan-2003-6                                        ,&
+x-jan-2003-9                                        ,&
+x-jan-2003-2                                        ,&
+x-jan-2003-p                                        
+
+build $obj/yas         

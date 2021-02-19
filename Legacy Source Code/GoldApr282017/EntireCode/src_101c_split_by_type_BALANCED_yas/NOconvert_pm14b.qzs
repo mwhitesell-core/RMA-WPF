@@ -1,0 +1,56 @@
+; Name   : PM14B.QZS
+; Purpose: SECOND PASS OF GENERATING INVOICES
+; 	   CREATE TEMPORARY FILE OF TIMESHEET SUMMARIES BY EMP-NUM
+; 	   TOGETHER WITH THE SUBTOTAL OF THE EXTENDED AMOUNT IN EACH
+; 	   DETAIL RECORD
+;
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD  	By whom        	Why
+; ??/???/??  	?.?           	-
+;
+; 870902  	B. MONTY    	LINK TO RUN-DATE TO GET DATE SELECTION
+;                     		FOR PROCESSING
+; 890920  	M. CHAN     	CHANGE THE PROGRAM TO CHOOSE FOR SINGLE
+;		      		PWO RUN INSTEAD OF SELECT
+; 910211  	S. CHAN     	MODIFIED TO CARRY THE SUBTOTAL AMOUNT TO
+;                     		EACH AND EVERY DETAIL RECORD FOR GST
+;				CALCULATION
+; 92/02/27	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+;				- SET REPORT NOLIMIT
+;				- COMMENT OUT FCLIENTS AND FEMPLOYEES
+;				  FILES IN ACCESS STATEMENT
+
+
+can clear
+set default
+set report nolimit
+
+access *tempinvoicesa link pwo-num to pwo-num of ftimesht &
+;      LINK CLIENT TO CLIENT OF FCLIENTS   &
+       link (characters(tsht-emp) + characters(pwo-num of ftimesht)) &
+ 	    to emppwo-key of femppwos opt
+;      AND  TSHT-EMP OF FTIMESHT TO EMP-NUM OF FEMPLOYEES
+
+select ftimesht if tsht-yymm = temp-yymm
+
+define temp-bbill numeric*8                 &
+       = tot if billable = ' '  &
+       else 0
+define temp-nbill numeric*8                 &
+       = tot if billable = '*'  &
+       else 0
+def x-bill-rate = bill-rate if daily-rate = 0 else daily-rate
+def x-bill-type char*1 = "H" if daily-rate = 0 else "D"
+
+sort on client on pwo-num of ftimesht on tsht-emp of ftimesht
+
+set subfile name tempinvoicesb keep at tsht-emp
+
+report summary client pwo-num tsht-emp of ftimesht  temp-pwo-bbill &
+   temp-bbill subtotal temp-nbill subtotal x-bill-rate temp-yymm  &
+   x-bill-type
+
+build $pb_obj/pm14b
+  

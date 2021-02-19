@@ -1,0 +1,156 @@
+; 2014/Sep/23 	MC	- check  primary doctor (u100_b.qzs)
+;			- to be run as last part of $cmd/verify_payroll_ok_to_run
+;			- user is asked to pass 2 parameters, user should change the terminated date cutoff once after yearend
+; 2014/Oct/9   yas      - If doc has only one number and have primary flag set then do not print on this report
+;                         We need the primary number so that system will calculate the TITHE for the doctor 
+; 2014/Oct/14	MC1	- include doctor name in subfile/report
+;			- include constants-mstr-rec-7 in the access to extract previous fiscal yearend date
+
+cancel clear
+set report nolimit
+
+access f020-doctor-mstr                         &
+        link doc-nbr                            &
+          to  doc-nbr of f020-doctor-extra  optional	&
+; MC1	
+	link (7) to const-rec-nbr of constants-mstr-rec-7
+
+choose doc-ohip-nbr
+
+def payroll-flag char*1 = parm prompt 'Enter Payroll (A = 101c, C = solo): '
+; MC1
+;def term-date-cutoff date = parm prompt 'Enter terminate date cutoff: '
+; MC1 - end
+
+sorted on doc-ohip-nbr
+
+sel if  	                                      &
+ 	(	doc-date-fac-term = 0 		      &
+; MC1
+;      	     or doc-date-fac-term > term-date-cutoff  &
+      	     or doc-date-fac-term > previous-fiscal-end-yymmdd  &
+; MC1 - end
+	)					      &
+   and						      &
+        (   (    (   (doc-dept = 4)                   &
+                  or (doc-dept = 42)                  &
+                  or (    (    doc-dept = 14          &
+                            or doc-dept = 15          &
+                          )                           &
+                      and doc-afp-paym-group = 'H111' &
+                     )                                &
+                 )                                    &
+              and payroll-flag = 'A'                  &
+            )                                         &
+         or (    (    doc-dept = 31                   &
+                  and doc-afp-paym-group = 'H132'     &
+                 )                                    &
+             and payroll-flag = 'C'                   &
+            )					      &
+       )	
+
+set subfile name u100_b keep
+rep summ doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  &
+payroll-flag doc-name previous-fiscal-end-yymmdd
+go
+
+
+access *u100_b
+
+sort on doc-ohip-nbr on doc-flag-primary
+
+def doctor-count = 1
+
+set subfile name u100_b2 keep at doc-ohip-nbr
+
+rep summ doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  &
+payroll-flag doc-name previous-fiscal-end-yymmdd doctor-count subt reset at doc-ohip-nbr
+go
+
+; select for multiple doctors
+access *u100_b2
+
+sel if doctor-count <> 1 
+
+set subfile name u100_b_3a keep
+
+rep summ doc-ohip-nbr doctor-count payroll-flag doc-name previous-fiscal-end-yymmdd
+
+go
+
+;select unique doctor that have not assigned primary flag to 'Y' 
+access *u100_b2
+
+sel if doc-flag-primary <> 'Y'
+
+set subfile name u100_b_3b keep
+
+rep summ all
+
+go
+
+access *u100_b_3a link doc-ohip-nbr to doc-ohip-nbr of f020-doctor-mstr	&
+        link doc-nbr                            &
+          to  doc-nbr of f020-doctor-extra  optional
+
+
+sel if  	                                      &
+ 	(	doc-date-fac-term = 0 		      &
+; MC1
+;      	     or doc-date-fac-term > term-date-cutoff  &
+      	     or doc-date-fac-term > previous-fiscal-end-yymmdd  &
+; MC1 - end
+	)					      &
+   and						      &
+        (   (    (   (doc-dept = 4)                   &
+                  or (doc-dept = 42)                  &
+                  or (    (    doc-dept = 14          &
+                            or doc-dept = 15          &
+                          )                           &
+                      and doc-afp-paym-group = 'H111' &
+                     )                                &
+                 )                                    &
+              and payroll-flag = 'A'                  &
+            )                                         &
+         or (    (    doc-dept = 31                   &
+                  and doc-afp-paym-group = 'H132'     &
+                 )                                    &
+             and payroll-flag = 'C'                   &
+            )					      &
+       )	
+
+set subfile name u100_b_3b append
+
+rep summ doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  &
+payroll-flag doc-name previous-fiscal-end-yymmdd doctor-count 
+
+go
+
+access *u100_b_3b
+set rep dev disc name u100_b
+set rep page width 132 length 60
+set formfeed
+
+sort on doc-ohip-nbr
+
+page heading                                    &
+tab  1 'U100_b'                                 &
+tab 10 'Run Date: '                             &
+tab 20 sysdate                                  &
+tab 70 'Page: '                                 &
+tab 79 syspage pic '^^'                         &
+skip 2                                          &
+tab 10 'Check if the Primary flag assigned to the correct doctor number'       &
+; MC1
+skip 1						&
+tab 20 'Doctor Termination Date Cutoff > '  	&
+tab 55  previous-fiscal-end-yymmdd		&
+; MC1 - end
+skip 3 keep column heading
+
+rep doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  doc-name
+
+footing at doc-ohip-nbr  skip 2
+go
+
+

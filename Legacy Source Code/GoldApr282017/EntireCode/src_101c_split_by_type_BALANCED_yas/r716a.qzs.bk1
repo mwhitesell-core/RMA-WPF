@@ -1,0 +1,84 @@
+; Program: r716a.qzs
+; Purpose: To create a flat file used with the web 
+; Modification History
+; YY/MMM/DD  By whom    Why
+; 00/jan/01  B.A.	- original
+; 00/apr/14  B.E.	- slight change to position of hospital in subfile
+; 00/sep/22  B.E.	- if 'W'eb claim is deleted, then don't select it
+;			  in this program since we don't want it passed
+;			  back to the web or the web pgm will delete the
+;			  claim there.  All web claims to be actually
+;			  deleted on the web will be manually deleted
+;			- added page length 0 , no formfeed
+; 00/oct/02 B.E. - replaced field that contained the"I" key with 
+;   		   health care number and version - at this time
+;		   this information is ignored by web and is not
+;		   updated back into the web because changes
+;		   are handled manually. To process them via this pgm
+;		   the web's "I" key would have to be passed in the
+;		   diskette upload file (newu701.cbl) and held in f002_suspend
+;		 - placed opt on access of location - just in case and added
+;		   picture clause on output of location to eliminate comma
+;		   in 4 digit number
+
+; 
+
+can clear
+set rep nolimit
+set nohead
+set noformfeed
+set page width 76 length 0
+set rep dev disc name r716a
+
+access f002-suspend-hdr link clmhdr-loc  	& 
+ 			  to loc-nbr of f030-locations-mstr opt
+
+use $use/def_clmhdr_status.def
+
+; 00/sep/22 B.E. - don't send back deleted web claims)
+select if   CLMHDR-STATUS = updated			&
+	 or (    clmhdr-adj-cd-sub-type <> "W"		&
+             and CLMHDR-STATUS = clmhdr-status-delete)
+;select if   CLMHDR-STATUS = clmhdr-status-delete 	&
+;         or CLMHDR-STATUS = updated
+
+def Z-CLMHDR-DOC-OHIP-NBR zoned unsigned size 6 = CLMHDR-DOC-OHIP-NBR
+def Z-CLMHDR-AGENT-CD zoned unsigned size 1 = CLMHDR-AGENT-CD 
+def Z-CLMHDR-REFER-DOC-NBR zoned unsigned size 6 = CLMHDR-REFER-DOC-NBR
+def Z-CLMHDR-DIAG-CD zoned unsigned size 3 = CLMHDR-DIAG-CD
+def Z-CLMHDR-TOT-CLAIM-AR-OHIP zoned unsigned size 7 = CLMHDR-TOT-CLAIM-AR-OHIP
+def Z-CLMHDR-AMT-TECH-BILLED zoned unsigned size 6 = CLMHDR-AMT-TECH-BILLED
+def CLINIC char*2 = CLMHDR-CLAIM-ID[1:2]
+
+def x-blanks char*2 = "  "
+
+report                                                      &
+tab  1 Z-CLMHDR-DOC-OHIP-NBR       pic "^^^^^^" fill "0"    &
+tab  7 CLMHDR-ACCOUNTING-NBR                                &       
+
+; (00/oct/02 B.E. - replaced field that contained the"I" key with 
+;   		    health care number and version 
+;tab 15 CLMHDR-PAT-OHIP-ID-OR-CHART                          &
+tab 15  clmhdr-health-care-nbr				    &
+tab 27  x-blanks					    &
+tab 29  clmhdr-health-care-prov			            &
+
+tab 31 CLMHDR-LOC           	            		    &
+tab 35 Z-CLMHDR-AGENT-CD          pic "^" fill "0"          &
+tab 36 Z-CLMHDR-REFER-DOC-NBR     pic "^^^^^^" fill "0"     &
+tab 42 Z-CLMHDR-DIAG-CD           pic "^^^" fill "0"	    & 
+tab 45 CLMHDR-DATE-ADMIT                                    &
+tab 53 LOC-HOSPITAL-NBR		  pic "^^^^" fill "0"	    &
+tab 57 Z-CLMHDR-TOT-CLAIM-AR-OHIP pic "^^^^^^^" fill "0"    &
+tab 64 Z-CLMHDR-AMT-TECH-BILLED   pic "^^^^^^" fill "0"     &       
+tab 70 CLMHDR-I-O-PAT-IND		 		    &
+tab 71 CLMHDR-MANUAL-REVIEW   		                    &
+tab 72 CLINIC                                      	    &
+tab 74 CLMHDR-CONFIDENTIAL-FLAG				    &
+tab 75 CLMHDR-STATUS                                	    
+
+;?tab tot_ohip_addons
+;?tab review_text
+
+build $pb_obj/r716a
+

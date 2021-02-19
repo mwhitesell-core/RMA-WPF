@@ -1,0 +1,52 @@
+; Program: fix_status_r_claims.qts 
+; Purpose: dump all status "R" claims going to OHIP
+;
+; 2000/may/24 B.E.   - original
+;
+
+cancel clear
+set process nolimit
+set lock record update
+
+access f002-claims-mstr				&
+  link clmhdr-batch-nbr				&
+    to batctrl-batch-nbr			&
+	of f001-batch-control-file   opt
+
+;choose key-clm-type "B"
+
+define claim-ped-cutoff-date date = parm prompt "Check claims with PED >= what date: "
+
+def bal-due = clmhdr-manual-and-tape-payments +  clmhdr-tot-claim-ar-ohip
+
+select f002-claims-mstr                                 &
+  if    clmhdr-adj-oma-cd       = "0000"                &;check hdrs only
+     and clmhdr-date-period-end >= claim-ped-cutoff-date&; >=Operator selection
+     and clmhdr-batch-type = "C"                        &
+     and clmhdr-status-ohip <> "I2"                     &
+     and bal-due > 0                                    &
+     AND clmhdr-tape-submit-ind = "R"
+
+def flag-f001-missing char*1 				&
+    = "Y" if not  record f001-batch-control-file exists	&
+ else "N"
+
+sorted on clmhdr-claim-id
+
+subfile fix_status_r_claims  keep  at clmhdr-claim-id	&
+ if flag-f001-missing = "N" 				&
+ include 			 &
+  clmhdr-claim-id		,&
+  flag-f001-missing		,&
+  batctrl-calc-ar-due		,& 
+  batctrl-nbr-claims-in-batch	,& 
+  clmhdr-agent-cd		,&
+  clmhdr-date-sys 		,&
+  clmhdr-date-period-end	,&
+  clmhdr-submit-date		,&
+  clmhdr-cycle-nbr		,&	
+  clmhdr-adj-oma-cd 		, &
+  bal-due
+
+build $pb_obj/fix_status_r_claims
+

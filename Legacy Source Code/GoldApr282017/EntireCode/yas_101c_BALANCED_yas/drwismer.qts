@@ -1,0 +1,209 @@
+;doc     : drwismer.qts
+;purpose : create a detail claims report for drwismer
+;          annual clinical billings (July-June) over the past 3 years and the number of clinics.
+;          We are trying to determine an average billing amount per clinic day at the MUMC site.
+;          MUST include agent 6 claims  (they are usually b adjusted then C payment to clinic 22)
+;          MUST count each day for number of claims
+;          report average amount for each svc date 
+;who     : Annette Rosati
+;
+;  2013/Oct/29	 MC	- original
+;			- choose clinic 22, 34, 98
+;			- select service date >= 20110701 and <= 20130630  
+;			- exclude adjustment (clmdtl-adj-nbr = 1) 
+;			- write record at claim nbr level
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   		&
+	link key-clm-batch-nbr[3:3]			&
+	 to  doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  			&
+	key-clm-batch-nbr '22D81@', '34D81@', '98D81@', 	&
+ 	key-clm-claim-nbr, 			&
+	key-clm-serv-code '00000', 		&
+	key-clm-adj-nbr '0'
+
+select f002-claims-mstr if       clmhdr-batch-type = 'C'    	&
+			    and  clmhdr-serv-date >= 20110701   
+	
+subfile wismer_1     keep include                  	&
+clmhdr-claim-id               of f002-claims-mstr,	&
+key-clm-batch-nbr             of f002-claims-mstr,	&
+key-clm-claim-nbr             of f002-claims-mstr,	&
+clmhdr-loc                    of f002-claims-mstr,	&
+clmhdr-doc-dept		      of f002-claims-mstr,	&
+clmhdr-serv-date              of f002-claims-mstr,	&
+clmhdr-adj-cd-sub-type        of f002-claims-mstr,	&
+clmhdr-date-period-end        of f002-claims-mstr,	&
+clmhdr-tot-claim-ar-ohip      of f002-claims-mstr,	&
+doc-name
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *wismer_1                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select  f002-claims-mstr if 		     &
+	    clmdtl-sv-date      >= '20110701'   &	
+       and  clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "AGEP"     &
+       and  clmdtl-oma-cd      <> "MOHD"     &   
+       and  clmdtl-oma-cd      <> "MICA"     &
+       and  clmdtl-oma-cd      <> "MICC"     &
+       and  clmdtl-oma-cd      <> "MICD"     &
+       and  clmdtl-oma-cd      <> "MICE"     &
+       and  clmdtl-oma-cd      <> "MICF"     &
+       and  clmdtl-oma-cd      <> "MICG"     &
+       and  clmdtl-oma-cd      <> "MICH"     &
+       and  clmdtl-oma-cd      <> "MICJ"     &
+       and  clmdtl-oma-cd      <> "MICK"     &
+       and  clmdtl-oma-cd      <> "MICL"     &
+       and  clmdtl-oma-cd      <> "T995"     &
+       and  clmdtl-adj-nbr = 0
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee
+
+;def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+
+subfile drwismer1     keep include           &
+clmdtl-id             of f002-claims-mstr,&
+x-clmdtl-fee-ohip-1                      ,&
+clmdtl-sv-date                           ,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+wismer_1                                  
+
+subfile drwismer1 alias drwismer_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+x-clmdtl-fee-ohip-2                      ,&
+x-sv-date-2                              ,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+wismer_1
+
+subfile drwismer1 alias drwismer_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+x-clmdtl-fee-ohip-3                      ,&
+x-sv-date-3                              ,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+wismer_1                                  
+
+subfile drwismer1 alias drwismer_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+x-clmdtl-fee-ohip-4                      ,&
+x-sv-date-4                              ,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+wismer_1                                  
+
+
+request summarize_claims		&
+ 	on edit        errors report    &
+        on calculation errors report
+
+access *drwismer1  
+
+def x-doc-nbr char*3 = key-clm-batch-nbr[3:3]
+
+sort on clmdtl-sv-date  on key-clm-batch-nbr on key-clm-claim-nbr
+
+; summarize billing amount by sv date 
+temp billing-amt    zoned*7 signed
+item billing-amt  = billing-amt + x-clmdtl-fee-ohip-1          	&
+                    reset at  clmdtl-sv-date 
+
+temp claim-count    zoned*3 unsigned
+item claim-count  = claim-count + 1 at key-clm-claim-nbr	&
+		    reset at  clmdtl-sv-date
+
+def  avg-billing zoned*7 signed = billing-amt / claim-count
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+def comma cha*1 = "~"
+def x-zoned-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-zoned-cr)
+
+subfile wismer_doc portable at clmdtl-sv-date  keep   include    &
+clmdtl-sv-date                                        ,&
+comma                                                 ,&
+billing-amt                                           ,&
+comma                                                 ,&
+claim-count                                           ,&
+comma                                                 ,&
+avg-billing                                           ,&
+x-cr
+
+build$obj/drwismer

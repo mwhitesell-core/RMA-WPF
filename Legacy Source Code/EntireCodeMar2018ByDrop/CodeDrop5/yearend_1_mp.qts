@@ -1,0 +1,283 @@
+cancel clear
+set verify errors
+;-----------------------------------------------------------------------
+;/T/ YEAREND PURGE PART 1
+;
+;/A/ 
+;
+;/P/ Dyad Systems Inc.
+;
+;/Q/ QTP
+;
+;/M/ Modification History
+;/M/ --------------------
+;/M/ Date	Programmer	Description
+;/M/
+;/M/ 950627	B. LANGENDOCK	Creation
+;/M/ 951106     M. CHAN		- NO LONGER NEEDED TO MOVE TO F020 &
+;/M/				  F119 HISTORY FILES, THESE SHOULD BE
+;/M/				  DONE AT MONTHEND
+;/M/ 970711	M. CHAN		- MODIFY REQUEST SETUP_F113_NEXT_YEAR
+;/M/				  TO INCLUDE CHOOSE, SORTED STMT AND
+;/M/				  ADD AT COMP-CODE WITH ON ERRORS REPORT
+;/M/				  CHANGE EP-NBR-TO TO SET 13TH MONTH
+;/M/ 1999/May/16 S.B.		- Y2K checked.
+;/M/ 2003/dec/24 A.A.		- alpha doctor nbr
+;/M/ 2006/may/23 M.C.     	- modify  REQUEST SETUP_F113_NEXT_YEAR
+;/M/				  TO change ep-nbr-to to set 1 year ahead
+;/M/ 2011/Jun/22 MC1      	- create records for next year  into f112 or f113 only if
+;/M/				  doctors terminated < 3 years or still active
+;/M/ 2012/Jun/19 MC2      	- add 'set lock record update' and 'on calculation/edit erros report'
+;/M/ 2016/Jul/12 MC3            - do not roll over for comp code CANCEL, BILL, MANPY, CPPDED, EXEHON, KEYHRS          
+;                                 in f113 as Helena requested
+;
+;-----------------------------------------------------------------------
+;/D/                       TRADE SECRET NOTICE
+;/D/
+;/D/  The techniques, algorithms, and processes contained herein, or
+;/D/  any modification, extraction, or extrapolation thereof, are the
+;/D/  proprietary property and trade secrets of Dyad Systems Inc.
+;/D/  and except as provided for by a License Agreement, shall not be
+;/D/  duplicated, used, or disclosed for any purpose, in whole or part
+;/D/  without the express written permission of Dyad Systems Inc.
+;-----------------------------------------------------------------------
+run yearend_1
+
+  set process nolimit
+  set lock record update
+
+  global temp t-current-ep-nbr		zoned unsigned
+  global temp t-current-ep-nbr-minus1	zoned unsigned
+  global temp t-next-yr-yy		zoned unsigned
+  global temp t-next-yr-first-ep-nbr	zoned unsigned
+
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+request get-const-ep-nbr on calculation errors report on edit errors report
+
+access constants-mstr-rec-6
+
+choose const-rec-nbr 6
+
+item t-current-ep-nbr		= current-ep-nbr	
+item t-current-ep-nbr-minus1	= (current-ep-nbr - 1)	
+item t-next-yr-yy		= (floor(current-ep-nbr / 100) + 1)
+item t-next-yr-first-ep-nbr	= (t-next-yr-yy * 100) + 1
+;-----------------------------------------------------------------------
+request move_f110_to_history on calculation errors report on edit errors report
+
+access f110-compensation
+
+output f110-compensation-history 					&
+	add
+
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+request setup_f113_next_year on calculation errors report on edit errors report
+
+access f113-default-comp						&
+	link comp-code			of f113-default-comp		&
+	  to comp-code			of f190-comp-codes		&
+; 2011/06/22 - MC1 - include f020 for checking
+	link doc-nbr							&
+	 to  doc-nbr 			of f020-doctor-mstr 		&
+; 2011/06/22 - end
+	link doc-nbr			of f113-default-comp,		&
+	     t-next-yr-first-ep-nbr,					&
+	     comp-code			of f113-default-comp		&
+	  to doc-nbr,							&
+	     ep-nbr-from,						&
+	     comp-code			of f113-default-comp		&
+					alias f113-next-yr opt
+
+choose doc-nbr, ep-nbr-from, comp-code
+select if 	ep-nbr-to of f113-default-comp = t-current-ep-nbr	&
+	     or	ep-nbr-to of f113-default-comp = t-current-ep-nbr-minus1 &
+; MC3
+        and (     comp-code <> 'CANCEL'                                 &
+              and comp-code <> 'BILL'                                   &
+              and comp-code <> 'MANPY'                                  &
+              and comp-code <> 'CPPDED'                                 &
+              and comp-code <> 'EXEHON'                                 &
+              and comp-code <> 'KEYHRS' )
+; MC3 - end
+
+
+; 2011/06/22 - MC1 - check if doctor is terminated more than 2 years (730 days)
+def terminated-days zoned*5 unsigned = 					&
+         days(sysdate) - days(doc-date-fac-term)			&
+	if    doc-date-fac-term <> 0  					
+; 2011/06/22 - end 
+
+sorted on doc-nbr on ep-nbr-from on comp-code
+
+output f113-default-comp 						&
+	alias f113-add							&
+	add at comp-code						&
+; 2011/06/22 - MC1
+;	if not record f113-next-yr exists on errors report
+	if    not record f113-next-yr exists  				&
+	  and terminated-days <= 730   on errors report
+; 2011/06/22 - end
+  item doc-nbr		of f113-add = doc-nbr		of f113-default-comp
+  item ep-nbr-from	of f113-add = t-next-yr-first-ep-nbr
+  ;ITEM EP-NBR-TO	OF F113-ADD = (EP-NBR-TO OF F113-DEFAULT-COMP + 100)
+; 2006/05/23 - MC -reinstate the change above
+;  item ep-nbr-to	of f113-add = t-next-yr-first-ep-nbr + 12
+  ITEM EP-NBR-TO	OF F113-ADD = (EP-NBR-TO OF F113-DEFAULT-COMP + 100)
+; 2006/05/23 - end
+  item ep-nbr-entry	of f113-add = t-current-ep-nbr
+  item comp-code	of f113-add = comp-code		of f113-default-comp
+  item factor		of f113-add = factor		of f113-default-comp
+  item factor-override	of f113-add = factor-override	of f113-default-comp
+  item comp-units	of f113-add = comp-units	of f113-default-comp
+  item amt-gross	of f113-add = amt-gross		of f113-default-comp
+  item amt-net		of f113-add = amt-net		of f113-default-comp
+  item last-mod-date	of f113-add = sysdate
+  item last-mod-time	of f113-add = systime / 10000
+  item last-mod-user-id	of f113-add = "Comp.YrEndRoll"
+
+;-----------------------------------------------------------------------
+request split_f113_year_into_subfiles on calculation errors report on edit errors report
+
+access f113-default-comp	
+
+  temp t-ep-nbr-from-yy		zoned unsigned
+  item t-ep-nbr-from-yy		= floor(ep-nbr-from of f113-default-comp / 100)
+
+subfile f113_yearend_old					&
+	keep							&
+	if t-ep-nbr-from-yy lt t-next-yr-yy			&
+	include							&
+		f113-default-comp
+
+subfile f113_yearend_new					&
+	keep							&
+	if t-ep-nbr-from-yy ge t-next-yr-yy			&
+	include							&
+		f113-default-comp
+
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+request reset_f020_values     on calculation errors report on edit errors report
+
+access f020-doctor-mstr
+
+output f020-doctor-mstr 						&
+	update								&
+	alias f020-update
+  item doc-yrly-ceiling-computed of f020-update		final 0
+  item doc-yrly-expense-computed of f020-update		final 0
+  item doc-ytdgua		of f020-update		final 0
+  item doc-ytdgub		of f020-update		final 0
+  item doc-ytdguc		of f020-update		final 0
+  item doc-ytdguc		of f020-update		final 0
+  item doc-ytdcea		of f020-update		final 0
+  item doc-ytdcex		of f020-update		final 0
+  item doc-ytdear		of f020-update		final 0
+  item doc-ytdinc		of f020-update		final 0
+  item doc-ytdeft		of f020-update		final 0
+  item doc-totinc-g		of f020-update		final 0
+  item doc-ytdinc-g		of f020-update		final 0
+  item doc-totinc		of f020-update		final 0
+  item doc-adjcea		of f020-update		final 0
+  item doc-adjcex		of f020-update		final 0
+  item doc-ceicea		of f020-update		final 0
+  item doc-ceicex		of f020-update		final 0
+  item doc-payeft		of f020-update		final 0
+  item ceicea-prt-format	of f020-update		final " "
+  item ceicex-prt-format	of f020-update		final " "
+  item ytdcea-prt-format	of f020-update		final " "
+  item ytdcex-prt-format	of f020-update		final " "
+  item doc-ep-date-deposit	of f020-update		final 0
+  item doc-ep-ped		of f020-update		final 0
+
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+request setup_f112_next_year on calculation errors report on edit errors report
+
+access f112-pycdceilings						&
+	link doc-nbr			of f112-pycdceilings		&
+	  to doc-nbr			of f020-doctor-mstr		&
+	link doc-nbr			of f112-pycdceilings,		&
+	     t-next-yr-first-ep-nbr					&
+	  to doc-nbr,							&
+	     ep-nbr			of f112-pycdceilings		&
+					alias f112-next-yr opt
+
+select f112-pycdceilings 						&
+	if 	ep-nbr of f112-pycdceilings = t-current-ep-nbr	
+
+define d-next-pay-code		character size 1	= "1"		&
+	if 	doc-pay-code		of f112-pycdceilings = "4"	&
+	    and doc-pay-sub-code	of f112-pycdceilings = "A"	&
+	else	doc-pay-code		of f112-pycdceilings
+
+; 2011/06/22 - MC1 - check if doctor is terminated more than 2 years (730 days)
+def terminated-days zoned*5 unsigned = 					&
+         days(sysdate) - days(doc-date-fac-term)			&
+	if    doc-date-fac-term <> 0  					
+; 2011/06/22 - end 
+
+
+output f112-pycdceilings 						&
+	add								&
+	alias f112-add							&
+	if not record f112-next-yr exists				&
+; 2011/06/22 - MC1
+	  and terminated-days <= 730  on errors report
+; 2011/06/22 - end
+  item doc-nbr		of f112-add = doc-nbr		of f112-pycdceilings
+  item ep-nbr		of f112-add = t-next-yr-first-ep-nbr
+  item doc-pay-code	of f112-add = d-next-pay-code
+  item doc-pay-sub-code	of f112-add = doc-pay-sub-code	of f112-pycdceilings
+  item factor		of f112-add = factor		of f112-pycdceilings
+  item retro-to-ep-nbr	of f112-add = 0
+  item doc-yrly-ceiling	of f112-add = doc-yrly-ceiling	of f112-pycdceilings
+  item doc-yrly-ceiling-adjusted	of f112-add = 0
+  item doc-yrly-ceiling-computed	of f112-add 		&
+				    = doc-yrly-ceiling	of f112-pycdceilings
+  item doc-yrly-expense	of f112-add = 0
+  item doc-yrly-expense-adjusted	of f112-add = 0
+  item doc-yrly-expense-computed	of f112-add = 0
+  item doc-yrly-expn-alloc-pers		of f112-add = 0
+  item doc-yrly-ceil-guar		of f112-add = 0
+  item doc-yrly-ceiling-guar-perc	of f112-add = 0
+  item doc-rma-expense-percent-reg	of f112-add = 0
+  item doc-rma-expense-percent-misc	of f112-add = 0
+  item doc-dept-expense-percent-reg	of f112-add = 0
+  item doc-dept-expense-percent-misc	of f112-add = 0
+  item last-mod-date			of f112-add = sysdate
+  item last-mod-time			of f112-add = systime / 10000
+  item last-mod-user-id			of f112-add = "Comp.YrEndRoll"
+
+output f020-doctor-mstr 						&
+	update								&
+	alias f020-update
+  item doc-yrly-ceiling-computed of f020-update 			&
+		= 100 * doc-yrly-ceiling of f112-pycdceilings
+
+
+;-----------------------------------------------------------------------
+request split_f112_year_into_subfilesi on calculation errors report on edit errors report
+
+access f112-pycdceilings	
+
+  temp t-ep-nbr-yy		zoned unsigned
+  item t-ep-nbr-yy		= floor(ep-nbr of f112-pycdceilings / 100)
+
+subfile f112_yearend_old					&
+	keep							&
+	if t-ep-nbr-yy lt t-next-yr-yy				&
+	include							&
+		f112-pycdceilings
+
+subfile f112_yearend_new					&
+	keep							&
+	if t-ep-nbr-yy ge t-next-yr-yy				&
+	include							&
+		f112-pycdceilings
+
+;-----------------------------------------------------------------------
+build $pb_obj/yearend_1
+  

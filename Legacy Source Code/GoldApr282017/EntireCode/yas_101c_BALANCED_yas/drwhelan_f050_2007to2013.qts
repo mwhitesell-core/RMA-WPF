@@ -1,0 +1,43 @@
+;for Dr. Whelan 03-G30 clinic 33  report dollar amount by month since Jan 2007 to December 2012 
+; 2 columns mtd and ytd amounts  DO NOT include payments just ohip billilngs
+;    Jan 2007 is EP 200607
+;    Dec 2012 is EP 201206
+
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-code  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+choose ep-yr 2006 to 2012, iconst-date-period-end 20060701 to 20131231, docrev-key '3303G30@'
+
+select if docrev-location <> 'MISC'
+
+sorted on iconst-date-period-end
+
+temp mtd-amt  zoned*9 signed
+item mtd-amt   = mtd-amt  + (docrev-mtd-in-rec +docrev-mtd-out-rec)   &
+                   reset at iconst-date-period-end
+
+temp ytd-amt  zoned*9 signed
+item ytd-amt   = ytd-amt  + (docrev-ytd-in-rec +docrev-ytd-out-rec)   &
+                   reset at iconst-date-period-end
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f050whelan keep at iconst-date-period-end  portable include		&
+docrev-doc-nbr       , &
+comma                , &
+iconst-date-period-end , &
+comma                , &
+mtd-amt              , &
+comma                , &
+ytd-amt              , &
+x-cr                
+
+build $pb_obj/drwhelan_f050_2007to2013
+

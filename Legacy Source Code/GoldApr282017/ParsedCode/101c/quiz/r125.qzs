@@ -1,0 +1,80 @@
+; program: R125.QZS
+; purpose: VERIFY SCREEN 93 HAS REVENUE BUT NOT PAY CODE IN SCREEN 91
+;
+;
+;DATE       BY WHOM      DESCRIPTION
+;95/01/16   yasemin      - original
+;99/Feb/18  S.B.         - Checked for Y2K.
+;00/jul/12  B.E.	 - added "missing" flags to determine which selection
+;			   criteria selected the record for printing
+;03/nov/20 M.C.		 - alpha doc nbr
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r125
+set formfeed
+
+
+access constants-mstr-rec-6                    			     &
+  link current-ep-nbr   viaindex compensation-key2		     &
+  to   ep-nbr   of f110-compensation				     &
+  link (doc-nbr of f110-compensation,				     &
+	current-ep-nbr) viaindex pycdceilings			     &
+  to   doc-nbr,							     &
+       ep-nbr    of f112-pycdceilings   opt 			     &
+  link doc-nbr 							     &
+  to   doc-nbr   of f020-doctor-mstr    opt
+
+select if   doc-pay-code = " "			&
+	 or not record f112-pycdceilings exists	&
+	 or not record f020-doctor-mstr  exists
+
+def flag-missing-pay-code char*1				&
+     = "Y" if doc-pay-code = " "				&
+  else doc-pay-code 
+def flag-missing-f112 char*1					&
+     = "Y" if not record f112-pycdceilings exists		&
+  else " "
+def flag-missing-f020 char*1					&
+     = "Y" if not record f020-doctor-mstr  exists		&
+  else " "
+
+choose const-rec-nbr 6
+
+sort on doc-dept   &
+     on doc-nbr
+
+page heading                                              	&
+	tab 1   "R125"    			          	&
+	tab 7   "EP #" 				          	&
+	tab 12  ep-nbr                                    	&
+        tab 47  "PHYSCIANS WITH REVENUE AND NO PAYCODE"         &
+	tab 105 "RUN DATE:"                               	&
+	tab 114  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 2  tab 40  "------------- Missing ------------"		&
+skip 1  tab 1   "DEPT"                             		&
+        tab 8   "DOC #"                           		&
+        tab 16  "PYCD"                                          &
+        tab 23  "EP #"                                          &
+        tab 30  "COMP CD"                                       &
+	tab 40  "Pay Code"				&
+	tab 55  "f112"					&
+	tab 70  "f020"					&
+skip 2
+
+report                        		              &
+        tab 2   doc-dept fill '0'  print at doc-nbr   &
+; 2003/11/20 - MC - alpha doc nbr
+;        tab 9   doc-nbr fill '0'   print at doc-nbr   &
+        tab 9   doc-nbr             print at doc-nbr   &
+; 2003/11/20 - end
+        tab 17  doc-pay-code       print at doc-nbr   &
+        tab 23  ep-nbr             print at doc-nbr   &
+        tab 30  comp-code				&
+	tab 43  flag-missing-pay-code			&
+	tab 57  flag-missing-f112			&
+	tab 72  flag-missing-f020
+
+build $pb_obj/r125

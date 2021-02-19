@@ -1,0 +1,46 @@
+; 2013/05/15 	MC	- determine the tech/prof amt paid for each doctor witin clinic
+;			- using the final breakdown to calculate MOHD payments for miscellaneous payment in claim
+
+cancel clear
+set process nolimit
+set lock record update 
+
+request extract_dtl   on calculation errors report on edit errors report
+
+access *u030_dtl			&
+	link rat-145-service-cd		&
+	 to fee-oma-cd of f040-oma-fee-mstr
+
+sel if rat-145-service-date >= 20130401
+
+subfile mc_dtl keep include			&
+rat-145-group-nbr, rat-145-doc-nbr, rat-145-service-cd, rat-145-amt-paid,  fee-tech-ind
+
+request create_tmp_records on calculation errors report on edit errors report
+
+access *mc_dtl
+
+def clinic-nbr char*2 = rat-145-group-nbr[1:2]
+
+sort on clinic-nbr on rat-145-doc-nbr     
+
+temp tech-amt zoned*8 signed 
+item tech-amt = tech-amt + rat-145-amt-paid if fee-tech-ind = 'Y' reset at rat-145-doc-nbr
+
+temp prof-amt zoned*8 signed 
+item prof-amt = prof-amt + rat-145-amt-paid if fee-tech-ind <> 'Y' reset at rat-145-doc-nbr
+
+temp tot-paid-amt zoned*8 signed 
+item tot-paid-amt = tot-paid-amt + rat-145-amt-paid  reset at rat-145-doc-nbr
+
+output tmp-doctor-alpha add at rat-145-doc-nbr on errors report
+
+	item doc-ohip-nbr  final rat-145-doc-nbr
+        item doc-nbr final ' '
+        item tmp-alpha-field-1 final clinic-nbr
+ 	item tmp-counter-1 final tech-amt
+	item tmp-counter-2 final prof-amt
+	item tmp-counter-3 final tot-paid-amt
+
+
+build $obj/u030_dtl_tech_prof

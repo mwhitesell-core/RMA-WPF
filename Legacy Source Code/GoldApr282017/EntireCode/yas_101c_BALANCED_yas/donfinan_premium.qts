@@ -1,0 +1,179 @@
+;doc: donfinan_premium.qts
+;doc: report premium revenue and regular rev for each dept 6 physician for 
+;     jul 1 2000 to jun 30 2001.
+
+;For: Don Finan manager obs & gyn
+
+
+;Date           Who             Description
+;2002/03/26     Yasemin         Original
+;2002/03/27 	M.C.		add a new request to capture the total claim amount whenver there is a premium
+;				code in the detail records
+
+
+set lock file update
+set process nolimit
+
+request one on calculation errors report	&
+	    on edit errors report
+
+access f002-claims-mstr
+
+;choose all regular 'C'laim batch type
+choose  key-p-clm-type 'P'
+
+select f002-claims-mstr if                             &
+        (      clmhdr-date-period-end >=  20000701     &
+           and clmhdr-date-period-end <=  20010630)    &
+     and       clmhdr-doc-dept = 6
+
+subfile donfinan keep include		&
+	key-clm-type,			&
+	key-clm-batch-nbr,		&
+	key-clm-claim-nbr
+
+request two on calculation errors report    &
+	    on edit errors report
+
+access  *donfinan link to f002-claims-mstr  
+
+sel if clmdtl-oma-cd <> '0000' and clmdtl-oma-cd <> 'ZZZZ'
+
+
+select f002-claims-mstr if                    &
+               clmdtl-date-period-end >= '20000701'    &
+      and      clmdtl-date-period-end <= '20010630'
+
+def doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[4:3])
+
+sort on doc-nbr
+
+def prem-code char*1 = 'Y'		 &
+	  if  clmdtl-oma-cd = "C989"     &
+          or  clmdtl-oma-cd = "C990"     &
+          or  clmdtl-oma-cd = "C991"     &
+          or  clmdtl-oma-cd = "C992"     &
+          or  clmdtl-oma-cd = "C994"     &
+          or  clmdtl-oma-cd = "C995"     &
+          or  clmdtl-oma-cd = "C996"     &
+          or  clmdtl-oma-cd = "C997"     &
+          or  clmdtl-oma-cd = "C998"     &
+          or  clmdtl-oma-cd = "E400"     &
+          or  clmdtl-oma-cd = "E401"     &
+          or  clmdtl-oma-cd = "E409"     &
+          or  clmdtl-oma-cd = "E410"     &
+          or  clmdtl-oma-cd = "E411"     
+
+
+;july 1,2000 to june 30,2001
+
+temp x-2001-p num*7
+item x-2001-p  = x-2001-p + clmdtl-fee-ohip /100   &
+                 if prem-code = 'Y' reset at doc-nbr
+
+temp x-day-2001-p num*7
+item x-day-2001-p  = x-day-2001-p + 1  	 &
+                     if prem-code = 'Y' reset at doc-nbr
+
+temp x-2001-a num*7
+item x-2001-a  = x-2001-a + clmdtl-fee-ohip /100 reset at doc-nbr
+
+;this item is for when a detail is a premium code, extract the claim total amount from header record
+def x-2001-p-total num*7 = 0
+
+
+subfile donfinan_temp keep if prem-code = 'Y' include	&
+  key-clm-type of f002-claims-mstr,		&
+  key-clm-batch-nbr of f002-claims-mstr,	&
+  key-clm-claim-nbr of f002-claims-mstr,	&
+  doc-nbr
+
+subfile donfinan1 keep at doc-nbr include	&
+doc-nbr,              &
+x-2001-p,             &
+x-day-2001-p,	      &
+x-2001-a,             & 
+x-2001-p-total
+
+
+request three on calculation errors report    &
+	    on edit errors report
+
+
+access *donfinan_temp 			&
+  link 'B', key-clm-batch-nbr,		&
+	key-clm-claim-nbr, '00000','0'  &
+   to  key-clm-type, key-clm-batch-nbr, &
+       key-clm-claim-nbr, key-clm-serv-code, &
+	key-clm-adj-nbr of f002-claims-mstr
+
+sort on doc-nbr on key-clm-batch-nbr on key-clm-claim-nbr
+
+def  x-2001-p num*7 = 0
+
+def  x-day-2001-p num*7 = 0
+
+def  x-2001-a num*7 = 0
+
+;this item is for when a detail is a premium code, extract the claim total amount from header record
+temp x-2001-p-total num*7
+item x-2001-p-total = x-2001-p-total + clmhdr-tot-claim-ar-ohip / 100 at key-clm-claim-nbr	&
+		reset at doc-nbr
+
+subfile donfinan1 keep append at doc-nbr include	&
+doc-nbr,              &
+x-2001-p,             &
+x-day-2001-p,	      &
+x-2001-a,             & 
+x-2001-p-total
+
+
+request four  on calculation errors report    &
+	    on edit errors report
+
+access  *donfinan1			   & 
+  link  doc-nbr to  doc-nbr of f020-doctor-mstr opt
+
+sort on doc-nbr
+
+def x-comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+;july 1,2000 to june 30,2001
+
+temp t-2001-p num*7
+item t-2001-p  = t-2001-p + x-2001-p               &
+                reset at doc-nbr
+
+temp day-2001-p num*7
+item day-2001-p  = day-2001-p + x-day-2001-p	&
+                     reset at doc-nbr
+
+temp t-2001-a num*7
+item t-2001-a  = t-2001-a + x-2001-a   reset at doc-nbr
+
+temp t-2001-p-total num*7
+item t-2001-p-total  = t-2001-p-total + x-2001-p-total   reset at doc-nbr
+
+subfile donfinan2 portable keep at doc-nbr  include &
+doc-nbr of donfinan1, &
+x-comma,              &
+doc-name,             &
+x-comma,              &
+doc-inits,            &
+x-comma,              &
+t-2001-p,             &
+x-comma,              &
+day-2001-p,	      &
+x-comma,	      &
+t-2001-a,             & 
+x-comma,	      &
+t-2001-p-total,        & 
+x-cr         
+
+build $pb_obj/donfinan_premium
+
+
+
+

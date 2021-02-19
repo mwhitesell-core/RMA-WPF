@@ -1,0 +1,89 @@
+; PROGRAM: R121C.QZS
+;      REPORT MTD AND YTD FIGURES GRAND TOTALS
+
+; DATE      WHO       MODIFICATION
+; 94/09/01  B.M.L.    ORIGINAL
+; 95/01/09  YASEMIN   CHANGE SORT ORDER TO MATCH R119A.QZS
+; 98/01/29  J. CHAU   COMMENT OUT SET NOCLOSE
+; 03/02/03  yas       select if dept-company = 1
+; 09/01/21  M.C.      include f123-company-mstr in the access statement, and use company-name instead of sysname
+; 14/may/14 MC1       link to f112 to not select pay code 7
+
+cancel clear
+set default
+set noblanks
+set report nolimit
+set report dev disc name r121c
+set page width 132 length 63
+set formfeed
+;jc set noclose
+
+access f020-doctor-mstr                   	           	&
+  link doc-nbr to doc-nbr of f119-doctor-ytd opt                &
+  link comp-code to f190-comp-codes                    opt      &
+  link doc-dept to dept-nbr of f070-dept-mstr          opt      &
+; 2009/01/21 - MC 
+  link dept-company to company-nbr of f123-company-mstr opt	&
+; 2009/01/21 - end
+  link (6) to const-rec-nbr of constants-mstr-rec-6    opt	&
+; MC1
+  link  current-ep-nbr,                                         &
+        doc-nbr of f119-doctor-ytd                              &
+   to   ep-nbr ,                                                &
+        doc-nbr of f112-pycdceilings
+; MC1 - end
+
+
+select if dept-company = 1
+
+;MC1
+and sel if doc-pay-code of f112-pycdceilings <> '7'
+
+;DEF X-KEY1 CHA*11 = COMP-TYPE + COMP-CODE
+ def x-key1 cha*9  = comp-code-group + ascii(reporting-seq,2) + comp-code
+
+sort on x-key1
+
+;;DEFINE W-DOC-NAME CHAR*20 =  "DR. " + DOC-INITS + " "		    &
+;;                         + DOC-NAME				    &
+;;                               IF RECORD F020-DOCTOR-MSTR EXISTS  &
+;;			       ELSE "UNKNOWN!"
+
+page heading							&
+  tab  1 "R121"							&
+  tab  7 "RUN DATE:"						&
+;y2k
+  tab 17  sysdate						&
+; 2009/01/21 - MC
+; tab 47  sysname						&
+  tab 47  company-name	 					&
+; 2009/01/21 - end
+  tab 121 "PAGE:"						&
+  tab 127 syspage						&
+skip 1								&
+  tab 49  "EARNINGS REGISTER MTD & YTD TOTALS"                  &
+skip 1								&
+  tab 53  "For Earnings Period: "				&
+  tab 74  current-ep-nbr   					&
+skip 2                                                          &
+        tab  1  "********** GRAND TOTALS **********"            &
+        tab  52 "COMPENSATION DESCRIPTION"                      &
+        tab 103 "MTD"                                           &
+        tab 118 "YTD"                                           &
+skip 2
+
+footing at x-key1                                                     &
+        tab  50 comp-type                                             &
+        tab  52 comp-code of f119-doctor-ytd                          &
+        tab  59 "-"                                                   &
+        tab  60 desc-short                                            &
+        tab  93 amt-mtd   of f119-doctor-ytd                          &
+                  subtotal pic "^^,^^^,^^^.^^"                        &
+        tab 108 amt-ytd   of f119-doctor-ytd                          &
+                  subtotal pic "^^,^^^,^^^.^^"                        &
+skip 1
+
+build $pb_obj/r121c
+
+
+  

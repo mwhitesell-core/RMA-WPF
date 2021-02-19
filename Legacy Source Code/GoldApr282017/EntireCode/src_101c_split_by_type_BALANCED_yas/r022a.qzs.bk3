@@ -1,0 +1,607 @@
+;#> PROGRAM-ID.     R022A.QZS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SELECT CLAIMS FOR RE-SUBMIT
+;		       IF CHANGES REQUIRED FOR HOSPITAL CODES, MAKE
+;		       SURE TO CHANGE IN HOSPITAL_CODE.DEF
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/MAR/04 D.B.         - ORIGINAL (SMS 138)
+;     91/APR/29 M.C.	     - SMS 138 (ENHANCEMENT)
+;			     - DO NOT RESUBMIT THE CLAIMS WITH "H"OLD
+;			       STATUS
+;     91/MAY/01 M.C.	     - ADD EXTRA PASS TO EXTRACT ALL CLAIMS
+;			       WITH MANUAL REVIEW "ON"
+;     91/AUG/22 M.C.	     - PDR 514
+;			     - CORRECT LOGIC TO PICK UP DATA FROM F002
+;			       BUT NOT F001
+;     91/OCT/09 M.C.	     - PDR 527 - OPTIMIZATION SIMILIAR TO U020
+;     93/MAR/18	M.C.	     - SMS 140 - INCLUDE MOH-FLAG AND DOLLAR-
+;			       FLAG IN PASS R022A4
+;     93/JUL/29 M.C.	     - PDR 580 - IF THERE IS CASH DATE, DO NOT
+;					 RESUBMIT CLAIM
+;     93/NOV/08 M.C.	     - RESUBMIT ONLY AGENT 0 OR 2 CLAIMS
+;
+;     95/JAN/12 YASEMIN      - HARD CODE "AA03" FOR CL81 FOR RU022MR
+;                            - SLECT ON MOH-FLAG = "Y" INSTEAD OF AGENT
+;
+;     97/MAR/12 YASEMIN      - HARD CODE "AA21" FOR NEW CLINIC 8200
+;
+;     97/JUN/12 K.M.	     - ADDED A LINK TO F020-DOCTOR-MSTR TO
+;                              DETERMINE A "TRANSLATED" GROUP NUMBER
+;			       (CHAR*4) FOR LATER USE IN SORTING AND
+;			       REPORTING IN THERU022MR MANUAL REVIEW
+;		               REPORT
+;
+;     97/AUG/18 M.C.	     - SORT ON TRANSLATED-GROUP-NBR ON
+;                              CLMHDR-CLAIM-ID
+;     98/Aug/18 B.E.         - page length changed from 63 to 66 lines
+;			     - test for "description" records changed
+;                              to test only the first 4 characters for
+;                              "ZZZZ" rather than entire field since
+;                              description recs are now "ZZZZ1", "ZZZZ2",etc.
+;   1999/Jun/03 S.B.	     - Changed the call for def_group_nbr.use 
+;			       and hospital_code.def to
+;			       call from $use instead of src.
+; 99/jul/22 B.E.   - clmhdr-hosp field no longer contains actual hospital code.
+;                    if this field contains "Y" then use clmhdr-loc to access
+;                    location master to obtain correct hospital code.
+;                  - also pickup new moh location code from the f030 file
+; 99/aug/25 B.E.        - calculation of hospital nbr now based solely on
+;                         existance of location code and not patient i/o ind.
+; 99/nov/17 M.C.        - include w-moh-location-code in subfiles u022a1/2/3
+; 00/apr/10 B.E.	- claims were being re-submitted that shouldn't have
+;			  been re-submitted. New SELECT statement logic to 
+;			  clarify when to resubmit.
+; 00/apr/26 B.E.        - change resubmit logic to use clmhdr-date-submit 
+;                         rather than entry date to test for resubmission.
+;                       - added audit subfile to keep values upon which 
+;                         resubmission decision is made so that later checking
+;                         can be done 
+; 00/may/02 B.A.	- Added an audit subfile to r022a1 which holds the 
+;			  values of the fields with the select statement
+; 00/may/03 B.E.	- added selection criterial for forcing resubmit
+;			  if "X" found in 'clmhdr-tape-submit-ind'
+
+can clear
+set default
+set report nolimit
+
+; (99/aug/25 B.E. added link to pickup hospital code)
+access f002-claims-mstr                                        &
+  link (floor(key-clm-batch-nbr / 10000000), clmhdr-agent-cd)    &
+   to  clinic-nbr, agent-cd of contract-dtl    			 &
+  link (nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9)[4:3]))&
+   to doc-nbr of f020-doctor-mstr       &
+        link clmhdr-loc                                                 &
+        to   loc-nbr    of f030-locations-mstr opt
+
+use $use/def_group_nbr.use 		nolist nodetail
+
+def w-date-from date = parm prompt "ENTER DATE FROM (YYYYMMDD) "
+def w-date-to   date = parm prompt "ENTER DATE TO   (YYYYMMDD) "
+
+choose key-clm-type "B"
+
+def balance-due num 	 			&
+     =  clmhdr-tot-claim-ar-ohip		&
+      - clmhdr-manual-and-tape-payments		&
+	if clmhdr-adj-oma-cd = "0000"		& ; perform calc only for 
+  else 0					  ; claim header recs	
+
+; (if two rats have been processed since claim entered, then resubmit -
+;  if the claim was entered before the 18th cut off, then the 2nd rat
+;  that could contain payment is found within 75 day, however claims entered
+;  on or after the 18th have to wait for the 3rd tape to be processed
+;  ie. up to 90 days after entry)
+;
+; --entry mth-|--1st mth----|---2nd mth---|--3rd mth----|
+; 1   18   30 | 1   18   30 | 1   18   30 | 1   18   30 |
+; --x-           1st          2nd			(claim entry vs rat)
+;     ---x---                 1st           2nd		(claim entry vs rat)
+;
+
+def w-days-since-entry num  			&
+     =  days(sysdate)				&
+      - days(nconvert(clmhdr-date-sys))		&
+	if clmhdr-adj-oma-cd = "0000"		& ; perform calc only for 
+  else 0					  ; claim header recs	
+
+def two-rats-processed char*1			&
+     = "Y" if    clmhdr-date-sys[7:2] <= "18"	&
+	     and w-days-since-entry   >= 75	&
+  else "Y" if    clmhdr-date-sys[7:2] >  "18"	&
+	     and w-days-since-entry   >= 90	&
+  else "N"
+
+; SELECT FOR RE-SUBMISSION - 
+; IF         (unpaid claim header rec going to OHIP)			&
+;    AND     (not alternative payment group (ie. I2 'zero' payment)	&
+;    AND     (no cash date found ie. not previously paid)		&
+;    AND     (claim is not fully paid)					&
+; AND EITHER								&
+;	   (an unheld claim with 2 rats processed)			&
+;       OR (someone has manually requested resubmit)			&
+
+select if  (      ( 							&
+                      clmhdr-batch-type = "C"				&
+	          and clmhdr-adj-oma-cd = "0000"			&
+	          and moh-flag = "Y"                     		&
+ 	          and  (   clmhdr-date-cash-tape-payment = " " 		&
+	                or clmhdr-date-cash-tape-payment = "00000000"	&
+	               )						&
+	          and balance-due > 0					&
+	          and clmhdr-status-ohip <> "I2"			&
+	         )							&
+	     and (							&
+	            (							&
+	                 two-rats-processed = "Y"			&
+                     and clmhdr-tape-submit-ind <> "H"			&
+                     and clmhdr-tape-submit-ind <> "C"			&
+		    )							&
+                  or  clmhdr-tape-submit-ind = "R"			&	
+	         )							&
+            )								&
+	 or (    clmhdr-tape-submit-ind = "X"				&
+	     and clmhdr-date-sys >  "20000222" 				&
+	     and clmhdr-date-sys <= "20000417" 				&
+	    )	
+
+
+; 99/jul/22 B.E.
+def w-moh-location-code char*4                          &
+    = "    "                                            &
+           if not record f030-locations-mstr exists     &
+ else ascii(loc-ministry-loc-code,4)
+
+; Location now used to determine if hospital nbr is needed
+; regardless of patient's in/out indicator!!!
+; (hospital blank unless 'I'n patient and location code found
+;  that can be used to obtain hospital nbr)
+def w-clmhdr-hosp char*4                                        &
+    = "    "                                                    &
+;       if   clmhdr-i-o-pat-ind of f002-claims-mstr <> "I"      &
+;         or not record f030-locations-mstr exists              &
+        if   not record f030-locations-mstr exists              &
+ else ascii(loc-hospital-nbr,4)
+
+set subfile name u022a1  keep
+report summary	&
+  key-clm-type			&
+  key-clm-batch-nbr		&
+  key-clm-claim-nbr		&
+  clmhdr-batch-type		&
+  clmhdr-doc-nbr-ohip		&
+;y2k
+  clmhdr-date-sys		&
+  clmhdr-claim-id		&
+  clmhdr-claim-nbr		&
+  w-clmhdr-hosp			&
+;y2k
+  clmhdr-date-admit		&
+  clmhdr-pat-ohip-id-or-chart	&
+  clmhdr-refer-doc-nbr		&
+  clmhdr-loc			&
+  clmhdr-i-o-pat-ind		&
+  clmhdr-agent-cd		&
+  clmhdr-tot-claim-ar-oma	&
+  clmhdr-tot-claim-ar-ohip	&
+  clmhdr-status-ohip		&
+  clmhdr-doc-dept		&
+  clmhdr-doc-spec-cd		&
+  clmhdr-sub-nbr		&
+  clmhdr-manual-review		&
+  dollar-flag			&
+  moh-flag			&
+;1997/JUN/12 - KEVIN MILES - ADDED THIS FIELD TO SUBFILE
+  translated-group-nbr		&
+; 99/11/17 - MC - include w-moh-location-code
+  w-moh-location-code
+
+;2000/05/02 - B.A. begin
+set subfile name r022a1_audit keep  
+report summary 	key-clm-type			&
+  		key-clm-batch-nbr      		&
+  		key-clm-claim-nbr		&
+		clmhdr-batch-type		&
+		clmhdr-adj-oma-cd		&
+		moh-flag			&
+		clmhdr-date-cash-tape-payment	&
+		balance-due			&
+		clmhdr-tot-claim-ar-ohip	&
+		clmhdr-manual-and-tape-payments &
+		clmhdr-adj-oma-cd		&
+		clmhdr-status-ohip		&
+		two-rats-processed		&
+		clmhdr-date-sys			&
+		w-days-since-entry 		&
+		sysdate				&
+		clmhdr-date-sys			&
+		clmhdr-adj-oma-cd		&
+		clmhdr-tape-submit-ind		&
+		clmhdr-adj-oma-cd
+;2000/05/02 - end
+
+build $pb_obj/r022a1
+;set rep limit 1
+go
+set rep nolim
+
+access *u022a1 						&
+  link ("B",key-clm-batch-nbr, key-clm-claim-nbr) to	&
+  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr	&
+	of f002-claims-mstr
+
+;  SELECT CLMDTL RECORDS
+select f002-claims-mstr if clmhdr-adj-oma-cd[1:4]  <> "0000"	&
+                       and clmhdr-adj-oma-cd[1:4]  <> "ZZZZ"
+
+; 97/08/18 - M.C.
+;SORTED ON CLMHDR-CLAIM-ID
+sort on translated-group-nbr on clmhdr-claim-id
+
+set subfile name u022a2  keep at clmhdr-claim-id
+report summary	&
+  key-clm-type			&
+  key-clm-batch-nbr		&
+  key-clm-claim-nbr		&
+  clmhdr-batch-type		&
+  clmhdr-doc-nbr-ohip		&
+;y2k
+  clmhdr-date-sys		&
+  clmhdr-claim-id		&
+  clmhdr-claim-nbr		&
+  w-clmhdr-hosp			&
+;y2k
+  clmhdr-date-admit		&
+  clmhdr-pat-ohip-id-or-chart	&
+  clmhdr-refer-doc-nbr		&
+  clmhdr-loc			&
+  clmhdr-i-o-pat-ind		&
+  clmhdr-agent-cd		&
+  clmhdr-tot-claim-ar-oma	&
+  clmhdr-tot-claim-ar-ohip	&
+  clmhdr-status-ohip		&
+  clmhdr-sub-nbr		&
+  clmhdr-doc-dept		&
+  clmhdr-doc-spec-cd		&
+  clmhdr-manual-review		&
+  clmdtl-adj-nbr maximum        &
+;y2k
+  clmdtl-sv-date minimum	&
+  moh-flag			&
+  dollar-flag   		&
+;1997/JUN/12 - KEVIN MILES - ADDED THIS FIELD TO SUBFILE
+  translated-group-nbr		&
+; 99/11/17 - MC - include w-moh-location-code
+  w-moh-location-code
+
+build $pb_obj/r022a2
+go
+
+access *u022a2
+
+;  RESELECT THE "REGULAR" CLAIM HEADERS
+
+select if clmdtl-adj-nbr = 0
+
+set subfile name u022a3 keep
+report summary	&
+  key-clm-type			&
+  key-clm-batch-nbr		&
+  key-clm-claim-nbr		&
+  clmhdr-batch-type		&
+  clmhdr-doc-nbr-ohip		&
+;y2k
+  clmhdr-date-sys		&
+  clmhdr-claim-id		&
+  clmhdr-claim-nbr		&
+  w-clmhdr-hosp			&
+;y2k
+  clmhdr-date-admit		&
+  clmhdr-pat-ohip-id-or-chart	&
+  clmhdr-refer-doc-nbr		&
+  clmhdr-loc			&
+  clmhdr-i-o-pat-ind		&
+  clmhdr-agent-cd		&
+  clmhdr-tot-claim-ar-oma	&
+  clmhdr-tot-claim-ar-ohip	&
+  clmhdr-status-ohip		&
+  clmhdr-sub-nbr		&
+  clmhdr-doc-dept		&
+  clmhdr-doc-spec-cd		&
+  clmhdr-manual-review          &
+;y2k
+  clmdtl-sv-date		&
+  moh-flag			&
+  dollar-flag 			&
+;1997/JUN/12 - KEVIN MILES - ADDED THIS FIELD TO SUBFILE
+  translated-group-nbr		&
+; 99/11/17 - MC - include w-moh-location-code
+  w-moh-location-code
+
+build $pb_obj/r022a3
+go
+
+access *u022a3					&
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr &
+  link (floor(key-clm-batch-nbr / 10000000)) to iconst-clinic-nbr-1-2 &
+	of iconst-mstr-rec
+
+define batctrl-batch-nbr zoned*9 unsigned = key-clm-batch-nbr
+define batctrl-batch-type char*1 = clmhdr-batch-type
+define batctrl-clinic-nbr zoned*4 unsigned = nconvert(iconst-clinic-nbr)
+define batctrl-doc-nbr-ohip zoned*6 unsigned = clmhdr-doc-nbr-ohip
+define batctrl-loc char*4 = clmhdr-loc
+define batctrl-agent-cd zoned*1 unsigned = clmhdr-agent-cd
+;y2k
+define batctrl-date-batch-entered char*8 = clmhdr-date-sys
+
+;y2k
+def w-pat-ohip-mmyy char*15	=			&
+;y2k
+	     pat-ohip-mmyy if pat-health-nbr = 0	&
+;y2k
+	 and pat-ohip-mmyy <> " "			&
+	else " "
+
+def w-pat-sex char*1 = "1" if pat-sex = "M"	&
+		else   "2" if pat-sex = "F"
+
+def doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[3:4])
+
+;;;DEF MOH-FLAG CHAR*1 = "Y"
+
+;;;DEF DOLLAR-FLAG CHAR*1 = "Y"
+
+;NOTE if changes made to u020a1 - also change subfile definition in u020a.qts
+set subfile name u020a1 keep
+report summary			&
+  batctrl-batch-nbr		&
+  batctrl-batch-type		&
+  batctrl-clinic-nbr		&
+  batctrl-doc-nbr-ohip		&
+  batctrl-loc			&
+  batctrl-agent-cd		&
+;y2k
+  batctrl-date-batch-entered	&
+  iconst-clinic-nbr-1-2		&
+  iconst-clinic-cycle-nbr	&
+;y2k
+  iconst-date-period-end	&
+  clmhdr-claim-id		&
+  clmhdr-claim-nbr		&
+  w-clmhdr-hosp			&
+; 99/11/17 - MC - include w-moh-location-code
+  w-moh-location-code		&
+;y2k
+  clmhdr-date-admit		&
+  clmhdr-pat-ohip-id-or-chart	&
+  clmhdr-refer-doc-nbr		&
+  clmhdr-loc			&
+  clmhdr-i-o-pat-ind		&
+  clmhdr-agent-cd		&
+  clmhdr-tot-claim-ar-oma	&
+  clmhdr-tot-claim-ar-ohip	&
+  clmhdr-status-ohip		&
+  clmhdr-sub-nbr		&
+  clmhdr-manual-review		&
+  doc-nbr			&
+  clmhdr-doc-dept		&
+  clmhdr-doc-spec-cd		&
+  pat-health-nbr		&
+  pat-version-cd		&
+;y2k
+  w-pat-ohip-mmyy		&
+  pat-chart-nbr			&
+  pat-surname			&
+  pat-given-name		&
+  pat-acronym			&
+;y2k
+  pat-birth-date		&
+  w-pat-sex			&
+  pat-prov-cd			&
+  subscr-addr1			&
+  subscr-addr2			&
+  subscr-addr3			&
+  subscr-postal-cd		&
+  moh-flag			&
+  dollar-flag   		&
+  pat-mess-code			&
+;1997/JUN/12 - KEVIN MILES - ADDED THIS FIELD TO SUBFILE
+  translated-group-nbr
+
+build $pb_obj/r022a4
+set rep limit 1
+go
+set rep nolimit
+
+
+access *u020a1	&
+  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),	&
+             (nconvert(clmhdr-claim-id[10:2])))	&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr	&
+	of f002-claims-mstr
+
+select u020a1 if batctrl-batch-type = "C"			&
+;;	AND (BATCTRL-AGENT-CD = 0 OR BATCTRL-AGENT-CD = 2)	&
+	and moh-flag = "Y"					&
+	and clmhdr-manual-review = "Y"
+
+select f002-claims-mstr if clmhdr-adj-oma-cd[1:4] <> "0000" &
+		       and clmhdr-adj-oma-cd[1:4] <> "ZZZZ"
+
+; 97/08/18 - M.C.
+;SORTED ON CLMHDR-CLAIM-ID
+sort on translated-group-nbr on clmhdr-claim-id
+
+set subfile name u022a4 at clmhdr-claim-id keep
+report summary			&
+  batctrl-doc-nbr-ohip		&
+  batctrl-agent-cd		&
+  batctrl-clinic-nbr		&
+  clmhdr-claim-id		&
+  iconst-clinic-nbr-1-2         &
+  clmhdr-doc-spec-cd		&
+  pat-health-nbr		&
+;y2k
+  w-pat-ohip-mmyy		&
+  pat-prov-cd			&
+;y2k
+  clmdtl-sv-date		&
+  moh-flag			&
+  dollar-flag                   &
+; kevin miles 1997/Jun/30
+  translated-group-nbr
+
+
+build $pb_obj/r022a5
+set rep limit 1
+go
+set rep nolimit
+
+access *u020a1
+
+set rep dev disc name ru022
+set page length 63 width 132
+;set page length 66 width 132
+set formfeed
+
+;CHANGED THE SORTING AS PER REQUEST (PDR #663)
+;SORTED ON ICONST-CLINIC-NBR-1-2
+sort on translated-group-nbr
+
+page heading	&
+  tab   1 "RU022"		&
+  tab  18 "P.E.D."		&
+;y2k
+  tab  25 iconst-date-period-end pic "^^^^/^^/^^"	&
+  tab  50 "RESUBMIT TAPE SUMMARY"	&
+  tab  99 "RUN DATE"		&
+;y2k
+  tab 108 sysdate		&
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 2	&
+  tab  10 "CLINIC"		&
+  tab  25 "OMA AMOUNT"		&
+  tab  40 "OHIP AMOUNT"		&
+  tab  57 "NBR"			&
+skip 2
+
+;1997/JUN/12 - KEVIN MILES - SEE MODIFICATION HISTORY. CHANGED TAB
+; 13 TO TAB 11 SINCE TRANSLATED-GROUP-NBR IS OF LENGTH 4, NOT 2
+;
+;FOOTING AT ICONST-CLINIC-NBR-1-2		&
+;  TAB  13 ICONST-CLINIC-NBR-1-2                 &
+footing at translated-group-nbr			&
+  tab  11 translated-group-nbr			&
+  tab  25 clmhdr-tot-claim-ar-oma subtotal  pic "^,^^^,^^^.^^" &
+  tab  40 clmhdr-tot-claim-ar-ohip subtotal pic "^,^^^,^^^.^^" &
+  tab  54 count
+
+build $pb_obj/r022a6
+set rep limit 1
+go
+
+cancel clear
+
+set default
+set rep nolimit
+set rep device disc name ru022mr
+;set page length 63
+set page length 66
+set page width  80
+set formfeed
+set nohead
+
+access *u022a4	&
+  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),	&
+;             (nconvert(clmhdr-claim-id[10:2])), "ZZZZ0")	&
+;  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+;             key-clm-serv-code					&
+             (nconvert(clmhdr-claim-id[10:2])))			&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr		&
+	of f002-claims-mstr opt
+select if key-clm-serv-code[1:4] = "ZZZZ"
+
+
+;1997/JUN/12 - KEVIN MILES
+;DEF W-GROUP-NBR CHAR*4 = "AA03" IF ICONST-CLINIC-NBR-1-2 = 81	&
+;                    ELSE "AA21" IF ICONST-CLINIC-NBR-1-2 = 82   &
+;                    ELSE  ASCII(BATCTRL-CLINIC-NBR,4)
+
+def w-health-nbr char*12 =	&
+	ascii(pat-health-nbr,10) if pat-health-nbr <> 0	&
+;y2k
+	else w-pat-ohip-mmyy
+
+def w-clmhdr-claim-id char*8 = clmhdr-claim-id[4:8]
+
+def w-wcb char*1 = "Y" if batctrl-agent-cd = 2
+
+def w-clmdtl-desc char*22 = clmdtl-desc	&
+	if clmhdr-adj-oma-cd[1:4] = "ZZZZ"
+
+sorted on clmhdr-claim-id
+
+heading at clmhdr-claim-id	&
+skip page			&
+tab  1 " "			&
+skip 10			&
+  tab 30 "MANUAL REVIEW REPORT"	&
+skip 1				&
+  tab 30 "--------------------"	&
+skip 5				&
+  tab 20 "DATE SUBMITTED:"	&
+;y2k
+  tab 36 sysdate		&
+skip 3				&
+  tab 20 "HNUMBER:"		&
+  tab 35 "CLINIC #:"		&
+  tab 50 "PROVIDER #:"		&
+  tab 65 "SPEC CD"		&
+skip 1				&
+  tab 20 "--------"		&
+  tab 35 "---------"		&
+  tab 50 "-----------"		&
+  tab 65 "-------"		&
+skip 1				&
+  tab 20 w-health-nbr pic "^^^^^^^^^^"	&
+  ;TAB 37 W-GROUP-NBR        PIC "^^^^"	&
+  tab 37 translated-group-nbr pic "^^^^" &
+  tab 52 batctrl-doc-nbr-ohip pic "^^^^^^"	&
+  tab 67 clmhdr-doc-spec-cd	&
+skip 3				&
+  tab 20 "ACCOUNTING #:"	&
+  tab 50 "PROV"			&
+  tab 65 "W C B"		&
+skip 1				&
+  tab 20 "--------------"	&
+  tab 50 "----"			&
+  tab 65 "-----"		&
+skip 1				&
+  tab 20 w-clmhdr-claim-id pic "^^^^^^^^"	&
+  tab 51 pat-prov-cd		&
+  tab 67 w-wcb			&
+skip 3				&
+  tab 20 "ATTACHMENTS"		&
+  tab 45 "SERVICE DATE:"	&
+;y2k
+  tab 60 clmdtl-sv-date pic "^^^^/^^/^^"	&
+skip 1				&
+  tab 60 "----------"		&
+skip 3				&
+  tab 25 "( ) OP REPORT"	&
+  tab 55 "( ) OTHER"		&
+skip 3				&
+  tab 20 "DESCRIPTION:"
+
+report	&
+  tab 36 w-clmdtl-desc
+
+build $pb_obj/r022a7
+
+

@@ -1,0 +1,101 @@
+; Program: costing5.qts
+; Purpose: - creates files for costing the MANUAL REJECTION Charges
+;                                (RAT rejections processed in costing2.qts)
+;
+;
+;DATE       BY WHOM      DESCRIPTION
+;99/03/28   YASEMIN      ORIGINAL
+;02/07/30   M.C.	- increase the record count for manual rejection by patient by ohip-err-code
+
+;
+
+cancel clear
+
+run costing5
+
+set default
+set process nolimit
+set lock file update
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+request costing5_1     &
+        on calculation errors report    &
+        on edit errors report
+
+; (select 'non-rma' caused manual rejections within analysis period)
+access manual-rejected-claims-hist                       &
+  link clmhdr-doc-nbr                                    &
+  to   doc-nbr of f020-doctor-mstr			 &
+  link ohip-err-code 					 &
+  to   f093-ohip-error-msg-mstr opt			 &
+;2002/07/30 - MC - add to link to f002 hdr
+  link 'B', clmhdr-batch-nbr, clmhdr-claim-nbr, '00000', '0'                & 
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, &
+       key-clm-adj-nbr  of f002-claims-mstr  opt
+; 2002/07/30 - end
+
+
+;(select rejections whose PED is within the period 'start of fiscal period'
+;  and  the 'current costing analysis ped' )
+define ped-yymm zoned*6 = ped / 100
+select if   (    ped      >= w-current-fiscal-start-yymmdd	&
+	     and ped-yymm <= w-current-costing-ped-yymm		&
+	    )	 						&
+        and ( item ohip-err-cat-code <> "R" 			&; don't select
+	    )						         ; RMA errors
+
+; (select doctor who  was 'active' anytime within the costing
+;  analysis period - ie. start of fiscal year to current costing
+;  analysis ped's yymm)
+
+use $use/select_f020_active_for_costing_analysis_period.use
+
+choose clmhdr-doc-nbr  
+
+; 2000/feb/06 B.E. - changed to sort
+;sorted on clmhdr-doc-nbr
+; 2002/07/30 - MC - changed to sort to include pat ikey and ohip-err-code 
+;sorted on clmhdr-doc-nbr
+sort on clmhdr-doc-nbr on clmhdr-pat-ohip-id-or-chart on ohip-err-code of manual-rejected-claims-hist
+; 2002/07/30 - end
+
+
+def nbr-svc zoned*6 unsigned = 0
+def nbr-clm zoned*6 unsigned = 0
+def nbr-dtl zoned*6 unsigned = 0
+def nbr-reject zoned*4 unsigned = 0
+
+def amt-ytd     zoned*8 signed = 0 
+def misc-amt-ytd zoned*8 signed = 0 
+def mohr-amt-ytd zoned*8 signed = 0 
+def total-amt-ytd zoned*8 signed = 0
+
+temp man-reject  zoned*6 unsigned 
+; 2002/07/30 - MC
+;item man-reject  = man-reject + 1 reset at clmhdr-doc-nbr
+item man-reject  = man-reject + 1 at ohip-err-code     reset at clmhdr-doc-nbr  
+; 2002/07/30 - end
+
+subfile costing2 keep append at clmhdr-doc-nbr  &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+         doc-clinic-nbr,                    &
+         nbr-svc,                         & 
+         nbr-clm,                         &
+         nbr-dtl,                         &   
+         nbr-reject,                      &
+         amt-ytd,                         &
+         misc-amt-ytd,                    & 
+         mohr-amt-ytd,                    & 
+         total-amt-ytd,                   &
+         man-reject
+
+build $obj/costing5

@@ -1,0 +1,72 @@
+; Program: r992a.qts 
+; Purpose: Check that f001 record exists for all claims
+;
+; Logic: Read f002 header recs and at change in batch number output
+;	 rec to subfile if the f001 rec doesn't exist or if the 
+;	 total $ amounts summed from f002 hdr recs <> amt in f001
+;	 or the nbr of claims found <> nbr in f001
+;
+;   DATE      WHOM   DESCRIPTION
+; 2000/mar/14 B.E.   - original
+;
+
+cancel clear
+set process nolimit
+set lock record update
+
+access f002-claims-mstr				&
+  link clmhdr-batch-nbr				&
+    to batctrl-batch-nbr			&
+	of f001-batch-control-file   opt
+
+;choose key-clm-type "B"
+choose key-clm-type "B",key-clm-batch-nbr '71@'
+
+define claim-ped-cutoff-date date = parm prompt "Check claims with PED >= what date: "
+
+select f002-claims-mstr 				&
+  if    clmhdr-adj-oma-cd       = "0000" 		&;check hdrs only
+;    and clmhdr-date-period-end >= claim-ped-cutoff-date&; >=Operator selection
+     and clmhdr-date-period-end >= 20071101             &; >=Operator selection
+     and clmhdr-batch-type = "C"
+
+def flag-f001-missing char*1 				&
+    = "Y" if not  record f001-batch-control-file exists	&
+ else "N"
+
+sorted on clmhdr-batch-nbr
+
+temp x-clmhdr-tot-claim-ar-ohip
+item    x-clmhdr-tot-claim-ar-ohip 	&
+     =  x-clmhdr-tot-claim-ar-ohip	&
+      +   clmhdr-tot-claim-ar-ohip reset at clmhdr-batch-nbr
+temp x-claims-in-batch-counter 
+item x-claims-in-batch-counter		&
+   = x-claims-in-batch-counter + 1 reset at clmhdr-batch-nbr
+
+define x-batch      char*8 = clmhdr-claim-id[1:8] 
+;define x-temp-orig  char*9 = ascii(clmhdr-orig-batch-nbr)
+define x-temp-orig  char*8 = (clmhdr-orig-batch-nbr)
+define x-orig-batch char*8 = x-temp-orig[1:8] 
+
+subfile r992a  keep  at clmhdr-batch-nbr		&
+  if  flag-f001-missing ="Y"				&	
+   or x-clmhdr-tot-claim-ar-ohip <> batctrl-calc-ar-due &
+   or batctrl-nbr-claims-in-batch <> x-claims-in-batch-counter  &
+ include 			 &
+  flag-f001-missing		,&
+  x-clmhdr-tot-claim-ar-ohip	,&
+  batctrl-calc-ar-due		,& 
+  x-claims-in-batch-counter	,&
+  batctrl-nbr-claims-in-batch	,& 
+  x-batch			,&
+  x-orig-batch			,&
+  clmhdr-agent-cd		,&
+  clmhdr-date-sys 		,&
+  clmhdr-date-period-end	,&
+  clmhdr-submit-date		,&
+  clmhdr-cycle-nbr		,&	
+  clmhdr-adj-oma-cd 		
+
+build $pb_obj/r992a
+

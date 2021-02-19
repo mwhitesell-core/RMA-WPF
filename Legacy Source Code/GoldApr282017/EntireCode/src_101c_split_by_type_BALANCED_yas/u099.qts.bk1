@@ -1,0 +1,44 @@
+;#> PROGRAM-ID.    u099.qts
+;
+;       ((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE : TO PURGE 'INACTIVE' PATIENTS FROM THE PATIENT
+;                   MASTER. IF THE PATIENTS DO NOT HAVE ANY CLAIMS,
+;                   THEN PATIENT IS DELETED.
+;
+;    MODIFICATION HISTORY
+;    DATE      WHO        DESCRIPTION
+; 2000/04/28   B.Annis    Originally converted from u099.cbl
+;
+
+cancel clear
+set process nolimit
+set lock file update
+
+access f010-pat-mstr                            &
+  link 'P',                                     &
+       key-pat-mstr[2:14]                       &
+    to key-p-clm-type,                          &
+       key-p-clm-data of f002-claims-mstr opt
+
+choose key-pat-mstr
+
+sorted on key-pat-mstr
+
+define d-sel-date date = parm prompt ' Enter the cutoff date: '
+
+define d-del-flag char*1 				  &
+     = 'Y'                  				  &
+	    if      not record f002-claims-mstr exist     &
+		and d-sel-date > pat-date-last-maint      &
+          	and d-sel-date > pat-date-last-visit      &
+          	and d-sel-date > pat-date-last-admit      &
+  else 'N'
+
+subfile u099-delete-patients keep at key-pat-mstr &
+        if d-del-flag = 'Y' include f010-pat-mstr
+
+subfile u099-retain-patients keep at key-pat-mstr &
+        if d-del-flag = 'N' include f010-pat-mstr
+
+build $obj/u099

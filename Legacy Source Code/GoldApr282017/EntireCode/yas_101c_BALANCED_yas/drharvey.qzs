@@ -1,0 +1,50 @@
+;doc     : drharvey.qzs 
+;purpose : report patient info and age who has been seen for diag code "376"
+;          for the period of 1992 to todayi. Print patient only once.    
+;        
+;who     : Dr. John Harvey doc# 391
+
+;Date           Who             Description
+;2001/11/08     Yasemin         Original
+
+
+cancel clear
+set default
+set rep nolimit
+
+;access *claims_subfile
+ access *convert3
+
+select if clmhdr-doc-nbr-ohip = 211383 &
+          and clmdtl-diag-cd = 376
+
+def x-pat cha*40 = pack(pat-surname +", "+ pat-given-name)
+
+def x-sys-yy zoned*4 unsigned = ncon(ascii(sysdate,8)[1:4])
+def x-sys-mm char*2 = ascii(sysdate,8)[5:2]
+def x-sys-dd char*2 = ascii(sysdate,8)[7:2]
+
+def pat-birth-yy zoned*4 unsigned = ncon(ascii(pat-birth-date,8)[1:4])
+def pat-birth-mm char*2 = ascii(pat-birth-date,8)[5:2]
+def pat-birth-dd char*2 = ascii(pat-birth-date,8)[7:2]
+
+def x-age zoned*4 unsigned  = x-sys-yy - pat-birth-yy     &
+        if   (x-sys-mm  > pat-birth-mm)                   &
+          or ((x-sys-mm = pat-birth-mm) and               &
+              (x-sys-dd >= pat-birth-dd))                 &
+        else x-sys-yy - pat-birth-yy - 1
+
+sort on x-pat on clmhdr-pat-ohip-id-or-chart
+  
+set subfile name drharvey keep append at clmhdr-pat-ohip-id-or-chart
+report summary    &
+clmdtl-id         &
+x-pat             &
+pat-chart-nbr     &
+pat-health-nbr    &
+pat-version-cd    &
+pat-sex           &
+x-age             &
+pat-birth-date
+
+build $obj/drharvey

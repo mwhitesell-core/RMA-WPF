@@ -1,0 +1,988 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE NEWU706A.QTS
+COMMENT "#> PROGRAM-ID.     NEWU706A.QTS"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PROGRAM PURPOSE: SELECT  CORRECT  CLAIMS FROM THE SUSPENDED FILES"
+COMMENT "AND TRANSFER THEM INTO THE LIVE F002 CLAIMS MASTER."
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SMS #  WHO     DESCRIPTION"
+COMMENT "93/07/21     M.C.    - SMS 142"
+COMMENT "- CLONE FROM U706A.QTS"
+COMMENT "- USE DOC-NBR TO LINK TO F020"
+COMMENT "- DO NOT REQUIRE TO PROMPT FOR DOC NBR"
+COMMENT "- WHEN CREATING RMA CLAIMS, ALSO CREATE"
+COMMENT "RECORDS IN F071-CLIENT-RMA-CLAIM-NBR"
+COMMENT "93/08/31     M.C.    - SMS 142"
+COMMENT "- ALSO DELETE  R ESUBMIT CLAIMS IN REQUEST"
+COMMENT "U706A_DELETE_CLAIMS"
+COMMENT "93/08/31          M.C.    - SMS 142"
+COMMENT "- SET CLMHDR-MANUAL-REVIEW FROM CLMHDR-"
+COMMENT "RELATIONSHIP OF F002-SUSPEND-HDR"
+COMMENT "94/10/15     B.E.    - ADDED CODE TO INITIALIZE FIELD CLMDTL-LINE-NO"
+COMMENT "WHEN CREATING CLAIM DETAIL RECORDS."
+COMMENT "96/07/22     M.C.    - PDR 649"
+COMMENT "- DIFFERENT SERVICE MONTH CAN BE IN A"
+COMMENT "DETAIL CLAIM"
+COMMENT "- CHANGE X-ACCOUNTING-NBR NOT TO INCLUDE"
+COMMENT "CLMDTL-SV-YY & CLMDTL-SV-MM"
+COMMENT "96/08/19     M.C.    - PDR 649 - REQUEST DELETE_CLAIMS DOES NOT"
+COMMENT "WORK ANYMORE, RECEIVE ERROR  RECORD HAS"
+COMMENT "BEEN CHANGED SINCE YOU FOUND IT , CONVERT"
+COMMENT "THE REQUEST INTO 3 INDIVIDUAL REQUESTS"
+COMMENT "DELETE_DETAIL, DELETE_ADDRESS, DELETE_HEADER"
+COMMENT "98/02/19    B.E.    - A NEW BATCH NUMBER MUST BE CREATED WHEN"
+COMMENT "A DOCTOR S CLINIC OR SPECIALTY CODE CHANGES."
+COMMENT "IN REQUEST U706A_SELECT_COMPLETE_CLAIMS THE"
+COMMENT "SORT AND KEEP AT CHANGED SO THAT  W-COUNT "
+COMMENT "IS RESET TO 1 IF CHANGE IN CLINIC/SPEC."
+COMMENT "REQUEST U706A_GEN_CLAIM_NBRS CHANGED"
+COMMENT "TO BUILD BATCH NUMBER TAKING INTO CONSIDERATION"
+COMMENT "IF CLINIC/DOC NUMBER HAS CHANGED."
+COMMENT "98/04/17    M.C.    - CHANGE THE FORMULA FOR COUNTER-CLINIC-NBRS &"
+COMMENT "COUNTER-SPEC-CODES, HOLD-CLINIC-NBR-1-2 &"
+COMMENT "HOLD-SPEC-CD"
+COMMENT "98/06/02    M.C.    - CHANGE THE FORMULA FOR COUNTER-CLINIC-NBRS &"
+COMMENT "W-BATCH-NBR AND COMMENT OUT COUNTER-SPEC-CD"
+COMMENT "IN U706A_PROCESS_CLAIM_DETAILS REQUEST,"
+COMMENT "CHANGE THE SORTED AND OUTPUT F001-BATCH-"
+COMMENT "CONTROL-FILE STATEMENTS"
+COMMENT "98/09/14    B.E     - w-count was being reset a change in clinic/specialty"
+COMMENT "which started batch number back at 1 again. If a "
+COMMENT "doctor had a large series of claims that increased"
+COMMENT "batch number at each group of 99, then the reset"
+COMMENT "caused the duplication of batch numbers. Code changed"
+COMMENT "so that w-count reset only at change in doctor number"
+COMMENT "so that it now counts all claims. This now calculates"
+COMMENT "the next batch number correctly, however it doesn t"
+COMMENT "reset the claim-nbr within the batch back to 1."
+COMMENT "Therefore each time the clinic/spec/agent changes "
+COMMENT "the 1st claim within the batch will start at the"
+COMMENT "next higher number than the last claim nbr in "
+COMMENT "in the last batch. This could eventually be"
+COMMENT "be fixed but isn t within this version of code."
+COMMENT "also needs check if agent changed"
+COMMENT "98/10/14    M.C.     - create  P  keys in header & detail records of"
+COMMENT "f002-claims-mstr   "
+COMMENT "1999/jan/28 B.E./M.C.- y2k"
+COMMENT "- use key-p-clm-data instead of the 4 items when creating"
+COMMENT "p keys for claim header and detail records"
+COMMENT "1999/May/21 S.B.     - Added the use file def_batctrl_batch_status.def"
+COMMENT "to remove any hardcoding of the "
+COMMENT "batctrl-batch-status."
+COMMENT "1999/May/27 S.B.     - Added the use file"
+COMMENT "def_clmhdr_status.def to "
+COMMENT "prevent hardcoding of clmhdr-status."
+COMMENT "1999/May/28 S.B.     - Removed the nconvert from the iconst-clinic-nbr."
+COMMENT "1999/Nov/08 M.C.     - output f071 record first before creating f002/f001"
+COMMENT "record in u706a_process_claim_headers request"
+COMMENT "1999/Nov/12 M.C.     - reset batch nbr to 1 if ws-batch-nbr = 1000 in"
+COMMENT "u706a_gen_claim_nbrs request"
+COMMENT "2000/Jan/18 M.C.     - include clinic nbr when creating f071 record in   "
+COMMENT "u706a_process_claim_headers request"
+COMMENT "2000/Feb/08 B.A.     - Added code to put confidential-flag to "
+COMMENT "f002-claims-mstr and put a corresponding description"
+COMMENT "2000/Feb/16 M.C.     - do not process f002-suspend-dtl where clmdtl-status"
+COMMENT "equal to 'D' "
+COMMENT "2000/may/03 B.E.     - clmhdr-date-sys represents the date the claim"
+COMMENT "was  keyed . For diskette/web claims this date"
+COMMENT "was set at the time the file was uploaded into"
+COMMENT "suspense files. The newu706a pgm was changed to "
+COMMENT "use the actual system date the day the suspend"
+COMMENT "record was loaded into the claims mstr instead"
+COMMENT "of the date it was loaded into suspense."
+COMMENT "2000/may/04 M.C.     - add clmhdr-doc-nbr in the sort/sorted statements of"
+COMMENT "request u706a_select_complete_claims, and       "
+COMMENT "u706a_gen_claim_nbrs "
+COMMENT "2000/jun/08 B.E.     - write out only 1 description rec for confidential"
+COMMENT "claims with message  NO VERIFICATION PLEASE "
+COMMENT "2000/jun/12 B.E.     - no defaulting of f002's  manual-revie ' based upon "
+COMMENT " confidentiality  field. Manual review is always"
+COMMENT "set to value of manual-review field in susp hdr."
+COMMENT "2000/sep/04 B.E.      - calculation of total nbr services now based"
+COMMENT "upon new redefined fields added to dictionary"
+COMMENT "2000/sep/21 B.E.      - requests that delete hdr/dtl/address records"
+COMMENT "check clmhdr status. Added 'i'gnore status to select"
+COMMENT "deletion of transactions"
+COMMENT "- added request to delete description records"
+COMMENT "2000/sep/23 B.E. - added request to upload description records into"
+COMMENT "claim description records"
+COMMENT "2000/oct/02 B.E. - updates claim header total oma/ohip amts with "
+COMMENT "appropriate oma/ohip amt rather than putting ohip"
+COMMENT "amount into both fields"
+COMMENT "- in request that deletes header record included"
+COMMENT "select of headers with 'delete' or 'ignore' status"
+COMMENT "2000/oct/11 B.E. - don't pickup description records unless header's"
+COMMENT "manual-review field =  Y  (some comments are passed"
+COMMENT "in from the web and are only for RMA staff to "
+COMMENT "read - they don't need to be brought into f002"
+COMMENT "2000/nov/07 M.C. - change the definition when defining ws-batch-nbr"
+COMMENT "- add the new request u706a_gen_batch_nbrs,"
+COMMENT "u706a_sort_batch_rec, modify request"
+COMMENT "u706a_gen_claim_nbrs"
+COMMENT "2002/may/06 M.C.      - if clinic is 85 with payroll-flag = 'B', set clmhdr-clinic to 22"
+COMMENT "2002/jun/14 M.C. -  add  'on errors report' at the end of each output statement"
+COMMENT "2002/sep/30 M.C. -  assign the correct next batch nbr based on the clinic nbr"
+COMMENT "2003/jun/12 M.C. -  change to sort on t-batch-nbr instead of w-batch-nbr"
+COMMENT "2003/oct/23 M.C. -  reset the next batch nbr to 1 if greater than 999 for"
+COMMENT "each clinic"
+COMMENT "2003/nov/19 M.C.      - store the clmhdr-serv-date from the minimum of clmdtl-serv-date"
+COMMENT "2003/dec/23 A.A. -  alpha doctor nbr"
+COMMENT "2004/jul/07 M.C. -   reinstate the change on 2003/jun/12"
+COMMENT "-   change back the sort on w-batch-nbr instead of t-batch-nbr"
+COMMENT "-   change output on f001 at w-batch-nbr instead of t-batch-nbr"
+COMMENT "2005/may/10 M.C. -   reinstate the change on 2003/jun/12 in request u706a_process_claim_details"
+COMMENT "-   change back the sort on w-batch-nbr instead of t-batch-nbr"
+COMMENT "-   change output on f001 at w-batch-nbr instead of t-batch-nbr"
+COMMENT "2005/may/16 M.C. -   include t-batch-nbr in the sort/ed statement before w-batch-nbr            "
+COMMENT "2007/apr/24 M.C. -   include clmhdr-doc-nbr in the sorted statement if not already done"
+COMMENT "2009/jan/16 brad1 - increase the number of batches/claims that can be processed in a single file"
+COMMENT "from 27/2673 to 40/3960"
+COMMENT "2009/mar/23 MC1  - update pat-date-last-visit and pat-date-last-admit in the last request update_pat_clm_nbr"
+COMMENT "to be the same as d001, and also u099.qts is checking these two dates for purge criteria"
+COMMENT "2010/Jun/03 MC2  - modify to make sure each request has on calculation and edit errors report, in update_pat_clm_nbr"
+COMMENT "request, add xcount temp field and subfile savef010_mc for debug purpose in case there is data"
+COMMENT "conversion on date fields."
+COMMENT "2010/Jan/23 MC3 - include agent 4 when creating f002-claim-shadow"
+COMMENT "2013/Apr/25 MC4 - set clmhdr values properly for agent 6           "
+CANCEL CLEAR
+RUN CREATE_CLAIMS_FROM_SUSPENSE
+SET LOCK RECORD UPDATE
+SET PROCESS NOLIMIT
+COMMENT "*******************************************************************************"
+REQUEST U706A_SELECT_COMPLETE_CLAIMS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F002-SUSPEND-HDR LINK CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR TO CLMDTL-DOC-OHIP-NBR, CLMDTL-ACCOUNTING-NBR OF F002-SUSPEND-DTL
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "S.B."
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "file:    def_clmhdr_status.def"
+COMMENT "purpose: define the suspended detail record's status"
+DEF CLMDTL-STATUS-DELETE CHAR*1 = "D"
+DEF CLMDTL-STATUS-NEW CHAR*1 = "N"
+DEF CLMDTL-STATUS-ACTIVE CHAR*1 = " "
+DEF CLMDTL-STATUS-UPDATED CHAR*1 = "U"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "select if clmhdr-status =  C "
+COMMENT "(00/feb/16 - MC add clmdtl-status <> 'D')"
+SELECT IF CLMHDR-STATUS = CLMHDR-STATUS-COMPLETE AND CLMDTL-STATUS <> CLMDTL-STATUS-DELETE
+COMMENT "DEF X-ACCOUNTING-NBR CHAR*12 = CLMHDR-ACCOUNTING-NBR    + &"
+COMMENT "ASCII(CLMDTL-SV-YY,2) + ASCII(CLMDTL-SV-MM,2)"
+COMMENT "2002/10/09 - MC  "
+DEF W-CONVERT-CLINIC ZONED*2 UNSIGNED = 22 IF CLMHDR-CLINIC-NBR-1-2 = 85 ELSE CLMHDR-CLINIC-NBR-1-2
+COMMENT "2002/10/09 - end"
+COMMENT "BE 98/FEB/19 SORTED ON CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR"
+COMMENT "Be 98/sep/14 added agent to sort"
+COMMENT "2000/05/04 - MC - add doc-nbr to sort"
+COMMENT "sort on clmhdr-doc-ohip-nbr,  &"
+COMMENT "2002/10/09 - MC  "
+COMMENT "clmhdr-clinic-nbr-1-2, &"
+COMMENT "2002/10/09 - end "
+SORT ON CLMHDR-DOC-NBR, CLMHDR-DOC-OHIP-NBR, W-CONVERT-CLINIC, CLMHDR-DOC-SPEC-CD, CLMHDR-AGENT-CD, CLMHDR-ACCOUNTING-NBR
+TEMP W-COUNT
+COMMENT "BE ITEM W-COUNT COUNT AT CLMHDR-ACCOUNTING-NBR  RESET AT CLMHDR-DOC-OHIP-NBR"
+COMMENT "BE  reset at clmhdr-doc-spec-cd"
+COMMENT "2000/05/04 - MC"
+COMMENT "reset at clmhdr-doc-ohip-nbr"
+ITEM W-COUNT COUNT AT CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR RESET AT CLMHDR-AGENT-CD
+TEMP CLMHDR-TOT-CLAIM-AR-OMA NUM*8
+COMMENT "RESET AT X-ACCOUNTING-NBR"
+ITEM CLMHDR-TOT-CLAIM-AR-OMA SUBTOTAL CLMDTL-FEE-OMA RESET AT CLMHDR-ACCOUNTING-NBR
+TEMP CLMHDR-TOT-CLAIM-AR-OHIP NUM*8
+COMMENT "RESET AT X-ACCOUNTING-NBR"
+ITEM CLMHDR-TOT-CLAIM-AR-OHIP SUBTOTAL CLMDTL-FEE-OHIP RESET AT CLMHDR-ACCOUNTING-NBR
+COMMENT "!def clmhdr-doc-nbr zoned*3 = mod((clmhdr-batch-nbr / 1000),1000)"
+DEF CLMHDR-DOC-NBR CHAR*3 = (CLMHDR-BATCH-NBR[3:3])
+COMMENT "2002/10/09 - MC"
+COMMENT "clmhdr-clinic-nbr-1-2, clmhdr-doc-spec-cd,  &"
+COMMENT "2002/10/09 - end"
+SUBFILE U706A_SEL_SUSP_HDR KEEP AT CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR INCLUDE CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR, W-COUNT, CLMHDR-PAT-KEY-DATA, CLMHDR-AGENT-CD, CLMHDR-TOT-CLAIM-AR-OMA, CLMHDR-TOT-CLAIM-AR-OHIP, W-CONVERT-CLINIC, CLMHDR-DOC-SPEC-CD, CLMHDR-DOC-NBR
+COMMENT "*******************************************************************************"
+REQUEST U706A_GEN_CLAIM_NBRS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "USING THE  NEXT AVAILABLE BATCH NUMBER  FROM DOCTOR FILE, GENERATE"
+COMMENT "BATCH/CLAIM ID S FOR EACH CLAIM.  THE PROGRAM WILL ASSIGN UP TO 99"
+COMMENT "CLAIMS INTO 1 BATCH BEFORE INCREASING THE BATCH NUMBER BY 1.  THE"
+COMMENT "NEW  NEXT AVAILABLE BATCH NBR  IS CALCULATED AND UPDATED BACK INTO"
+COMMENT "THE DOCTOR S RECORD"
+ACCESS *U706A_SEL_SUSP_HDR LINK CLMHDR-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR
+COMMENT "SORTED ON CLMHDR-DOC-OHIP-NBR, X-ACCOUNTING-NBR"
+COMMENT "2000/05/04 - MC"
+COMMENT "sorted on clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr"
+COMMENT "2000/11/07 - MC"
+COMMENT "sorted on clmhdr-doc-nbr on clmhdr-doc-ohip-nbr on clmhdr-accounting-nbr"
+COMMENT "2002/10/09 - MC  "
+COMMENT "clmhdr-clinic-nbr-1-2, &"
+COMMENT "2002/10/09 - end "
+SORTED ON CLMHDR-DOC-NBR, CLMHDR-DOC-OHIP-NBR, W-CONVERT-CLINIC, CLMHDR-DOC-SPEC-CD, CLMHDR-AGENT-CD, CLMHDR-ACCOUNTING-NBR
+COMMENT "2000/11/07 - MC - the following section is commented out"
+COMMENT ";;;---------------------------------------------------------------------------"
+COMMENT ";;;---------------------------------------------------------------------------"
+COMMENT "BE 98/FEB/11"
+COMMENT ";temp hold-clinic-nbr-1-2"
+COMMENT ";temp hold-spec-cd"
+COMMENT ";temp hold-agent-cd"
+COMMENT ";temp counter-clinic-nbrs"
+COMMENT "----------------------------------------------------------------"
+COMMENT "Increment batch nbr by 1 if either specialty or clinic number changes"
+COMMENT "MC 98/06/02 - fixed bug whereby batch nbr increased by 2 if both specialty and clinic"
+COMMENT "changed at the same time "
+COMMENT "BE 98/09/14 - added logic to check for change in agent code"
+COMMENT ";item hold-spec-cd  initial -1"
+COMMENT ";item hold-agent-cd initial -1 "
+COMMENT ";item counter-clinic-nbrs = counter-clinic-nbrs + 1   &"
+COMMENT ";  if    clmhdr-clinic-nbr-1-2 <> hold-clinic-nbr-1-2  &"
+COMMENT ";     or clmhdr-doc-spec-cd    <> hold-spec-cd  &"
+COMMENT ";     or clmhdr-agent-cd       <> hold-agent-cd  &"
+COMMENT ";  reset at clmhdr-doc-ohip-nbr"
+COMMENT ";item hold-clinic-nbr-1-2 = clmhdr-clinic-nbr-1-2 &"
+COMMENT ";  reset at clmhdr-doc-ohip-nbr"
+COMMENT ";item hold-spec-cd        = clmhdr-doc-spec-cd  &"
+COMMENT ";  reset at clmhdr-doc-ohip-nbr to  -1"
+COMMENT ";item hold-agent-cd       = clmhdr-agent-cd  &"
+COMMENT ";  reset at clmhdr-doc-ohip-nbr to  -1"
+COMMENT ";----------------------------------------------------------------"
+COMMENT ";----------------------------------------------------------------"
+COMMENT "10"
+COMMENT "20"
+COMMENT "brad1"
+COMMENT "else    w-count - 2772 "
+COMMENT "30"
+DEF W-CLAIM-NBR = W-COUNT IF W-COUNT <= 99 ELSE W-COUNT - 99 IF (W-COUNT > 99 AND W-COUNT <= 198) ELSE W-COUNT - 198 IF (W-COUNT > 198 AND W-COUNT <= 297) ELSE W-COUNT - 297 IF (W-COUNT > 297 AND W-COUNT <= 396) ELSE W-COUNT - 396 IF (W-COUNT > 396 AND W-COUNT <= 495) ELSE W-COUNT - 495 IF (W-COUNT > 495 AND W-COUNT <= 594) ELSE W-COUNT - 594 IF (W-COUNT > 594 AND W-COUNT <= 693) ELSE W-COUNT - 693 IF (W-COUNT > 693 AND W-COUNT <= 792) ELSE W-COUNT - 792 IF (W-COUNT > 792 AND W-COUNT <= 891) ELSE W-COUNT - 891 IF (W-COUNT > 891 AND W-COUNT <= 990) ELSE W-COUNT - 990 IF (W-COUNT > 990 AND W-COUNT <= 1089) ELSE W-COUNT - 1089 IF (W-COUNT > 1089 AND W-COUNT <= 1188) ELSE W-COUNT - 1188 IF (W-COUNT > 1188 AND W-COUNT <= 1287) ELSE W-COUNT - 1287 IF (W-COUNT > 1287 AND W-COUNT <= 1386) ELSE W-COUNT - 1386 IF (W-COUNT > 1386 AND W-COUNT <= 1485) ELSE W-COUNT - 1485 IF (W-COUNT > 1485 AND W-COUNT <= 1584) ELSE W-COUNT - 1584 IF (W-COUNT > 1584 AND W-COUNT <= 1683) ELSE W-COUNT - 1683 IF (W-COUNT > 1683 AND W-COUNT <= 1782) ELSE W-COUNT - 1782 IF (W-COUNT > 1782 AND W-COUNT <= 1881) ELSE W-COUNT - 1881 IF (W-COUNT > 1881 AND W-COUNT <= 1980) ELSE W-COUNT - 1980 IF (W-COUNT > 1980 AND W-COUNT <= 2079) ELSE W-COUNT - 2079 IF (W-COUNT > 2079 AND W-COUNT <= 2178) ELSE W-COUNT - 2178 IF (W-COUNT > 2178 AND W-COUNT <= 2277) ELSE W-COUNT - 2277 IF (W-COUNT > 2277 AND W-COUNT <= 2376) ELSE W-COUNT - 2376 IF (W-COUNT > 2376 AND W-COUNT <= 2475) ELSE W-COUNT - 2475 IF (W-COUNT > 2475 AND W-COUNT <= 2574) ELSE W-COUNT - 2574 IF (W-COUNT > 2574 AND W-COUNT <= 2673) ELSE W-COUNT - 2673 IF (W-COUNT > 2673 AND W-COUNT <= 2772) ELSE W-COUNT - 2772 IF (W-COUNT > 2772 AND W-COUNT <= 2871) ELSE W-COUNT - 2871 IF (W-COUNT > 2871 AND W-COUNT <= 2970) ELSE W-COUNT - 2970 IF (W-COUNT > 2970 AND W-COUNT <= 3069) ELSE W-COUNT - 3069 IF (W-COUNT > 3069 AND W-COUNT <= 3168) ELSE W-COUNT - 3168 IF (W-COUNT > 3168 AND W-COUNT <= 3267) ELSE W-COUNT - 3267 IF (W-COUNT > 3267 AND W-COUNT <= 3366) ELSE W-COUNT - 3366 IF (W-COUNT > 3366 AND W-COUNT <= 3465) ELSE W-COUNT - 3465 IF (W-COUNT > 3465 AND W-COUNT <= 3564) ELSE W-COUNT - 3564 IF (W-COUNT > 3564 AND W-COUNT <= 3663) ELSE W-COUNT - 3663 IF (W-COUNT > 3663 AND W-COUNT <= 3762) ELSE W-COUNT - 3762 IF (W-COUNT > 3762 AND W-COUNT <= 3861) ELSE W-COUNT - 3861
+COMMENT "40"
+COMMENT "brad1"
+COMMENT "else  27 if (w-count > 2277                    ) "
+DEF W-BATCH-NBR-COUNT = 1 IF W-COUNT <= 99 ELSE 2 IF (W-COUNT > 99 AND W-COUNT <= 198) ELSE 3 IF (W-COUNT > 198 AND W-COUNT <= 297) ELSE 4 IF (W-COUNT > 297 AND W-COUNT <= 396) ELSE 5 IF (W-COUNT > 396 AND W-COUNT <= 495) ELSE 6 IF (W-COUNT > 495 AND W-COUNT <= 594) ELSE 7 IF (W-COUNT > 594 AND W-COUNT <= 693) ELSE 8 IF (W-COUNT > 693 AND W-COUNT <= 792) ELSE 9 IF (W-COUNT > 792 AND W-COUNT <= 891) ELSE 10 IF (W-COUNT > 891 AND W-COUNT <= 990) ELSE 11 IF (W-COUNT > 990 AND W-COUNT <= 1089) ELSE 12 IF (W-COUNT > 1089 AND W-COUNT <= 1188) ELSE 13 IF (W-COUNT > 1188 AND W-COUNT <= 1287) ELSE 14 IF (W-COUNT > 1287 AND W-COUNT <= 1386) ELSE 15 IF (W-COUNT > 1386 AND W-COUNT <= 1485) ELSE 16 IF (W-COUNT > 1485 AND W-COUNT <= 1584) ELSE 17 IF (W-COUNT > 1584 AND W-COUNT <= 1683) ELSE 18 IF (W-COUNT > 1683 AND W-COUNT <= 1782) ELSE 19 IF (W-COUNT > 1782 AND W-COUNT <= 1881) ELSE 20 IF (W-COUNT > 1881 AND W-COUNT <= 1980) ELSE 21 IF (W-COUNT > 1980 AND W-COUNT <= 2079) ELSE 22 IF (W-COUNT > 2079 AND W-COUNT <= 2178) ELSE 23 IF (W-COUNT > 2178 AND W-COUNT <= 2277) ELSE 24 IF (W-COUNT > 2277 AND W-COUNT <= 2376) ELSE 25 IF (W-COUNT > 2376 AND W-COUNT <= 2475) ELSE 26 IF (W-COUNT > 2475 AND W-COUNT <= 2574) ELSE 27 IF (W-COUNT > 2277 AND W-COUNT <= 2376) ELSE 28 IF (W-COUNT > 2376 AND W-COUNT <= 2475) ELSE 29 IF (W-COUNT > 2475 AND W-COUNT <= 2574) ELSE 30 IF (W-COUNT > 2574 AND W-COUNT <= 2673) ELSE 31 IF (W-COUNT > 2673 AND W-COUNT <= 2772) ELSE 32 IF (W-COUNT > 2772 AND W-COUNT <= 2871) ELSE 33 IF (W-COUNT > 2871 AND W-COUNT <= 2970) ELSE 34 IF (W-COUNT > 2970 AND W-COUNT <= 3069) ELSE 35 IF (W-COUNT > 3069 AND W-COUNT <= 3168) ELSE 36 IF (W-COUNT > 3168 AND W-COUNT <= 3267) ELSE 37 IF (W-COUNT > 3267 AND W-COUNT <= 3366) ELSE 38 IF (W-COUNT > 3366 AND W-COUNT <= 3465) ELSE 39 IF (W-COUNT > 3465 AND W-COUNT <= 3564) ELSE 40 IF (W-COUNT > 3564 )
+COMMENT "BE DEF W-BATCH-NBR = &"
+COMMENT "BE      DOC-NX-AVAIL-BATCH + W-BATCH-NBR-COUNT "
+COMMENT "2000/11/07 - MC - the following section is commented out"
+COMMENT ";;;---------------------------------------------------------------------------"
+COMMENT ";;;---------------------------------------------------------------------------"
+COMMENT ";def ws-batch-nbr =   &"
+COMMENT ";   doc-nx-avail-batch   &"
+COMMENT "; + w-batch-nbr-count  &"
+COMMENT "; + counter-clinic-nbrs - 1 ;&"
+COMMENT "99/11/12 MC - if batch-nbr > 999, reset to 1"
+COMMENT ";def w-batch-nbr =     &"
+COMMENT ";         1         if ws-batch-nbr = 1000 &"
+COMMENT ";    else (ws-batch-nbr - 999) if ws-batch-nbr > 1000 &"
+COMMENT ";    else ws-batch-nbr"
+COMMENT ";def w-key-claims-mstr char*18 = &"
+COMMENT " B  + ASCII(DOC-CLINIC-NBR,2) +  0  + ASCII(DOC-NBR,3) &"
+COMMENT ";  B  + ascii(clmhdr-clinic-nbr-1-2,2) +  0  + ascii(doc-nbr,3) &"
+COMMENT "; + ascii(w-batch-nbr,3) + ascii(w-claim-nbr,2) &"
+COMMENT "; +  000000 "
+COMMENT ";def w-p-key-claims-mstr char*18 = &"
+COMMENT ";  P  + clmhdr-pat-key-data"
+COMMENT ";subfile u706a_susp_hdr_count_srted keep at clmhdr-accounting-nbr  &"
+COMMENT "; include clmhdr-doc-ohip-nbr,     &"
+COMMENT "; clmhdr-accounting-nbr, w-batch-nbr,       &"
+COMMENT "; W-key-claims-mstr, w-p-key-claims-mstr, w-batch-nbr-count,  &"
+COMMENT "; w-claim-nbr, clmhdr-agent-cd,                   &"
+COMMENT "; clmhdr-tot-claim-ar-oma, clmhdr-tot-claim-ar-ohip, clmhdr-doc-nbr"
+COMMENT "BE subfile used to debug above"
+COMMENT "subfile u706a_susp_hdr_count_srted keep at clmhdr-accounting-nbr include &"
+COMMENT "w-key-claims-mstr,   &"
+COMMENT "clmhdr-agent-cd,                  &"
+COMMENT "doc-nx-avail-batch          ,  &"
+COMMENT "w-batch-nbr-count, &  "
+COMMENT "counter-clinic-nbrs ,  &"
+COMMENT "hold-clinic-nbr-1-2 ,  &"
+COMMENT "clmhdr-clinic-nbr-1-2       , &"
+COMMENT "hold-spec-cd,        clmhdr-doc-spec-cd         "
+COMMENT ";output f020-doctor-mstr update at clmhdr-doc-ohip-nbr"
+COMMENT ";  item doc-nx-avail-batch final w-batch-nbr"
+COMMENT ";-----------------------------------------------------------------------------"
+COMMENT ";-----------------------------------------------------------------------------"
+COMMENT "2000/1107 MC - define this new subfile"
+COMMENT "2002/10/09 - MC"
+COMMENT "clmhdr-clinic-nbr-1-2, clmhdr-doc-spec-cd, w-batch-nbr-count, &"
+COMMENT "2002/10/09 - end"
+SUBFILE U706A_TEMP KEEP INCLUDE CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR, CLMHDR-DOC-NBR, W-CONVERT-CLINIC, CLMHDR-DOC-SPEC-CD, W-BATCH-NBR-COUNT, W-CLAIM-NBR, CLMHDR-AGENT-CD, CLMHDR-PAT-KEY-DATA, CLMHDR-TOT-CLAIM-AR-OMA, CLMHDR-TOT-CLAIM-AR-OHIP
+COMMENT "*******************************************************************************"
+COMMENT "2000/11/07 - MC - add this next request"
+REQUEST U706A_SORT_BATCH_REC ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "ASSIGN THE REAL BATCH NUMBER T-BATCH-NBR AT SORT-KEY "
+ACCESS *U706A_TEMP
+COMMENT "2002/10/09 - MC"
+COMMENT "ascii(clmhdr-clinic-nbr-1-2,2) + &"
+COMMENT "2002/10/09 - end"
+DEF SORT-KEY CHAR*13 = ASCII(CLMHDR-DOC-OHIP-NBR,6) + ASCII(W-CONVERT-CLINIC,2) + ASCII(CLMHDR-DOC-SPEC-CD,2) + ASCII(CLMHDR-AGENT-CD,1) + ASCII(W-BATCH-NBR-COUNT,2)
+COMMENT "2002/10/09 - MC"
+COMMENT "sorted on  clmhdr-doc-nbr on sort-key   "
+SORTED ON CLMHDR-DOC-NBR ON W-CONVERT-CLINIC ON SORT-KEY
+COMMENT "2002/10/09 - end"
+TEMP T-BATCH-NBR
+ITEM T-BATCH-NBR = T-BATCH-NBR + 1 AT SORT-KEY RESET AT CLMHDR-DOC-NBR TO 1
+SUBFILE TEMPU706A KEEP INCLUDE U706A_TEMP, T-BATCH-NBR
+COMMENT "----------------------------------------------------------------------------"
+COMMENT "2000/11/07 - MC - add this new request"
+REQUEST U706A_GEN_BATCH_NBRS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "USING THE 'NEXT AVAILABLE BATCH NUMBER' FROM DOCTOR FILE, GENERATE  BATCH/CLAIM ID'S"
+COMMENT "FOR EACH CLAIM.  THE PROGRAM WILL ASSIGN UP TO 99 CLAIMS INTO 1 BATCH"
+COMMENT "BEFORE INCREASING THE BATCH NUMBER BY 1. THE NEW 'NEXT AVAILABLE BATCH NBR'"
+COMMENT "IS CALCULATED AND UPDATED BACK INTO THE DOCTOR'S RECORD"
+ACCESS *TEMPU706A LINK CLMHDR-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR
+COMMENT "2002/10/09 - MC"
+COMMENT "sorted on  clmhdr-doc-nbr  "
+SORTED ON CLMHDR-DOC-NBR ON T-BATCH-NBR
+COMMENT "2002/10/09 - end"
+COMMENT "2002/05/06 - MC"
+COMMENT "2002/10/09 - MC - transfer the define statement to the first request"
+COMMENT "u706a_select_complete_claims"
+COMMENT "def w-convert-clinic zoned*2 unsigned  = 22 if clmhdr-clinic-nbr-1-2 = 85  &"
+COMMENT "else clmhdr-clinic-nbr-1-2"
+COMMENT "2002/10/09 - end"
+COMMENT "2002/05/06 - end"
+COMMENT "2002/10/09 - MC - use the correct next available batch nbr based on clinic nbr"
+TEMP W-NEXT-BATCH
+ITEM W-NEXT-BATCH = W-NEXT-BATCH + 1 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR AT T-BATCH-NBR RESET AT CLMHDR-DOC-NBR TO DOC-NX-AVAIL-BATCH + 1
+TEMP W-NEXT-BATCH-2
+ITEM W-NEXT-BATCH-2 = W-NEXT-BATCH-2 + 1 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-2 AT T-BATCH-NBR RESET AT CLMHDR-DOC-NBR TO DOC-NX-AVAIL-BATCH-2 + 1
+TEMP W-NEXT-BATCH-3
+ITEM W-NEXT-BATCH-3 = W-NEXT-BATCH-3 + 1 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-3 AT T-BATCH-NBR RESET AT CLMHDR-DOC-NBR TO DOC-NX-AVAIL-BATCH-3 + 1
+TEMP W-NEXT-BATCH-4
+ITEM W-NEXT-BATCH-4 = W-NEXT-BATCH-4 + 1 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-4 AT T-BATCH-NBR RESET AT CLMHDR-DOC-NBR TO DOC-NX-AVAIL-BATCH-4 + 1
+TEMP W-NEXT-BATCH-5
+ITEM W-NEXT-BATCH-5 = W-NEXT-BATCH-5 + 1 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-5 AT T-BATCH-NBR RESET AT CLMHDR-DOC-NBR TO DOC-NX-AVAIL-BATCH-5 + 1
+TEMP W-NEXT-BATCH-6
+ITEM W-NEXT-BATCH-6 = W-NEXT-BATCH-6 + 1 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-6 AT T-BATCH-NBR RESET AT CLMHDR-DOC-NBR TO DOC-NX-AVAIL-BATCH-6 + 1
+COMMENT "2002/10/09 - end"
+COMMENT "2002/10/09 - MC"
+COMMENT "doc-nx-avail-batch   &"
+COMMENT "+ t-batch-nbr"
+DEF WS-BATCH-NBR = W-NEXT-BATCH IF W-CONVERT-CLINIC = DOC-CLINIC-NBR ELSE W-NEXT-BATCH-2 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-2 ELSE W-NEXT-BATCH-3 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-3 ELSE W-NEXT-BATCH-4 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-4 ELSE W-NEXT-BATCH-5 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-5 ELSE W-NEXT-BATCH-6 IF W-CONVERT-CLINIC = DOC-CLINIC-NBR-6
+COMMENT "2002/10/09 - end"
+COMMENT "reset to 1 if batch nbr > 999"
+DEF W-BATCH-NBR = 1 IF WS-BATCH-NBR = 1000 ELSE (WS-BATCH-NBR - 999) IF WS-BATCH-NBR > 1000 ELSE WS-BATCH-NBR
+COMMENT "2003/10/23 - MC"
+DEF D-NEXT-BATCH-1 = 1 IF W-NEXT-BATCH = 1000 ELSE (W-NEXT-BATCH - 999) IF W-NEXT-BATCH > 1000 ELSE W-NEXT-BATCH
+DEF D-NEXT-BATCH-2 = 1 IF W-NEXT-BATCH-2 = 1000 ELSE (W-NEXT-BATCH-2 - 999) IF W-NEXT-BATCH-2 > 1000 ELSE W-NEXT-BATCH-2
+DEF D-NEXT-BATCH-3 = 1 IF W-NEXT-BATCH-3 = 1000 ELSE (W-NEXT-BATCH-3 - 999) IF W-NEXT-BATCH-3 > 1000 ELSE W-NEXT-BATCH-3
+DEF D-NEXT-BATCH-4 = 1 IF W-NEXT-BATCH-4 = 1000 ELSE (W-NEXT-BATCH-4 - 999) IF W-NEXT-BATCH-4 > 1000 ELSE W-NEXT-BATCH-4
+DEF D-NEXT-BATCH-5 = 1 IF W-NEXT-BATCH-5 = 1000 ELSE (W-NEXT-BATCH-5 - 999) IF W-NEXT-BATCH-5 > 1000 ELSE W-NEXT-BATCH-5
+DEF D-NEXT-BATCH-6 = 1 IF W-NEXT-BATCH-6 = 1000 ELSE (W-NEXT-BATCH-6 - 999) IF W-NEXT-BATCH-6 > 1000 ELSE W-NEXT-BATCH-6
+COMMENT "2003/10/23 - end"
+COMMENT "!def w-key-claims-mstr char*18 = &"
+COMMENT "2002/05/06 - MC"
+COMMENT "'B' + ascii(clmhdr-clinic-nbr-1-2,2) + '0' + ascii(doc-nbr,3) &"
+COMMENT "! 'B' + ascii(w-convert-clinic,2) + '0' + ascii(doc-nbr,3) &"
+COMMENT "2002/05/06 - end"
+DEF W-KEY-CLAIMS-MSTR CHAR*17 = 'B' + ASCII(W-CONVERT-CLINIC,2) + DOC-NBR + ASCII(W-BATCH-NBR,3) + ASCII(W-CLAIM-NBR,2) + '000000'
+COMMENT "!def w-p-key-claims-mstr char*18 = &"
+DEF W-P-KEY-CLAIMS-MSTR CHAR*17 = 'P' + CLMHDR-PAT-KEY-DATA
+SUBFILE U706A_SUSP_HDR_COUNT_SRTED KEEP INCLUDE CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR, W-BATCH-NBR, W-KEY-CLAIMS-MSTR, W-P-KEY-CLAIMS-MSTR, W-BATCH-NBR-COUNT, W-CLAIM-NBR, CLMHDR-AGENT-CD, T-BATCH-NBR, CLMHDR-TOT-CLAIM-AR-OMA, CLMHDR-TOT-CLAIM-AR-OHIP, CLMHDR-DOC-NBR
+COMMENT "add request here that verifies that no claims exist within the range"
+COMMENT "of batch numbers that are going to be used"
+COMMENT "so if this runs creates 3 new batches for doctor:"
+COMMENT "clinic + doctor nbr + batch-nbr-1"
+COMMENT "clinic + doctor nbr + batch-nbr-2"
+COMMENT "clinic + doctor nbr + batch-nbr-3"
+COMMENT "then verify: "
+COMMENT "clinic + doctor nbr + batch-nbr-1 + 01 thru + 99 doesn't exist"
+COMMENT "clinic + doctor nbr + batch-nbr-2 + 01 thru + 99 doesn't exist"
+COMMENT "clinic + doctor nbr + batch-nbr-3 + 01 thru + 99 doesn't exist"
+COMMENT "if a match is found then "
+COMMENT "stop the claim nbr generation at 1 before the matching number and"
+COMMENT "increase the batch-nbt-1  "
+SUBFILE SAVEF020 KEEP AT CLMHDR-DOC-NBR INCLUDE F020-DOCTOR-MSTR
+OUTPUT F020-DOCTOR-MSTR UPDATE AT CLMHDR-DOC-NBR ON ERRORS REPORT
+COMMENT "2002/10/09 - MC"
+COMMENT "item doc-nx-avail-batch final w-batch-nbr"
+COMMENT "2003/10/23 - MC - use d-next-batch instead of w-next-batch"
+COMMENT "item doc-nx-avail-batch   final w-next-batch - 1"
+COMMENT "item doc-nx-avail-batch-2 final w-next-batch-2 - 1"
+COMMENT "item doc-nx-avail-batch-3 final w-next-batch-3 - 1"
+COMMENT "item doc-nx-avail-batch-4 final w-next-batch-4 - 1"
+COMMENT "item doc-nx-avail-batch-5 final w-next-batch-5 - 1"
+COMMENT "item doc-nx-avail-batch-6 final w-next-batch-6 - 1"
+ITEM DOC-NX-AVAIL-BATCH FINAL D-NEXT-BATCH-1 - 1
+ITEM DOC-NX-AVAIL-BATCH-2 FINAL D-NEXT-BATCH-2 - 1
+ITEM DOC-NX-AVAIL-BATCH-3 FINAL D-NEXT-BATCH-3 - 1
+ITEM DOC-NX-AVAIL-BATCH-4 FINAL D-NEXT-BATCH-4 - 1
+ITEM DOC-NX-AVAIL-BATCH-5 FINAL D-NEXT-BATCH-5 - 1
+ITEM DOC-NX-AVAIL-BATCH-6 FINAL D-NEXT-BATCH-6 - 1
+COMMENT "2003/10/23 - end"
+COMMENT "2002/10/09 - end"
+COMMENT "*******************************************************************************"
+REQUEST U706A_PROCESS_CLAIM_HEADERS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "CREATE CLAIM HEADER RECORDS IN F002 FOR SUSPENDED HEADER RECS (CREATE  B  KEYS)"
+COMMENT "CREATE RECORDS IN CLAIM SHADOW FILE FOR NON-OHIP CLAIMS"
+COMMENT "CREATE BATCH CONTROL RECORDS IN F001 FOR EACH BATCH OF CLAIMS CREATED"
+ACCESS *U706A_SUSP_HDR_COUNT_SRTED LINK CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR TO CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR LINK (NCONVERT(W-KEY-CLAIMS-MSTR[2:2])) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_BATCTRL_BATCH_STATUS.DEF
+COMMENT "98/03/20 - MATCH ON CLMHDR-DOC-NBR"
+COMMENT "S.B."
+COMMENT "DEF_BATCTRL_BATCH_STATUS.DEF"
+COMMENT "This use file is called from the following programs:"
+COMMENT "filler001a.qts, newu706a.qts,  r211.qzs,  u020a.qts,"
+COMMENT "u020c.qts,  u030b.qts,  u030b_22.qts, u030b_cur.qts,"
+COMMENT "u030b_fixup.qts,  u030b_rerun.qts,  u210.qts,"
+COMMENT "u706a.qts,  u802.qts "
+DEF BATCTRL-BATCH-STATUS-UNBALANCED CHAR*1 = "0"
+DEF BATCTRL-BATCH-STATUS-BALANCED CHAR*1 = "1"
+DEF BATCTRL-BATCH-STATUS-REV-UPDATED CHAR*1 = "2"
+DEF BATCTRL-BATCH-STATUS-OHIP-SENT CHAR*1 = "3"
+DEF BATCTRL-BATCH-STATUS-MONTHEND-DONE CHAR*1 = "4"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_BATCTRL_BATCH_STATUS.DEF
+SEL IF CLMHDR-DOC-NBR OF U706A_SUSP_HDR_COUNT_SRTED = CLMHDR-DOC-NBR OF F002-SUSPEND-HDR
+COMMENT "BE SORTED ON CLMHDR-DOC-OHIP-NBR, W-BATCH-NBR-COUNT"
+COMMENT "2007/04/24 - MC - include clmhdr-doc-nbr in the front"
+COMMENT "sorted on clmhdr-doc-ohip-nbr, &"
+COMMENT "2007/04/24 - end"
+COMMENT "2003/06/12 - MC"
+COMMENT "w-batch-nbr      ,  &"
+COMMENT "2004/07/07 - MC - reinstate the change"
+COMMENT "t-batch-nbr      ,  &"
+COMMENT "2005/05/16 - MC - include t-batch-nbr in the sorted statement"
+COMMENT "2005/05/16 - end"
+COMMENT "2004/07/07 - end"
+COMMENT "2003/06/12 - end"
+SORTED ON CLMHDR-DOC-NBR ON CLMHDR-DOC-OHIP-NBR, T-BATCH-NBR , W-BATCH-NBR , W-CLAIM-NBR
+COMMENT "!def w-clmhdr-claim-id char*17 = w-key-claims-mstr[2:17]"
+DEF W-CLMHDR-CLAIM-ID CHAR*16 = W-KEY-CLAIMS-MSTR[2:16]
+COMMENT "!def w-clmhdr-batch-nbr = nconvert(w-key-claims-mstr[2:9])"
+DEF W-CLMHDR-BATCH-NBR CHAR*8 = (W-KEY-CLAIMS-MSTR[2:8])
+DEF W-CLM-SHADOW-CLINIC = NCONVERT(W-KEY-CLAIMS-MSTR[2:2])
+COMMENT "y2k"
+DEF W-DATE CHAR*8 = ASCII(SYSDATE,8)
+COMMENT "y2k"
+DEF W-ICONST-DATE-PERIOD-END CHAR*8 = ASCII(ICONST-DATE-PERIOD-END,8)
+COMMENT "98/FEB/19 B.E. ADDED  AT W-BATCH-NBR "
+COMMENT "OUTPUT F071-CLIENT-RMA-CLAIM-NBR ADD AT W-BATCH-NBR"
+COMMENT "98/MAR/23 M.C. - EACH CLAIM MUST BE CREATED IN F071 NOT FOR EACH BATCH"
+OUTPUT F071-CLIENT-RMA-CLAIM-NBR ADD ON ERRORS REPORT
+ITEM CLAIM-NBR-CLIENT FINAL (ASCII(CLMHDR-DOC-OHIP-NBR OF U706A_SUSP_HDR_COUNT_SRTED,6) + CLMHDR-ACCOUNTING-NBR OF U706A_SUSP_HDR_COUNT_SRTED)
+COMMENT "99/11/08"
+COMMENT "item claim-nbr-rma final nconvert(clmhdr-claim-id of f002-claims-mstr[4:8])"
+COMMENT "!  item claim-nbr-rma final nconvert(w-key-claims-mstr[5:8])  "
+ITEM CLAIM-NBR-RMA FINAL (W-KEY-CLAIMS-MSTR[4:8])
+COMMENT "2000/01/18 MC"
+ITEM CLINIC-NBR FINAL NCONVERT(W-KEY-CLAIMS-MSTR[2:2])
+OUTPUT F002-CLAIMS-MSTR ADD ON ERRORS REPORT
+ITEM KEY-CLM-TYPE FINAL W-KEY-CLAIMS-MSTR[1:1]
+COMMENT "!  item key-clm-batch-nbr final nconvert(w-key-claims-mstr[2:9])"
+ITEM KEY-CLM-BATCH-NBR FINAL (W-KEY-CLAIMS-MSTR[2:8])
+COMMENT "!  item key-clm-claim-nbr final nconvert(w-key-claims-mstr[11:2])"
+ITEM KEY-CLM-CLAIM-NBR FINAL NCONVERT(W-KEY-CLAIMS-MSTR[10:2])
+COMMENT "!  item key-clm-serv-code final w-key-claims-mstr[13:5]"
+ITEM KEY-CLM-SERV-CODE FINAL W-KEY-CLAIMS-MSTR[12:5]
+COMMENT "!  item key-clm-adj-nbr final w-key-claims-mstr[18:1]"
+ITEM KEY-CLM-ADJ-NBR FINAL W-KEY-CLAIMS-MSTR[17:1]
+ITEM KEY-P-CLM-TYPE FINAL W-P-KEY-CLAIMS-MSTR[1:1]
+COMMENT "y2k"
+COMMENT "item key-p-clm-batch-nbr final nconvert(w-p-key-claims-mstr[2:9])"
+COMMENT "item key-p-clm-claim-nbr final nconvert(w-p-key-claims-mstr[11:2])"
+COMMENT "item key-p-clm-serv-code final w-p-key-claims-mstr[13:5]"
+COMMENT "item key-p-clm-adj-nbr final w-p-key-claims-mstr[18:1]"
+COMMENT "!  item key-p-clm-data           final w-p-key-claims-mstr[2:17]"
+ITEM KEY-P-CLM-DATA FINAL W-P-KEY-CLAIMS-MSTR[2:16]
+ITEM CLMHDR-CLAIM-ID FINAL W-CLMHDR-CLAIM-ID
+ITEM CLMHDR-ORIG-BATCH-NBR FINAL W-CLMHDR-BATCH-NBR
+ITEM CLMHDR-ORIG-CLAIM-NBR FINAL W-CLAIM-NBR
+ITEM CLMHDR-DATE-PERIOD-END FINAL ICONST-DATE-PERIOD-END
+ITEM CLMHDR-CYCLE-NBR FINAL ICONST-CLINIC-CYCLE-NBR
+COMMENT "THE FOLLOWING FIELDS ADDED DUE TO BUG IN POWERHOUSE WHEREBY THESE"
+COMMENT "FIELDS WERE NOT AUTOMATICALLY INITIALIZED"
+ITEM CLMHDR-BATCH-TYPE FINAL CLMHDR-BATCH-TYPE OF F002-SUSPEND-HDR
+ITEM CLMHDR-ADJ-CD-SUB-TYPE FINAL CLMHDR-ADJ-CD-SUB-TYPE OF F002-SUSPEND-HDR
+ITEM CLMHDR-DOC-NBR-OHIP FINAL CLMHDR-DOC-NBR-OHIP OF F002-SUSPEND-HDR
+ITEM CLMHDR-DOC-SPEC-CD FINAL CLMHDR-DOC-SPEC-CD OF F002-SUSPEND-HDR
+ITEM CLMHDR-REFER-DOC-NBR FINAL CLMHDR-REFER-DOC-NBR OF F002-SUSPEND-HDR
+ITEM CLMHDR-DIAG-CD FINAL CLMHDR-DIAG-CD OF F002-SUSPEND-HDR
+ITEM CLMHDR-LOC FINAL CLMHDR-LOC OF F002-SUSPEND-HDR
+ITEM CLMHDR-HOSP FINAL CLMHDR-HOSP OF F002-SUSPEND-HDR
+ITEM CLMHDR-AGENT-CD FINAL CLMHDR-AGENT-CD OF F002-SUSPEND-HDR
+ITEM CLMHDR-ADJ-CD FINAL CLMHDR-ADJ-CD OF F002-SUSPEND-HDR
+ITEM CLMHDR-TAPE-SUBMIT-IND FINAL CLMHDR-TAPE-SUBMIT-IND OF F002-SUSPEND-HDR
+ITEM CLMHDR-I-O-PAT-IND FINAL CLMHDR-I-O-PAT-IND OF F002-SUSPEND-HDR
+ITEM CLMHDR-PAT-KEY-TYPE FINAL CLMHDR-PAT-KEY-TYPE OF F002-SUSPEND-HDR
+ITEM CLMHDR-PAT-KEY-DATA FINAL CLMHDR-PAT-KEY-DATA OF F002-SUSPEND-HDR
+ITEM CLMHDR-PAT-ACRONYM6 FINAL CLMHDR-PAT-ACRONYM6 OF F002-SUSPEND-HDR
+ITEM CLMHDR-PAT-ACRONYM3 FINAL CLMHDR-PAT-ACRONYM3 OF F002-SUSPEND-HDR
+ITEM CLMHDR-REFERENCE FINAL CLMHDR-REFERENCE OF F002-SUSPEND-HDR
+ITEM CLMHDR-DATE-ADMIT FINAL CLMHDR-DATE-ADMIT OF F002-SUSPEND-HDR
+ITEM CLMHDR-DOC-DEPT FINAL CLMHDR-DOC-DEPT OF F002-SUSPEND-HDR
+COMMENT "y2k"
+ITEM CLMHDR-DATE-CASH-TAPE-PAYMENT FINAL "00000000" IF CLMHDR-AGENT-CD OF F002-SUSPEND-HDR <> 6
+COMMENT "2013/04/25 - MC4 - since below items are redefined from clmhdr-date-cash-tape-payment, change if condition for agent = 6"
+COMMENT "of f002-suspend-hdr if clmhdr-agent-cd of f002-suspend-hdr <> 6"
+ITEM CLMHDR-MSG-NBR FINAL CLMHDR-MSG-NBR OF F002-SUSPEND-HDR IF CLMHDR-AGENT-CD OF F002-SUSPEND-HDR = 6
+COMMENT "of f002-suspend-hdr if clmhdr-agent-cd of f002-suspend-hdr <> 6"
+ITEM CLMHDR-REPRINT-FLAG FINAL CLMHDR-REPRINT-FLAG OF F002-SUSPEND-HDR IF CLMHDR-AGENT-CD OF F002-SUSPEND-HDR = 6
+COMMENT "of f002-suspend-hdr if clmhdr-agent-cd of f002-suspend-hdr <> 6"
+ITEM CLMHDR-SUB-NBR FINAL CLMHDR-SUB-NBR OF F002-SUSPEND-HDR IF CLMHDR-AGENT-CD OF F002-SUSPEND-HDR = 6
+COMMENT "of f002-suspend-hdr if clmhdr-agent-cd of f002-suspend-hdr <> 6"
+ITEM CLMHDR-AUTO-LOGOUT FINAL CLMHDR-AUTO-LOGOUT OF F002-SUSPEND-HDR IF CLMHDR-AGENT-CD OF F002-SUSPEND-HDR = 6
+COMMENT "of f002-suspend-hdr if clmhdr-agent-cd of f002-suspend-hdr <> 6"
+ITEM CLMHDR-FEE-COMPLEX FINAL CLMHDR-FEE-COMPLEX OF F002-SUSPEND-HDR IF CLMHDR-AGENT-CD OF F002-SUSPEND-HDR = 6
+COMMENT "2013/04/25 - end"
+ITEM CLMHDR-CURR-PAYMENT FINAL 0
+COMMENT "2000/may/03 B.E. -use actual date suspend record loaded into claims file"
+COMMENT "system date"
+ITEM CLMHDR-DATE-SYS FINAL W-DATE
+COMMENT "clmhdr-date-sys               &"
+COMMENT "of f002-suspend-hdr"
+ITEM CLMHDR-AMT-TECH-BILLED FINAL CLMHDR-AMT-TECH-BILLED OF F002-SUSPEND-HDR
+ITEM CLMHDR-AMT-TECH-PAID FINAL 0
+COMMENT "item clmhdr-tot-claim-ar-oma  final  clmhdr-tot-claim-ar-ohip      &"
+ITEM CLMHDR-TOT-CLAIM-AR-OMA FINAL CLMHDR-TOT-CLAIM-AR-OMA OF U706A_SUSP_HDR_COUNT_SRTED
+ITEM CLMHDR-TOT-CLAIM-AR-OHIP FINAL CLMHDR-TOT-CLAIM-AR-OHIP OF U706A_SUSP_HDR_COUNT_SRTED
+ITEM CLMHDR-MANUAL-AND-TAPE-PAYMENTS FINAL 0
+ITEM CLMHDR-STATUS-OHIP FINAL CLMHDR-STATUS-OHIP OF F002-SUSPEND-HDR
+ITEM CLMHDR-TOT-CLAIM-AR-OMA FINAL CLMHDR-TOT-CLAIM-AR-OMA OF U706A_SUSP_HDR_COUNT_SRTED
+ITEM CLMHDR-MANUAL-REVIEW = CLMHDR-MANUAL-REVIEW OF F002-SUSPEND-HDR
+COMMENT "= 'Y'        &"
+COMMENT "if   clmhdr-confidential-flag of f002-suspend-hdr  = 'Y' &"
+COMMENT "or clmhdr-confidential-flag of f002-suspend-hdr  = 'R' &"
+COMMENT "else clmhdr-manual-review of f002-suspend-hdr"
+ITEM CLMHDR-CONFIDENTIAL-FLAG FINAL CLMHDR-CONFIDENTIAL-FLAG OF F002-SUSPEND-HDR
+COMMENT "(00/sep/29 B.E. - begin - commented out NO VERIFICATION desc - this logic"
+COMMENT "is now in newu701.cbl and d705x.qks pgms)"
+COMMENT "2000/jun/08 B.E. changed to write out only 1 description record with message"
+COMMENT "that matches OHIP spec."
+COMMENT "output f002-claims-mstr alias f002-desc-1 add   & "
+COMMENT "if (clmhdr-confidential-flag of f002-suspend-hdr = 'Y'   &"
+COMMENT "or clmhdr-confidential-flag of f002-suspend-hdr = 'R')"
+COMMENT "item key-clm-type             final w-key-claims-mstr[1:1]"
+COMMENT "item key-clm-batch-nbr        final nconvert(w-key-claims-mstr[2:9])"
+COMMENT "item key-clm-claim-nbr        final nconvert(w-key-claims-mstr[11:2])"
+COMMENT "item key-clm-serv-code        final 'ZZZZ1'"
+COMMENT "item key-clm-adj-nbr          final w-key-claims-mstr[18:1]"
+COMMENT "item key-p-clm-type           final 'Z'"
+COMMENT "item key-p-clm-data           final w-p-key-claims-mstr[2:17]"
+COMMENT "item clmdtl-desc              final 'NO VERIFICATION'"
+COMMENT ";  item clmhdr-batch-nbr         final nconv(w-clmhdr-claim-id[2:9])"
+COMMENT "item clmhdr-batch-nbr         final nconv(w-clmhdr-claim-id[1:9])"
+COMMENT "item clmhdr-claim-nbr         final nconvert(w-key-claims-mstr[11:2])"
+COMMENT "item clmhdr-adj-oma-cd        final 'ZZZZ'"
+COMMENT "item clmhdr-adj-oma-suff      final '1'"
+COMMENT "item clmhdr-adj-adj-nbr       final w-key-claims-mstr[18:1]"
+COMMENT "item clmhdr-orig-batch-nbr    final w-clmhdr-batch-nbr"
+COMMENT "item clmhdr-orig-claim-nbr    final w-claim-nbr"
+COMMENT "(00/sep/29 B.E. - end)"
+COMMENT "output f002-claims-mstr alias f002-desc-2 add   & "
+COMMENT "if clmhdr-confidential-flag of f002-suspend-hdr = 'Y'"
+COMMENT "output f002-claims-mstr alias f002-desc-2 add   &"
+COMMENT "if (clmhdr-confidential-flag of f002-suspend-hdr = 'Y'     &"
+COMMENT "or clmhdr-confidential-flag of f002-suspend-hdr = 'R')"
+COMMENT "item key-clm-type             final w-key-claims-mstr[1:1]"
+COMMENT "item key-clm-batch-nbr        final nconvert(w-key-claims-mstr[2:9])"
+COMMENT "item key-clm-claim-nbr        final nconvert(w-key-claims-mstr[11:2])"
+COMMENT "item key-clm-serv-code        final 'ZZZZ2'"
+COMMENT "item key-clm-adj-nbr          final w-key-claims-mstr[18:1]"
+COMMENT "item key-p-clm-type           final 'Z'"
+COMMENT "item key-p-clm-data           final w-p-key-claims-mstr[2:17]"
+COMMENT "item clmdtl-desc              final 'to patient'"
+COMMENT ";  item clmdtl-desc              final 'to be sent'"
+COMMENT ";  item clmhdr-batch-nbr         final nconv(w-clmhdr-claim-id[2:9])"
+COMMENT "item clmhdr-batch-nbr         final nconv(w-clmhdr-claim-id[1:9])"
+COMMENT "item clmhdr-claim-nbr         final nconvert(w-key-claims-mstr[11:2])"
+COMMENT "item clmhdr-adj-oma-cd        final 'ZZZZ'"
+COMMENT "item clmhdr-adj-oma-suff      final '2'"
+COMMENT "item clmhdr-adj-adj-nbr       final w-key-claims-mstr[18:1]"
+COMMENT "item clmhdr-orig-batch-nbr    final w-clmhdr-batch-nbr"
+COMMENT "item clmhdr-orig-claim-nbr    final w-claim-nbr"
+COMMENT "2012/01/23 - MC3 - include agent 4 as well"
+COMMENT "output f002-claim-shadow add if clmhdr-agent-cd = 6 on errors report"
+OUTPUT F002-CLAIM-SHADOW ADD IF CLMHDR-AGENT-CD = 4 OR CLMHDR-AGENT-CD = 6 ON ERRORS REPORT
+COMMENT "2012/01/23 - end"
+ITEM CLM-SHADOW-CLINIC FINAL W-CLM-SHADOW-CLINIC
+ITEM CLM-SHADOW-SUBDIVISION FINAL CLMHDR-SUB-NBR OF F002-SUSPEND-HDR
+ITEM CLM-SHADOW-PATIENT FINAL CLMHDR-PAT-OHIP-ID-OR-CHART OF F002-SUSPEND-HDR
+ITEM CLM-SHADOW-BATCH-NBR FINAL W-CLMHDR-BATCH-NBR
+ITEM CLM-SHADOW-CLAIM-NBR FINAL W-CLAIM-NBR
+COMMENT "BE 98/FEB/19  OUTPUT F001-BATCH-CONTROL-FILE ADD AT W-BATCH-NBR-COUNT"
+COMMENT "2003/06/12 - MC"
+COMMENT "output f001-batch-control-file add at w-batch-nbr on errors report"
+COMMENT "2004/07/07 - MC -reinstate the change"
+COMMENT "output f001-batch-control-file add at t-batch-nbr on errors report"
+OUTPUT F001-BATCH-CONTROL-FILE ADD AT W-BATCH-NBR ON ERRORS REPORT
+COMMENT "2004/07/07 - end"
+COMMENT "2003/06/12 - end "
+ITEM BATCTRL-BATCH-NBR FINAL W-CLMHDR-BATCH-NBR
+ITEM BATCTRL-BATCH-TYPE FINAL "C"
+ITEM BATCTRL-LAST-CLAIM-NBR FINAL W-CLAIM-NBR
+COMMENT "y2k"
+COMMENT "S.B.  - remove nconvert"
+COMMENT "item batctrl-clinic-nbr      final nconvert(iconst-clinic-nbr)"
+ITEM BATCTRL-CLINIC-NBR FINAL ICONST-CLINIC-NBR
+ITEM BATCTRL-DOC-NBR-OHIP FINAL CLMHDR-DOC-OHIP-NBR OF F002-SUSPEND-HDR
+ITEM BATCTRL-LOC FINAL CLMHDR-LOC OF F002-SUSPEND-HDR
+COMMENT "(BATCTRL HOSPITAL CODE SET TO 1ST CHARACTER OF BATCTRL S LOCATION CODE"
+ITEM BATCTRL-HOSP FINAL CLMHDR-LOC OF F002-SUSPEND-HDR[1:1]
+ITEM BATCTRL-AGENT-CD FINAL CLMHDR-AGENT-CD OF F002-SUSPEND-HDR
+ITEM BATCTRL-ADJ-CD FINAL CLMHDR-ADJ-CD OF F002-SUSPEND-HDR
+ITEM BATCTRL-I-O-PAT-IND FINAL CLMHDR-I-O-PAT-IND OF F002-SUSPEND-HDR
+ITEM BATCTRL-DATE-BATCH-ENTERED FINAL W-DATE
+ITEM BATCTRL-DATE-PERIOD-END FINAL W-ICONST-DATE-PERIOD-END
+ITEM BATCTRL-CYCLE-NBR FINAL ICONST-CLINIC-CYCLE-NBR
+COMMENT "(00/oct/06 B.E. - use oma $ for batctrl-amt-est/act as per d001 logic)"
+COMMENT "item batctrl-amt-est      subtotal clmhdr-tot-claim-ar-ohip &"
+ITEM BATCTRL-AMT-EST SUBTOTAL CLMHDR-TOT-CLAIM-AR-OMA OF U706A_SUSP_HDR_COUNT_SRTED
+COMMENT "item batctrl-amt-act      subtotal clmhdr-tot-claim-ar-ohip &"
+ITEM BATCTRL-AMT-ACT SUBTOTAL CLMHDR-TOT-CLAIM-AR-OMA OF U706A_SUSP_HDR_COUNT_SRTED
+ITEM BATCTRL-CALC-AR-DUE SUBTOTAL CLMHDR-TOT-CLAIM-AR-OHIP OF U706A_SUSP_HDR_COUNT_SRTED
+ITEM BATCTRL-CALC-TOT-REV SUBTOTAL CLMHDR-TOT-CLAIM-AR-OHIP OF U706A_SUSP_HDR_COUNT_SRTED
+ITEM BATCTRL-MANUAL-PAY-TOT FINAL 0
+COMMENT "item batctrl-batch-status    final  1 "
+ITEM BATCTRL-BATCH-STATUS FINAL BATCTRL-BATCH-STATUS-BALANCED
+ITEM BATCTRL-NBR-CLAIMS-IN-BATCH FINAL W-CLAIM-NBR
+ITEM BATCTRL-ADJ-CD-SUB-TYPE FINAL CLMHDR-ADJ-CD-SUB-TYPE OF F002-SUSPEND-HDR
+SUBFILE U706A_CLAIMS_KEYS KEEP INCLUDE W-KEY-CLAIMS-MSTR, W-P-KEY-CLAIMS-MSTR
+COMMENT "*******************************************************************************"
+REQUEST U706A_PROCESS_CLAIM_DETAILS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "CREATE CLAIM DETAIL RECORDS IN F002 FOR SUSPENDED DETAIL RECS (CREATE  B  KEYS)"
+COMMENT "UPDATE F001 BATCH CONTROL RECORD TOTAL EST/ACT AMT/SVC FIELDS WITH TOTALS FROM DETAILS"
+ACCESS *U706A_SUSP_HDR_COUNT_SRTED LINK CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR TO CLMDTL-DOC-OHIP-NBR, CLMDTL-ACCOUNTING-NBR OF F002-SUSPEND-DTL LINK (NCONVERT(W-KEY-CLAIMS-MSTR[2:2])) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "file:    def_clmhdr_status.def"
+COMMENT "purpose: define the suspended detail record's status"
+DEF CLMDTL-STATUS-DELETE CHAR*1 = "D"
+DEF CLMDTL-STATUS-NEW CHAR*1 = "N"
+DEF CLMDTL-STATUS-ACTIVE CHAR*1 = " "
+DEF CLMDTL-STATUS-UPDATED CHAR*1 = "U"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "2000/02/16 - MC "
+SELECT IF CLMDTL-STATUS OF F002-SUSPEND-DTL <> CLMDTL-STATUS-DELETE
+COMMENT "SORTED ON CLMHDR-DOC-OHIP-NBR, W-BATCH-NBR-COUNT"
+COMMENT "94/OCT/15 B.E."
+COMMENT "SORTED ON CLMHDR-DOC-OHIP-NBR, W-BATCH-NBR-COUNT, W-KEY-CLAIMS-MSTR"
+COMMENT "98/JUN/02 M.C."
+COMMENT "2003/06/12 - MC"
+COMMENT "sorted on clmhdr-doc-ohip-nbr, w-batch-nbr, w-key-claims-mstr"
+COMMENT "2005/05/10 - MC - reinstate the change - use w-batch-nbr instead "
+COMMENT "sorted on clmhdr-doc-ohip-nbr, t-batch-nbr, w-key-claims-mstr"
+COMMENT "2005/05/16 - MC - include t-batch-nbr in the sorted statement"
+COMMENT "sorted on clmhdr-doc-ohip-nbr, w-batch-nbr, w-key-claims-mstr"
+COMMENT "2007/04/24 - MC - include clmhdr-doc-nbr in front "
+COMMENT "sorted on clmhdr-doc-ohip-nbr, t-batch-nbr, w-batch-nbr, w-key-claims-mstr"
+SORTED ON CLMHDR-DOC-NBR ON CLMHDR-DOC-OHIP-NBR, T-BATCH-NBR, W-BATCH-NBR, W-KEY-CLAIMS-MSTR
+COMMENT "2007/04/24 - end"
+COMMENT "2005/05/16 - end"
+COMMENT "2005/05/10 - end"
+COMMENT "2003/06/12 - end"
+COMMENT "y2k"
+DEF W-ICONST-DATE-PERIOD-END CHAR*8 = ASCII(ICONST-DATE-PERIOD-END,8)
+COMMENT "!def w-key-claims-mstr-dtl char*18 = &"
+COMMENT "! w-key-claims-mstr[1:12] + clmdtl-oma-cd + clmdtl-oma-suff + &"
+DEF W-KEY-CLAIMS-MSTR-DTL CHAR*17 = W-KEY-CLAIMS-MSTR[1:11] + CLMDTL-OMA-CD + CLMDTL-OMA-SUFF + ASCII(CLMDTL-ADJ-NBR,1)
+COMMENT "!def w-claim-id char*17 = w-key-claims-mstr-dtl[2:17]"
+DEF W-CLAIM-ID CHAR*16 = W-KEY-CLAIMS-MSTR-DTL[2:16]
+COMMENT "94/OCT/15 B.E."
+TEMP W-CLMDTL-REC-COUNT
+ITEM W-CLMDTL-REC-COUNT COUNT RESET AT W-KEY-CLAIMS-MSTR
+COMMENT "!def w-clmhdr-batch-nbr = nconvert(w-key-claims-mstr[2:9])"
+DEF W-CLMHDR-BATCH-NBR CHAR*8 = W-KEY-CLAIMS-MSTR[2:8]
+COMMENT "(00/sep/04 B.E.)"
+COMMENT "(calculation of total nbr services now based upon new redefined"
+COMMENT "fields added to dictionary)"
+COMMENT "def w-nbr-of-services = clmdtl-nbr-serv &"
+COMMENT "+ floor(clmdtl-consecutive-sv-date(1) / 100) &"
+COMMENT "+ floor(clmdtl-consecutive-sv-date(2) / 100) &"
+COMMENT "+ floor(clmdtl-consecutive-sv-date(3) / 100)"
+DEF W-NBR-OF-SERVICES = CLMDTL-NBR-SERV + CLMDTL-SV-NBR(1) + CLMDTL-SV-NBR(2) + CLMDTL-SV-NBR(3)
+COMMENT "2003/11/19 - MC"
+DEFINE W-CLMDTL-SV-DATE ZONED*8 UNSIGNED = NCONVERT(CLMDTL-SV-DATE OF F002-SUSPEND-DTL)
+TEMP X-CLMDTL-SERV-DATE ZONED*8 UNSIGNED
+ITEM X-CLMDTL-SERV-DATE MINIMUM W-CLMDTL-SV-DATE RESET AT W-KEY-CLAIMS-MSTR
+COMMENT "2003/11/19 - end"
+OUTPUT F002-CLAIMS-MSTR ADD ON ERRORS REPORT
+ITEM KEY-CLM-TYPE FINAL W-KEY-CLAIMS-MSTR-DTL[1:1]
+COMMENT "!  item key-clm-batch-nbr                final nconvert(w-key-claims-mstr-dtl[2:9])"
+ITEM KEY-CLM-BATCH-NBR FINAL W-KEY-CLAIMS-MSTR-DTL[2:8]
+COMMENT "!  item key-clm-claim-nbr                final nconvert(w-key-claims-mstr-dtl[11:2])"
+ITEM KEY-CLM-CLAIM-NBR FINAL NCONVERT(W-KEY-CLAIMS-MSTR-DTL[10:2])
+COMMENT "!  item key-clm-serv-code                final w-key-claims-mstr-dtl[13:5]"
+ITEM KEY-CLM-SERV-CODE FINAL W-KEY-CLAIMS-MSTR-DTL[12:5]
+COMMENT "!  item key-clm-adj-nbr                  final w-key-claims-mstr-dtl[18:1]"
+ITEM KEY-CLM-ADJ-NBR FINAL W-KEY-CLAIMS-MSTR-DTL[17:1]
+ITEM KEY-P-CLM-TYPE FINAL "Z"
+COMMENT "y2k"
+COMMENT "item key-p-clm-batch-nbr final nconvert(w-p-key-claims-mstr[2:9])"
+COMMENT "item key-p-clm-claim-nbr final nconvert(w-p-key-claims-mstr[11:2])"
+COMMENT "item key-p-clm-serv-code final w-p-key-claims-mstr[13:5]"
+COMMENT "item key-p-clm-adj-nbr final w-p-key-claims-mstr[18:1]"
+COMMENT "!  item key-p-clm-data           final w-p-key-claims-mstr[2:17]"
+ITEM KEY-P-CLM-DATA FINAL W-P-KEY-CLAIMS-MSTR[2:16]
+ITEM CLMDTL-CYCLE-NBR FINAL ICONST-CLINIC-CYCLE-NBR
+ITEM CLMDTL-DATE-PERIOD-END FINAL W-ICONST-DATE-PERIOD-END
+ITEM CLMDTL-FEE-OMA FINAL CLMDTL-FEE-OMA OF F002-SUSPEND-DTL
+ITEM CLMDTL-FEE-OHIP FINAL CLMDTL-FEE-OHIP OF F002-SUSPEND-DTL
+ITEM CLMDTL-ID FINAL W-CLAIM-ID
+COMMENT "(94/OCT/15 B.E.)"
+ITEM CLMDTL-LINE-NO FINAL W-CLMDTL-REC-COUNT
+ITEM CLMDTL-ORIG-BATCH-NBR FINAL W-CLMHDR-BATCH-NBR
+ITEM CLMDTL-ORIG-CLAIM-NBR-IN-BATCH FINAL W-CLAIM-NBR
+ITEM CLMDTL-AGENT-CD FINAL CLMHDR-AGENT-CD OF U706A_SUSP_HDR_COUNT_SRTED
+COMMENT "2003/11/19 - MC - update clmhdr-serv-date with the minimum clmdtl-serv-date"
+COMMENT "2005/04/20 - MC"
+COMMENT "using 'B', nconvert(w-key-claims-mstr[2:9]),            &"
+COMMENT "nconvert(w-key-claims-mstr[11:2]), '00000', '0'   &"
+COMMENT "2005/04/20 - end"
+OUTPUT F002-CLAIMS-MSTR ALIAS UPD-HDR UPDATE AT W-KEY-CLAIMS-MSTR VIA KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR USING 'B', (W-KEY-CLAIMS-MSTR[2:8]), NCONVERT(W-KEY-CLAIMS-MSTR[10:2]), '00000', '0' ON ERRORS REPORT
+ITEM CLMHDR-SERV-DATE FINAL X-CLMDTL-SERV-DATE
+COMMENT "2003/11/19 - end"
+COMMENT "MC 98/06/02"
+COMMENT "OUTPUT F001-BATCH-CONTROL-FILE UPDATE AT W-BATCH-NBR-COUNT &"
+COMMENT "2003/06/12 - MC"
+COMMENT "output f001-batch-control-file update at w-batch-nbr       &"
+COMMENT "2005/05/10 - MC - reinstate the changed, use w-batch-nbr"
+COMMENT "output f001-batch-control-file update at t-batch-nbr       &"
+COMMENT "2005/05/10 - end"
+COMMENT "2003/06/12 - end"
+OUTPUT F001-BATCH-CONTROL-FILE UPDATE AT W-BATCH-NBR VIAINDEX BATCTRL-BATCH-NBR USING W-CLMHDR-BATCH-NBR ON ERRORS REPORT
+ITEM BATCTRL-SVC-EST SUBTOTAL W-NBR-OF-SERVICES
+ITEM BATCTRL-SVC-ACT SUBTOTAL W-NBR-OF-SERVICES
+COMMENT "(00/sep/29 B.E. - begin) "
+COMMENT "(requests to process 'description' records"
+COMMENT "**********************************************************************"
+REQUEST U706A_PACK_ALL_SUSP_DESC_REC_INTO_1_SUBFILE_REC ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *U706A_SUSP_HDR_COUNT_SRTED LINK CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR TO CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR LINK CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR TO CLMDTL-DOC-OHIP-NBR, CLMDTL-ACCOUNTING-NBR OF F002-SUSPEND-DESC LINK (NCONVERT(W-KEY-CLAIMS-MSTR[2:2])) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+SELECT IF CLMHDR-STATUS <> CLMHDR-STATUS-DELETE AND CLMHDR-STATUS <> CLMHDR-STATUS-CANCEL AND CLMHDR-STATUS <> CLMHDR-STATUS-RESUBMIT AND CLMHDR-STATUS <> CLMHDR-STATUS-IGNOR AND CLMHDR-MANUAL-REVIEW = "Y"
+COMMENT "sorted on clmhdr-accounting-nbr"
+SORTED ON W-KEY-CLAIMS-MSTR
+COMMENT "(max size of 5 times 22 character desc recs allows 110 characters)"
+TEMP X-TEXT CHAR*110
+COMMENT "item x-text = truncate(pack(x-text)) +     + truncate(pack(clmdtl-suspend-desc))"
+ITEM X-TEXT = TRUNCATE(PACK(X-TEXT)) + TRUNCATE(PACK(CLMDTL-SUSPEND-DESC)) RESET AT W-KEY-CLAIMS-MSTR
+SUBFILE U706A_COMBINED_DESCS KEEP AT W-KEY-CLAIMS-MSTR INCLUDE CLMDTL-DOC-OHIP-NBR ALIAS CLMHDR-DOC-OHIP-NBR , CLMDTL-ACCOUNTING-NBR ALIAS CLMHDR-ACCOUNTING-NBR , W-KEY-CLAIMS-MSTR , W-CLAIM-NBR , W-P-KEY-CLAIMS-MSTR , X-TEXT
+COMMENT "**********************************************************************"
+REQUEST U706A_SPLIT_INTO_5_TIMES_22 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *U706A_COMBINED_DESCS
+COMMENT "link clmhdr-doc-ohip-nbr   of f002-suspend-hdr, &"
+COMMENT "clmhdr-accounting-nbr of f002-suspend-hdr &"
+COMMENT "to clmdtl-doc-ohip-nbr,   &"
+COMMENT "clmdtl-accounting-nbr  of f002-suspend-desc"
+COMMENT "(max size of 5 times 22 character desc recs allows 110 characters)"
+DEF X-DESC-1 CHAR*22 = X-TEXT[001:022]
+DEF X-DESC-2 CHAR*22 = X-TEXT[023:044]
+DEF X-DESC-3 CHAR*22 = X-TEXT[045:066]
+DEF X-DESC-4 CHAR*22 = X-TEXT[067:088]
+DEF X-DESC-5 CHAR*22 = X-TEXT[089:110]
+SUBFILE U706A_SINGLE_DESCS ALIAS U706A_SINGLE_DESC1 KEEP IF X-DESC-1 <> " " INCLUDE U706A_COMBINED_DESCS , X-DESC-1
+SUBFILE U706A_SINGLE_DESCS ALIAS U706A_SINGLE_DESC2 KEEP IF X-DESC-2 <> " " INCLUDE U706A_COMBINED_DESCS , X-DESC-2
+SUBFILE U706A_SINGLE_DESCS ALIAS U706A_SINGLE_DESC3 KEEP IF X-DESC-3 <> " " INCLUDE U706A_COMBINED_DESCS , X-DESC-3
+SUBFILE U706A_SINGLE_DESCS ALIAS U706A_SINGLE_DESC4 KEEP IF X-DESC-4 <> " " INCLUDE U706A_COMBINED_DESCS , X-DESC-4
+SUBFILE U706A_SINGLE_DESCS ALIAS U706A_SINGLE_DESC5 KEEP IF X-DESC-5 <> " " INCLUDE U706A_COMBINED_DESCS , X-DESC-5
+COMMENT "**********************************************************************"
+REQUEST U706A_CREATE_F002_CLAIM_DESC_RECS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *U706A_SINGLE_DESCS LINK (NCONVERT(W-KEY-CLAIMS-MSTR[2:2])) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC
+SORTED ON W-KEY-CLAIMS-MSTR
+COMMENT "!def w-clmhdr-claim-id char*17 = w-key-claims-mstr[2:17]"
+DEF W-CLMHDR-CLAIM-ID CHAR*16 = W-KEY-CLAIMS-MSTR[2:16]
+COMMENT "!def w-clmhdr-batch-nbr = nconvert(w-key-claims-mstr[2:9])"
+DEF W-CLMHDR-BATCH-NBR CHAR*8 = W-KEY-CLAIMS-MSTR[2:8]
+DEF W-CLM-SHADOW-CLINIC = NCONVERT(W-KEY-CLAIMS-MSTR[2:2])
+TEMP X-DESC-REC-NBR ZONED*1
+TEMP X-DESC-REC-NBR-ALPHA CHAR*1
+ITEM X-DESC-REC-NBR = X-DESC-REC-NBR + 1 RESET AT W-KEY-CLAIMS-MSTR
+ITEM X-DESC-REC-NBR-ALPHA = ASCII(X-DESC-REC-NBR)
+OUTPUT F002-CLAIMS-MSTR ALIAS F002-DESC-1 ADD ON ERRORS REPORT
+ITEM KEY-CLM-TYPE FINAL W-KEY-CLAIMS-MSTR[1:1]
+COMMENT "!  item key-clm-batch-nbr        final nconvert(w-key-claims-mstr[2:9])"
+ITEM KEY-CLM-BATCH-NBR FINAL W-KEY-CLAIMS-MSTR[2:8]
+COMMENT "!  item key-clm-claim-nbr        final nconvert(w-key-claims-mstr[11:2])"
+ITEM KEY-CLM-CLAIM-NBR FINAL NCONVERT(W-KEY-CLAIMS-MSTR[10:2])
+COMMENT "item key-clm-serv-code        final 'ZZZZ1'"
+ITEM KEY-CLM-SERV-CODE FINAL 'ZZZZ' + X-DESC-REC-NBR-ALPHA
+COMMENT "!  item key-clm-adj-nbr          final w-key-claims-mstr[18:1]"
+ITEM KEY-CLM-ADJ-NBR FINAL W-KEY-CLAIMS-MSTR[17:1]
+ITEM KEY-P-CLM-TYPE FINAL 'Z'
+COMMENT "!  item key-p-clm-data           final w-p-key-claims-mstr[2:17]"
+ITEM KEY-P-CLM-DATA FINAL W-P-KEY-CLAIMS-MSTR[2:16]
+ITEM CLMDTL-DESC FINAL X-DESC-1
+COMMENT "! item clmhdr-batch-nbr         final nconv(w-clmhdr-claim-id[2:9])"
+ITEM CLMHDR-BATCH-NBR FINAL W-KEY-CLAIMS-MSTR[2:8]
+COMMENT "! item clmhdr-claim-nbr         final nconvert(w-key-claims-mstr[9:2])"
+ITEM CLMHDR-CLAIM-NBR FINAL NCONVERT(W-KEY-CLAIMS-MSTR[10:2])
+ITEM CLMHDR-ADJ-OMA-CD FINAL 'ZZZZ'
+COMMENT "item clmhdr-adj-oma-suff      final '1'"
+ITEM CLMHDR-ADJ-OMA-SUFF FINAL X-DESC-REC-NBR-ALPHA
+COMMENT "!  item clmhdr-adj-adj-nbr       final w-key-claims-mstr[18:1]"
+ITEM CLMHDR-ADJ-ADJ-NBR FINAL W-KEY-CLAIMS-MSTR[17:1]
+ITEM CLMHDR-ORIG-BATCH-NBR FINAL W-CLMHDR-BATCH-NBR
+ITEM CLMHDR-ORIG-CLAIM-NBR FINAL W-CLAIM-NBR
+COMMENT "(00/sep/29 B.E. - end)"
+COMMENT "*******************************************************************************"
+REQUEST U706A_DELETE_DETAIL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F002-SUSPEND-HDR LINK CLMHDR-DOC-OHIP-NBR OF F002-SUSPEND-HDR, CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR TO CLMDTL-DOC-OHIP-NBR, CLMDTL-ACCOUNTING-NBR OF F002-SUSPEND-DTL
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "S.B."
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "file:    def_clmhdr_status.def"
+COMMENT "purpose: define the suspended detail record's status"
+DEF CLMDTL-STATUS-DELETE CHAR*1 = "D"
+DEF CLMDTL-STATUS-NEW CHAR*1 = "N"
+DEF CLMDTL-STATUS-ACTIVE CHAR*1 = " "
+DEF CLMDTL-STATUS-UPDATED CHAR*1 = "U"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "select if clmhdr-status =  D  or clmhdr-status =  C  or clmhdr-status =  Y  or clmhdr-status =  R "
+SELECT IF CLMHDR-STATUS = CLMHDR-STATUS-DELETE OR CLMHDR-STATUS = CLMHDR-STATUS-COMPLETE OR CLMHDR-STATUS = CLMHDR-STATUS-CANCEL OR CLMHDR-STATUS = CLMHDR-STATUS-RESUBMIT OR CLMHDR-STATUS = CLMHDR-STATUS-IGNOR
+OUTPUT F002-SUSPEND-DTL DELETE ON ERRORS REPORT
+COMMENT "*******************************************************************************"
+REQUEST U706A_DELETE_ADDRESS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F002-SUSPEND-HDR LINK CLMHDR-DOC-OHIP-NBR OF F002-SUSPEND-HDR, CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR TO ADD-DOC-OHIP-NBR, ADD-ACCOUNTING-NBR OF F002-SUSPEND-ADDRESS
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "S.B."
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "select if clmhdr-status =  D  or clmhdr-status =  C  or clmhdr-status =  Y  or clmhdr-status =  R "
+SELECT IF CLMHDR-STATUS = CLMHDR-STATUS-DELETE OR CLMHDR-STATUS = CLMHDR-STATUS-COMPLETE OR CLMHDR-STATUS = CLMHDR-STATUS-CANCEL OR CLMHDR-STATUS = CLMHDR-STATUS-RESUBMIT OR CLMHDR-STATUS = CLMHDR-STATUS-IGNOR OR CLMHDR-STATUS = CLMHDR-STATUS-NOT-COMPLETE
+OUTPUT F002-SUSPEND-ADDRESS DELETE ON ERRORS REPORT
+COMMENT "*******************************************************************************"
+COMMENT "(00/sep/21 B.E. - added new request)"
+REQUEST U706A_DELETE_DESC ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F002-SUSPEND-HDR LINK CLMHDR-DOC-OHIP-NBR OF F002-SUSPEND-HDR, CLMHDR-ACCOUNTING-NBR OF F002-SUSPEND-HDR TO CLMDTL-DOC-OHIP-NBR, CLMDTL-ACCOUNTING-NBR OF F002-SUSPEND-DESC
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+SELECT IF CLMHDR-STATUS = CLMHDR-STATUS-DELETE OR CLMHDR-STATUS = CLMHDR-STATUS-COMPLETE OR CLMHDR-STATUS = CLMHDR-STATUS-CANCEL OR CLMHDR-STATUS = CLMHDR-STATUS-RESUBMIT OR CLMHDR-STATUS = CLMHDR-STATUS-IGNOR
+OUTPUT F002-SUSPEND-DESC DELETE ON ERRORS REPORT
+COMMENT "*******************************************************************************"
+REQUEST U706A_DELETE_HEADER ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F002-SUSPEND-HDR
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "S.B."
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "select if clmhdr-status =  D  or clmhdr-status =  C  or clmhdr-status =  Y  or clmhdr-status =  R "
+SELECT IF CLMHDR-STATUS = CLMHDR-STATUS-DELETE OR CLMHDR-STATUS = CLMHDR-STATUS-COMPLETE OR CLMHDR-STATUS = CLMHDR-STATUS-CANCEL OR CLMHDR-STATUS = CLMHDR-STATUS-RESUBMIT OR CLMHDR-STATUS = CLMHDR-STATUS-IGNOR
+OUTPUT F002-SUSPEND-HDR DELETE ON ERRORS REPORT
+COMMENT "*******************************************************************************"
+REQUEST UPDATE_PAT_CLM_NBR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "2009/03/23 - MC1 - link to clmhdr record "
+ACCESS *U706A_CLAIMS_KEYS LINK ("I" + W-P-KEY-CLAIMS-MSTR[2:15]) TO KEY-PAT-MSTR OF F010-PAT-MSTR LINK 'B', W-KEY-CLAIMS-MSTR[2:8], NCON(W-KEY-CLAIMS-MSTR[10:2]), '00000', '0' TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR
+COMMENT "2009/03/23 - end"
+SORT ON W-P-KEY-CLAIMS-MSTR
+COMMENT "2010/06/03 - MC2"
+TEMP XCOUNT
+ITEM XCOUNT = XCOUNT + 1
+COMMENT "2010/06/03 - end"
+TEMP X-CLAIM-COUNT
+ITEM X-CLAIM-COUNT = X-CLAIM-COUNT + 1 RESET AT W-P-KEY-CLAIMS-MSTR
+COMMENT "2009/03/23 - MC1 - add three define & temp items below"
+DEF X-ADMIT-DATE DATE = NCONVERT(CLMHDR-DATE-ADMIT)
+TEMP X-MAX-ADMIT-DATE DATE
+ITEM X-MAX-ADMIT-DATE MAXIMUM X-ADMIT-DATE RESET AT W-P-KEY-CLAIMS-MSTR
+TEMP X-MAX-SERV-DATE DATE
+ITEM X-MAX-SERV-DATE MAXIMUM CLMHDR-SERV-DATE RESET AT W-P-KEY-CLAIMS-MSTR
+COMMENT "2009/03/23 - end"
+COMMENT "2010/06/03 - MC2"
+SUBFILE SAVEF010_MC KEEP INCLUDE XCOUNT, W-P-KEY-CLAIMS-MSTR, W-KEY-CLAIMS-MSTR, CLMHDR-SERV-DATE, X-MAX-SERV-DATE, CLMHDR-DATE-ADMIT, X-MAX-ADMIT-DATE, X-CLAIM-COUNT
+COMMENT "2010/06/03 - end"
+COMMENT "2009/03/23 - MC1 - add subfile  "
+COMMENT "2010/06/03 - MC2"
+COMMENT "include w-p-key-claims-mstr, pat-date-last-visit, x-max-serv-date, &"
+COMMENT "2010/06/03 - end"
+SUBFILE SAVEF010 KEEP AT W-P-KEY-CLAIMS-MSTR INCLUDE W-P-KEY-CLAIMS-MSTR OF U706A_CLAIMS_KEYS, PAT-DATE-LAST-VISIT, X-MAX-SERV-DATE, PAT-DATE-LAST-ADMIT, X-MAX-ADMIT-DATE
+COMMENT "2009/03/23 - end"
+OUTPUT F010-PAT-MSTR UPDATE AT W-P-KEY-CLAIMS-MSTR ON ERRORS REPORT
+ITEM PAT-NBR-OUTSTANDING-CLAIMS FINAL PAT-NBR-OUTSTANDING-CLAIMS + X-CLAIM-COUNT
+ITEM PAT-TOTAL-NBR-CLAIMS FINAL PAT-TOTAL-NBR-CLAIMS + X-CLAIM-COUNT
+COMMENT "2009/03/23 - MC1"
+ITEM PAT-DATE-LAST-VISIT FINAL X-MAX-SERV-DATE IF X-MAX-SERV-DATE > PAT-DATE-LAST-VISIT
+ITEM PAT-DATE-LAST-ADMIT FINAL X-MAX-ADMIT-DATE IF X-MAX-ADMIT-DATE > PAT-DATE-LAST-ADMIT
+COMMENT "2009/03/23 - end"
+BUILD $PB_OBJ/NEWU706A
+ENDMODULE NEWU706A.QTS

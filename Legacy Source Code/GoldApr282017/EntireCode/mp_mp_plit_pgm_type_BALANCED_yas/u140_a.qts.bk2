@@ -1,0 +1,90 @@
+; Program: u140_a
+; Purpose: Before the RA is run this program must to be to put all doctors
+;	   into the f075 file with an indication of the number of doctors
+;	   that share the same MOH OHIP Number
+;	   This f075 file is then updated with the RA payments and based upon
+;	   the split between a doctors RMA doctors of their RA Payments the
+;	   same ratio is used to divy up the single AFP payment identified
+;	   only with the doctor's OHIP number
+
+; modification history
+; 2004/jul/01 b.e.      - original
+; 2004/aug/12 b.e.      - changed 'count' of doctors with same ohip number
+;                         to count with same ohip nbr within doc-afp-paym-group 
+
+cancel clear
+
+run u140_a
+set process nolimit
+set lock record update
+
+request u140_count_f020_doc_ohip_nbr         	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access f020-doctor-mstr 
+;choose doc-ohip-nbr
+
+;;;;;;;;;;;;;;;use $src/f020_;select_active.qzs
+select if      doc-ohip-nbr <> 0        &
+          and (   doc-date-fac-start  = 0000000                         &
+               or doc-date-fac-start < sysdate                          &
+              )                                                         &
+          and (  doc-date-fac-term   = 00000000                         &
+               or doc-date-fac-term >= 20040101                         &
+              )
+select f020-doctor-mstr if doc-afp-paym-group <> " "
+
+sort	on doc-ohip-nbr		&
+	on doc-afp-paym-group	&
+	on doc-nbr
+
+temp x-rec-count
+item x-rec-count = x-rec-count +1 	&
+	reset at  doc-afp-paym-group
+
+subfile u140_a keep include		&
+  doc-ohip-nbr,				&
+  doc-afp-paym-group,			&
+  doc-nbr,				&
+  x-rec-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+set lock file update
+
+access *u140_a 	
+
+sort	on doc-ohip-nbr 	&
+	on doc-afp-paym-group	&
+	on x-rec-count    D
+
+temp x-dup-count
+item x-dup-count					&
+	= x-dup-count   				&
+		if x-dup-count > x-rec-count		&
+     else x-rec-count reset at doc-afp-paym-group
+
+;select if x-rec-count > 1
+
+subfile u140_a1 keep	include	&
+  doc-ohip-nbr,			&
+  doc-afp-paym-group,		&
+  doc-nbr,			&
+  x-dup-count
+
+request u140_select_only_multi_doc           	&
+                on edit        errors report 	&
+                on calculation errors report
+
+access *u140_a1					&
+	link doc-nbr				&
+	to   doc-nbr of f020-doctor-mstr
+
+output f075-afp-doc-mstr alias f075-add add
+  item doc-nbr			final doc-nbr      of f020-doctor-mstr
+  item doc-ohip-nbr		final doc-ohip-nbr of u140_a1
+  item afp-duplicate-doc-count	final x-dup-count
+
+build $obj/u140_a

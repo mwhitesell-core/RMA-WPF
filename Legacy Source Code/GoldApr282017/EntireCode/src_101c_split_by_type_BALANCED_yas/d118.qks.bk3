@@ -1,0 +1,113 @@
+;#> PROGRAM-ID.     D118.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician Statement of Earnings Messages
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     94/JAN/01  ____   B.E.     - original
+;     94/JAN/19         M.C.     - change the access method on
+;				   F119-DOCTOR-YTD
+;
+
+can clear
+set default
+
+screen $pb_obj/d118.qkc on line 6 for 18 message on line 24		&
+	receiving w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,        &
+		                        f020-doctor-mstr
+
+temp w-doc-nbr
+temp w-ep-nbr-from
+temp w-ep-nbr-to
+temp x-srch-code char*6
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query/modify/delete any MESSAGES  " &
+"       to be printed on the Individual Physician's Statement of Earnings.     " &
+"                                                                      "
+
+use $pb_src/secfile.use   nol nod
+
+file f020-doctor-mstr master
+
+file f190-comp-codes      reference
+	access viaindex comp-code using 'MSG'
+
+file  f119-doctor-ytd    occurs 3
+;	ACCESS VIAINDEX F119-DOCTOR-YTD USING W-DOC-NBR
+	access viaindex f119-doctor-ytd-seq		&
+	     using w-doc-nbr
+select if rec-type  = "B" and comp-code-group of f119-doctor-ytd  = comp-code-group of f190-comp-codes
+item      rec-type initial  "B"
+item      comp-code initial "MSG"
+item	  comp-code-group initial comp-code-group of f190-comp-codes
+
+temp text-part-1 char*65 occurs with f119-doctor-ytd
+temp text-part-2 char*65 occurs with f119-doctor-ytd
+
+define x-screen-name char*55 = "Statement Messages"
+use $pb_src/scrtitle.use  nol nod
+
+use $pb_src/stdhilite.use nol nod
+
+skip to 2
+title &
+"   --E/P--                                                                ENTRY" &
+	at ,1
+skip
+title &
+;"   CODE SEQUENCE MESSAGE                                                       " &
+;	AT ,1
+"   SEQ MESSAGE" at ,1
+skip
+
+cluster occurs with f119-doctor-ytd
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 MSG000 999 ________0_________0_________0_________0_________0_________0
+;ALIGN (1,,4) (,,11) (,,14)
+align (1,,4) (,,8)
+;FIELD COMP-CODE         OF F119-DOCTOR-YTD  	REQUIRED	    &
+;     			LOOKUP					    &
+;				ON F190-COMP-CODES            	    &
+;     			MESSAGE "*E* Invalid COMPENSATION Code.", &
+;		       NOTON F119-DOCTOR-YTD VIAINDEX F119-DOCTOR-YTD-SEQ &
+;     			MESSAGE "*E* This Message Code already on file for this doctor." &
+;		USING DOC-NBR   OF F119-DOCTOR-YTD,		       &
+;		      COMP-CODE OF F119-DOCTOR-YTD
+field process-seq of f119-doctor-ytd required                  lookup &
+       noton f119-doctor-ytd viaindex f119-doctor-ytd-seq using doc-nbr of &
+       f119-doctor-ytd, comp-code-group of f119-doctor-ytd, &
+       process-seq of f119-doctor-ytd
+;FIELD PROCESS-SEQ OF F119-DOCTOR-YTD REQUIRED     ID SAME LOOKUP NOTON &
+;      F119-DOCTOR-YTD VIAINDEX F119-DOCTOR-YTD-SEQ 		       &
+;		USING DOC-NBR   OF F119-DOCTOR-YTD,		       &
+;		      COMP-CODE OF F119-DOCTOR-YTD
+field text-part-1 id same
+;ALIGN (,,14)
+align (,,8)
+field text-part-2 id same
+
+procedure preupdate
+begin
+  for f119-doctor-ytd
+  begin
+    let rec-type = "B"
+    let text = text-part-1 + text-part-2
+  end
+end
+
+procedure postfind
+begin
+  for f119-doctor-ytd
+  begin
+    let text-part-1 = text[01:65]
+    let text-part-2 = text[66:65]
+  end
+end
+
+build
+  

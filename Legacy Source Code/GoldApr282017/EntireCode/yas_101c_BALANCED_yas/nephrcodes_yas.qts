@@ -1,0 +1,154 @@
+;doc     : nephrcodes.qts
+;purpose : report acute and new chronic dialysis codes by doctor run it 3 times
+;          july 1 to feb 30 2001, july 1 to jeb 30 2002 and july 1 to feb2003
+;who     : Dr. Russell
+
+
+;Date		Who		Description
+;2003/04/22	Yasemin		Original
+
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                           
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220839000 to 220839999,   &
+                                              220481000 to 220481999,   &
+                                              220078000 to 220078999,   &
+                                              220188000 to 220188999,   &
+                                              220403000 to 220403999,   &
+                                              220886000 to 220886999,   &
+                                              220279000 to 220279999,   &
+                                              220792000 to 220792999,   &
+                                              220821000 to 220821999,   &
+                                              220879000 to 220879999,   &
+                                              220455000 to 220455999,   &
+                                              220928000 to 220928999,   &
+                                              220055000 to 220055999,   &
+                                              220662000 to 220662999,   &
+                                              220459000 to 220459999,   &
+                                              220425000 to 220425999,   &
+                                              220967000 to 220967999,   &
+                                              220448000 to 220448999,   &
+                                              220524000 to 220524999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-code Cha*4 = clmdtl-id[12:4]
+
+select f002-claims-mstr if                   &
+            clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0           & ; ignore adjustments
+       and (            x-code = "R849"                 &           
+                     or x-code = "G325"                 &           
+                     or x-code = "G323"                 &           
+                     or x-code = "G860"                 &           
+                     or x-code = "G862"                 &           
+                     or x-code = "G863"                 &           
+                     or x-code = "G864"                 &           
+                     or x-code = "G865")                &           
+       and (     clmdtl-sv-date >= "20000701"  &  
+             and clmdtl-sv-date <= "20010230")
+
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[1:1])    &
+        if (clmdtl-consec-dates-r[2:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[2:2] <> 'OP') &
+        and clmdtl-consec-dates-r[1:1] <> '0'
+
+def x-sv-nbr3 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[4:1])    &
+        if (clmdtl-consec-dates-r[5:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[5:2] <> 'OP') &
+        and clmdtl-consec-dates-r[4:1] <> '0'
+
+def x-sv-nbr4 zoned*2=                          &
+        nconvert(clmdtl-consec-dates-r[7:1])    &
+        if (clmdtl-consec-dates-r[8:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[8:2] <> 'OP') &
+        and clmdtl-consec-dates-r[7:1] <> '0'
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+
+
+subfile nephrcodes keep include            &
+clmdtl-id              of f002-claims-mstr,&
+key-clm-batch-nbr      of f002-claims-mstr,&
+key-clm-claim-nbr      of f002-claims-mstr,&
+x-doc-nbr                                 ,&
+x-nbr-svcs 	                          ,& 
+x-code	                                  ,& 
+clmdtl-sv-date                           ,& 
+clmdtl-fee-ohip                           
+
+
+request two
+
+access *nephrcodes				                &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&	
+	key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr  &
+   link x-doc-nbr to doc-nbr of f020-doctor-mstr opt            &
+   link x-code to fee-oma-cd  of f040-oma-fee-mstr opt  
+
+select if  clmhdr-batch-type = 'C'                           
+
+def oma-cd-desc char*55                        &
+    = pack(fee-oma-cd + " - " + fee-desc)      
+
+subfile nephrcodes1 keep include nephrcodes, clmhdr-i-o-pat-ind,	&
+	doc-name, doc-inits, oma-cd-desc
+
+request three
+
+access *nephrcodes1		
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]
+
+def x-comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+def x-doc cha*15 = pack(doc-name + ", " + doc-inits)
+
+sort on x-doc-nbr  on x-code 
+  
+subfile nephrcodes2 keep at x-code  include   &
+x-doc-nbr                                    ,&
+doc-name                                     ,&
+doc-inits                                    ,& 
+x-code                                       ,& 
+clmdtl-fee-ohip                              ,& 
+
+
+build $obj/nephrcodes_codes
+

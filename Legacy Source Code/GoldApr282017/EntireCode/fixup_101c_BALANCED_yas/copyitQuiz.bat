@@ -1,0 +1,12 @@
+copy CHECK_F001_F002.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F001_VS_WEB_AMOUNT.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F002.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F002.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F002.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F002.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F002_BKEY.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F071.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECK_F071_DETAIL.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECKF002_ADJ_SUB_TYPE.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECKF002_ADJ_SUB_TYPE.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz
+copy CHECKF002_ADJ_SUB_TYPE.qzs C:\Clients\RMA\GoldApr282017\ParsedCode\fixup\quiz

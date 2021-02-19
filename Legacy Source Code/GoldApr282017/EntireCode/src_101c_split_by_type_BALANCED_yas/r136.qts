@@ -1,0 +1,75 @@
+; 2015/Apr/15	MC	- original
+;			combine eligibility rejects & RA rejects by doctor # 
+;			clone from r134.qzs & r135.qzs  
+
+
+can clear 
+set process nolimit
+set lock record update  
+
+request extract_f087	on calculation errors report on edit errors report
+
+access *r134   
+
+sort on clmhdr-doc-nbr on submitted-rejected-claim
+
+temp f087-reject num
+item f087-reject = f087-reject + 1 at submitted-rejected-claim	&
+			reset at clmhdr-doc-nbr
+
+def f088-reject num = 0 
+
+subfile r136 keep at clmhdr-doc-nbr				&
+include   doc-dept,              				&
+	  clmhdr-doc-nbr,              				&
+	  doc-name,             				&
+	  f087-reject,						&
+	  f088-reject 
+  
+request extract_f088	on calculation errors report on edit errors report
+
+access *r135 
+
+sort on clmhdr-doc-nbr on rat-rejected-claim
+
+def f087-reject num = 0 
+
+temp f088-reject num
+item f088-reject = f088-reject + 1 at rat-rejected-claim	&
+			reset at clmhdr-doc-nbr
+
+subfile r136 append at clmhdr-doc-nbr				&
+include   doc-dept,              				&
+	  clmhdr-doc-nbr,       				&
+	  doc-name,             				&
+	  f087-reject,						&
+	  f088-reject 
+  
+
+request combine_r136	on calculation errors report on edit errors report
+
+access *r136
+
+sort on clmhdr-doc-nbr
+
+temp elig-reject num
+item elig-reject = elig-reject + f087-reject reset at clmhdr-doc-nbr
+
+temp ra-reject num
+item ra-reject = ra-reject + f088-reject reset at clmhdr-doc-nbr
+
+temp total-reject num
+item total-reject = total-reject + f087-reject + f088-reject	&
+		reset at clmhdr-doc-nbr
+
+subfile r136_doc keep at clmhdr-doc-nbr             	&
+	include doc-dept,			&
+		clmhdr-doc-nbr,			&
+		doc-name,			&
+		elig-reject,			&
+		ra-reject,			&
+		total-reject
+
+
+build $pb_obj/r136
+

@@ -1,0 +1,91 @@
+;
+;
+; 90/09/18	M.C.	- ORIGINAL - SMS 1
+;			- FIRST PASS - EXTRACT ALL DETAILS WITH AGENT 1
+;
+; 91/08/08      M.C.    - SMS 6
+;			- CLAIMS KEY STRUCTURE HAS CHANGED, MODIFY THE
+;			  CHOOSE AND SELECT STATEMENTS
+;
+; 94/05/27      M.C.    - THIS IS THE ORIGINAL VERSION FROM HSC, MODIFY
+;			  NECCESSARY CHANGES FOR RMA CLINIC 81 AGENT 8
+; 95/01/19      YAS     - TAKE OUT SELECT AGENT 8
+; 98/oct/05     B.E.	- method of adding up the number of services in a claim
+;			  including consecutive services was giving data conversion
+;			  error and setting field to 0. New method coded.
+;
+
+
+cancel clear
+
+set default
+set report nolimit
+
+access f002-claims-mstr
+
+choose key-clm-type 'B', key-clm-batch-nbr 810000000 to 810999999
+
+;
+; select all claim detail records with agent 8
+;
+sel f002-claims-mstr if clmdtl-oma-cd ne '0000'     		&
+		and     clmdtl-oma-cd ne 'ZZZZ'			&
+   	        and  clmdtl-adj-nbr = 0				
+;               AND  CLMDTL-AGENT-CD EQ 8
+
+
+define sel-from-ped zoned*6 = parm prompt 'Enter From Period End Date: '
+define sel-to-ped   zoned*6 = parm prompt 'Enter  To  Period End Date: '
+
+define clmdtl-doc-nbr zoned*4 = nconvert(ascii(clmdtl-batch-nbr,9)[3:4])
+define clmdtl-batch-key char*8 = ascii(clmdtl-batch-nbr,9)[1:2] &
+	                       + ascii(clmdtl-batch-nbr,9)[4:6]
+define sel-clinic-nbr char*2 = ascii(clmdtl-batch-nbr,9)[1:2]
+
+; 98/oct/05
+;define x-clmdtl-nbr-serv zoned*4 = clmdtl-nbr-serv          +   &
+;	nconvert(ascii(clmdtl-consec-dates,9)[1:1])         +   &
+;        nconvert(ascii(clmdtl-consec-dates,9)[4:1])         +   &
+;        nconvert(ascii(clmdtl-consec-dates,9)[7:1])
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'               
+def x-clmdtl-nbr-serv  		&
+    =   x-sv-nbr1		&
+      + x-sv-nbr2		&
+      + x-sv-nbr3		&
+      + x-sv-nbr4 
+
+;
+; reselect records that meet the selection criteria
+;
+sel if clmdtl-date-period-end ge ascii(sel-from-ped,6)		&
+  and  clmdtl-date-period-end le ascii(sel-to-ped,6)		
+
+
+
+set subfile name moh1aicu keep
+
+report  summary							&
+	clmdtl-doc-nbr clmdtl-batch-key sel-from-ped     	&
+	sel-to-ped sel-clinic-nbr				&
+	clmdtl-batch-nbr clmdtl-claim-nbr clmdtl-oma-cd		&
+	x-clmdtl-nbr-serv clmdtl-sv-date clmdtl-fee-ohip	&
+	clmdtl-date-period-end
+
+build $pb_obj/moh1a_icu
+
+  

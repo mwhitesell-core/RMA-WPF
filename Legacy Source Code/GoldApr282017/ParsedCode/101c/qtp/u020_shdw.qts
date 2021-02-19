@@ -1,0 +1,46 @@
+;#> PROGRAM-ID.     U020_SHDW.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : READ F001-BATCH-CONTROL-FILE AND SELECT
+;                      BALANCED BATCHES(<=2) 
+;                      AND EXTRACT DATA NEEDED FOR CLAIM SHADOW
+;		       This program only runs as first part of claim purge
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2012/Jan/23 MC1          - ORIGINAL
+ 
+can clear
+set process nolimit
+set lock record update
+
+request process_shadow on calculation errors report    &
+               		on edit errors report
+
+
+access f001-batch-control-file 						  &
+	link "B"          , batctrl-batch-nbr                             &
+	to    key-clm-type, key-clm-batch-nbr of f002-claims-mstr         &
+	link nconvert(batctrl-batch-nbr[1:2])                         	  &
+	to   iconst-clinic-nbr-1-2 of iconst-mstr-rec                     
+
+use $use/def_batctrl_batch_status.def nol
+
+select f001-batch-control-file if 					  &
+		batctrl-batch-status <= batctrl-batch-status-rev-updated  &
+        and     batctrl-batch-type = 'C'				  &
+   	and (   batctrl-agent-cd = 4 or batctrl-agent-cd = 6)
+
+select f002-claims-mstr if clmhdr-adj-oma-cd = '0000'
+
+sorted on clmhdr-claim-id 
+
+output f002-claim-shadow at clmhdr-claim-id add on errors report        
+  item clm-shadow-clinic      final iconst-clinic-nbr-1-2
+  item clm-shadow-subdivision final clmhdr-sub-nbr 
+  item clm-shadow-patient     final clmhdr-pat-ohip-id-or-chart 
+  item clm-shadow-batch-nbr   final batctrl-batch-nbr
+  item clm-shadow-claim-nbr   final key-clm-claim-nbr 
+
+build $pb_obj/u020_shdw 

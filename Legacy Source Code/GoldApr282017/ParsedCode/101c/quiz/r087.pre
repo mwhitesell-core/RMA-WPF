@@ -1,0 +1,109 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE R087.QZS
+COMMENT "program: r087"
+COMMENT "purpose: rma history report for letters send to patients"
+COMMENT "93/04/19 AGK       SMS 141 (ORIGINAL)"
+COMMENT "93/04/22        Y.B.      MODIFY REPORT FORMAT"
+COMMENT "93/05/21 M. CHAN   - ADD THE MESS CODE CHECK IN THE"
+COMMENT "SELECTION CRITERIA (SAME AS R085.QZS)"
+COMMENT "94/02/22 M. CHAN   - PDR 594"
+COMMENT "- CHECK LAST MAILING > 21 DAYS OLD"
+COMMENT "INSTEAD OF 10 DAYS"
+COMMENT "98/12/10        B.E.   - changed to access *r085 subfile rather than"
+COMMENT "selecting records directly from the "
+COMMENT "rejected-claims file."
+COMMENT "99/jan/31 B.E. - y2k"
+COMMENT "00/jan/21 yas  - print patient once "
+COMMENT "00/jun/29 B.E. - changed to access *u085b rather than "
+COMMENT "00/jun/29 B.E. - changed to access *u085b rather than *r085. This ensures"
+COMMENT "the claims printed are the same ones printed in the"
+COMMENT "letters and have been filtered so that no 'confidential'"
+COMMENT "claims are printed"
+COMMENT "03/dec/15 A.A. - alpha doctor nbr"
+COMMENT "05/jun/16 M.C. - include days old column, add days old in sort"
+COMMENT "09/Apr/02 yas. - Add service date column and report service date"
+COMMENT "10/jun/22 MC1  - include rejected-claims in access statement and add sel if clmhdr-submit-date = blank         "
+COMMENT "and logically-deleted-flag <>  Y      "
+COMMENT "11/Jan/17 MC2  - include u020c_ohip_run_date in the access "
+COMMENT "11/Jan/17 MC3  - sel if clmhdr-submit-date of rejected-claims = ohip_run_date of u020c_ohip_run_date  "
+COMMENT "11/Feb/03 MC4  - add the resubmit criteria in the selection"
+COMMENT "11/Mar/02 brad - add more criteria in the selection (hard code the date)"
+COMMENT "11/Apr/04 MC5  - modify the criteria and change the second-last-rundate to 20110324"
+COMMENT "- add second_last_ohip_rundate subfile in the access"
+COMMENT "17/Feb/27 MC6  - Yasemin requested to change resubmit criteria from 35 days to 25 days"
+CANCEL CLEAR
+SET DEF
+SET REP DEV DISC NAME R087
+SET REPORT NOLIMIT
+SET NOHEAD
+SET REP PAGE LENGTH 60
+SET FORMFEED
+SET PAGE WIDTH 132
+COMMENT "! nconvert(ascii(claim-nbr,10)[1:2] +  0  + ascii(claim-nbr,10)[3:6]), &"
+COMMENT "! nconvert(ascii(claim-nbr,10)[9:2]),     &"
+COMMENT "2010/06/22 - MC1"
+COMMENT "2010/06/22 - end"
+COMMENT "2011/01/17 - MC2"
+COMMENT "2011/01/17 - end"
+COMMENT "2011/04/04 - MC5"
+ACCESS *U085B LINK ("B", (CLAIM-NBR[1:8]), NCONVERT(CLAIM-NBR[9:2]), "00000", "0") TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR LINK CLMHDR-PAT-OHIP-ID-OR-CHART VIAINDEX KEY-PAT-MSTR TO F010-PAT-MSTR LINK CLAIM-NBR TO CLAIM-NBR OF REJECTED-CLAIMS LINK TO RECORD 0 OF *U020C_OHIP_RUN_DATE LINK TO RECORD 0 OF *SECOND_LAST_OHIP_RUNDATE
+COMMENT "2011/04/04 - end"
+COMMENT "y2k"
+COMMENT "define d-test-date numeric*6 =     &"
+DEFINE D-TEST-DATE NUMERIC*8 = DAYS(SYSDATE) - DAYS(PAT-DATE-LAST-ELIG-MAILING) IF PAT-DATE-LAST-ELIG-MAILING > 0
+COMMENT ";2011/03/02 - brad"
+COMMENT "def second-last-rundate date = 20110222"
+COMMENT ";2011/03/08 - MC change to be ready for ohip run opn March 10, 2011"
+COMMENT "brad2 - 2011/03/15 updated date def second-last-rundate date = 20110301"
+COMMENT "2011/04/04 - MC5 "
+COMMENT "def second-last-rundate date = 20110310"
+DEF SECOND-LAST-RUNDATE DATE = OHIP-RUN-DATE OF SECOND_LAST_OHIP_RUNDATE
+COMMENT "2011/04/04 - end"
+DEFINE D-TEST-DATE-2NDLAST NUMERIC*8 = DAYS(SECOND-LAST-RUNDATE) - DAYS(PAT-DATE-LAST-ELIG-MAILING) IF PAT-DATE-LAST-ELIG-MAILING > 0
+COMMENT "2011/03/02 - end"
+COMMENT "2005/06/16 - MC"
+DEF D-DAYS-OLD = DAYS(SYSDATE) - DAYS(CLMHDR-SERV-DATE)
+COMMENT "2005/06/16 - End"
+DEFINE X-PAT-NAME CHA*30 = PACK(PAT-SURNAME + ", " + PAT-GIVEN-NAME)
+COMMENT "sort on pat-surname of f010-pat-mstr on key-pat-mstr"
+COMMENT "2005/06/16 - MC"
+SORT ON PAT-SURNAME OF F010-PAT-MSTR ON PAT-GIVEN-NAME OF F010-PAT-MSTR ON CLMHDR-PAT-OHIP-ID-OR-CHART ON D-DAYS-OLD
+COMMENT "2005/06/16 - end"
+COMMENT "2010/06/22 - MC2 "
+COMMENT "2011/01/17 - MC3"
+COMMENT "sel if clmhdr-submit-date of rejected-claims = 0     &"
+COMMENT "2011/02/03 - MC4"
+COMMENT "sel if        clmhdr-submit-date of rejected-claims = ohip-run-date of u020c_ohip_run_date &"
+COMMENT "2011/01/17 - end"
+COMMENT "and logically-deleted-flag <>  Y       "
+COMMENT "2011/02/03 - end"
+COMMENT "2010/06/22 - end"
+COMMENT "2011/02/03 - MC4 - change the criteria and add the resubmit criteria"
+COMMENT "MC6"
+COMMENT "or (    d-test-date > 35                  &"
+COMMENT "and  (   ( d-test-date-2NDLAST > 0 and d-test-date-2NDLAST <= 35)     &"
+COMMENT "MC6 - end"
+COMMENT "&"
+SEL IF LOGICALLY-DELETED-FLAG <> "Y" AND ( CLMHDR-SUBMIT-DATE OF REJECTED-CLAIMS = OHIP-RUN-DATE OF U020C_OHIP_RUN_DATE OR ( ( PAT-DATE-LAST-ELIG-MAILING = 0 OR PAT-DATE-LAST-ELIG-MAILING = 160100 OR PAT-DATE-LAST-ELIG-MAILING = 19160100 OR ( D-TEST-DATE > 25 AND PAT-NO-OF-LETTER-SENT < 2 ) ) AND ( ( D-TEST-DATE-2NDLAST > 0 AND D-TEST-DATE-2NDLAST <= 25) OR PAT-NO-OF-LETTER-SENT >= 2 ) ) )
+COMMENT "2011/04/04 - MC5"
+COMMENT "and clmhdr-submit-date of f002-claims-mstr > 20110217 ; brad"
+COMMENT "2005/06/16 - MC"
+COMMENT "2005/06/16 - end"
+COMMENT "2005/06/16 - MC"
+COMMENT "2005/06/16 - end"
+COMMENT "2005/06/16 - MC"
+COMMENT "2005/06/16 - end"
+PAGE HEADING TAB 01 'r087' TAB 11 SYSDATE TAB 50 'Eligibility Letters Printed - Audit Report' TAB 120 'Page:' TAB 126 SYSPAGE SKIP 3 TAB 1 'PATIENT NAME' TAB 31 'REASON' TAB 38 'HEALTH #' TAB 49 'VERSION' TAB 57 'BIRTH DATE' TAB 70 'CLAIM #' TAB 82 'AG' TAB 85 'LOCATION' TAB 94 'PREVIOUS' TAB 107 'NUMBER OF' TAB 120 'Service' SKIP 1 TAB 32 'CODE' TAB 50 'CODE' TAB 58 'YY/MM/DD' TAB 87 'CODE' TAB 94 'LETTER SEND' TAB 107 'DAYS OLD ' TAB 120 'Date' SKIP 1 TAB 1 '------------' TAB 31 '------' TAB 38 '----------' TAB 49 '-------' TAB 57 '----------' TAB 70 '----------' TAB 82 '--' TAB 85 '--------' TAB 94 '-----------' TAB 107 '---------' TAB 120 '---------' SKIP 2
+COMMENT "report              &"
+COMMENT "y2k"
+COMMENT "2005/06/16 - MC"
+COMMENT "2005/06/16 - end"
+FOOTING AT CLMHDR-PAT-OHIP-ID-OR-CHART TAB 1 X-PAT-NAME TAB 31 MESS-CODE TAB 38 PAT-HEALTH-NBR TAB 52 PAT-VERSION-CD TAB 58 PAT-BIRTH-DATE PIC "^^^^/^^/^^" TAB 70 CLAIM-NBR TAB 82 CLMHDR-AGENT-CD TAB 87 CLMHDR-LOC TAB 96 PAT-DATE-LAST-ELIG-MAILING TAB 110 D-DAYS-OLD PIC '^^^^' TAB 120 CLMHDR-SERV-DATE PIC "^^^^/^^/^^" SKIP 2
+BUILD $PB_OBJ/R087
+ENDMODULE R087.QZS

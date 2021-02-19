@@ -1,0 +1,14 @@
+copy D113.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy D705.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy D705.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy D705.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy D705.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M010_CRM.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M010_INS.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M010_INS_D003.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M076.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M116.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M116.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M116B.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M010_CRM_D003.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick
+copy M010_INS_F.qks C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\quick

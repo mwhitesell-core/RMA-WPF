@@ -1,0 +1,107 @@
+; 2013/may/02	MC	m010_1a.qks
+;			- allow user to create notes for different action
+;			- this program can be called from m010.qks or d003.cbl
+
+cancel clear
+
+screen $obj/m010_crm receiving pat-ikey
+
+temp pat-ikey      char*15
+temp pat-name      char*25
+
+temp dtl-seq-nbr zoned*8 initial 0
+temp x-time zoned*8         
+
+file f010-pat-mstr designer   
+  access viaindex key-pat-mstr using pat-ikey
+
+;file f010-crm occurs 15
+file f010-crm occurs 9  
+  access viaindex key-pat-mstr using pat-ikey                                   
+
+  item key-pat-mstr   initial pat-ikey  
+  item date-assigned  initial sysdate 
+  item time-assigned  initial systime 
+
+
+skip  1
+align (,4,14) (,35,47)
+field pat-ikey display label 'Pat ID: '
+field pat-name display label 'Pat Name: ' 
+
+;title "   DATE       Action  Seq#     Description"  at 5,1
+title "   DATE     TIME    Action  Seq#     Description"  at 5,1
+skip  1
+;align (1,,4) (,,18) (,,24) (,,30)
+align (1,,4) (,,18) (,,31)  (,,36)
+cluster occurs with f010-crm at 6,1
+
+field date-assigned of f010-crm required nochange dispLay
+field time-assigned of f010-crm required nochange dispLay
+
+field action-code of f010-crm id same required nochange auto	&
+	help 'Enter ?? for detail description'
+field key-dtl-seq-nbr of f010-crm id same nochange lookup &
+		noton f010-crm via 	key-pat-mstr , 				&
+					date-assigned,    			&
+					time-assigned,    			&
+    					key-dtl-seq-nbr 			&
+		using 	key-pat-mstr of f010-crm , 				&
+			date-assigned of f010-crm , 			 	&
+			time-assigned of f010-crm , 			 	&
+			key-dtl-seq-nbr of f010-crm predisplay
+align (,,18)
+field followup-action of f010-crm id same  
+
+
+procedure append
+begin
+     display date-assigned of f010-crm
+     display time-assigned of f010-crm
+
+     accept action-code of f010-crm
+
+     let dtl-seq-nbr = dtl-seq-nbr + 1
+     let key-dtl-seq-nbr of f010-crm = dtl-seq-nbr
+
+     display key-dtl-seq-nbr of f010-crm
+     accept followup-action of f010-crm
+     end
+
+procedure entry
+begin
+     for f010-crm
+       begin
+         perform append
+         end
+     end
+
+procedure internal get_name   
+begin
+  get f010-pat-mstr     
+  let pat-name = pack(lj(trun(pat-given-name))) + ' ' + pack(lj(trun(pat-surname)))
+  display pat-name 
+  display pat-ikey
+end
+
+procedure postfind
+begin
+   do get_name
+end
+
+procedure preentry
+begin
+  do get_name
+end
+
+procedure preupdate
+begin
+  let x-time = systime
+  for f010-crm
+      begin
+	if newrecord
+        then   let time-assigned = x-time  
+        end
+end
+
+build detail list

@@ -1,0 +1,110 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U140_B.QTS
+COMMENT "Program: u140_b"
+COMMENT "Purpose: After the RA is run and f075 updated with RA payments this program"
+COMMENT "will determine the percentage by RMA doctor number of the RA"
+COMMENT "payments at the doctor's OHIP number level."
+COMMENT "Later programs will use this percentage to split the AFP payment"
+COMMENT "mod history"
+COMMENT "2004/jul/01 b.e. - originla"
+COMMENT "2004/aug/12 b.e. - changed 'count' of doctors with same ohip number"
+COMMENT "to count with same ohip nbr within doc-afp-paym-group "
+COMMENT "2005/mar/08 M.C. - substitute afp-payment-percentage with afp-multi-doc-ra-percentage"
+COMMENT "divide by 100000 instead of 100 because we carry 5 decimal places"
+COMMENT "2005/apr/08 b.e. - set lock update statement"
+COMMENT "2005/jun/09 M.C. - change from sorted to sort"
+COMMENT "- change temp amount field from default to zoned*11 numeric"
+COMMENT "2007/feb/22 b.e. - access group flag and skip any records for groups whose"
+COMMENT "afp group flag says 'R'eport only as these doctors won't"
+COMMENT "won't have any rma number and no split between those nbrs"
+COMMENT "to calculate"
+COMMENT "2012/feb/22 MC1  - modify last request to link fo f020-doctor-mstr, change sort so that active doctor"
+COMMENT "will be selected"
+CANCEL CLEAR
+RUN U140_B
+SET PROCESS NOLIMIT
+COMMENT "set lock file update"
+SET LOCK RECORD UPDATE
+REQUEST F075_CALC_RA_TOTAL ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F075-AFP-DOC-MSTR LINK DOC-AFP-PAYM-GROUP TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-MSTR
+COMMENT "process EARNINGS groups only"
+SELECT IF AFP-GROUP-PROCESS-FLAG = "E"
+COMMENT "2005/06/09 - MC"
+COMMENT "sorted on doc-ohip-nbr &"
+COMMENT "2005/06/09 - end"
+SORT ON DOC-OHIP-NBR ON DOC-AFP-PAYM-GROUP
+COMMENT "2005/06/09 - MC"
+COMMENT "temp x-ra-total"
+TEMP X-RA-TOTAL ZONED*11 NUMERIC
+COMMENT "2005/06/09 - end"
+ITEM X-RA-TOTAL = X-RA-TOTAL + RA-PAYMENT-AMT RESET AT DOC-AFP-PAYM-GROUP
+COMMENT "2005/04/12 - MC"
+COMMENT "subfile u140_b keep at doc-ohip-nbr include   &"
+COMMENT "2005/04/12 - end"
+SUBFILE U140_B KEEP AT DOC-AFP-PAYM-GROUP INCLUDE DOC-OHIP-NBR, DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR, X-RA-TOTAL
+REQUEST F075_UPDATE_DOC_RECS_WITH_RA_TOTAL ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *U140_B LINK DOC-OHIP-NBR TO DOC-OHIP-NBR OF F075-AFP-DOC-MSTR
+SELECT IF DOC-AFP-PAYM-GROUP OF U140_B = DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR
+COMMENT "2005/03/08 - MC"
+COMMENT "def x-ra-percentage zoned*5     &"
+COMMENT "= round(   (  ra-payment-amt of f075-afp-doc-mstr &"
+COMMENT "/ x-ra-total    &"
+COMMENT ")      &"
+COMMENT "* 100      &"
+COMMENT ")"
+DEF X-RA-PERCENTAGE ZONED*6 = ROUND( ( RA-PAYMENT-AMT OF F075-AFP-DOC-MSTR / X-RA-TOTAL ) * 100000 )
+COMMENT "2005/03/08 - end"
+SUBFILE U140_B_AUDIT_1 KEEP INCLUDE DOC-OHIP-NBR OF U140_B, DOC-NBR, RA-PAYMENT-AMT, X-RA-TOTAL, X-RA-PERCENTAGE
+OUTPUT F075-AFP-DOC-MSTR ALIAS F075-UPDATE UPDATE
+ITEM RA-PAYMENT-AMT-TOTAL FINAL X-RA-TOTAL OF U140_B
+COMMENT "2005/03/08 - MC"
+COMMENT "item afp-payment-percentage final x-ra-percentage"
+ITEM AFP-MULTI-DOC-RA-PERCENTAGE FINAL X-RA-PERCENTAGE
+COMMENT "2005/03/08 - end"
+REQUEST F075_ENSURE_PERCENTAGE_IS_100 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "2012/02/22 - MC1"
+COMMENT "access f075-afp-doc-mstr"
+ACCESS F075-AFP-DOC-MSTR LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR
+COMMENT "2012/02/22 - end"
+COMMENT "2012/02/22 - MC1 - add define & change sort"
+DEF X-TERM-DATE DATE = 20991231 IF DOC-DATE-FAC-TERM = 0 ELSE DOC-DATE-FAC-TERM
+COMMENT "sort on doc-ohip-nbr  &"
+COMMENT "on doc-afp-paym-group"
+SORT ON DOC-OHIP-NBR OF F075-AFP-DOC-MSTR ON DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR ON X-TERM-DATE ON DOC-NBR OF F075-AFP-DOC-MSTR
+COMMENT "2012/02/22 - end"
+TEMP X-REC-COUNT
+ITEM X-REC-COUNT =X-REC-COUNT + 1 RESET AT DOC-AFP-PAYM-GROUP
+COMMENT "add up all percentages except the last one"
+COMMENT "2005/03/08 - MC"
+COMMENT "temp x-ra-percentage zoned*5"
+TEMP X-RA-PERCENTAGE ZONED*6
+COMMENT "2005/03/08 - -end"
+COMMENT "2005/03/08 - MC"
+COMMENT "+ afp-payment-percentage    &"
+COMMENT "2005/03/08 - end"
+ITEM X-RA-PERCENTAGE = X-RA-PERCENTAGE + AFP-MULTI-DOC-RA-PERCENTAGE IF X-REC-COUNT <> AFP-DUPLICATE-DOC-COUNT ELSE X-RA-PERCENTAGE RESET AT DOC-AFP-PAYM-GROUP
+COMMENT "def x-final-percentage = 1 - (x-ra-percentage / 1000)"
+COMMENT "2005/03/08 - MC"
+COMMENT "def x-final-percentage = 100 - x-ra-percentage "
+DEF X-FINAL-PERCENTAGE = 100000 - X-RA-PERCENTAGE
+COMMENT "2005/03/08 - end"
+COMMENT "2012/02/22 - MC1 - include doc-nbr, doc-afp-paym-group"
+COMMENT "doc-ohip-nbr,    &"
+COMMENT "2012/02/22 - end"
+COMMENT "2005/03/08 - MC"
+COMMENT "afp-payment-percentage,   &"
+COMMENT "2005/03/08 - end"
+SUBFILE U140_B_AUDIT_2 KEEP INCLUDE DOC-OHIP-NBR OF F075-AFP-DOC-MSTR, DOC-NBR OF F075-AFP-DOC-MSTR, DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR, X-RA-PERCENTAGE, AFP-MULTI-DOC-RA-PERCENTAGE, X-FINAL-PERCENTAGE, X-REC-COUNT, AFP-DUPLICATE-DOC-COUNT
+OUTPUT F075-AFP-DOC-MSTR ALIAS F075-UPDATE UPDATE IF X-REC-COUNT = AFP-DUPLICATE-DOC-COUNT
+COMMENT "2005/03/08 - MC "
+COMMENT "item afp-payment-percentage final x-final-percentage"
+ITEM AFP-MULTI-DOC-RA-PERCENTAGE FINAL X-FINAL-PERCENTAGE
+COMMENT "2005/03/08 - end"
+BUILD $OBJ/U140_B
+ENDMODULE U140_B.QTS

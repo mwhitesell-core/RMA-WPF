@@ -1,0 +1,83 @@
+;doc     : dept1.qts
+;purpose : ohip billings from July 1,2001 to June 30 2002              
+;          total billing amount by doctor
+;          then write dept1_misc.qts and misc amount by doctor
+;          report misc oma code then clmhdr-reference for each code
+;who     : Leena      
+;
+; *************************************************************
+
+;Date		Who		Description
+;2002/10/10	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one
+
+access f002-claims-mstr     
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr ,     &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                                               &
+              (    (clmhdr-doc-dept = 1 or clmhdr-doc-dept = 17)         &  
+               and  clmhdr-batch-type  = 'C'                              &
+;                   (clmhdr-batch-type = 'A' and clmhdr-adj-cd = 'B'))    &
+              )
+
+subfile dept1   keep include                     &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dept1                                                            &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+
+select f002-claims-mstr if                   &
+            clmdtl-date-period-end >= '20010701' & 
+       and  clmdtl-date-period-end <= '20020630' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+;      and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+sort on x-doc-nbr    
+
+temp x-amount-c    zoned*7 signed
+item x-amount-c     = x-amount-c    + clmdtl-fee-ohip   &
+	if clmdtl-adj-nbr = 0 reset at x-doc-nbr 
+
+temp x-amount-a    zoned*7 signed 
+item x-amount-a     = x-amount-a    + clmdtl-fee-ohip   &
+	if clmdtl-adj-nbr = 1 reset at x-doc-nbr 
+
+
+subfile dept11_doc  keep at x-doc-nbr include          &
+x-doc-nbr                                          ,&
+x-amount-c, x-amount-a				
+
+build $obj/dept1

@@ -1,0 +1,143 @@
+; DOC: r006atp_70 
+; DOC: MONTHLY CASH APPLIED RECONCILIATION BY DOCTOR
+; DOC: SORT BY CLINIC/BY AGENT/BY DOCTOR/BY LOCATION
+; DOC: RUN FOR: MUMC DIAGNOSTICS
+;
+;PROGRAM PURPOSE : CASH ANALYSIS BY DOCTOR (DETAIL REPORT)
+;                  R006TP.CB CONVERSTION TO POWERHOUSE R006ATP.QZS
+;                  APPEND SUMMARY REPORTS R006BTP.TXT AND R006CTP.TXT
+;                  TO END OF R006ATP.TXT
+;
+;DATE       BY WHO       DESCRIPTION
+;2007/Mar   YASEMIN      r006atp 
+;
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r006atp_70
+set formfee
+
+
+access f051tp-doc-cash-mstr                                        &
+  link docashtp-doc-nbr                                            &
+    to doc-nbr of f020-doctor-mstr     opt                         &
+  link docashtp-clinic-nbr                                         &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec  opt               &
+  link doc-dept                                                    &
+    to dept-nbr of f070-dept-mstr   opt                            &
+  link docashtp-loc-cd                                             &
+    to loc-nbr of f030-locations-mstr  opt
+
+choose docashtp-key "71@" to "75@"
+
+sort on docashtp-clinic-nbr on docashtp-agent-cd    &
+     on docashtp-doc-nbr on docashtp-loc-cd
+
+def x-tech-mtd zoned*8 signed = (docashtp-tech-in-mtd + docashtp-tech-out-mtd)
+def x-prof-mtd zoned*8 signed = (docashtp-prof-in-mtd + docashtp-prof-out-mtd)
+def x-total-mtd zoned*8 signed = (x-tech-mtd + x-prof-mtd)
+
+def x-tech-ytd zoned*8 signed = (docashtp-tech-in-ytd + docashtp-tech-out-ytd)
+def x-prof-ytd zoned*8 signed = (docashtp-prof-in-ytd + docashtp-prof-out-ytd)
+def x-total-ytd zoned*8 signed = (x-tech-ytd + x-prof-ytd)
+
+def x-year cha*4 = ascii(sysdate,8)[1:4]
+
+def x-mth cha*2 = ascii(sysdate,8)[5:2]
+
+def x-day cha*2 = ascii(iconst-date-period-end,8)[7:2]
+
+def x-month cha*9 = "JANUARY"   if x-mth  = "01"      &
+               else "FEBRUARY"  if x-mth  = "02"      &
+               else "MARCH"     if x-mth  = "03"      &
+               else "APRIL"     if x-mth  = "04"      &
+               else "MAY"       if x-mth  = "05"      &
+               else "JUNE"      if x-mth  = "06" and x-day < "30"  &
+               else "YEAREND"   if x-mth  = "06" and x-day = "30"  &
+               else "JULY"      if x-mth  = "07"      &
+               else "AUGUST"    if x-mth  = "08"      &
+               else "SEPTEMBER" if x-mth  = "09"      &
+               else "OCTOBER"   if x-mth  = "10"      &
+               else "NOVEMBER"  if x-mth  = "11"      &
+               else "DECEMBER"  if x-mth  = "12"
+
+def x-date cha*15 = pack(x-month +"/ "+ x-year)
+
+def x-name cha*30 =pack(doc-inits + " " + doc-name)
+
+page heading                                              	&
+	tab 1   "R006TP_70"           		          	&
+	tab 7   "/"        		          	        &
+	tab 8   docashtp-clinic-nbr                             &
+	tab 13  "P.E.D"				          	&
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 55  iconst-clinic-name                        	&
+	tab 103 "RUN DATE:"                               	&
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 47  "MONTHLY CASH APPLIED RECONCILLIATIONS"   	&
+        tab 105 "CLINIC:"                                       &
+        tab 113  docashtp-clinic-nbr                          &
+        tab 116  "-"                                            &
+        tab 118  iconst-clinic-nbr                              &
+skip 1  tab 61  "BY DOCTOR"                              	&
+skip 1  tab 51  "FOR THE MONTH OF" tab 68 x-date                &
+skip 1  tab 1   "AGENT -----:" tab 14 docashtp-agent-cd		&
+skip 1  tab 1   "DEPT  -----:"                                  &
+		tab 14 doc-dept fill "0"			&
+        	tab 20 dept-name                              	&
+skip 1  tab 1   "DOCTOR ----:"                                  &
+                 tab 14 doc-nbr                                 &
+                 tab 20 x-name                                  &
+skip 2  tab 1   "LOC"                                  		&
+        tab 8   "LOCATION"                             		&
+        tab 53  "----------- MONTH TO DATE -----------"		&
+        tab 96  "----------- YEAR TO DATE -----------" 		&
+skip 1  tab 1   "CODE"                                 		&
+        tab 8   "DESCRIPTION"                          		&
+        tab 60  "TECH"                                          &
+        tab 73  "PROF"                                          &
+        tab 85  "TOTAL"                                         &
+        tab 102 "TECH"                                          &
+        tab 115 "PROF"                                          &
+        tab 127 "TOTAL"                                         &
+skip 2
+
+heading at docashtp-doc-nbr        skip page
+
+report                        		&
+  tab 2   loc-nbr          		&
+  tab 8   loc-name                      &
+  tab 54  x-tech-mtd   subtotal pic "^^^,^^^.^^" &
+  tab 67  x-prof-mtd   subtotal pic "^^^,^^^.^^" &
+  tab 80  x-total-mtd  subtotal pic "^^^,^^^.^^" &
+  tab 96  x-tech-ytd   subtotal pic "^^^,^^^.^^" &
+  tab 109 x-prof-ytd   subtotal pic "^^^,^^^.^^" &
+  tab 122 x-total-ytd  subtotal pic "^^^,^^^.^^" &
+skip 1
+
+footing at docashtp-doc-nbr skip 2  &
+  tab 8   "TOTAL FOR DOCTOR  ------------------------->"	&
+  tab 54  x-tech-mtd  subtotal pic "^^^,^^^.^^"             	&
+  tab 67  x-prof-mtd  subtotal pic "^^^,^^^.^^"             	&
+  tab 80  x-total-mtd subtotal pic "^^^,^^^.^^"             	&
+  tab 96  x-tech-ytd  subtotal pic "^^^,^^^.^^"             	&
+  tab 109 x-prof-ytd  subtotal pic "^^^,^^^.^^"             	&
+  tab 122 x-total-ytd subtotal pic "^^^,^^^.^^"                 &
+skip 1
+
+ footing at docashtp-agent-cd     &
+  tab 8   "TOTAL FOR AGENT --------------------------->"        &
+  tab 54  x-tech-mtd  subtotal pic "^^^,^^^.^^"             	&
+  tab 67  x-prof-mtd  subtotal pic "^^^,^^^.^^"             	&
+  tab 80  x-total-mtd subtotal pic "^^^,^^^.^^"             	&
+  tab 95  x-tech-ytd  subtotal pic "^^^^,^^^.^^"             	&
+  tab 108 x-prof-ytd  subtotal pic "^^^^,^^^.^^"             	&
+  tab 121 x-total-ytd subtotal pic "^^^^,^^^.^^"             	&
+ skip page
+
+build $pb_obj/r006atp_70
+
+
+  

@@ -1,0 +1,58 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE R950B.QZS
+COMMENT "doc: r950b.qzs"
+COMMENT "program purpose : list of negative adjusts for doctor"
+COMMENT "modification history"
+COMMENT "date          by whom   description"
+COMMENT "2010/aug/17   brad  orig"
+COMMENT "2010/sep/28   MC1  comment out ' and 1=2 ' for x-adj-a/b/r"
+CAN CLEAR
+SET DEFAULT
+SET REP NOLIMIT
+SET PAGE WIDTH 132
+ACCESS *R950A LINK ("B" , KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR) TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR LINK CLMHDR-DOC-DEPT OF R950A TO DEPT-NBR OF F070-DEPT-MSTR OPT
+COMMENT "&"
+SELECT F002-CLAIMS-MSTR IF CLMDTL-OMA-CD <> "0000" AND CLMDTL-OMA-CD <> "ZZZZ"
+COMMENT "and (clmdtl-orig-batch-nbr = key-clm-batch-nbr)"
+COMMENT "2010/09/28 - MC1"
+COMMENT "and (   batctrl-batch-nbr[1:2] =  22        &"
+COMMENT "or batctrl-batch-nbr[1:2] =  42        &"
+COMMENT "2010/09/28 - end"
+COMMENT "2010/09/28 - MC1"
+COMMENT "and    batctrl-batch-nbr[1:2] <>   98  "
+SELECT IF ( ( ( CLMHDR-DOC-DEPT = 21 ) AND ( KEY-CLM-BATCH-NBR[1:2] = "22" OR KEY-CLM-BATCH-NBR[1:2] = "42" ) ) OR DOC-RMA-EXPENSE-PERCENT-REG <> 0 OR DOC-RMA-EXPENSE-PERCENT-MISC <> 0 ) AND KEY-CLM-BATCH-NBR[1:2] <> "98"
+COMMENT "2010/09/28 - end"
+DEF X-OMA-CODE CHA*5 = CLMDTL-ID[11:5]
+DEF X-CLAIM-DTL-ID CHA*10 = (KEY-CLM-BATCH-NBR[1:8]) + (ASCII(KEY-CLM-CLAIM-NBR,2))
+COMMENT "def x-orig-batch zoned*8 UNSIGNED = CLMDTL-ORIG-BATCH-NBR[1:2]  &"
+COMMENT "+ clmdtl-orig-batch-nbr[4:6]"
+DEF X-ORIG-BATCH CHA*8 = CLMDTL-ID[1:8]
+COMMENT "-------------------------------------------------------------------------"
+COMMENT "moira - uncomment the and 1=2 and about 20 errors occur .. right on as is there is not error"
+COMMENT "def x-adj-A      zoned*7 signed = clmdtl-fee-ohip            &"
+COMMENT "and 1=2"
+DEF X-ADJ-A ZONED*7 NUMERIC = CLMDTL-FEE-OHIP IF BATCTRL-ADJ-CD = 'A'
+COMMENT "def x-adj-B      zoned*7 signed = clmdtl-fee-ohip            &"
+COMMENT "and 1=2"
+DEF X-ADJ-B ZONED*7 NUMERIC = CLMDTL-FEE-OHIP IF BATCTRL-ADJ-CD = 'B'
+COMMENT "def x-adj-R        zoned*7 signed = clmdtl-fee-ohip     &"
+COMMENT "and 1=2 "
+DEF X-ADJ-R ZONED*7 NUMERIC = CLMDTL-FEE-OHIP IF BATCTRL-ADJ-CD = 'R'
+COMMENT "def x-tot-adj zoned*7 signed = clmdtl-fee-ohip  if 1=2"
+COMMENT "def x-tot-adj zoned*9 signed   = abs(clmdtl-fee-ohip)"
+DEF X-TOT-ADJ ZONED*8 NUMERIC = ABS(CLMDTL-FEE-OHIP) IF 1= 2
+COMMENT "def x-tot-adj   zoned*7 signed = clmdtl-fee-ohip   if batctrl-adj-cd =  A  or batctrl-adj-cd =  B  or batctrl-adj-cd =  R  if 1=2"
+COMMENT "def x-tot-adj  float size 8 significance 2 = abs(clmdtl-fee-ohip) if 1=2"
+DEF X-TOT-RMACHG ZONED*7 SIGNED = ABS(CLMDTL-FEE-OHIP) * .05 IF 1=2
+COMMENT "-------------------------------------------------------------------------"
+SORT ON BATCTRL-DATE-PERIOD-END ON X-DOC-NBR
+SET SUBFILE NAME R950B KEEP
+REP SUMMARY CLMHDR-DOC-DEPT X-DOC-NBR X-CLAIM-DTL-ID CLMDTL-OMA-CD CLMDTL-FEE-OHIP CLMHDR-ADJ-CD X-ADJ-A X-ADJ-B X-ADJ-R BATCTRL-DATE-PERIOD-END
+BUILD $OBJ/R950B
+ENDMODULE R950B.QZS

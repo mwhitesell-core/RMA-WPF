@@ -1,0 +1,1047 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   1
+*                      r014.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. r014.
+author. dyad computer systems inc.
+installation. rma.
+date-written. yy/mm/dd.
+date-compiled. 18-May-06 15:41.
+security.
+*
+*    files      : f001 - batch control file
+*               : f090 - iconstants master
+*               : "r014" - agent summary report
+*
+*    program purpose : to print the agent summary report
+*
+*         rev.  may/87 (s.b.) - coversion from aos to aos/vs.
+*                               change field size for
+*                               status clause to 2 and
+*                               feedback clause to 4.
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*   rev 17/01/96 yas : - change "BATCTRL-BATCH-STATUS" from 1 to 1 or 2
+*                      - because, imlementation of u010daily program
+*
+*   rev 30/01/98 jc    - s149 unix conversion
+*   rev 05/03/99 cm    - y2k conversion
+*   2004/jan/05    b.e. - remove confirmation to run job
+*
+environment division.
+input-output section.
+file-control.
+*
+*   place your file select statements here
+*
+    copy "f001_batch_control_file.slr".
+    select batch-ctrl-file
+*       assign index to "f001_batch_control_file"
+*       assign data  to "f001_batch_control_file"
+        assign to disk "$pb_data/f001_batch_control_file"
+        organization is indexed
+        access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+        lock mode is manual
+
+*       record key   is key-batctrl-file length is 9
+        record key   is key-batctrl-file
+*tobefixed*     record key   is key-gen-batctrl-file length is 2   S
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   2
+*                      r014.cbl (/alpha/rmabill/rmabill101c/use/f001_)
+              status is status-cobol-batctrl-file.
+*       infos status is status-batctrl-file.
+*       eof-flag     is eof-batctrl-file
+*
+*
+    copy "f090_constants_mstr.slr".
+select iconst-mstr
+assign to disk "$pb_data/f090_constants_mstr"
+organization is indexed
+access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+lock mode is manual
+record key   is iconst-clinic-nbr-1-2
+*       eof-flag     is eof-iconst-mstr
+status is status-cobol-iconst-mstr.
+*
+
+    select print-file
+        assign to printer print-file-name
+        file status is status-prt-file.
+data division.
+file section.
+*
+    copy "f001_batch_control_file.fd".
+*  98/aug/01 B.E.      - unix conversion - moved external key to internal keyp
+*  98/dec/01 D.B.       - y2k
+*  99/Jan/21 M.C.       - move 'adj-cd' and 'adj-cd-sub-type' between
+*                         'batch-type' and 'last-claim-nbr' fields
+*                       - comment out filler
+*  99/Apr/23 M.C.       - change key-batctrl-file from numeric to alpha
+*  99/May/27 M.C.       - change batctrl-clinic-nbr numeric to alpha
+*  99/nov/18 B.E.       - location changed from x999 to x(4).
+*  01/nov/06 B.E.       - added batctrl-payroll as redefine of batctrl-hosp
+*  03/oct/20 b.e. - alpha doctor nbr
+
+fd batch-ctrl-file
+*!          block  contains 112 characters
+*!          record contains 112 characters.
+          block  contains 111 characters
+          record contains 111 characters.
+
+01  batctrl-rec.
+
+    05  batctrl-batch-nbr.
+        10  batctrl-bat-clinic-nbr-1-2          pic 99.
+*!      10  batctrl-bat-doc-nbr                 pic 9(4).
+        10  batctrl-bat-doc-nbr                 pic x(3).
+        10  batctrl-bat-week-day.
+            15  batctrl-bat-week                pic 99.
+            15  batctrl-bat-day                 pic 9.
+        10  batctrl-bat-week-day-r redefines batctrl-bat-week-day
+                                                pic 999.
+    05  key-batctrl-file-r redefines batctrl-batch-nbr.
+*mc     10  key-batctrl-file                    pic 9(9).
+* mc - redefined from numeric to alpha so that programs moving
+*      alphabetic fields to this field get left justified results
+*      rather than right justified results which the numeric
+*      definition gives.  For example,  cobol programs doing
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   3
+*                      r014.cbl (/alpha/rmabill/rmabill101c/use/f001_)
+*      'read approximates' move "22" to this field and with the
+*      numeric definition get "00000022" to read. By changing
+*      to alphabetic field, we get "22     " and the read
+*      aproximate works the same with this internal key as
+*      before when we had  external key.
+*!        10  key-batctrl-file                  pic x(9).
+        10  key-batctrl-file                    pic x(8).
+
+
+    05  batctrl-batch-type                      pic x.
+    05  batctrl-adj-cd                          pic x.
+    05  batctrl-adj-cd-sub-type                 pic x.
+    05  batctrl-last-claim-nbr                  pic 99.
+    05  batctrl-clinic-nbr.
+*       10  batctrl-clinic-nbr-1-2              pic 99.
+*       10  batctrl-clinic-nbr-3-4              pic 99.
+        10  batctrl-clinic-nbr-1-2              pic xx.
+        10  batctrl-clinic-nbr-3-4              pic xx.
+    05  batctrl-doc-nbr-ohip                    pic 9(6).
+
+    05  batctrl-hosp                            pic x.
+    05  batctrl-payroll redefines batctrl-hosp  pic x.
+
+    05  batctrl-loc.
+        10  batctrl-loc1                        pic x.
+* 99/nov/19 B.E.
+*       10  batctrl-loc2-4                      pic 999.
+        10  batctrl-loc2-4                      pic xxx.
+    05  batctrl-agent-cd                        pic 9.
+*   05  batctrl-adj-cd                          pic x.
+    05  batctrl-i-o-pat-ind                     pic x.
+*       ('batctrl-date-batch-entered' formerly called 'batctrl-date-claimed-sys'
+    05  batctrl-date-batch-entered              pic x(8).
+*       ('filler' formerly called 'batctrl-date-sv')
+*   05  filler                                  pic x(6).  - use for y2k
+    05  batctrl-date-period-end.
+        10 batctrl-date-period-end-yy           pic xxxx.
+        10 batctrl-date-period-end-mm           pic xx.
+        10 batctrl-date-period-end-dd           pic xx.
+    05  batctrl-cycle-nbr                       pic 999.
+    05  batctrl-amt-est                         pic s9(5)v99.
+    05  batctrl-amt-act                         pic s9(5)v99.
+    05  batctrl-svc-est                         pic 9(4).
+    05  batctrl-svc-act                         pic 9(4).
+    05  batctrl-ar-yy-mm                        pic x(6).
+    05  batctrl-calc-ar-due                     pic s9(5)v99.
+    05  batctrl-calc-tot-rev                    pic s9(5)v99.
+    05  batctrl-manual-pay-tot                  pic s9(5)v99.
+    05  batctrl-batch-status                    pic x.
+    05  batctrl-nbr-claims-in-batch             pic 99.
+    05  filler                                  pic x(10).
+*--------------------------------------------------------------------
+*       the 'adj-cd' field above and 'adj-cd-sub-type' below should
+*       be moved between 'batch-type' and 'last-claim-nbr' fields
+*--------------------------------------------------------------------
+*   05  batctrl-adj-cd-sub-type                 pic x.
+*
+    copy "f090_constants_mstr.fd".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   4
+*                      r014.cbl (/alpha/rmabill/rmabill101c/use/f090_)
+* 99/Jan/29     MC      - change iconst-clinic-nbr from numeric to character
+* 03/nov/05 b.e. - alpha doctor nbr
+
+fd  iconst-mstr
+*       index block contains   2 characters
+              block contains 384 characters
+        record      contains 384 characters  .
+*       feedback is feedback-iconst-mstr.
+
+01 iconst-mstr-rec.
+    05  iconst-clinic-nbr-1-2                   pic   99.
+*    05  iconst-clinic-nbr                      pic  9(4).
+    05  iconst-clinic-nbr                       pic  x(4).
+    05  iconst-clinic-name                      pic x(20).
+    05  iconst-clinic-cycle-nbr                 pic   99.
+    05  iconst-date-period-end.
+* y2k   10  iconst-date-period-end-yy           pic   99.
+        10  iconst-date-period-end-yy           pic   9999.
+        10  iconst-date-period-end-mm           pic   99.
+        10  iconst-date-period-end-dd           pic   99.
+    05  iconst-clinic-addr.
+        10  iconst-clinic-addr-l1               pic  x(25).
+        10  iconst-clinic-addr-l2               pic  x(25).
+        10  iconst-clinic-addr-l3               pic  x(25).
+    05  iconst-clinic-addr-r redefines iconst-clinic-addr.
+        10  iconst-clinic-addr                  pic x(25)   occurs  3  times.
+    05  iconst-clinic-card-colour               pic    x.
+    05  iconst-clinic-over-lim1                 pic 99v99.
+    05  iconst-clinic-under-lim2                pic 99v99.
+    05  iconst-clinic-under-lim3                pic 99v99.
+    05  iconst-clinic-over-lim4                 pic 99v99.
+
+*!    05  iconst-clinic-batch-nbr                 pic 9(6).
+    05  iconst-clinic-batch-nbr                 pic x(6).
+
+    05  iconst-reduction-factor                 pic 99v99.
+    05  iconst-overpay-factor                   pic 99v99.
+    05  filler                                  pic x(242).
+*
+fd  print-file
+    record contains 132 characters.
+
+01  print-record                        pic x(132).
+working-storage section.
+
+77  err-ind                                     pic 99  value zero.
+77  print-file-name                             pic x(5)
+                value "r014".
+77  const-mstr-rec-nbr                          pic x.
+*
+*  eof indicators
+*
+77  eof-batctrl-file                            pic x   value "N".
+*
+*  status file indicators
+*
+*mf 77  common-status-file                      pic x(11).
+*mf 77  status-batctrl-file                     pic x(11) value zero.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   5
+*                      r014.cbl                                      )
+*mf 77  status-const-mstr                       pic x(11) value zero.
+*mf 77  status-iconst-mstr                      pic x(11) value zero.
+
+77  common-status-file                          pic x(2).
+77  status-cobol-batctrl-file                   pic x(2) value zero.
+77  status-cobol-iconst-mstr                    pic x(2) value zero.
+77  status-prt-file                             pic xx   value zero.
+
+77  ws-temp-sum                                 pic s9(10)v99   value zero.
+77  ws-total                                    pic s9(10)v99   value zero.
+77  ws-agent                                    pic 99.
+77  ss-adj-type                                 pic 99.
+77  agent                                       pic 99.
+77  clinic-nbr                                  pic 9(4).
+77  cycle-nbr                                   pic 999.
+77  ws-clinic-name                              pic x(50).
+77  ws-temp-cash                                pic s9(10)v99.
+77  err-ctr                                     pic 999.
+77  err-ctr-ar-due                              pic 9(5)v99.
+77  err-ctr-tot-rev                             pic 9(5)v99.
+77  feedback-batctrl-file                       pic x(4).
+77  feedback-iconst-mstr                        pic x(4).
+77  sel-clinic-nbr                              pic 99.
+77  ws-reply                                    pic x.
+77  hold-clinic-nbr                             pic 99.
+
+*mf    copy "F001_KEY_BATCTRL_FILE.WS".
+*    (table to store the sums by 'AGENT' --
+*       'ROWS' refer to 'AGENT' code, 'COLUMNS' refer to 'ADJ CODE')
+
+01  agent-table-subscripts.
+    05  ss-billing                              pic 9   value 1.
+    05  ss-misc                                 pic 9   value 2.
+    05  ss-ar-and-rev                           pic 9   value 3.
+    05  ss-rev-only                             pic 9   value 4.
+    05  ss-bad-debts                            pic 9   value 5.
+    05  ss-cash                                 pic 9   value 6.
+
+01  agent-table.
+    05  agent-totals occurs 10 times.
+        10  current-sums occurs 6 times         pic s9(8)v99.
+        10  mtd-sums occurs 6 times             pic s9(8)v99.
+
+01  totals-table.
+    05  current-totals occurs 6 times           pic s9(8)v99.
+    05  mtd-totals occurs 6 times               pic s9(8)v99.
+
+01  flag                                        pic x.
+    88 ok                                       value "Y".
+    88 not-ok                                   value "N".
+
+*   counters for records read/written for all input/output files
+
+01  counters.
+    05  ctr-batctrl-file-reads                  pic 9(7).
+01  error-message-table.
+
+    05  error-messages.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   6
+*                      r014.cbl                                      )
+        10  filler                              pic x(60)   value
+                "INVALID REPLY".
+        10  filler                              pic x(60)   value
+                "INVALID READ ON CONSTANTS MASTER".
+        10  filler                              pic x(60)   value
+                "INVALID REPLY".
+        10  filler                              pic x(60)   value
+                "NO BATCTRL FILE SUPPLIED OR NO CORRESPONDING CLINICS".
+        10  filler                              pic x(60)   value
+                "NO BATCHES FOR THIS MONTH IN FILE".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs  5  times.
+
+01  err-msg-comment                             pic x(60).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                        "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   7
+*                      r014.cbl (/alpha/rmabill/rmabill101c/use/sysda)
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+01  h1-head.
+    05  filler                                  pic x(7)  value
+                "R014  /".
+    05  h1-clinic-nbr                           pic zz.
+    05  filler                                  pic x(40)  value spaces.
+    05  filler                                  pic x(73)  value
+                "** CYCLE AGENT SUMMARY REPORT **".
+    05  filler                                  pic x(10)  value
+                "PAGE   1".
+
+01  h2-head.
+    05  filler                                  pic x(3)   value spaces.
+    05  filler                                  pic x(17)       value
+                "AGENT".
+    05  filler                                  pic x(16)       value
+                "BILLING".
+    05  filler                                  pic x(35)       value
+                "MISCELLANEOUS  ADJUSTMENTS".
+    05  filler                                  pic x(18)       value
+                "REVENUE".
+    05  filler                                  pic x(26)       value
+                "BAD".
+    05  filler                                  pic x(17)       value
+                "CASH      PERIOD".
+
+01  h3-head.
+    05  filler                                  pic x(4)        value
+                        spaces.
+    05  filler                                  pic x(13)       value
+                "CODE".
+    05  filler                                  pic x(22)       value
+                "A/R & REVENUE".
+    05  filler                                  pic x(33)       value
+                "INCOME     A/R & REVENUE".
+    05  filler                                  pic x(16)       value
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   8
+*                      r014.cbl                                      )
+                "ONLY".
+    05  filler                                  pic x(25)       value
+                "DEBTS".
+    05  filler                                  pic x(19)       value
+                "RECEIVED".
+
+01  h4-head.
+    05  filler                                  pic x(52) value spaces.
+    05  h4-clinic-name                          pic x(45).
+    05  filler                                  pic x(13) value
+                "MONTH ENDING".
+* (y2k)
+*   05  h4-yy                                   pic xx.
+    05  h4-yy                                   pic xxxx.
+    05  filler                                  pic x  value "/".
+    05  h4-mm                                   pic xx.
+    05  filler                                  pic x  value "/".
+    05  h4-dd                                   pic xx.
+    05  filler                                  pic x(14) value spaces.
+
+01  h5-head.
+    05  filler                                  pic x(52) value spaces.
+    05  filler                                  pic x(20)  value
+                "GRAND TOTAL CYCLE # ".
+    05  h5-cycle-nbr                            pic 999.
+    05  filler                                  pic x(57) value spaces.
+
+
+
+01  l1-print-line.
+    05  l1-part-1.
+        10  filler                              pic x(5).
+        10  l1-agent-cd                         pic 9.
+        10  filler                              pic x(10).
+    05  l1-totals redefines l1-part-1           pic x(16).
+    05  l1-part-2 occurs 5 times.
+        10  l1-amount                           pic zz,zzz,zz9.99-.
+        10  filler                              pic xxx.
+    05  filler                                  pic x(9).
+    05  l1-cash                                 pic zz,zzz,zz9.99-.
+* (y2k)
+*    05  l1-period                              pic x(8).
+     05  l1-period                              pic x(10).
+
+screen section.
+
+01  scr-title.
+
+    05  blank screen.
+    05  line 12 col 20 value is "CYCLE AGENT SUMMARY REPORT - CONTINUE (Y/N)?".
+    05  scr-reply      line 12 col 65 pic x to ws-reply auto required.
+*
+01 file-status-display.
+    05  line 24 col 56  "FILE STATUS = ".
+*mf    05  line 24 col 70       pic x(11) from common-status-file  bell blink.
+    05  line 24 col 70  pic x(2) from common-status-file  bell blink.
+*
+01  err-msg-line.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   9
+*                      r014.cbl                                      )
+    05  line 24 col 01  value " ERROR -  "      bell blink.
+    05  line 24 col 11  pic x(60)       from err-msg-comment.
+
+01  confirm.
+    05  line 23 col 01 value " ".
+
+01  blank-line-24.
+    05  line 24 col 1   blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+01  scr-closing-screen.
+    05  blank screen.
+    05  line  5 col 20  value "NUMBER OF BATCH-CTRL-MSTR ACCESSES = ".
+    05  line  5 col 60  pic 9(7) from ctr-batctrl-file-reads.
+    05  line 10 col 20  value "PROGRAM R014 ENDING".
+* (y2k - auto fix)
+*   05  line 10 col 40  pic 99  from sys-yy.
+    05  line 10 col 40  pic 9(4)  from sys-yy.
+    05  line 10 col 44  value "/".
+    05  line 10 col 45  pic 99  from sys-mm.
+    05  line 10 col 47  value "/".
+    05  line 10 col 48  pic 99  from sys-dd.
+    05  line 10 col 52  pic 99  from sys-hrs.
+    05  line 10 col 54  value ":".
+    05  line 10 col 55  pic 99  from sys-min.
+    05  line 12 col 20  value "PRINT REPORT IS IN FILE - ".
+    05  line 12 col 51  pic x(7) from print-file-name.
+
+01  scr-closing-screen-err-display.
+    05  line 16 col 20  value "NBR OF INCORRECT BATCH/ADJUST. CODES = " bell bli
+    05  line 16 col 70  pic zz9         using err-ctr bell blink.
+    05  line 18 col 20  value "TOTAL REJECTED CALCULATED A/R DUE    = " bell.
+    05  line 18 col 70  pic z(4)9.99    using err-ctr-ar-due bell blink.
+    05  line 20 col 20  value "TOTAL REJECTED CALCULATED REVENUE    = " bell.
+    05  line 20 col 70  pic z(4)9.99    using err-ctr-tot-rev bell blink.
+procedure division.
+declaratives.
+
+err-batctrl-file section.
+    use after standard error procedure on batch-ctrl-file.
+err-batctrl.
+*mf    move status-batctrl-file         to common-status-file.
+    move status-cobol-batctrl-file      to common-status-file.
+    display file-status-display.
+    stop "ERROR IN ACCESSING BATCH CONTROL FILE".
+
+
+
+err-constants-mstr-file section.
+    use after standard error procedure on iconst-mstr.
+err-constants-mstr.
+*mf    move status-iconst-mstr          to common-status-file.
+    move status-cobol-iconst-mstr       to common-status-file.
+    display file-status-display.
+    stop "ERROR IN ACCESSING ICONSTANTS MASTER".
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  10
+*                      r014.cbl                                      )
+
+end declaratives.
+
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+    perform ab0-processing              thru ab0-99-exit
+                until eof-batctrl-file = 'Y'.
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from date.
+    move sys-mm                         to run-mm.
+    move sys-dd                         to run-dd.
+    move sys-yy                         to run-yy.
+
+    accept sys-time                     from time.
+    move sys-hrs                        to run-hrs.
+    move sys-min                        to run-min.
+    move sys-sec                        to run-sec.
+
+
+    open input  batch-ctrl-file
+                iconst-mstr.
+    move zero                           to      agent-table
+                                                totals-table.
+    move spaces                         to      l1-print-line.
+
+
+*       (display screen title/option)
+    display scr-title.
+
+aa0-10-continue-y-n.
+
+    move "Y"                            to      ws-reply.
+*    accept scr-reply.
+
+    if ws-reply =   "Y"
+                 or "N"
+    then
+        if ws-reply = "Y"
+        then
+            next sentence
+        else
+            go to az0-10-end-of-job
+*       endif
+    else
+        move 1                          to err-ind
+        perform za0-common-error        thru za0-99-exit
+        go to aa0-10-continue-y-n.
+*   endif
+
+*   (delete print file)
+*    expunge     print-file.
+    open output print-file.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  11
+*                      r014.cbl                                      )
+
+    move zero                           to      key-batctrl-file.
+
+*mf    read batch-ctrl-file key is key-gen-batctrl-file approximate
+*mf      invalid key
+*mf     move 4                          to      err-ind
+*mf     perform za0-common-error        thru    za0-99-exit
+*mf     go to az0-end-of-job.
+
+    start batch-ctrl-file key is greater than or equal to key-batctrl-file
+      invalid key
+        move 4                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to az0-end-of-job.
+    read batch-ctrl-file next.
+
+
+    add 1                               to      ctr-batctrl-file-reads.
+
+    perform xc0-read-const-mstr         thru    xc0-99-exit.
+
+    perform xa0-save-clinic-info        thru    xa0-99-exit.
+
+    perform ad0-sel-read-batch-ctrl-file thru   ad0-99-exit.
+
+    if eof-batctrl-file = "Y"
+    then
+        move 5                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to az0-end-of-job.
+*   (else)
+*   endif
+
+aa0-99-exit.
+    exit.
+az0-end-of-job.
+
+    close batch-ctrl-file
+          iconst-mstr.
+
+az0-10-end-of-job.
+
+    close print-file.
+
+    display blank-screen.
+    accept sys-time                     from time.
+
+    display scr-closing-screen.
+    if err-ctr > zero
+    then
+        display scr-closing-screen-err-display.
+*   (else)
+*   endif
+
+    stop run.
+
+az0-99-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  12
+*                      r014.cbl                                      )
+ab0-processing.
+
+*   (if break in clinic then print clinic totals)
+
+    if batctrl-bat-clinic-nbr-1-2 not = hold-clinic-nbr
+    then
+        perform ab1-print-clinic-totals thru    ab1-99-exit
+        perform ac0-build-sums          thru    ac0-99-exit
+    else
+        perform ac0-build-sums          thru    ac0-99-exit.
+*   endif
+
+    perform xb0-read-next-batch         thru    xb0-99-exit.
+
+    perform ad0-sel-read-batch-ctrl-file
+                                        thru    ad0-99-exit.
+
+    if eof-batctrl-file = "Y"
+    then
+        perform ab1-print-clinic-totals thru    ab1-99-exit
+        go to ab0-99-exit.
+*   (else)
+*   endif
+
+ab0-99-exit.
+    exit.
+ab1-print-clinic-totals.
+
+    perform ag0-sum-agent-totals                thru    ag0-99-exit
+        varying agent
+        from 1 by 1
+        until   agent > 10.
+
+    perform af0-print-headings                  thru    af0-99-exit.
+
+    perform ah0-print-detail-lines              thru    ah0-99-exit
+        varying agent
+        from 1 by 1
+        until agent > 10.
+
+    perform ai0-print-totals                    thru    ai0-99-exit.
+
+    move zero                                   to      agent-table
+                                                        totals-table.
+
+    if eof-batctrl-file not = 'Y'
+    then
+        perform xa0-save-clinic-info            thru    xa0-99-exit.
+*   (else)
+*   endif
+
+ab1-99-exit.
+    exit.
+
+ac0-build-sums.
+
+    move batctrl-agent-cd                       to      agent.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  13
+*                      r014.cbl                                      )
+*    (ohip is agent '0' so use agent+1 as subscript to table)
+    add 1                                       to      agent.
+
+    move zero                                   to      ss-adj-type.
+*     (claim batch or 'BILLINGS' if adjustment code blank or zero)
+    if batctrl-adj-cd =    " "
+                        or "0"
+    then
+        move 1                                  to      ss-adj-type
+    else
+        perform ac1-determine-adj-pay-category  thru    ac1-99-exit
+        if ss-adj-type = zero
+        then
+*           (error in code found)
+            go to ac0-99-exit
+        else
+            next sentence.
+*       endif
+*   endif
+
+
+*        (note: 1-- 'M' is to appear under 'CASH' column as well as 'MISC')
+*        (note: 2 --'M' and 'C' are stored as negative amts but are to print as
+
+*       (add to current totals if batch is 'BALANCED')
+    if    batctrl-batch-status = "1"
+       or batctrl-batch-status = "2"
+    then
+        if   batctrl-adj-cd = "R"
+        then
+            add     batctrl-calc-tot-rev        to      current-sums (agent,ss-a
+        else
+            if batctrl-adj-cd = "M"
+            then
+                add batctrl-calc-tot-rev                        to      current-
+                                                                current-sums (ag
+            else
+                if batctrl-adj-cd = "C"
+                then
+                    subtract batctrl-manual-pay-tot     from    zero
+                                                        giving  ws-temp-sum
+                    add ws-temp-sum                     to      current-sums (ag
+                else
+                    add batctrl-calc-ar-due             to      current-sums (ag
+*               endif
+*           endif
+*       endif
+    else
+        next sentence.
+*   endif
+
+*       (add to m.t.d. totals if batch is not "UNBALANCED)
+    if batctrl-batch-status not = "0"
+    then
+        if batctrl-adj-cd = "R"
+        then
+            add     batctrl-calc-tot-rev        to      mtd-sums (agent,ss-adj-t
+        else
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  14
+*                      r014.cbl                                      )
+            if batctrl-adj-cd = "M"
+            then
+                add batctrl-calc-tot-rev                to      mtd-sums (agent,
+                                                        mtd-sums (agent,ss-cash)
+            else
+                if batctrl-adj-cd = "C"
+                then
+                    subtract batctrl-manual-pay-tot     from    zero
+                                                        giving  ws-temp-sum
+                    add ws-temp-sum                     to      mtd-sums (agent,
+                else
+                    add batctrl-calc-ar-due             to      mtd-sums (agent,
+*               endif
+*           endif
+*       endif
+    else
+        next sentence.
+*   endif
+
+ac0-99-exit.
+    exit.
+ac1-determine-adj-pay-category.
+
+    if batctrl-adj-cd = "M"
+    then
+        move 2                                          to      ss-adj-type
+    else
+        if batctrl-adj-cd = "B"
+        then
+            move 3                                      to      ss-adj-type
+        else
+            if batctrl-adj-cd = "R"
+            then
+                move 4                                  to      ss-adj-type
+            else
+                if batctrl-adj-cd = "A"
+                then
+                    move 5                              to      ss-adj-type
+                else
+                    if batctrl-adj-cd = "C"
+                    then
+                        move 6                          to      ss-adj-type
+                    else
+*                       (error: non existant transaction code)
+                        move zero                       to      ss-adj-type
+                        add 1                           to      err-ctr
+                        add batctrl-calc-ar-due         to      err-ctr-ar-due
+                        add batctrl-calc-tot-rev        to      err-ctr-tot-rev.
+*                   endif
+*               endif
+*           endif
+*       endif
+*    endif
+
+ac1-99-exit.
+    exit.
+ad0-sel-read-batch-ctrl-file.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  15
+*                      r014.cbl                                      )
+    if eof-batctrl-file = 'Y'
+    then
+        go to ad0-99-exit.
+*   (else)
+*   endif
+
+    if batctrl-bat-clinic-nbr-1-2 not = hold-clinic-nbr
+    then
+        perform xc0-read-const-mstr     thru xc0-99-exit.
+*   (else)
+*   endif
+
+*       (report only "THIS MONTH'S" batches whose status is "AT LEAST 'BALANCED'
+    if    batctrl-batch-status  > "0"
+      and batctrl-date-period-end = iconst-date-period-end
+    then
+        next sentence
+    else
+        perform xb0-read-next-batch     thru    xb0-99-exit
+        if eof-batctrl-file = 'Y'
+        then
+            go to ad0-99-exit
+        else
+            go to ad0-sel-read-batch-ctrl-file.
+*       endif
+*   endif
+
+ad0-99-exit.
+    exit.
+af0-print-headings.
+
+    write print-record                  from    h1-head after advancing page.
+    write print-record from h4-head after advancing 1 line.
+    write print-record from h5-head after advancing 2 lines.
+    write print-record from h2-head after advancing 2 lines.
+    write print-record from h3-head after advancing 1 line.
+
+af0-99-exit.
+    exit.
+ag0-sum-agent-totals.
+    perform ag1-add-totals              thru ag1-99-exit
+        varying ss-adj-type
+        from 1 by 1
+        until ss-adj-type > 6.
+
+ag0-99-exit.
+    exit.
+
+
+
+ag1-add-totals.
+
+    add current-sums (agent, ss-adj-type)       to      current-totals (ss-adj-t
+    add mtd-sums (agent, ss-adj-type)           to      mtd-totals (ss-adj-type)
+
+ag1-99-exit.
+    exit.
+ah0-print-detail-lines.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  16
+*                      r014.cbl                                      )
+
+*    (are there any entries for agent?)
+    move 0                              to      ws-total.
+    add mtd-sums (agent,1)
+        mtd-sums (agent,2)
+        mtd-sums (agent,3)
+        mtd-sums (agent,4)
+        mtd-sums (agent,5)
+        mtd-sums (agent,6)              to      ws-total.
+
+    if ws-total not = 0
+    then
+*       (there are non zero entries for agent)
+        compute ws-agent = agent - 1
+        move ws-agent                   to      l1-agent-cd
+        perform ah1-cur-sums-to-prt-line thru ah1-99-exit
+            varying ss-adj-type
+            from 1 by 1
+            until ss-adj-type > 5
+        move current-sums (agent,6)     to      l1-cash
+        move " CURRENT"                 to      l1-period
+        write print-record              from    l1-print-line after advancing 2
+        move spaces                     to      l1-print-line
+        perform ah2-mtd-sums-to-prt-line thru ah2-99-exit
+            varying ss-adj-type
+            from 1 by 1
+            until ss-adj-type > 5
+        move mtd-sums (agent,6)         to      l1-cash
+        move " M.T.D"                   to      l1-period
+        write print-record from l1-print-line after advancing 1 line
+        move spaces                     to      l1-print-line.
+
+ah0-99-exit.
+    exit.
+
+
+
+ah1-cur-sums-to-prt-line.
+
+    move current-sums (agent,ss-adj-type)       to      l1-amount (ss-adj-type).
+
+ah1-99-exit.
+    exit.
+
+
+
+ah2-mtd-sums-to-prt-line.
+
+    move mtd-sums (agent,ss-adj-type)           to      l1-amount (ss-adj-type).
+
+ah2-99-exit.
+    exit.
+ai0-print-totals.
+    move " TOTALS *"                    to      l1-totals.
+    perform ai1-cur-ttl-to-prt-line     thru ai1-99-exit
+        varying ss-adj-type
+        from 1 by 1
+        until ss-adj-type > 5.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  17
+*                      r014.cbl                                      )
+    move current-totals (6)             to      l1-cash.
+    move " CURRENT"                     to      l1-period.
+    write print-record                  from    l1-print-line after advancing 3
+    move spaces                         to      l1-print-line.
+
+    perform ai2-mtd-ttl-to-prt-line     thru ai2-99-exit
+        varying ss-adj-type
+        from 1 by 1
+        until ss-adj-type > 5.
+    move mtd-totals (6)                 to      l1-cash.
+    move " M.T.D."                      to      l1-period.
+    write print-record from l1-print-line after advancing 1 line.
+    move spaces                         to      l1-print-line.
+
+ai0-99-exit.
+    exit.
+
+ai1-cur-ttl-to-prt-line.
+
+    move current-totals (ss-adj-type)           to      l1-amount (ss-adj-type).
+
+ai1-99-exit.
+    exit.
+
+ai2-mtd-ttl-to-prt-line.
+
+    move mtd-totals (ss-adj-type)               to      l1-amount (ss-adj-type).
+
+ai2-99-exit.
+    exit.
+xa0-save-clinic-info.
+
+    move batctrl-bat-clinic-nbr-1-2     to      hold-clinic-nbr.
+
+    move iconst-clinic-nbr-1-2          to      h1-clinic-nbr.
+    move iconst-clinic-name             to      h4-clinic-name.
+    move iconst-date-period-end-yy      to      h4-yy.
+    move iconst-date-period-end-mm      to      h4-mm.
+    move iconst-date-period-end-dd      to      h4-dd.
+    move iconst-clinic-cycle-nbr        to      h5-cycle-nbr.
+
+xa0-99-exit.
+    exit.
+xb0-read-next-batch.
+
+    read batch-ctrl-file next
+        at end
+            move 'Y'                    to      eof-batctrl-file
+            go to xb0-99-exit.
+
+    add 1                               to ctr-batctrl-file-reads.
+
+xb0-99-exit.
+    exit.
+xc0-read-const-mstr.
+
+    move batctrl-bat-clinic-nbr-1-2     to      iconst-clinic-nbr-1-2.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page  18
+*                      r014.cbl                                      )
+    read iconst-mstr
+        invalid key
+            move 2                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit
+            go to az0-end-of-job.
+
+xc0-99-exit.
+    exit.
+za0-common-error.
+
+    move err-msg (err-ind)              to      err-msg-comment.
+    display err-msg-line.
+    display confirm.
+    stop " ".
+    display blank-line-24.
+
+za0-99-exit.
+    exit.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        5584     Code:        3899

@@ -1,0 +1,153 @@
+;Program: m088.qks
+; Purpose: display and maintain rat rejection records in f088-hdr/dtl
+;
+; Mod Hist
+; 2000/jan/20 B.A.	- original
+; 2000/jan/29 B.E.	- added ability to change records(charge/err cd fields)
+; 2000/apr/10 M.C.	- correct the access statements
+; 2000/jul/10 M.C.	- correct the access statements for f088-dtl file
+; 2000/aug/09 B.E.	- added automatic update of audit fields in f088
+; 2002/nov/15 M.C.	- access f088 in decending order by  ped date       
+; 2003/dec/10 A.A.	- alpha doctor nbr	
+; 2013/Sep/19 MC1 	- show clmhdr-date-period-end of f088-hdr
+
+screen $pb_obj/m088 activities find, change
+
+;!temp x-rat-rejected-claim char*11
+temp x-rat-rejected-claim char*10
+temp x-clmhdr-batch-nbr   char*8
+temp x-clmhdr-claim-nbr   char*2
+
+temp x-ped 				zoned unsigned size 8
+temp x-balance-due			zoned   signed size 7
+temp x-clmhdr-manual-and-tape-payments	zoned   signed size 7
+
+file f088-rat-rejected-claims-hist-hdr alias hdr primary
+; 2002/11/15 - MC - decending order
+;        access via rat-rejected-claim	&
+        access backwards via rat-rejected-claim	&
+; 2002/11/15 - end
+;!        using      x-clmhdr-batch-nbr[1:2] + '0' + &
+;!		   x-clmhdr-batch-nbr[3:6] +	&
+        using      x-clmhdr-batch-nbr + &
+		   asci(clmhdr-claim-nbr,2)		&
+	request	   x-clmhdr-batch-nbr, clmhdr-claim-nbr
+
+; (00/aug/09 B.E. added update of audit information)
+  item entry-date               initial sysdate
+  item entry-time-long          initial systime
+  item entry-user-id            initial signonuser
+  item last-mod-date            final sysdate
+  item last-mod-time            final systime/10000
+  item last-mod-user-id         final signonuser
+
+
+file f002-claims-mstr reference
+       access via  key-clm-type,		&
+      		   key-clm-batch-nbr,		&
+      		   key-clm-claim-nbr,		&
+      		   key-clm-serv-code,		&
+		   key-clm-adj-nbr		&
+        using ('B'), 				&
+	      clmhdr-batch-nbr of hdr,		& 
+	      clmhdr-claim-nbr of hdr,		&
+	      "00000",				&
+	      "0"
+
+file f088-rat-rejected-claims-hist-dtl alias dtl detail occurs 9
+; 2000/07/10 - MC begin - change the access with proper segments
+;	access via rat-rejected-claim-dtl, ped	&
+;	using      rat-rejected-claim + '@',	&
+	access via clmhdr-batch-nbr, clmhdr-claim-nbr,  &
+		   clmhdr-oma-suff-adj, ped 	&
+	using      clmhdr-batch-nbr of hdr, clmhdr-claim-nbr of hdr, &
+		   '@', ped of hdr
+
+; (00/aug/09 B.E. added update of audit information)
+  item entry-date               initial sysdate
+  item entry-time-long          initial systime
+  item entry-user-id            initial signonuser
+  item last-mod-date            final sysdate
+  item last-mod-time            final systime/10000
+  item last-mod-user-id         final signonuser
+;select if clmhdr-claim-nbr of dtl = clmhdr-claim-nbr of hdr     
+
+title "RAT Errors Costing Maintenance Screen" at 1,40 
+
+align (1,4,21) (,33,34)
+;field clmhdr-batch-nbr of hdr	nochange pic "^^-^-^^^-^^^"	&
+field x-clmhdr-batch-nbr      	nochange pic "^^-^^^-^^^"	&
+					 label "Batch/Claim Nbr:"  auto
+field clmhdr-claim-nbr of hdr	nochange label ":" significance 2
+;field x-clmhdr-claim-nbr      	nochange label ":" significance 2
+align (1,4,21) 
+field clmhdr-doc-nbr of hdr	nochange label "Doctor Nbr     :"
+; 2013/09/19 - MC1
+;field ped of hdr		nochange label "RAT's PED      :"
+align (1,4,21) (37,40,55)
+field ped of hdr		nochange label "RAT's PED      :"
+field clmhdr-date-period-end of hdr nochange label  "RAT's Claim PED:"
+; 2013/09/19 - end
+field ohip-err-code of hdr	nochange label "Error code     :"
+field charge-status of hdr		 label "Chargeable?    :"
+
+skip 1
+
+title"ORIGINAL CLAIM'S:" at ,3
+skip 
+title"             Outstanding      Billed      Paid       PED    cycle" at ,3
+
+align (,5,19) (,,29) (,,41) (,,51) (,,64)
+field x-balance-due pic "^^^^^.^^ " label "CURRENT" display
+field clmhdr-tot-claim-ar-ohip 			    display
+field x-clmhdr-manual-and-tape-payments significance 5 pic "^^^^^.^^ "	&
+						    display
+field clmhdr-date-period-end of f002-claims-mstr    display
+field clmhdr-cycle-nbr 				    display
+skip  
+align (,5,31) (,,41) 
+field part-hdr-amt-bill		nochange label "AT TIME OF RAT"
+field part-hdr-amt-paid		nochange
+
+skip 1
+title 'PAYMENT DETAILS'    at ,1
+
+skip 
+title  &
+'      OMA       OHIP                               Doc         ' at ,1
+skip 
+title &
+'    Svc date    Code  Error     Billed      Paid   Nbr      PED' at ,1
+;01 yyyy/mm/dd xxxx x    XX    9,999,99- 9,999,99-  xxx  yyyy/mm/dd
+;123456789 123456789 123456789 123456789 123456789 123456789
+;         1         2         3         4         5         6
+
+skip 
+
+align (1,,4) (,,15) (,,20) (,,25) (,,31) (,,41) (,,52) (,,59)
+cluster occurs with dtl
+field clmdtl-sv-date      of dtl pic "^^^^/^^/^^"
+field clmhdr-adj-oma-cd   of dtl 
+field clmhdr-adj-oma-suff of dtl 
+field ohip-err-code       of dtl 
+; 2000/mar/06 B.E. - add $ amounts
+field part-dtl-amt-bill   of dtl
+field part-dtl-amt-paid   of dtl
+
+field clmhdr-doc-nbr      of dtl  pic "^^^"
+field ped 	          of dtl
+;field auto-adj-flag of dtl
+
+procedure postfind
+begin
+; (reverse sign of payments to show payment as a positive amount)
+  let x-clmhdr-manual-and-tape-payments = 0 - clmhdr-manual-and-tape-payments
+  let x-balance-due = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+end
+
+;procedure initialize
+;begin
+;  let x-rat-rejected-claim =   x-clmhdr-batch-nbr	&
+;			     + x-clmhdr-claim-nbr
+;end
+build

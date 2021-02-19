@@ -1,0 +1,103 @@
+cancel clear
+; Program: r140_e.qzs
+; Purpose: Generate i audit report of AFP conversion payments placed into
+;	   payroll's f114 special payments file
+
+; 2004/sep/14 b.e.	- original
+; 2004/dec/06 M.C.	- add optional to f020 in the access
+; 2005/feb/05 b.e.	- optional access to f020 doesn't get doc name - remove
+;			  access to f020 and replace with subfile data
+
+set rep nolimit
+set report dev disc name r140_e
+set page width 132 length 66
+
+access *u140_e_audit						&
+;;	link doc-nbr						&
+; 2004/dec/06 - MC - add optional
+;	to   doc-nbr    	 of f020-doctor-mstr		&
+;;	to   doc-nbr    	 of f020-doctor-mstr opt	&
+; 2004/dec/06 - end  
+        link doc-afp-paym-group                         	&
+        to   doc-afp-paym-group  of f074-afp-group-mstr opt	&
+	link doc-dept						&
+	to dept-nbr of f070-dept-mstr opt
+
+sort 	on x-selected-payroll	&
+	on comp-code		&
+	on doc-name
+
+def x-doc-name char*35 				&
+	=   pack(  doc-name 			&
+	         + ", "				&
+	         + doc-inits			&
+	         + " ["				&
+	  	 + doc-nbr			&
+		 + "]"				&
+	        )
+
+page heading 					&
+    tab 01 "r140_e"				&
+    tab 20 "AFP Premium Payroll transactions Audit"		&
+    tab 90 "Page: "				&
+    tab 95 syspage				&
+  skip 1
+
+;heading at doc-afp-paym-group 		&
+;    skip page				&
+;    tab  1 "Group:"			&
+;    tab  8 doc-afp-paym-group 		&
+;    tab 12 "-"				&
+;    tab 13 afp-group-name 		&
+;  skip 1 
+
+heading at x-selected-payroll		&
+ skip 2					&
+  tab 01 "Payments applied to Payroll: "&
+  tab 31 x-selected-payroll		&
+ skip 2
+
+heading at comp-code			&
+  skip 2				&
+    tab 04 "Compenstation Code:"	&
+    tab 24 comp-code			&
+  skip 2				&
+    tab  11 "Physician"			&
+  skip 1				&
+    tab  11 "Name"			&
+    tab  70 "Amount"			&
+  skip 1
+
+rep							&
+    tab 11 x-doc-name 					&
+    tab 61 amt-net pic " ^^^,^^^,^^^.^^ "               
+
+footing at comp-code			&
+  skip 1				&
+    tab 66 "----------"			&
+  skip 1				&
+    tab 35 "Total Payment "		&	
+    tab 49 "["				&
+    tab 50 comp-code			&
+    tab 56 "]:"				&
+    tab 61 amt-net  subt  pic " ^^^,^^^,^^^.^^ "                       
+
+footing at x-selected-payroll		&
+  skip 1				&
+    tab 66 "=========="			&
+  skip 1				&
+    tab 32 "Total Payment Payroll ["	&
+    tab 55 x-selected-payroll		& 
+    tab 56 "]:"				&
+    tab 61 amt-net  subt  pic " ^^^,^^^,^^^.^^ "	&
+  skip page
+
+final footing				&
+  skip 1				&
+    tab 66 "=========="			&
+  skip 1				&
+    tab 32 "Total Payment"		&
+    tab 61 amt-net  subt  pic " ^^^,^^^,^^^.^^ "	&
+  skip page
+
+build $obj/r140_e

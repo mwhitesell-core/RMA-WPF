@@ -1,0 +1,70 @@
+; Program: costing7.qts
+; Purpose: - calculates number of months doctor was active during the
+;		costing year   
+;
+;  DATE     BY WHOM     DESCRIPTION
+;00/jul/13  B.E.	- original
+;
+cancel clear
+
+run costing7
+
+set default
+set process nolimit
+set lock file update
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+request costing7_1     &
+        on calculation errors report    &
+        on edit errors report
+
+access *costing2
+
+sort on doc-nbr
+
+subfile costing7 keep at doc-nbr include costing2
+
+
+request costing7_2     &
+        on calculation errors report    &
+        on edit errors report
+
+access *costing7           &
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt
+
+def x-start cha*8 = ascii(doc-date-fac-start,8)
+def x-start-mth = nconvert(x-start[5:2])
+def x-term  cha*8 = ascii(doc-date-fac-term,8)
+def x-term-mth  = nconvert(x-term[5:2])
+
+
+def x-renumbered-start                                 &
+    = 1 if doc-date-fac-start <= w-current-fiscal-start-yymmdd &; 19990701    &
+ else 0 if doc-date-fac-start >= w-current-fiscal-end-yymmdd   &; 20000630    &
+ else x-start-mth - 6 if x-start-mth > 6        &
+ else x-start-mth + 6
+
+def x-renumbered-term                                   &
+    = 12 if  doc-date-fac-term >= w-current-fiscal-end-yymmdd  & ;20000630    &
+          or doc-date-fac-term =  0             &
+ else 0  if doc-date-fac-term <= w-current-fiscal-start-yymmdd & ;19990701    &
+ else x-term-mth - 6 if x-term-mth > 6            &
+ else x-term-mth + 6 
+
+def x-nbr-active-mths                           &
+   = x-renumbered-term - x-renumbered-start + 1
+
+output tmp-counters  add
+  item tmp-counter-key 	final doc-nbr of costing7
+  item tmp-counter-1	final doc-date-fac-start
+  item tmp-counter-2	final doc-date-fac-term
+  item tmp-counter-3	final x-renumbered-start
+  item tmp-counter-4	final x-renumbered-term
+  item tmp-counter-5	final x-nbr-active-mths
+
+build $obj/costing7

@@ -1,0 +1,69 @@
+; PROGRAM: U116_PAYCODE0.USE
+;
+; THIS COPYBOOK IS USED BY THE FOLLOWING PROGRAMS:
+; 	u116.qts
+;
+;  DATE     WHO        DESCRIPTION
+; 93/APR/22 B.E.       OPTIMIZE ACCESS VIA F090
+; 96/MAR/05 M.C.      ACCESS F020 AND UPDATE DOC-EP-PAY-CODE TO F020
+; 1999/June/01 S.B.    - Added the use file
+;                        def_compensation_status.def to 
+;                        prevent hard coding of compensation-status.
+
+request u116_run_0_calc_paycd_0			&
+		on edit        errors report	&
+                on calculation errors report
+
+access constants-mstr-rec-6	                	&
+        link current-ep-nbr	                	&
+	viaindex f112-ep-doc-nbr			&
+        to   ep-nbr of f112-pycdceilings		&
+	link doc-nbr to doc-nbr of f020-doctor-mstr   opt
+
+choose const-rec-nbr 6		
+
+def w-paypot-amt-net integer*8 signed size 4 = 0
+;S.B.
+use $use/def_compensation_status.def
+
+select f112-pycdceilings					      &
+ 	if    doc-pay-code of f112-pycdceilings = "0"
+
+output f020-doctor-mstr update
+   	item doc-ep-pay-code final doc-pay-code of f112-pycdceilings
+	item doc-ep-pay-sub-code final doc-pay-sub-code of f112-pycdceilings
+
+
+output f110-compensation add alias f110-output-paypot
+	item ep-nbr          = w-current-ep-nbr
+	item ep-nbr-entry    = w-current-ep-nbr
+	item comp-code       = "PAYPOT"
+	item comp-type	     = paypot-type
+	item process-seq     = paypot-seq
+	item factor          = 0.0
+	item factor-override = " "
+	item comp-units      = 0
+	item amt-gross       = 0
+	item amt-net         = w-paypot-amt-net
+;S.B.
+;	item compensation-status = " "
+	item compensation-status = compensation-status-accepted
+	item last-mod-date    = sysdate
+	item last-mod-time    = systime / 10000
+	item last-mod-user-id = "U116 gen'd"
+
+define x-rec-type  char*1 = "A"
+define x-not-needed integer*8 signed size 4 = 0
+
+temp x-comp-code char*6
+item x-comp-code = "PAYPOT"
+subfile f119 append                                   include &
+         doc-nbr of f112-pycdceilings	, &
+         x-comp-code			, &
+         paypot-seq			, &
+         paypot-group			, &
+         x-rec-type			, &
+         x-not-needed     	, &
+         w-paypot-amt-net
+
+  

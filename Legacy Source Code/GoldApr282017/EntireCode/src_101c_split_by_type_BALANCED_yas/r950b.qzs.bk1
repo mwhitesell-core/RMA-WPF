@@ -1,0 +1,82 @@
+;doc: r950b.qzs
+;
+;program purpose : list of negative adjusts for doctor
+;
+;  modification history
+;date          by whom   description
+;2010/aug/17   brad	 orig
+;
+
+can clear
+set default
+set rep nolimit
+
+set page width 132
+
+access *r950a  							  &
+  link ("B" , key-clm-batch-nbr, key-clm-claim-nbr)		  &
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr 	  &
+					 of f002-claims-mstr      &
+  link clmhdr-doc-dept of r950a   				  &
+    to dept-nbr of  f070-dept-mstr   opt
+
+select f002-claims-mstr					 	     &
+   if    clmdtl-oma-cd <> "0000"			             &
+     and clmdtl-oma-cd <> "ZZZZ"				;     &
+;     and (clmdtl-orig-batch-nbr = key-clm-batch-nbr)
+
+select if                                                       & 
+             (    (     (    clmhdr-doc-dept = 21               &
+                        )                                       &
+                    and (   batctrl-batch-nbr[1:2] = "22"       &
+                         or batctrl-batch-nbr[1:2] = "42"       &
+                        )                                       &
+                  )                                             &
+              or  doc-rma-expense-percent-reg  <> 0             &
+              or doc-rma-expense-percent-misc <> 0              &
+	    )							&
+        and    batctrl-batch-nbr[1:2] <>  "98" 
+
+def x-oma-code cha*5 = clmdtl-id[11:5]
+
+def x-claim-dtl-id cha*10 = (key-clm-batch-nbr[1:8])  &
+                           + (ascii(key-clm-claim-nbr,2))
+
+
+;def x-orig-batch zoned*8 UNSIGNED = CLMDTL-ORIG-BATCH-NBR[1:2]  &
+;                                 + clmdtl-orig-batch-nbr[4:6]
+
+def x-orig-batch cha*8 = clmdtl-id[1:8]
+
+; -------------------------------------------------------------------------
+;moira - uncomment the and 1=2 and about 20 errors occur .. right on as is there is not error
+;def x-adj-A      zoned*7 signed = clmdtl-fee-ohip            &
+def x-adj-A      zoned*7 numeric     = clmdtl-fee-ohip            &
+                                   if batctrl-adj-cd  = 'A' ; and 1=2
+;def x-adj-B      zoned*7 signed = clmdtl-fee-ohip            &
+def x-adj-B      zoned*7 numeric = clmdtl-fee-ohip            &
+                                   if batctrl-adj-cd  = 'B' ;  and 1=2
+;def x-adj-R        zoned*7 signed = clmdtl-fee-ohip   		&
+def x-adj-R        zoned*7 numeric  = clmdtl-fee-ohip   		&
+				   if batctrl-adj-cd  = 'R' ;  and 1=2 
+
+
+;def x-tot-adj	zoned*7 signed = clmdtl-fee-ohip  if 1=2
+;def x-tot-adj	zoned*9 signed   = abs(clmdtl-fee-ohip)
+def x-tot-adj	zoned*8 numeric    = abs(clmdtl-fee-ohip) if 1= 2
+;def x-tot-adj   zoned*7 signed = clmdtl-fee-ohip   if batctrl-adj-cd = "A" or batctrl-adj-cd = "B" or batctrl-adj-cd = "R" if 1=2
+;def x-tot-adj  float size 8 significance 2 = abs(clmdtl-fee-ohip) if 1=2
+
+
+
+def x-tot-rmachg zoned*7 signed = abs(clmdtl-fee-ohip) * .05 if 1=2
+; -------------------------------------------------------------------------
+
+sort	on batctrl-date-period-end 	&
+	on x-doc-nbr
+
+set subfile name r950b keep
+
+rep summary  clmhdr-doc-dept  x-doc-nbr x-claim-dtl-id  clmdtl-oma-cd  clmdtl-fee-ohip clmhdr-adj-cd x-adj-A  x-adj-B  x-adj-R batctrl-date-period-end  
+
+build $obj/r950b

@@ -1,0 +1,10 @@
+BEGIN {
+}
+
+{ 
+  found=index($0,"######55")
+#  if (found)  printf "DROP=%s\n", $0
+  if (!found) printf "%s\n", $0
+}
+END {
+}

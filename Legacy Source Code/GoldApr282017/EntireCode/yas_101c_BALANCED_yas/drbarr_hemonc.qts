@@ -1,0 +1,131 @@
+;doc     : drbarr_hemonc.qts
+;purpose : report totals for hematology-oncology dept 7 oncology docs  
+;who     : Dr. Barr (07-712)
+
+
+;Date           Who             Description
+;2007/08/22     Yasemin                    
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr             &
+        link clmhdr-claim-id[3:3]   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "94118@",   &
+                                              "95118@",   &
+                                              "94712@",   &
+                                              "95712@",   &
+                                              "94557@",   &
+                                              "95557@",   &
+                                              "94342@",   &
+                                              "95342@",   &
+                                              "94D47@",   &
+                                              "95D47@",   &
+                                              "94H16@",   &
+                                              "95H16@",   &
+                                              "94119@",   &
+                                              "95119@",   &
+                                              "98118@",   &
+                                              "98712@",   &
+                                              "98557@",   &
+                                              "98342@",   &
+                                              "98D47@",   &
+                                              "98H16@",   &
+                                              "98119@",   &
+    key-clm-claim-nbr,  key-clm-serv-code '00000',	  &
+			     key-clm-adj-nbr  '0'
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+subfile drbarr        keep at key-clm-claim-nbr include             &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+doc-dept                     of f020-doctor-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *drbarr                                                         &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                       &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr              &
+          of f002-claims-mstr 
+
+select f002-claims-mstr if                 &
+     clmdtl-date-period-end  >= '20060701'  &
+ and clmdtl-date-period-end  <= '20070630'  &
+       and  clmdtl-oma-cd    <> "0000"     & ; details only
+       and  clmdtl-oma-cd    <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd    <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd    <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd    <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd    <> "NHSC"     &
+       and  clmdtl-oma-cd    <> "DHSC"     &
+       and  clmdtl-oma-cd    <> "AGEP"     &
+       and  clmdtl-oma-cd    <> "MOHR"     & 
+       and  clmdtl-oma-cd    <> "MICA"     &
+       and  clmdtl-oma-cd    <> "MICC"     &
+       and  clmdtl-oma-cd    <> "MICD"     &
+       and  clmdtl-oma-cd    <> "MICE"     
+;       and  clmdtl-adj-nbr   = 0           ; no adjustments        
+
+
+def x-clinic cha*2 = clmdtl-id[1:2]
+
+sort on doc-nbr  
+
+temp x-2006 zoned*9 signed
+item x-2006  = x-2006 + clmdtl-fee-ohip                           &
+             if  x-clinic <> "98"                                 &
+               reset at doc-nbr
+
+temp x-98   zoned*9 signed
+item x-98    = x-98   + clmdtl-fee-ohip                           &
+             if  x-clinic = "98"                                  &
+               reset at doc-nbr
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + clmdtl-fee-ohip                           &
+               reset at doc-nbr
+
+def x-comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile drbarr1 portable keep at doc-nbr include      &
+  x-clinic,                     &
+  x-comma,                      &
+  doc-dept,                     &
+  x-comma,                      &
+  doc-nbr,                      &
+  x-comma,                      &
+  doc-name,                     &
+  x-comma,                      &
+  doc-inits,                    &
+  x-comma,                      &
+  x-2006,                       &
+  x-comma,                      &
+  x-98,                         &
+  x-comma,                      &
+  x-tot,                        &
+  x-cr
+
+build drbarr_hemonc

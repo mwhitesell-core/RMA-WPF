@@ -1,0 +1,86 @@
+;#> PROGRAM-ID.     r128b_csv.qzs   
+;
+;       ((C)) Dyad Infosys LTD 
+;
+;    PURPOSE: Second pass to print Inactive Doctors report who have no earnings for 3 most recent months
+;	      for Ross/Helena - Excel file
+
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;   2015/Oct/21  M.C.     - original
+
+cancel clear
+set default
+set report nolimit
+set report dev disc name r128_csv
+set rep page width 132
+set nohead
+set noformfeed
+
+access *r128a_inactive_doc_with_clm			&
+	link doc-dept 					&
+	 to  dept-nbr of f070-dept-mstr opt
+
+def x-delimiter char*1 = "~"
+
+def x-period char*1 = "."
+
+def x-claim-bal-sign char*1 = "-"                         if x-claim-bal < 0       &
+                else " "
+def x-claim-bal-dollars = abs(x-claim-bal) / 100        if x-claim-bal <> 0      &
+                else  0
+def x-claim-bal-cents   = mod(abs(x-claim-bal),100)     if x-claim-bal <> 0      &
+                else  0
+
+def x-dept         char*4  = '"' + ascii(doc-dept,2) + '"'
+
+def x-company      char*1  = ascii(dept-company)
+
+def x-doc-nbr      char*5  = '"' + doc-nbr     + '"'
+
+def x-pay-code     char*4  = '"' + pack(doc-ep-pay-code + doc-ep-pay-sub-code) + '"'
+
+def x-claim-bal-alpha char*10 =  pack(trunc(lj(x-claim-bal-sign +                   &
+                                              ascii(x-claim-bal-dollars) +        &
+                                              x-period +                        &
+                                              ascii(x-claim-bal-cents,2))))
+
+def x-line char*132 =                                   &
+        lj(pack(                                        &
+                x-company       +                       &
+                x-delimiter  +                                   &
+                x-dept          +                       &
+                x-delimiter  +                                   &
+                x-doc-nbr       +                       &
+                x-delimiter  +                                   &
+                doc-name       +                       &
+                x-delimiter  +                                   &
+                x-pay-code      +                       &
+                x-delimiter  +                                   &
+		ascii(doc-date-fac-start)   +			&
+                x-delimiter  +                                   &
+		ascii(doc-date-fac-term)    +			&
+                x-delimiter  +                                   &
+                x-claim-bal-alpha                              &
+                ) )
+
+initial heading                                                 &
+        tab  1  'COMPANY'                                       &
+        tab  8  x-delimiter                                     &
+        tab  9  'DEPT'                                          &
+        tab 13  x-delimiter                                     &
+        tab 14 'DOC#'                                          &
+        tab 18  x-delimiter                                     &
+        tab 19  'DOC NAME'                                      &
+        tab 27  x-delimiter                                     &
+        tab 28  'PAY CD'                                        &
+        tab 34  x-delimiter                                     &
+        tab 35  'START DATE'					&
+        tab 45  x-delimiter                                     &
+        tab 46  'TERM DATE'					&
+        tab 55  x-delimiter                                     &
+        tab 56  'CLAIM BALANCE' 
+
+report tab 01 x-line
+
+build $obj/r128b_csv

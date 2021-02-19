@@ -1,0 +1,49 @@
+;PURPOSE: REPORT suspend detail for # of svc/claims/amount for each doctor
+
+;DATE:		WHO:		MODIFICATION
+;2012/May/01 M. CHAN		ORIGINAL
+;                    		SUMMARIZE THE SVC/CLAIM/AMT BY DOCTOR
+;				INTO SUBFILE te be run 2 times (before/after) modification
+
+can clear
+set lock record update
+
+set process nolimit
+
+request suspend_dtl  on calculation errors report on edit errors report
+
+access f002-suspend-dtl                                 &
+  link clmdtl-doc-ohip-nbr,                             &
+       clmdtl-accounting-nbr                            &
+    to clmhdr-doc-ohip-nbr, 				&
+       clmhdr-accounting-nbr of f002-suspend-hdr opt
+
+define x-seq zoned*1 unsigned = parm prompt 'Enter 1 for Before, 2 for After: '
+
+sort on clmhdr-doc-nbr         &
+     on clmhdr-doc-dept        &
+     on clmhdr-doc-spec-cd     &
+     on clmdtl-accounting-nbr
+
+temp x-svc    zoned*5 unsigned
+item x-svc    = x-svc    + clmdtl-nbr-serv of f002-suspend-dtl  &
+                    reset at clmhdr-doc-spec-cd 
+
+temp x-clm    zoned*5 unsigned
+item x-clm    = x-clm    + 1     at clmdtl-accounting-nbr	&
+                    reset at clmhdr-doc-spec-cd 
+
+temp x-amt    zoned*9 unsigned
+item x-amt    = x-amt    + clmdtl-fee-ohip of f002-suspend-dtl  &
+                    reset at clmhdr-doc-spec-cd 
+
+subfile suspdtl_all keep append at clmhdr-doc-spec-cd include 	&
+ clmhdr-doc-nbr,		&
+ clmhdr-doc-dept,		&
+ clmhdr-doc-spec-cd,		&
+ x-svc,				& 
+ x-clm,    		 	&
+ x-amt,    			&
+ x-seq     
+
+build $pb_obj/suspdtl_2

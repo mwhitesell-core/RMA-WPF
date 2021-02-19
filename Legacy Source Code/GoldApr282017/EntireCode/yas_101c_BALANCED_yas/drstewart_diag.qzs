@@ -1,0 +1,66 @@
+;doc     : drstewart.qts
+;purpose : create report in-patients who have had diag code "451"
+;          loc code G300 and G441 dollar amount for diag code "451"
+;who     : Dr. stewart
+
+
+;Date		Who		Description
+;2002/01/18	Yasemin		Original
+
+
+cancel clear
+set rep nolimit
+
+access f002-claims-mstr                           
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220434000 to 220434999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if     ( clmhdr-loc = 'G300'or clmhdr-loc = 'G441') &
+                            and  clmhdr-batch-type = 'C'
+
+set subfile name drstewart_diag keep
+rep summary           &
+key-clm-type          &
+key-clm-batch-nbr     &
+key-clm-claim-nbr     &
+clmhdr-loc
+
+build $obj/drstewart_diag_1
+
+set rep dev disc name drstewart_diag
+set nohead
+
+access *drstewart_diag			                &
+        link (key-clm-type, key-clm-batch-nbr,          &
+              key-clm-claim-nbr)                        &       
+           to key-clm-type, key-clm-batch-nbr,          &
+              key-clm-claim-nbr                         &
+                of f002-claims-mstr                     
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20010701' & 
+       and  clmdtl-sv-date     <= '20011231' &
+       and  clmdtl-diag-cd      = 451        &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+
+final footing                                   &
+tab 1 clmdtl-fee-ohip subtotal pic "^^^,^^^.^^" &
+skip 1
+
+build $obj/drstewart_diag_2

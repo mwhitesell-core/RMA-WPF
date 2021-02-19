@@ -1,0 +1,58 @@
+set rep nolimit
+set rep page length 62
+set rep page width 132
+set rep dev disc name suspend_desc
+set formfee
+set noclose
+
+access f002-suspend-dtl                              &
+;  link (nconvert(ascii(clmdtl-batch-nbr,9)[4:3]))    &
+  link (clmdtl-batch-nbr[3:3])                       &
+    to doc-nbr of f020-doctor-mstr opt               &
+  link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr    &
+    to clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr    &
+                             of f002-suspend-hdr opt &
+  link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr    &
+    to clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr    &
+                             of f002-suspend-desc opt
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+select if (   (    clmhdr-status ne clmhdr-status-delete	&
+	       and clmdtl-status ne clmdtl-status-delete	&
+	      ) 						&	
+           and clmhdr-status ne clmhdr-status-ignor		&
+           and clmdtl-suspend-desc ne " "                       &
+          )
+
+
+sort on doc-nbr               &
+     on clmdtl-accounting-nbr               
+
+def x-name cha*25 = pack(doc-name+" "+doc-inits)
+
+
+def x-mr cha*1 = clmhdr-manual-review if clmhdr-manual-review = "Y"
+
+page heading                   &
+skip 1  tab 1 	sysdate        &
+        tab 20  "VIEW SUSPEND DESCRIPTION" &
+skip 2
+
+heading at doc-nbr skip 2          &
+;tab 1  doc-nbr pic "^^^" fill "0"  &
+tab 1  doc-nbr                     &
+tab 5  x-name                      &
+skip 2
+
+footing at clmdtl-accounting-nbr        &
+tab 1  clmdtl-doc-ohip-nbr pic "^^^^^^" &
+tab 10 CLMDTL-ACCOUNTING-NBR            &
+tab 20 clmhdr-manual-review             &
+tab 25 CLMDTL-SUSPEND-DESC              &
+skip 2
+
+
+
+build $pb_obj/suspend_desc

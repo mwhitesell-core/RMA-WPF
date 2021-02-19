@@ -1,0 +1,1955 @@
+identification division. 
+program-id. r051c. 
+author. dyad computer systems inc. 
+installation. rma. 
+date-written. yy/mm/dd. 
+date-compiled. 
+security. 
+* 
+*    files      : f020 - doctor master 
+*		: f040 - oma fee master 
+*		: f070 - department master 
+*		: f090 - constants master 
+*		: parameter-file 
+*		: work file 
+*		: "r051ca" print report file1 
+*		: "r051cb" print report file2 
+* 
+*    program purpose :  print the productivity analysis reports. 
+*			this is the third in a series of 3 programs. 
+*			it uses the sorted work file created by r051b 
+*			to print the report. 
+* 
+*   87/may/??  s.b.     - coversion from aos to aos/vs. 
+*                         change field size for 
+*                         status clause to 2 and 
+*                         feedback clause to 4. 
+*   89/mar/10  s. fader - sms 114 
+*			- string the doctor name with 2 spaces 
+*			  rather than 1 space, so dr. van der 
+*			  meulen can be printed properly. 
+*   89/mar/??  s.f. 	- sms 115
+*		       	- make sure file status is pic xx ,feedback is 
+*			  pic x(4) and infos status is pic x(11). 
+*   93/aug/??  m. chan	- reset ws-mtd-sum-next-level and ws-ytd-sum- 
+*			  next-level from total-clinic-dept-mtd-amt 
+*			  and total-clinic-dept-ytd-amt respectively 
+*			  for r051ca only in az0 subroutine 
+*   96/apr/??  m. chan 	- pdr #645
+*		        - display the running true report page 
+*
+*   98/feb/??  j. chau  - pdr #149 unix conversion 
+*			- changed write to rewrite for parm file
+*   98/oct/07  B.E.     - divide by zero didn't change result from
+*			  previous calculation. Operands now checked
+*			  if they are 0 and result set to 0.
+*
+*  1999/jan/31 B.E.		- yt2k
+*
+environment division. 
+input-output section. 
+file-control. 
+* 
+*   place your file select statements here 
+* 
+* 
+    select r051-work-file 
+	assign to "r051_sort_work_mstr" 
+	organization is sequential. 
+* 
+ 
+    select print-file-one 
+	assign to printer print-file-name-one 
+	file status is status-prt-file-one. 
+ 
+* 
+ 
+    select print-file-two 
+	assign to printer print-file-name-two 
+	file status is status-prt-file-two. 
+* 
+    copy "f020_doctor_mstr.slr". 
+* 
+    copy "f040_oma_fee_mstr.slr". 
+* 
+    copy "f070_dept_mstr.slr". 
+* 
+    copy "f090_constants_mstr.slr". 
+* 
+    copy "r051_parm_file.slr". 
+data division. 
+file section. 
+* 
+    copy 'r051_docrev_work_mstr.fd'. 
+* 
+    copy 'f020_doctor_mstr.fd'. 
+* 
+    copy 'f040_oma_fee_mstr.fd'. 
+* 
+    copy 'f070_dept_mstr.fd'. 
+* 
+    copy "f090_constants_mstr.fd". 
+* 
+    copy "f090_const_mstr_rec_4.ws". 
+* 
+fd  print-file-one 
+    record contains 132 characters. 
+ 
+01  print-record-one				pic x(132). 
+* 
+fd  print-file-two 
+    record contains 132 characters. 
+ 
+01  print-record-two				pic x(132). 
+* 
+    copy "r051_parm_file.fd". 
+working-storage section. 
+ 
+77  err-ind					pic 99 	value zero. 
+77  print-file-name-one				pic x(6) 
+	value "r051ca". 
+77  print-file-name-two				pic x(6) 
+	value "r051cb". 
+77  option					pic x. 
+77  nbr-of-lines-to-print			pic 9. 
+77  max-nbr-lines				pic 99   value 60. 
+77  ctr-lines					pic 99	   value 70. 
+77  parm-rec-nbr				pic 9. 
+77  blank-line					pic x(132) value spaces. 
+77  subs					pic 999	comp. 
+77  subs1					pic 999	comp. 
+77  subs-dept-clinic				pic 9	comp. 
+77  subs-class-code				pic 99	comp. 
+77  subs-present-nbr-classes			pic 99  comp value zero. 
+77  subs-max-nbr-classes			pic 99  comp value zero. 
+77  subs-dept					pic 9	comp value 1. 
+77  subs-clinic					pic 9	comp value 2. 
+77  subs-class-total				pic 99	comp. 
+77  subs-print-classes				pic 99	comp. 
+77  hold-dept					pic 99. 
+77  hold-class-code				pic x. 
+77  hold-doc-nbr				pic 999. 
+77  hold-oma-cd					pic x(5). 
+77  hold-oma-cd-ltr				pic x. 
+77  ws-mtd-svc					pic 9(8). 
+77  ws-mtd-amt					pic s9(9)v99. 
+77  ws-mtd-avg					pic s9(9)v9999. 
+77  ws-mtd-perc					pic s999v9999. 
+77  ws-mtd-sum-next-level			pic s9(9)v99. 
+77  ws-ytd-svc					pic 9(8). 
+77  ws-ytd-amt					pic s9(9)v99. 
+77  ws-ytd-avg					pic s9(9)v9999. 
+77  ws-ytd-perc					pic s999v9999. 
+77  ws-ytd-sum-next-level			pic s9(9)v99. 
+77  ws-ohip-code-desc-lit			pic x(60) value 
+	"OHIP  ----------OHIP CODE DESCRIPTION ---------------". 
+77  ws-dept-lit					pic x(23)	value 
+	"DEPARTMENT CLASS TOTALS". 
+77  ws-clinic-lit				pic x(19)	value 
+	"CLINIC CLASS TOTALS". 
+77  ws-doc-name-inits				pic x(30). 
+77  feedback-oma-fee-mstr			pic x(4). 
+77  feedback-iconst-mstr			pic x(4). 
+ 
+*  eof indicators 
+* 
+77  eof-doctor-mstr				pic x	 value "N". 
+77  eof-work-file				pic x	value "N". 
+77  eof-dept-mstr				pic x	value "N". 
+77  eof-oma-mstr				pic x	value "N". 
+* 
+*  status file indicators 
+* 
+*mf 77  common-status-file			pic x(11). 
+*mf 77  status-doc-mstr				pic x(11) value zero. 
+*mf 77  status-parm-file			pic x(11) value zero. 
+*mf 77  status-dept-mstr			pic x(11) value zero. 
+*mf 77  status-iconst-mstr			pic x(11) value zero. 
+*mf 77  status-oma-mstr				pic x(11) value zero. 
+ 
+77  common-status-file				pic x(2). 
+77  status-cobol-doc-mstr			pic x(2) value zero. 
+77  status-cobol-parm-file			pic x(2) value zero. 
+77  status-cobol-dept-mstr			pic x(2) value zero. 
+77  status-cobol-iconst-mstr			pic x(2) value zero. 
+77  status-cobol-oma-mstr			pic x(2) value zero. 
+77  status-prt-file				pic xx    value zero. 
+77  status-prt-file-one				pic xx    value zero. 
+77  status-prt-file-two				pic xx    value zero. 
+ 
+01  flag-end-work-rec				pic x. 
+    88  flag-end-work-rec-y			value 'Y'. 
+    88  flag-end-work-rec-n			value 'N'. 
+ 
+01  flag					pic x. 
+    88  ok					value 'Y'. 
+    88  not-ok					value 'N'. 
+ 
+01  flag-clinic-totals				pic x. 
+    88  flag-clinic-totals-y			value 'Y'. 
+    88  flag-clinic-totals-n			value 'N'. 
+ 
+ 
+ 
+01  totals. 
+    05  total-indiv-oma-cd. 
+	10  total-indiv-oma-cd-mtd-svc		pic 9(4). 
+	10  total-indiv-oma-cd-mtd-amt		pic s9(5)v99. 
+	10  total-indiv-oma-cd-ytd-svc		pic 9(6). 
+	10  total-indiv-oma-cd-ytd-amt		pic s9(7)v99. 
+    05  total-ltr. 
+	10  total-ltr-mtd-svc			pic 9(5). 
+	10  total-ltr-mtd-amt			pic s9(6)v99. 
+	10  total-ltr-ytd-svc			pic 9(7). 
+	10  total-ltr-ytd-amt			pic s9(9)v99. 
+    05  total-clinic-dept. 
+	10  total-clinic-dept-mtd-svc		pic 9(8). 
+	10  total-clinic-dept-mtd-amt		pic s9(8)v99. 
+	10  total-clinic-dept-ytd-svc		pic 9(8). 
+	10  total-clinic-dept-ytd-amt		pic s9(9)v99. 
+    05  total-dept-doc. 
+	10  total-dept-doc-mtd-svc		pic 9(6). 
+	10  total-dept-doc-mtd-amt		pic s9(8)v99. 
+	10  total-dept-doc-ytd-svc		pic 9(7). 
+	10  total-dept-doc-ytd-amt		pic s9(9)v99. 
+    05  total-class. 
+	10  total-class-mtd-svc			pic 9(6). 
+	10  total-class-mtd-amt			pic s9(8)v99. 
+	10  total-class-ytd-svc			pic 9(7). 
+	10  total-class-ytd-amt			pic s9(9)v99. 
+ 
+ 
+01  ws-class-codes. 
+    05  ws-total-by-dept-clinic occurs 2 times. 
+	10  ws-max-class-codes occurs 16 times. 
+	    15  ws-class-code			pic x. 
+	    15  ws-class-code-desc		pic x(24). 
+	    15  ws-class-mtd-svc		pic 9(8). 
+	    15  ws-class-mtd-amt		pic s9(9)v99. 
+	    15  ws-class-ytd-svc		pic 9(8). 
+	    15  ws-class-ytd-amt		pic s9(9)v99. 
+ 
+*    sms 114 s.f.   string the doctor name with 2 spaces rather than 1. 
+01   ws-xx 			pic xx		value "  ". 
+ 
+*   counters for records read/written for all input/output files 
+ 
+01  counters. 
+    05  ctr-work-file-reads			pic 9(7). 
+    05  ctr-doc-mstr-reads			pic 9(7). 
+    05  ctr-pages				pic 9(5). 
+    05  report-pages				pic 9(5). 
+01  error-message-table. 
+ 
+    05  error-messages. 
+	10  filler				pic x(60)   value 
+			"INVALID REPLY". 
+	10  filler				pic x(60)   value 
+			"NO PARAMETER FILE SUPPLIED". 
+	10  filler				pic x(60)   value 
+			"NO SORT WORK FILE FOUND". 
+	10  filler				pic x(60)   value 
+			"INVALID WRITE TO PARAMETER FILE". 
+	10  filler				pic x(60)   value 
+			"INVALID PARAMETER STATUS". 
+	10  filler				pic x(60)   value 
+			"CONSTANTS MASTER READ ERROR". 
+	10  filler				pic x(60)   value 
+			"TOO MANY CLASS CODES FOUND". 
+	10  filler				pic x(60)   value 
+			"DEPARMENT MASTER RECORD NOT FOUND". 
+	10  filler				pic x(60)   value 
+			"*** CAN BE RE-USED ***". 
+	10  filler				pic x(60)   value 
+			"*** CAN BE RE-USED ***". 
+	10  filler				pic x(60)   value 
+			"*** CAN BE RE-USED ***". 
+	10  filler				pic x(60)   value 
+			"*** CAN BE RE-USED ***". 
+	10  filler				pic x(60)   value 
+			"*** CAN BE RE-USED ***". 
+	10  filler				pic x(60)   value 
+			"*** CAN BE RE-USED ***". 
+ 
+    05  error-messages-r redefines error-messages. 
+	10  err-msg				pic x(60) 
+			occurs 14 times. 
+ 
+01  err-msg-comment. 
+    05  err-msg-key-type			pic x(25). 
+    05  err-msg-key				pic x(35). 
+ 
+01  e1-error-line. 
+ 
+    05  e1-error-word				pic x(13)    value 
+			"***  ERROR - ". 
+    05  e1-error-msg				pic x(119). 
+ 
+ 
+ 
+ 
+    copy "sysdatetime.ws". 
+01  h1-head. 
+ 
+    05  h1-report-nbr				pic x(6). 
+    05  filler					pic x	value "/". 
+    05  h1-clinic-nbr				pic zz. 
+    05  filler					pic x(3) value spaces. 
+    05  filler					pic x(7) value  
+		"P.E.D.". 
+    05  h1-ped. 
+* (y2k)
+*	10  h1-ped-yy				pic 99. 
+	10  h1-ped-yy				pic 9(4). 
+	10  filler				pic x value "/". 
+	10  h1-ped-mm				pic 99. 
+	10  filler				pic x value "/". 
+	10  h1-ped-dd				pic 99. 
+* (y2k)
+*   05  filler					pic x(22) value spaces. 
+    05  filler					pic x(20) value spaces. 
+    05  h1-title				pic x(45). 
+    05  filler					pic x(11) value 
+	" RUN DATE:".
+    05  h1-run-date. 
+* (y2k)
+*	10  h1-run-date-yy			pic 99. 
+	10  h1-run-date-yy			pic 9(4). 
+	10  filler				pic x value "/". 
+	10  h1-run-date-mm			pic 99. 
+	10  filler				pic x value "/". 
+	10  h1-run-date-dd			pic 99. 
+* (y2k)
+*   05  filler					pic x(9) value spaces. 
+    05  filler					pic x(7) value spaces. 
+    05  filler					pic x(5) value "PAGE". 
+    05  h1-page-nbr				pic zzzz9. 
+ 
+01  h2-head. 
+    05  filler					pic x(56) value spaces. 
+    05  h2-clinic-name				pic x(20). 
+    05  filler					pic x(51) value spaces. 
+    05  h2-rpt-pages				pic zzzz9. 
+ 
+01  h2a-head. 
+    05  filler					pic x(7)   value 'DOCTOR'. 
+    05  h2a-doc-nbr				pic 999. 
+    05  filler					pic x(3) value spaces. 
+    05  h2a-doc-name-inits			pic x(119). 
+ 
+01  h3-head. 
+    05  filler					pic x(55) value spaces. 
+    05  filler					pic x(77) value 
+	"----------- M . T . D . -----------   -------------- Y . T . D . ------------". 
+ 
+ 
+01  h4-head. 
+    05  filler					pic x(56) value spaces. 
+    05  filler					pic x(40) value 
+	"SVC    $ AMT      $ AVG    PERCENT". 
+    05  filler					pic x(36)  value 
+	"SVC     $ AMT       $ AVG    PERCENT". 
+ 
+ 
+01  h5-head. 
+    05  h5-ohip-code-desc-lit			pic x(81) value spaces. 
+    05  h5-doc-dept-lit				pic x(42) value spaces. 
+    05  h5-doc-dept-lit2			pic x(9)  value spaces. 
+ 
+ 
+01  h6-head. 
+    05  filler					pic x(49) value spaces. 
+    05  filler					pic x(6) value "DEPT #". 
+    05  h6-dept-nbr				pic 99. 
+    05  filler					pic x(3) value " - ". 
+    05  h6-dept-name				pic x(72). 
+ 
+01  h7-head. 
+    05  filler					pic x(49) value spaces. 
+    05  filler					pic x(7) value "CLASS". 
+    05  h7-class				pic x(2). 
+    05  filler					pic x(2) value "- ". 
+    05  h7-class-desc				pic x(72). 
+ 
+01  h8-head. 
+    05  h8-total-lit				pic x(132). 
+01  print-line. 
+ 
+    05  l1-print-line. 
+	10  l1-oma-cd				pic x(6). 
+	10  l1-desc				pic x(49). 
+	10  l1-mtd-svc				pic zzz9. 
+	10  filler				pic x(3). 
+	10  l1-mtd-amt				pic zz,zz9.99-. 
+	10  filler				pic x(2). 
+	10  l1-mtd-avg				pic z,zz9.99-. 
+	10  l1-mtd-perc				pic zz9.99. 
+	10  l1-mtd-perc-sign			pic x(4). 
+	10  l1-ytd-svc				pic z(5)9. 
+	10  filler				pic x(2). 
+	10  l1-ytd-amt				pic zzzz,zz9.99-. 
+	10  filler				pic x. 
+	10  l1-ytd-avg				pic zzz,zz9.99-. 
+	10  l1-ytd-perc				pic zz9.99. 
+	10  l1-ytd-perc-sign			pic x. 
+    05  l2-print-line redefines l1-print-line. 
+	10  l2-ltr				pic x. 
+	10  l2-dashes  				pic x(6). 
+	10  l2-total-lit			pic x(47). 
+	10  l2-mtd-svc				pic zzzz9. 
+	10  filler				pic xx. 
+	10  l2-mtd-amt				pic zzz,zz9.99-. 
+	10  filler				pic x. 
+	10  l2-mtd-avg				pic zz,zz9.99-. 
+	10  l2-mtd-perc				pic zz9.99. 
+	10  l2-mtd-perc-sign			pic x(3). 
+	10  l2-ytd-svc				pic z(6)9. 
+	10  filler				pic x. 
+	10  l2-ytd-amt				pic z(8)9.99-. 
+	10  filler				pic x. 
+	10  l2-ytd-avg				pic zzz,zz9.99-. 
+	10  l2-ytd-perc				pic zz9.99. 
+	10  l2-ytd-perc-sign			pic x. 
+    05  t1-print-line redefines l2-print-line. 
+	10  t1-doc-lit				pic x(8). 
+	10  t1-doc-nbr				pic 999. 
+	10  filler				pic x(3). 
+	10  t1-total-lit			pic x(38). 
+	10  t1-mtd-svc				pic zzz,zz9. 
+	10  filler				pic x. 
+	10  t1-mtd-amt				pic z(7)9.99-. 
+	10  filler				pic x. 
+	10  t1-mtd-avg				pic zz,zz9.99-. 
+	10  t1-mtd-perc				pic zz9.99. 
+	10  t1-mtd-perc-sign			pic x(3). 
+	10  t1-ytd-svc				pic z(6)9. 
+	10  filler				pic x. 
+	10  t1-ytd-amt				pic z(8)9.99-. 
+	10  filler				pic x. 
+	10  t1-ytd-avg				pic z(6)9.99-. 
+	10  t1-ytd-perc				pic zz9.99. 
+	10  t1-ytd-perc-sign			pic x. 
+    05  t2-print-line redefines t1-print-line. 
+	10  t2-dept-lit				pic x(51). 
+	10  t2-class-code-r redefines t2-dept-lit. 
+	    15  t2-class-code			pic x. 
+	    15  t2-col				pic x(2). 
+	    15  t2-class-code-desc		pic x(48). 
+	10  t2-mtd-svc				pic z(7)9. 
+	10  filler				pic x. 
+	10  t2-mtd-amt				pic z(7)9.99-. 
+	10  filler				pic x. 
+	10  t2-mtd-avg				pic zz,zz9.99-. 
+	10  t2-mtd-perc				pic zz9.99. 
+	10  t2-mtd-perc-sign			pic xx. 
+	10  t2-ytd-svc				pic z(7)9. 
+	10  filler				pic x. 
+	10  t2-ytd-amt				pic z(8)9.99-. 
+	10  filler				pic x. 
+	10  t2-ytd-avg				pic z(6)9.99-. 
+	10  t2-ytd-perc				pic zz9.99. 
+	10  t2-ytd-perc-sign			pic x. 
+    05  t3-print-line redefines t2-print-line. 
+	10  t3-dept-lit				pic x(51). 
+	10  t3-mtd-svc				pic z(7)9. 
+	10  filler				pic x. 
+	10  t3-mtd-amt				pic z(7)9.99-. 
+	10  filler				pic x. 
+	10  t3-mtd-avg				pic zz,zz9.99-. 
+	10  t3-mtd-perc				pic zz9.99. 
+	10  t3-mtd-perc-sign			pic x(2). 
+	10  t3-ytd-svc				pic z(7)9. 
+	10  filler				pic x. 
+	10  t3-ytd-amt				pic z(8)9.99-. 
+	10  filler				pic x. 
+	10  t3-ytd-avg				pic z(6)9.99-. 
+	10  t3-ytd-perc				pic zz9.99. 
+	10  t3-ytd-perc-sign			pic x. 
+    05  t4-print-line redefines t3-print-line. 
+	10  t4-clinic-lit			pic x(51). 
+	10  t4-mtd-svc				pic z(7)9. 
+	10  filler				pic x. 
+	10  t4-mtd-amt				pic z(7)9.99-. 
+	10  filler				pic x. 
+	10  t4-mtd-avg				pic zz,zz9.99-. 
+	10  t4-mtd-perc				pic zz9.99. 
+	10  t4-mtd-perc-sign			pic x(2). 
+	10  t4-ytd-svc				pic z(7)9. 
+	10  filler				pic x. 
+	10  t4-ytd-amt				pic z(8)9.99-. 
+	10  filler				pic x. 
+	10  t4-ytd-avg				pic z(6)9.99-. 
+	10  t4-ytd-perc				pic zz9.99. 
+	10  t4-ytd-perc-sign			pic x. 
+procedure division. 
+declaratives. 
+ 
+err-doc-mstr-file section. 
+    use after standard error procedure on doc-mstr. 
+err-doc-mstr. 
+*mf    move status-doc-mstr		to common-status-file. 
+    move status-cobol-doc-mstr		to common-status-file. 
+*   display file-status-display. 
+    display common-status-file. 
+    stop "ERROR IN ACCESSING DOCTOR MASTER". 
+ 
+err-dept-mstr-file section. 
+    use after standard error procedure on dept-mstr. 
+err-dept-mstr. 
+*mf   move status-dept-mstr		to common-status-file. 
+    move status-cobol-dept-mstr		to common-status-file. 
+*   display file-status-display. 
+    display common-status-file. 
+    stop "ERROR IN ACCESSING DEPARTMENT MASTER". 
+ 
+err-iconst-mstr-file section. 
+    use after standard error procedure on iconst-mstr. 
+err-iconst-mstr. 
+*mf    move status-iconst-mstr		to common-status-file. 
+    move status-cobol-iconst-mstr	to common-status-file. 
+*   display file-status-display. 
+    display common-status-file. 
+    stop "ERROR IN ACCESSING CONSTANTS MASTER". 
+ 
+err-oma-fee-mstr-file section. 
+    use after standard error procedure on oma-fee-mstr. 
+err-oma-fee-mstr. 
+*mf    move status-oma-mstr		to common-status-file. 
+    move status-cobol-oma-mstr		to common-status-file. 
+*   display file-status-display. 
+    display common-status-file. 
+    stop "ERROR IN ACCESSING OMA FEE MASTER". 
+ 
+err-print-file-one section. 
+    use after standard error procedure on print-file-one. 
+err-file-one. 
+    move status-prt-file-one		to common-status-file. 
+*   display file-status-display. 
+    display common-status-file. 
+    stop "ERROR ON PRINT FILE ONE (R051CA)". 
+ 
+err-print-file-two section. 
+    use after standard error procedure on print-file-two. 
+err-file-two. 
+    move status-prt-file-two		to common-status-file. 
+*   display file-status-display. 
+    display common-status-file. 
+    stop "ERROR ON PRINT FILE TWO (R051CB)". 
+ 
+end declaratives. 
+main-line section. 
+mainline. 
+ 
+    perform aa0-initialization		thru aa0-99-exit. 
+ 
+    if parm-status = 1 
+    then 
+	perform ab0-process-r051ca	thru ab0-99-exit 
+		until flag-end-work-rec-y 
+    else 
+	if parm-status = 3 
+	then 
+	    perform ad0-process-r051cb	thru ad0-99-exit 
+		until flag-end-work-rec-y 
+	else 
+	    move 5			to err-ind 
+	    perform za0-common-error	thru za0-99-exit 
+	    go to az0-10-end-of-job. 
+*	endif 
+*   endif 
+ 
+    perform az0-end-of-job		thru az0-99-exit. 
+* 
+    stop run. 
+aa0-initialization. 
+   
+    accept sys-date			from	date. 
+    perform y2k-default-sysdate		thru y2k-default-sysdate-exit.
+    move sys-mm				to	run-mm 
+						h1-run-date-mm. 
+    move sys-dd				to	run-dd 
+						h1-run-date-dd. 
+    move sys-yy				to	run-yy 
+						h1-run-date-yy. 
+ 
+    accept sys-time			from	time. 
+    move sys-hrs			to	run-hrs. 
+    move sys-min			to	run-min. 
+    move sys-sec			to	run-sec. 
+ 
+*   display program-in-progress. 
+ 
+    open input	r051-work-file 
+		dept-mstr 
+		oma-fee-mstr 
+		iconst-mstr 
+		doc-mstr. 
+    open i-o	parameter-file. 
+ 
+    move 'N'				to	flag-clinic-totals. 
+ 
+    move 4				to	iconst-clinic-nbr-1-2. 
+ 
+    read iconst-mstr 
+	invalid key 
+	    move 6			to	err-ind 
+	    perform za0-common-error	thru	za0-99-exit 
+	    go to az0-10-end-of-job. 
+ 
+    move 1				to	subs-dept-clinic. 
+ 
+    perform xs0-clear-class-tbl		thru	xs0-99-exit 
+	varying subs from 1 by 1 
+	until subs > const-nbr-classes + 1. 
+ 
+    move 2				to	subs-dept-clinic. 
+ 
+    perform xs0-clear-class-tbl		thru	xs0-99-exit 
+	varying subs from 1 by 1 
+	until subs > const-nbr-classes + 1. 
+ 
+    move zero				to	counters 
+						totals. 
+ 
+    move 1				to	ctr-pages 
+						report-pages 
+						subs-dept-clinic 
+						subs-max-nbr-classes 
+						subs-class-code. 
+ 
+    move spaces				to	print-line 
+						work-file-rec. 
+ 
+    perform xc0-read-work-rec		thru	xc0-99-exit. 
+ 
+    if flag-end-work-rec-y 
+    then 
+	move 3				to	err-ind 
+	perform za0-common-error	thru	za0-99-exit 
+	go to az0-10-end-of-job 
+    else 
+	move wf-dept			to	hold-dept 
+	move wf-class-code		to	hold-class-code 
+						ws-class-code(subs-dept-clinic,subs-class-code) 
+	move wf-doc-nbr			to	hold-doc-nbr 
+	move wf-oma-cd			to	hold-oma-cd 
+	move wf-oma-code-ltr		to	hold-oma-cd-ltr. 
+*   endif 
+ 
+    move 1				to	parm-rec-nbr. 
+    read parameter-file 
+ 	invalid key 
+ 	    move 2			to	err-ind 
+ 	    perform za0-common-error	thru	za0-99-exit 
+ 	    go to az0-10-end-of-job. 
+ 
+*	(obtain clinic name,nbr and period end from parameter file) 
+    move parm-clinic-nbr		to	h1-clinic-nbr. 
+    move parm-clinic-name 		to	h2-clinic-name. 
+    move parm-ped-yy			to	h1-ped-yy. 
+    move parm-ped-mm			to	h1-ped-mm. 
+    move parm-ped-dd			to	h1-ped-dd. 
+  
+ 
+    if parm-status = 1 
+    then 
+*	expunge print-file-one 
+	open output print-file-one 
+	move print-file-name-one	to	h1-report-nbr 
+    else 
+	if parm-status = 3 
+	then 
+*	    expunge print-file-two 
+	    open output print-file-two 
+	    move print-file-name-two	to	h1-report-nbr 
+	else 
+	    move 5			to	err-ind 
+	    perform za0-common-error	thru	za0-99-exit 
+	    go to az0-10-end-of-job. 
+*	endif 
+*   endif 
+ 
+    move ws-ohip-code-desc-lit		to	h5-ohip-code-desc-lit. 
+ 
+aa0-99-exit. 
+    exit. 
+az0-end-of-job. 
+ 
+    perform ba0-oma-cd-break		thru ba0-99-exit. 
+*    perform ha0-oma-cd-ltr-break	thru ha0-99-exit. 
+ 
+    move 'Y'				to flag-clinic-totals. 
+ 
+    if parm-status = 1 
+    then 
+	perform da0-doc-nbr-break	thru da0-99-exit 
+*   the following 2 lines are added on 93/08/05 by m.c. 
+ 	move total-clinic-dept-mtd-amt  to ws-mtd-sum-next-level 
+ 	move total-clinic-dept-ytd-amt  to ws-ytd-sum-next-level 
+	perform fa0-dept-break		thru fa0-99-exit 
+	close print-file-one 
+    else 
+	move total-class-mtd-amt	to ws-mtd-sum-next-level 
+	move total-class-ytd-amt	to ws-ytd-sum-next-level 
+	move subs-class-code		to subs-print-classes 
+	perform la1-print-totals	thru la1-99-exit 
+	perform ea0-dept-break-b	thru ea0-99-exit 
+	move 2				to subs-dept-clinic 
+	move ws-clinic-lit		to h8-total-lit 
+	move "OF CLINIC"		to h5-doc-dept-lit 
+					   h5-doc-dept-lit2 
+	move subs-present-nbr-classes	to subs-max-nbr-classes 
+	perform la0-class-totals	thru la0-99-exit 
+	perform az3-print-total-clinic	thru az3-99-exit 
+	close print-file-two. 
+*   endif 
+ 
+    add 1				to parm-status. 
+    move 'r051c'			to parm-program-nbr. 
+ 
+    rewrite parm-file-rec 
+	invalid key 
+	    move 4			to err-ind 
+	    perform za0-common-error	thru za0-99-exit. 
+ 
+*   display blank-screen. 
+    accept sys-time			from time. 
+*   display scr-closing-screen. 
+ 
+*   if parm-status = 2 
+*   then 
+*	display scr-closing-rpt1 
+*   else 
+*	display scr-closing-rpt2. 
+*   endif 
+ 
+az0-10-end-of-job. 
+ 
+    close r051-work-file 
+	  parameter-file 
+	  oma-fee-mstr 
+	  dept-mstr 
+	  iconst-mstr 
+	  doc-mstr. 
+ 
+*   call program "MENU". 
+ 
+    stop run. 
+ 
+az0-99-exit. 
+    exit. 
+ 
+ 
+ 
+az3-print-total-clinic. 
+ 
+    move total-clinic-dept-mtd-svc	to ws-mtd-svc. 
+    move total-clinic-dept-mtd-amt	to ws-mtd-amt. 
+    move total-clinic-dept-ytd-svc	to ws-ytd-svc. 
+    move total-clinic-dept-ytd-amt	to ws-ytd-amt. 
+ 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+ 
+    move "** CLINIC GRAND TOTALS **"	to t4-clinic-lit. 
+ 
+    move total-clinic-dept-mtd-svc	to t4-mtd-svc. 
+    move total-clinic-dept-mtd-amt	to t4-mtd-amt. 
+    move total-clinic-dept-ytd-svc	to t4-ytd-svc. 
+    move total-clinic-dept-ytd-amt	to t4-ytd-amt. 
+ 
+    move ws-mtd-avg			to t4-mtd-avg. 
+    move ws-mtd-perc			to t4-mtd-perc. 
+    move ws-ytd-avg			to t4-ytd-avg. 
+    move ws-ytd-perc			to t4-ytd-perc. 
+ 
+    if ws-mtd-perc < zero 
+    then 
+	move '-'			to t4-mtd-perc-sign 
+    else 
+	move '%'			to t4-mtd-perc-sign. 
+*   endif 
+ 
+    if ws-ytd-perc < zero 
+    then 
+	move '-'			to t4-ytd-perc-sign 
+    else 
+	move '%'			to t4-ytd-perc-sign. 
+*   endif 
+ 
+    move 2				to nbr-of-lines-to-print. 
+    perform xf0-write-print-line-b	thru xf0-99-exit. 
+ 
+az3-99-exit. 
+    exit. 
+ab0-process-r051ca. 
+ 
+    if hold-dept not = wf-dept 
+    then 
+	perform ba0-oma-cd-break	thru ba0-99-exit 
+*	perform ha0-oma-cd-ltr-break	thru ha0-99-exit 
+	perform da0-doc-nbr-break	thru da0-99-exit 
+	move total-clinic-dept-mtd-amt	to ws-mtd-sum-next-level 
+	move total-clinic-dept-ytd-amt	to ws-ytd-sum-next-level 
+	perform fa0-dept-break		thru fa0-99-exit 
+	move 70				to ctr-lines 
+	move 1				to ctr-pages 
+					   subs-class-code 
+					   subs-max-nbr-classes 
+	move ws-ohip-code-desc-lit	to h5-ohip-code-desc-lit 
+    else 
+	if hold-doc-nbr not = wf-doc-nbr 
+	then 
+	    perform ba0-oma-cd-break	thru ba0-99-exit 
+*	    perform ha0-oma-cd-ltr-break 
+*					thru ha0-99-exit 
+	    perform da0-doc-nbr-break	thru da0-99-exit 
+	    perform na0-check-class-code 
+					thru na0-99-exit 
+	    move 70			to ctr-lines 
+	    move 1			to ctr-pages 
+	    move ws-ohip-code-desc-lit	to h5-ohip-code-desc-lit 
+	else 
+	    if hold-oma-cd-ltr not = wf-oma-code-ltr 
+	    then 
+		perform ba0-oma-cd-break 
+					thru ba0-99-exit 
+*		perform ha0-oma-cd-ltr-break 
+*					thru ha0-99-exit 
+	    else 
+		if hold-oma-cd not = wf-oma-cd 
+		then 
+		    perform ba0-oma-cd-break 
+					thru ba0-99-exit 
+		else 
+		    next sentence. 
+*		endif 
+*	    endif 
+*	endif 
+*   endif 
+ 
+ab0-10-check-rec. 
+ 
+*   ( clinic total ) 
+    if wf-dept = zero 
+    then 
+	perform xc0-read-work-rec	thru xc0-99-exit 
+	go to ab0-10-check-rec 
+    else 
+*	( department total ) 
+	if wf-class-code = zero 
+	then 
+	    perform xt0-new-dept-head	thru xt0-99-exit 
+	    perform xp0-clinic-dept-total-rec 
+					thru xp0-99-exit 
+	    perform xc0-read-work-rec	thru xc0-99-exit 
+	    go to ab0-10-check-rec 
+	else 
+*	    ( class total ) 
+	    if wf-doc-nbr = zero 
+	    then 
+		perform xu0-new-class-head 
+					thru xu0-99-exit 
+		perform xr0-class-tot-rec 
+					thru xr0-99-exit 
+		perform xc0-read-work-rec 
+					thru xc0-99-exit 
+		go to ab0-10-check-rec 
+	    else 
+*		( doctor total ) 
+		if wf-oma-cd = zero 
+		then 
+		    perform xq0-dept-doc-total-rec 
+					thru xq0-99-exit 
+		    perform xc0-read-work-rec 
+					thru xc0-99-exit 
+		    go to ab0-10-check-rec 
+		else 
+		    next sentence. 
+*		endif 
+*	    endif 
+*	endif 
+*   endif 
+ 
+    perform ja0-process-work-rec	thru ja0-99-exit. 
+ 
+    move wf-dept			to hold-dept. 
+    move wf-class-code			to hold-class-code 
+					   ws-class-code(subs-dept-clinic,subs-class-code). 
+    move wf-doc-nbr			to hold-doc-nbr. 
+    move wf-oma-cd			to hold-oma-cd. 
+    move wf-oma-code-ltr		to hold-oma-cd-ltr. 
+ 
+    perform xc0-read-work-rec    	thru xc0-99-exit. 
+ 
+ab0-99-exit. 
+    exit. 
+ad0-process-r051cb. 
+ 
+    if hold-dept not = wf-dept 
+    then 
+	perform ba0-oma-cd-break	thru ba0-99-exit 
+*	perform ha0-oma-cd-ltr-break	thru ha0-99-exit 
+	move total-class-mtd-amt	to ws-mtd-sum-next-level 
+	move total-class-ytd-amt	to ws-ytd-sum-next-level 
+	move subs-class-code		to subs-print-classes 
+	perform la1-print-totals	thru la1-99-exit 
+	perform ea0-dept-break-b	thru ea0-99-exit 
+	perform xs0-clear-class-tbl	thru xs0-99-exit 
+		varying subs from 1 by 1 
+		until subs > const-nbr-classes + 1 
+	move 70				to ctr-lines 
+	move 1				to ctr-pages 
+					   subs-class-code 
+					   subs-max-nbr-classes 
+	move ws-ohip-code-desc-lit	to h5-ohip-code-desc-lit 
+    else 
+	if hold-class-code not = wf-class-code 
+	then 
+	    perform ba0-oma-cd-break	thru ba0-99-exit 
+	    perform la3-bump-totals	thru la3-99-exit 
+	    move total-class-mtd-amt	to ws-mtd-sum-next-level 
+	    move total-class-ytd-amt	to ws-ytd-sum-next-level 
+	    move subs-class-code	to subs-print-classes 
+	    perform la1-print-totals	thru la1-99-exit 
+	    add 1			to subs-class-code 
+					   subs-max-nbr-classes 
+	    move 70			to ctr-lines 
+	    move 1			to ctr-pages 
+	    move ws-ohip-code-desc-lit	to h5-ohip-code-desc-lit 
+	else 
+	    if hold-oma-cd-ltr not = wf-oma-code-ltr 
+	    then 
+		perform ba0-oma-cd-break 
+					thru ba0-99-exit 
+*		perform ha0-oma-cd-ltr-break 
+*					thru ha0-99-exit 
+	    else 
+		if hold-oma-cd not = wf-oma-cd 
+		then 
+		    perform ba0-oma-cd-break 
+					thru ba0-99-exit 
+		else 
+		    next sentence. 
+*		endif 
+*	    endif 
+*	endif 
+*   endif 
+ 
+ad0-10-check-rec. 
+ 
+*   ( clinic total ) 
+    if wf-dept = zero 
+    then 
+	perform xp0-clinic-dept-total-rec 
+					thru xp0-99-exit 
+	perform xc0-read-work-rec	thru xc0-99-exit 
+	go to ad0-10-check-rec 
+    else 
+*	( department total ) 
+	if wf-class-code = zero 
+	then 
+	    perform xt0-new-dept-head	thru xt0-99-exit 
+	    perform xq0-dept-doc-total-rec 
+					thru xq0-99-exit 
+	    perform xc0-read-work-rec	thru xc0-99-exit 
+	    go to ad0-10-check-rec 
+	else 
+*	    ( class total ) 
+	    if wf-doc-nbr = zero 
+	    then 
+		perform xu0-new-class-head 
+					thru xu0-99-exit 
+		perform xr0-class-tot-rec 
+					thru xr0-99-exit 
+		perform xc0-read-work-rec 
+					thru xc0-99-exit 
+		go to ad0-10-check-rec 
+	    else 
+*		( doctor total ) 
+		if wf-oma-cd = zero 
+		then 
+		    perform xc0-read-work-rec 
+					thru xc0-99-exit 
+		    go to ad0-10-check-rec 
+		else 
+		    next sentence. 
+*		endif 
+*	    endif 
+*	endif 
+*   endif 
+ 
+    perform ja0-process-work-rec	thru ja0-99-exit. 
+ 
+    move wf-dept			to hold-dept. 
+    move wf-class-code			to hold-class-code 
+					   ws-class-code(subs-dept-clinic,subs-class-code). 
+    move wf-oma-cd			to hold-oma-cd. 
+    move wf-oma-code-ltr		to hold-oma-cd-ltr. 
+ 
+    perform xc0-read-work-rec    	thru xc0-99-exit. 
+ 
+ad0-99-exit. 
+    exit. 
+ba0-oma-cd-break. 
+ 
+    move total-indiv-oma-cd-mtd-svc	to ws-mtd-svc. 
+    move total-indiv-oma-cd-mtd-amt	to ws-mtd-amt. 
+    move total-indiv-oma-cd-ytd-svc	to ws-ytd-svc. 
+    move total-indiv-oma-cd-ytd-amt	to ws-ytd-amt. 
+*	( this is the total amount for the doctor (r051ca) ) 
+*	( this is the total amount for the class  (r051cb) ) 
+    if parm-status = 1 
+    then 
+	move total-dept-doc-mtd-amt	to ws-mtd-sum-next-level 
+	move total-dept-doc-ytd-amt	to ws-ytd-sum-next-level 
+    else 
+	move total-class-mtd-amt	to ws-mtd-sum-next-level 
+	move total-class-ytd-amt	to ws-ytd-sum-next-level. 
+*   endif 
+ 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+    perform ba1-print-indiv-oma-cd-line	thru ba1-99-exit. 
+    perform ba3-clear-indiv-totals	thru ba3-99-exit. 
+ 
+ba0-99-exit. 
+    exit. 
+ 
+ 
+ 
+ba1-print-indiv-oma-cd-line. 
+ 
+    move hold-oma-cd			to l1-oma-cd 
+					   fee-oma-cd. 
+    perform xm0-access-oma-fee-mstr	thru xm0-99-exit. 
+    move fee-desc			to l1-desc. 
+    move total-indiv-oma-cd-mtd-svc	to l1-mtd-svc. 
+    move total-indiv-oma-cd-mtd-amt	to l1-mtd-amt. 
+    move total-indiv-oma-cd-ytd-svc	to l1-ytd-svc. 
+    move total-indiv-oma-cd-ytd-amt	to l1-ytd-amt. 
+ 
+    move ws-mtd-avg			to l1-mtd-avg. 
+    move ws-mtd-perc			to l1-mtd-perc. 
+    move ws-ytd-avg			to l1-ytd-avg. 
+    move ws-ytd-perc			to l1-ytd-perc. 
+ 
+    if ws-mtd-perc < zero 
+    then 
+	move '-'			to l1-mtd-perc-sign 
+    else 
+	move '%'			to l1-mtd-perc-sign. 
+*   endif 
+ 
+    if ws-ytd-perc < zero 
+    then 
+	move '-'			to l1-ytd-perc-sign 
+    else 
+	move '%'			to l1-ytd-perc-sign. 
+*   endif 
+ 
+    move 1				to nbr-of-lines-to-print. 
+ 
+    if parm-status = 1 
+    then 
+	perform xe0-write-print-line-a	thru xe0-99-exit 
+    else 
+	perform xf0-write-print-line-b	thru xf0-99-exit. 
+*   endif 
+ 
+ba1-99-exit. 
+    exit. 
+ 
+ 
+ 
+ba3-clear-indiv-totals. 
+ 
+    move zero				to total-indiv-oma-cd-mtd-svc 
+					   total-indiv-oma-cd-mtd-amt 
+					   total-indiv-oma-cd-ytd-svc 
+					   total-indiv-oma-cd-ytd-amt. 
+ 
+ba3-99-exit. 
+    exit. 
+da0-doc-nbr-break. 
+ 
+*	( print the doctor totals ) 
+*	( move doctor values to calculate variables ) 
+    move total-dept-doc-mtd-svc		to ws-mtd-svc. 
+    move total-dept-doc-mtd-amt		to ws-mtd-amt. 
+    move total-dept-doc-ytd-svc		to ws-ytd-svc. 
+    move total-dept-doc-ytd-amt		to ws-ytd-amt. 
+*	( this is the total amount for the doctor ) 
+    move total-dept-doc-mtd-amt		to ws-mtd-sum-next-level. 
+    move total-dept-doc-ytd-amt		to ws-ytd-sum-next-level. 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+ 
+    move "   OF DOC"			to h5-doc-dept-lit 
+					   h5-doc-dept-lit2. 
+    move spaces				to h5-ohip-code-desc-lit. 
+    perform da1-print-doc-total-line	thru da1-99-exit. 
+ 
+*	( print the doctor percentage of the department ) 
+*	( this is the total amount for the class ) 
+    move total-class-mtd-amt		to ws-mtd-sum-next-level. 
+    move total-class-ytd-amt		to ws-ytd-sum-next-level. 
+ 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+    move " OF CLASS"			to h5-doc-dept-lit 
+					   h5-doc-dept-lit2. 
+ 
+    move spaces				to h5-ohip-code-desc-lit. 
+    perform xa0-headings-a		thru xa0-99-exit. 
+    perform da1-print-doc-total-line	thru da1-99-exit. 
+ 
+da0-99-exit. 
+    exit. 
+ 
+ 
+ 
+da1-print-doc-total-line. 
+ 
+    move "DOCTOR"			to t1-doc-lit. 
+    move hold-doc-nbr			to t1-doc-nbr. 
+    move "TOTALS"			to t1-total-lit. 
+    move total-dept-doc-mtd-svc		to t1-mtd-svc. 
+    move total-dept-doc-mtd-amt		to t1-mtd-amt. 
+    move total-dept-doc-ytd-svc		to t1-ytd-svc. 
+    move total-dept-doc-ytd-amt		to t1-ytd-amt. 
+ 
+    move ws-mtd-avg			to t1-mtd-avg. 
+    move ws-mtd-perc			to t1-mtd-perc. 
+    move ws-ytd-avg			to t1-ytd-avg. 
+    move ws-ytd-perc			to t1-ytd-perc. 
+ 
+    if ws-mtd-perc < zero 
+    then 
+	move '-'			to t1-mtd-perc-sign 
+    else 
+	move '%'			to t1-mtd-perc-sign. 
+*   endif 
+ 
+    if ws-ytd-perc < zero 
+    then 
+	move '-'			to t1-ytd-perc-sign 
+    else 
+	move '%'			to t1-ytd-perc-sign. 
+*   endif 
+ 
+    move 2				to nbr-of-lines-to-print. 
+ 
+    move zero				to ctr-lines. 
+    perform xe0-write-print-line-a	thru xe0-99-exit. 
+ 
+da1-99-exit. 
+    exit. 
+ea0-dept-break-b. 
+ 
+    move ws-dept-lit			to h8-total-lit. 
+    move "  OF DEPT"			to h5-doc-dept-lit 
+					   h5-doc-dept-lit2. 
+    move spaces				to h5-ohip-code-desc-lit. 
+ 
+*	( this is the total amount for the dept ) 
+    move total-dept-doc-mtd-amt		to ws-mtd-sum-next-level. 
+    move total-dept-doc-ytd-amt		to ws-ytd-sum-next-level. 
+ 
+    perform la0-class-totals		thru la0-99-exit. 
+ 
+*	( print the dept totals ) 
+*	( move dept values to calculate variables ) 
+    move total-dept-doc-mtd-svc		to ws-mtd-svc. 
+    move total-dept-doc-mtd-amt		to ws-mtd-amt. 
+    move total-dept-doc-ytd-svc		to ws-ytd-svc. 
+    move total-dept-doc-ytd-amt		to ws-ytd-amt. 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+ 
+    perform ea1-print-dept-total-line-b	thru ea1-99-exit. 
+ 
+    move "OF CLINIC"			to h5-doc-dept-lit 
+					   h5-doc-dept-lit2. 
+ 
+*	( print the dept percentage of the clinic ) 
+*	( this is the total amount for the clinic ) 
+    move total-clinic-dept-mtd-amt	to ws-mtd-sum-next-level. 
+    move total-clinic-dept-ytd-amt	to ws-ytd-sum-next-level. 
+ 
+    perform la0-class-totals		thru la0-99-exit. 
+ 
+    if subs-dept-clinic = subs-dept 
+    then 
+	perform la3-bump-totals		thru la3-99-exit. 
+*   (else) 
+*   endif 
+ 
+    move total-dept-doc-mtd-svc		to ws-mtd-svc. 
+    move total-dept-doc-ytd-svc		to ws-ytd-svc. 
+    move total-dept-doc-mtd-amt		to ws-mtd-amt. 
+    move total-dept-doc-ytd-amt		to ws-ytd-amt. 
+    move total-clinic-dept-mtd-amt	to ws-mtd-sum-next-level. 
+    move total-clinic-dept-ytd-amt	to ws-ytd-sum-next-level. 
+ 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+ 
+    perform ea1-print-dept-total-line-b	thru ea1-99-exit. 
+ 
+ea0-99-exit. 
+    exit. 
+ 
+ 
+ 
+ea1-print-dept-total-line-b. 
+ 
+    move "** DEPARTMENT TOTALS **"	to t3-dept-lit. 
+    move total-dept-doc-mtd-svc		to t3-mtd-svc. 
+    move total-dept-doc-mtd-amt		to t3-mtd-amt. 
+    move total-dept-doc-ytd-svc		to t3-ytd-svc. 
+    move total-dept-doc-ytd-amt		to t3-ytd-amt. 
+ 
+    move ws-mtd-avg			to t3-mtd-avg. 
+    move ws-mtd-perc			to t3-mtd-perc. 
+    move ws-ytd-avg			to t3-ytd-avg. 
+    move ws-ytd-perc			to t3-ytd-perc. 
+ 
+    if ws-mtd-perc < zero 
+    then 
+	move '-'			to t3-mtd-perc-sign 
+    else 
+	move '%'			to t3-mtd-perc-sign. 
+*   endif 
+ 
+    if ws-ytd-perc < zero 
+    then 
+	move '-'			to t3-ytd-perc-sign 
+    else 
+	move '%'			to t3-ytd-perc-sign. 
+*   endif 
+ 
+    if ctr-lines > 56 
+    then 
+	perform xb0-headings-b		thru xb0-99-exit 
+	move 2				to nbr-of-lines-to-print 
+    else 
+	move 3				to nbr-of-lines-to-print. 
+*   endif 
+ 
+    move zero				to ctr-lines. 
+    perform xf0-write-print-line-b	thru xf0-99-exit. 
+ 
+ea1-99-exit. 
+    exit. 
+fa0-dept-break. 
+ 
+    move ws-dept-lit			to h8-total-lit. 
+    move "  OF DEPT"			to h5-doc-dept-lit 
+					   h5-doc-dept-lit2. 
+    move spaces				to h5-ohip-code-desc-lit. 
+ 
+    perform la0-class-totals		thru la0-99-exit. 
+ 
+*   if subs-dept-clinic = subs-dept 
+*   then 
+*	perform la3-bump-totals		thru la3-99-exit. 
+*   (else) 
+*   endif 
+ 
+    perform xs0-clear-class-tbl		thru xs0-99-exit 
+	varying subs from 1 by 1 
+	until   subs > const-nbr-classes + 1. 
+ 
+*	( print the dept totals ) 
+*	( move dept values to calculate variables ) 
+    move total-clinic-dept-mtd-svc	to ws-mtd-svc. 
+    move total-clinic-dept-mtd-amt	to ws-mtd-amt. 
+    move total-clinic-dept-ytd-svc	to ws-ytd-svc. 
+    move total-clinic-dept-ytd-amt	to ws-ytd-amt. 
+*	( this is the 	total amount for the dept ) 
+    move total-clinic-dept-mtd-amt	to ws-mtd-sum-next-level. 
+    move total-clinic-dept-ytd-amt	to ws-ytd-sum-next-level. 
+ 
+    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+    perform fa1-print-dept-total-line	thru fa1-99-exit. 
+ 
+fa0-99-exit. 
+    exit. 
+ 
+ 
+ 
+fa1-print-dept-total-line. 
+ 
+    move "** DEPARTMENT TOTALS **"	to t2-dept-lit. 
+    move total-clinic-dept-mtd-svc	to t2-mtd-svc. 
+    move total-clinic-dept-mtd-amt	to t2-mtd-amt. 
+    move total-clinic-dept-ytd-svc	to t2-ytd-svc. 
+    move total-clinic-dept-ytd-amt	to t2-ytd-amt. 
+ 
+    move ws-mtd-avg			to t2-mtd-avg. 
+    move ws-mtd-perc			to t2-mtd-perc. 
+    move ws-ytd-avg			to t2-ytd-avg. 
+    move ws-ytd-perc			to t2-ytd-perc. 
+ 
+    if ws-mtd-perc < zero 
+    then 
+	move '-'			to t2-mtd-perc-sign 
+    else 
+	move '%'			to t2-mtd-perc-sign. 
+*   endif 
+ 
+    if ws-ytd-perc < zero 
+    then 
+	move '-'			to t2-ytd-perc-sign 
+    else 
+	move '%'			to t2-ytd-perc-sign. 
+*   endif 
+ 
+    move 2				to nbr-of-lines-to-print. 
+    perform xe0-write-print-line-a	thru xe0-99-exit. 
+ 
+fa1-99-exit. 
+    exit. 
+*ha0-oma-cd-ltr-break. 
+ 
+*	( print the oma code letter totals ) 
+*	( move oma code letter values to calculate variables ) 
+*    move total-ltr-mtd-svc		to ws-mtd-svc. 
+*    move total-ltr-mtd-amt		to ws-mtd-amt. 
+*    move total-ltr-ytd-svc		to ws-ytd-svc. 
+*    move total-ltr-ytd-amt		to ws-ytd-amt. 
+*	( this is the total amount for the doctor ) 
+*    move total-dept-doc-mtd-amt		to ws-mtd-sum-next-level. 
+*    move total-dept-doc-ytd-amt		to ws-ytd-sum-next-level. 
+ 
+*    perform xd0-calc-avg-perc		thru xd0-99-exit. 
+*    perform ha1-print-oma-cd-ltr-line	thru ha1-99-exit. 
+ 
+*    move zero				to total-ltr-mtd-svc 
+*					   total-ltr-mtd-amt 
+*					   total-ltr-ytd-svc 
+*					   total-ltr-ytd-amt. 
+ 
+*ha0-99-exit. 
+*    exit. 
+ 
+ 
+ 
+*ha1-print-oma-cd-ltr-line. 
+ 
+*    move hold-oma-cd-ltr		to l2-ltr. 
+*    move '----'				to l2-dashes. 
+ 
+*    move "TOTALS"			to l2-total-lit. 
+ 
+*    move total-ltr-mtd-svc		to l2-mtd-svc. 
+*    move total-ltr-mtd-amt		to l2-mtd-amt. 
+*    move total-ltr-ytd-svc		to l2-ytd-svc. 
+*    move total-ltr-ytd-amt		to l2-ytd-amt. 
+ 
+*    move ws-mtd-avg			to l2-mtd-avg. 
+*    move ws-mtd-perc			to l2-mtd-perc. 
+*    move ws-ytd-avg			to l2-ytd-avg. 
+*    move ws-ytd-perc			to l2-ytd-perc. 
+ 
+*    if ws-mtd-perc < zero 
+*    then 
+*	move '-'			to l2-mtd-perc-sign 
+*    else 
+*	move '%'			to l2-mtd-perc-sign. 
+*   endif 
+ 
+*    if ws-ytd-perc < zero 
+*    then 
+*	move '-'			to l2-ytd-perc-sign 
+*    else 
+*	move '%'			to l2-ytd-perc-sign. 
+*   endif 
+ 
+*    move 2				to nbr-of-lines-to-print. 
+ 
+*    if parm-status = 1 
+*    then 
+*	perform xe0-write-print-line-a	thru xe0-99-exit 
+*    else 
+*	perform xf0-write-print-line-b	thru xf0-99-exit. 
+*   endif 
+ 
+*    add 2				to ctr-lines. 
+ 
+*    if parm-status = 1 
+*    then 
+*	write print-record-one		from blank-line after advancing 2 lines 
+*    else 
+*	write print-record-two		from blank-line after advancing 2 lines. 
+*   endif 
+ 
+*ha1-99-exit. 
+*    exit. 
+ja0-process-work-rec. 
+ 
+    add wf-mtd-svcs			to total-indiv-oma-cd-mtd-svc 
+					   total-ltr-mtd-svc 
+					   ws-class-mtd-svc(subs-dept-clinic,subs-class-code). 
+    add wf-mtd-amt			to total-indiv-oma-cd-mtd-amt 
+					   total-ltr-mtd-amt  
+					   ws-class-mtd-amt(subs-dept-clinic,subs-class-code). 
+    add wf-ytd-svcs			to total-indiv-oma-cd-ytd-svc 
+					   total-ltr-ytd-svc  
+					   ws-class-ytd-svc(subs-dept-clinic,subs-class-code). 
+    add wf-ytd-amt			to total-indiv-oma-cd-ytd-amt 
+					   total-ltr-ytd-amt  
+					   ws-class-ytd-amt(subs-dept-clinic,subs-class-code). 
+ 
+ja0-99-exit. 
+    exit. 
+la0-class-totals. 
+ 
+    move report-pages			to	h2-rpt-pages. 
+ 
+    if subs-dept-clinic = subs-clinic 
+    then 
+	move 1				to	h1-page-nbr 
+    else 
+	move ctr-pages			to	h1-page-nbr. 
+*   endif 
+ 
+    if parm-status = 1 
+    then 
+	write print-record-one from h1-head 
+					after	advancing page 
+	write print-record-one from h2-head 
+					after	advancing 1 line 
+	if flag-clinic-totals-y 
+	then 
+	    write print-record-one from h8-head 
+					after	advancing 2 lines 
+	    write print-record-one from h3-head 
+					after	advancing 2 lines 
+	    write print-record-one from h4-head 
+					after	advancing 1 line 
+	    write print-record-one from h5-head 
+					after	advancing 1 line 
+	else 
+	    write print-record-one from h6-head 
+					after	advancing 2 lines 
+	    write print-record-one from h8-head 
+					after	advancing 2 lines 
+	    write print-record-one from h3-head 
+					after	advancing 2 lines 
+	    write print-record-one from h4-head 
+					after	advancing 1 line 
+	    write print-record-one from h5-head 
+					after	advancing 1 line 
+    else 
+	write print-record-two from h1-head 
+					after	advancing page 
+	write print-record-two from h2-head 
+					after	advancing 1 line 
+	if flag-clinic-totals-y 
+	then 
+	    write print-record-two from h8-head 
+					after	advancing 2 lines 
+	    write print-record-two from h3-head 
+					after	advancing 2 lines 
+	    write print-record-two from h4-head 
+					after	advancing 1 line 
+	    write print-record-two from h5-head 
+					after	advancing 1 line 
+	else 
+	    write print-record-two from h6-head 
+					after	advancing 2 lines 
+	    write print-record-two from h8-head 
+					after	advancing 2 lines 
+	    write print-record-two from h3-head 
+					after	advancing 2 lines 
+	    write print-record-two from h4-head 
+					after	advancing 1 line 
+	    write print-record-two from h5-head 
+					after	advancing 1 line. 
+*   endif 
+  
+    move 10				to	ctr-lines. 
+    add 1				to	ctr-pages. 
+    add 1				to	report-pages. 
+ 
+    move 1				to	subs-print-classes. 
+ 
+la0-10-check-code. 
+ 
+    if subs-print-classes > subs-max-nbr-classes 
+    then 
+	next sentence 
+    else 
+	perform la1-print-totals	thru	la1-99-exit 
+	add 1				to	subs-print-classes 
+	go to la0-10-check-code. 
+*   endif 
+ 
+*   if subs-dept-clinic = subs-dept 
+*   then 
+*	perform la3-bump-totals		thru	la3-99-exit. 
+*   (else) 
+*   endif 
+ 
+la0-99-exit. 
+    exit. 
+la1-print-totals. 
+ 
+    move ws-class-mtd-svc (subs-dept-clinic,subs-print-classes) 
+					to	t2-mtd-svc 
+						ws-mtd-svc. 
+    move ws-class-mtd-amt (subs-dept-clinic,subs-print-classes) 
+					to	t2-mtd-amt 
+						ws-mtd-amt. 
+    move ws-class-ytd-svc (subs-dept-clinic,subs-print-classes) 
+					to	t2-ytd-svc        
+						ws-ytd-svc. 
+    move ws-class-ytd-amt (subs-dept-clinic,subs-print-classes) 
+					to	t2-ytd-amt 
+						ws-ytd-amt. 
+ 
+    perform xd0-calc-avg-perc		thru	xd0-99-exit. 
+ 
+    move ws-mtd-avg			to	t2-mtd-avg. 
+    move ws-ytd-avg			to	t2-ytd-avg. 
+ 
+    move ws-mtd-perc			to	t2-mtd-perc. 
+    move ws-ytd-perc			to	t2-ytd-perc. 
+ 
+    if ws-mtd-perc < zero 
+    then 
+	move '-'			to	t2-mtd-perc-sign 
+    else 
+	move '%'			to	t2-mtd-perc-sign. 
+*   endif 
+ 
+    if ws-ytd-perc < zero 
+    then 
+	move '-'			to	t2-ytd-perc-sign 
+    else 
+	move '%'			to	t2-ytd-perc-sign. 
+*   endif 
+ 
+    move ws-class-code(subs-dept-clinic,subs-print-classes) 
+					to	t2-class-code. 
+    move ': '				to	t2-col. 
+    move ws-class-code-desc(subs-dept-clinic,subs-print-classes) 
+					to	t2-class-code-desc. 
+ 
+    move 2				to	nbr-of-lines-to-print. 
+ 
+    if parm-status = 1 
+    then 
+	perform xe0-write-print-line-a	thru	xe0-99-exit 
+    else 
+	perform xf0-write-print-line-b	thru	xf0-99-exit. 
+*   endif 
+ 
+la1-99-exit. 
+    exit. 
+la3-bump-totals. 
+ 
+    move 'N'				to	flag. 
+    move 1				to	subs-class-total. 
+ 
+    if subs-present-nbr-classes not = zero 
+    then 
+	perform la31-search-class-tbl	thru	la31-99-exit 
+		varying subs1 from 1 by 1 
+		until   subs1 > subs-present-nbr-classes 
+*		     or ws-class-code(subs-clinic,subs-class-total) = spaces 
+		     or ok. 
+*   (else) 
+*   endif 
+ 
+    if ok 
+    then 
+	next sentence 
+    else 
+	add 1				to	subs-present-nbr-classes 
+	if subs-present-nbr-classes > const-nbr-classes + 1 
+	then 
+	    move 7			to	err-ind 
+	    perform za0-common-error	thru	za0-99-exit 
+	    go to az0-end-of-job 
+	else 
+	    move ws-class-code(subs-dept-clinic,subs-class-code) 
+					to	ws-class-code(subs-clinic,subs-class-total) 
+	    move ws-class-code-desc(subs-dept-clinic,subs-class-code) 
+					to	ws-class-code-desc(subs-clinic,subs-class-total). 
+*	endif 
+*   endif 
+ 
+    add ws-class-mtd-svc(subs-dept-clinic,subs-class-code) 
+					to	ws-class-mtd-svc(subs-clinic,subs-class-total). 
+    add ws-class-mtd-amt(subs-dept-clinic,subs-class-code) 
+					to	ws-class-mtd-amt(subs-clinic,subs-class-total). 
+    add ws-class-ytd-svc(subs-dept-clinic,subs-class-code) 
+					to	ws-class-ytd-svc(subs-clinic,subs-class-total). 
+    add ws-class-ytd-amt(subs-dept-clinic,subs-class-code) 
+					to	ws-class-ytd-amt(subs-clinic,subs-class-total). 
+ 
+la3-99-exit. 
+    exit. 
+ 
+ 
+la31-search-class-tbl. 
+ 
+    if ws-class-code(subs-dept-clinic,subs-class-code) = ws-class-code(subs-clinic,subs-class-total) 
+    then 
+	move 'Y'			to	flag 
+    else 
+*	if ws-class-code(subs-clinic,subs-class-total) = spaces 
+*	then 
+*	    next sentence 
+*	else 
+	    add 1			to	subs-class-total. 
+*	endif 
+*   endif 
+ 
+la31-99-exit. 
+    exit. 
+na0-check-class-code. 
+ 
+    if hold-class-code not = wf-class-code 
+    then 
+	add 1				to subs-class-code 
+					   subs-max-nbr-classes 
+	perform xu0-new-class-head	thru xu0-99-exit. 
+*   (else) 
+*   endif 
+ 
+na0-99-exit. 
+    exit. 
+xa0-headings-a. 
+ 
+    move ctr-pages			to	h1-page-nbr. 
+    move report-pages			to	h2-rpt-pages. 
+    move "* PHYSICIAN REVENUE ANALYSIS *" 
+					to	h1-title. 
+    move hold-doc-nbr			to	doc-nbr 
+						h2a-doc-nbr. 
+    perform xk0-access-doc-mstr		thru	xk0-99-exit. 
+ 
+    perform xa1-doc-name-inits		thru	xa1-99-exit. 
+    move ws-doc-name-inits		to	h2a-doc-name-inits. 
+    move hold-dept			to	h6-dept-nbr. 
+ 
+    write print-record-one from h1-head after advancing page. 
+    write print-record-one from h2-head after advancing 1 line. 
+    write print-record-one from h6-head after advancing 2 lines. 
+    write print-record-one from h7-head after advancing 1 line. 
+    write print-record-one from h2a-head after advancing 2 lines. 
+    write print-record-one from h3-head after advancing 1 line. 
+    write print-record-one from h4-head after advancing 1 line. 
+    write print-record-one from h5-head after advancing 1 line. 
+ 
+    move 10				to	ctr-lines.   
+    add 1				to	ctr-pages. 
+    add 1				to	report-pages. 
+ 
+xa0-99-exit. 
+    exit. 
+ 
+ 
+ 
+xa1-doc-name-inits. 
+ 
+    move spaces				to	ws-doc-name-inits. 
+ 
+    if doc-init3 not = spaces 
+    then 
+*    sms 114 s.f.   string the doctor name with 2 spaces rather than 1. 
+*       string doc-name			delimited by spaces, 
+	string doc-name			delimited by ws-xx, 
+	       " "			delimited by size, 
+	       doc-init1		delimited by size, 
+	       "."			delimited by size, 
+	       doc-init2		delimited by size, 
+	       "."			delimited by size, 
+	       doc-init3		delimited by size, 
+	       "."			delimited by size, 
+					into	ws-doc-name-inits 
+    else 
+	if doc-init2 not = spaces 
+	then 
+*    sms 114 s.f.   string the doctor name with 2 spaces rather than 1. 
+*           string doc-name		delimited by spaces, 
+	    string doc-name		delimited by ws-xx, 
+	    " "				delimited by size, 
+	    doc-init1			delimited by size, 
+	    "."				delimited by size, 
+	    doc-init2			delimited by size, 
+	    "."				delimited by size, 
+					into	ws-doc-name-inits 
+	else 
+	    if doc-init1 not = spaces 
+	    then 
+*    sms 114 s.f.   string the doctor name with 2 spaces rather than 1. 
+*       	string doc-name		delimited by spaces, 
+		string doc-name		delimited by ws-xx, 
+		" "			delimited by size, 
+		doc-init1		delimited by size, 
+		"."			delimited by size, 
+					into	ws-doc-name-inits 
+	    else 
+		move doc-name		to	ws-doc-name-inits. 
+*	    endif 
+*	endif 
+*   endif 
+ 
+xa1-99-exit. 
+    exit. 
+ 
+ 
+ 
+xb0-headings-b.  
+ 
+    move ctr-pages			to	h1-page-nbr. 
+    move report-pages			to	h2-rpt-pages. 
+    move "* DEPARTMENT PRACTICE ANALYSIS *" 
+					to	h1-title. 
+ 
+*   move hold-dept			to	dept-nbr 
+*						h6-dept-nbr. 
+*   perform xi0-access-dept-mstr	thru	xi0-99-exit. 
+*   move dept-name			to	h6-dept-name. 
+ 
+    write print-record-two from h1-head after advancing page. 
+    write print-record-two from h2-head after advancing 1 line. 
+    write print-record-two from h6-head after advancing 2 lines. 
+    write print-record-two from h7-head after advancing 1 line. 
+    write print-record-two from h3-head after advancing 2 lines. 
+    write print-record-two from h4-head after advancing 1 line. 
+    write print-record-two from h5-head after advancing 1 line. 
+    move 9				to	ctr-lines.   
+    add 1				to	ctr-pages. 
+    add 1				to	report-pages. 
+ 
+xb0-99-exit. 
+    exit. 
+xc0-read-work-rec. 
+ 
+    read r051-work-file 
+	at end 
+	    move 'Y'			to flag-end-work-rec 
+	    go to xc0-99-exit. 
+ 
+    add 1				to ctr-work-file-reads. 
+ 
+    if wf-class-code = high-value 
+    then 
+	move spaces			to wf-class-code. 
+*   (else) 
+*   endif 
+ 
+xc0-99-exit. 
+    exit. 
+xd0-calc-avg-perc. 
+*mf (if services or amount are zero, mv cobol doesn't do the calculation
+*    and the result from the previous calculation remains. This led to
+*    incorrect results being printed on report. Added code to zero
+*    out values before hand.)
+    if   ws-mtd-svc = 0
+      or ws-mtd-amt = 0
+    then
+	move 0				to     ws-mtd-avg
+    else
+	divide ws-mtd-svc		into   ws-mtd-amt 
+					giving ws-mtd-avg rounded. 
+*   endif
+
+*mf (added code to check for zeros) 
+    if   ws-mtd-sum-next-level = 0
+      or ws-mtd-amt 	       = 0
+    then
+	move 0				to     ws-mtd-perc
+    else
+	divide ws-mtd-sum-next-level	into   ws-mtd-amt 
+					giving ws-mtd-perc rounded
+	multiply ws-mtd-perc		by 100 
+					giving ws-mtd-perc rounded. 
+*   endif
+ 
+*mf (added code to check for zeros) 
+    if   ws-ytd-svc = 0
+      or ws-ytd-amt = 0
+    then
+	move 0				to     ws-ytd-avg
+    else
+	divide ws-ytd-svc		into   ws-ytd-amt 
+					giving ws-ytd-avg rounded. 
+*   endif
+ 
+*mf (added code to check for zeros) 
+    if   ws-ytd-sum-next-level = 0
+      or ws-ytd-amt 	       = 0
+    then
+	move 0				to     ws-mtd-perc
+    else
+	divide ws-ytd-sum-next-level	into ws-ytd-amt 
+					giving ws-ytd-perc rounded
+	multiply ws-ytd-perc		by 100 
+					giving ws-ytd-perc rounded. 
+*   endif
+ 
+xd0-99-exit. 
+    exit. 
+xe0-write-print-line-a. 
+ 
+    add nbr-of-lines-to-print		to	ctr-lines. 
+ 
+    if ctr-lines > max-nbr-lines 
+    then 
+	move "   OF DOC"		to	h5-doc-dept-lit 
+						h5-doc-dept-lit2 
+	perform xa0-headings-a		thru	xa0-99-exit. 
+*   (else) 
+*   endif 
+ 
+    write print-record-one from print-line after advancing nbr-of-lines-to-print line. 
+    move spaces				to	print-line. 
+ 
+xe0-99-exit. 
+    exit. 
+ 
+ 
+ 
+xf0-write-print-line-b. 
+ 
+    add nbr-of-lines-to-print		to	ctr-lines. 
+ 
+    if ctr-lines > max-nbr-lines 
+    then 
+	move " OF CLASS"		to	h5-doc-dept-lit 
+						h5-doc-dept-lit2 
+	perform xb0-headings-b		thru	xb0-99-exit. 
+*   (else) 
+*   endif 
+ 
+    write print-record-two from print-line after advancing nbr-of-lines-to-print line. 
+    move spaces				to	print-line. 
+ 
+xf0-99-exit. 
+    exit. 
+*xi0-access-dept-mstr. 
+ 
+*   read dept-mstr 
+*	invalid key 
+*	    move "UNKNOWN DEPARTMENT"	to dept-name. 
+ 
+*xi0-99-exit. 
+*   exit. 
+xk0-access-doc-mstr. 
+ 
+    read doc-mstr 
+	invalid key 
+	    move "UNKNOWN DOCTOR"	to doc-name. 
+ 
+xk0-99-exit. 
+    exit. 
+xm0-access-oma-fee-mstr. 
+ 
+    read oma-fee-mstr 
+	invalid key 
+	    move "UNKNOWN CODE DESCRIPTION" 
+					to fee-desc. 
+ 
+xm0-99-exit. 
+    exit. 
+xp0-clinic-dept-total-rec. 
+ 
+    move wf-mtd-svcs			to total-clinic-dept-mtd-svc. 
+    move wf-mtd-amt			to total-clinic-dept-mtd-amt. 
+    move wf-ytd-svcs			to total-clinic-dept-ytd-svc. 
+    move wf-ytd-amt			to total-clinic-dept-ytd-amt. 
+ 
+xp0-99-exit. 
+    exit. 
+ 
+ 
+ 
+xq0-dept-doc-total-rec. 
+ 
+    move wf-mtd-svcs			to total-dept-doc-mtd-svc. 
+    move wf-mtd-amt			to total-dept-doc-mtd-amt. 
+    move wf-ytd-svcs			to total-dept-doc-ytd-svc. 
+    move wf-ytd-amt			to total-dept-doc-ytd-amt. 
+ 
+xq0-99-exit. 
+    exit. 
+xr0-class-tot-rec. 
+ 
+    move wf-mtd-svcs			to	total-class-mtd-svc. 
+    move wf-mtd-amt			to	total-class-mtd-amt. 
+    move wf-ytd-svcs			to	total-class-ytd-svc. 
+    move wf-ytd-amt			to	total-class-ytd-amt.  
+ 
+xr0-99-exit. 
+    exit. 
+xs0-clear-class-tbl. 
+ 
+    move spaces				to ws-class-code(subs-dept-clinic,subs) 
+					   ws-class-code-desc(subs-dept-clinic,subs). 
+ 
+    move zero				to ws-class-mtd-svc(subs-dept-clinic,subs) 
+					   ws-class-mtd-amt(subs-dept-clinic,subs) 
+					   ws-class-ytd-svc(subs-dept-clinic,subs) 
+					   ws-class-ytd-amt(subs-dept-clinic,subs). 
+ 
+xs0-99-exit. 
+    exit. 
+ 
+ 
+ 
+xt0-new-dept-head. 
+ 
+    move wf-dept			to h6-dept-nbr 
+					   dept-nbr. 
+ 
+    read dept-mstr 
+	invalid key 
+*	    move 8			to err-ind 
+*	    perform za0-common-error	thru za0-99-exit 
+	    move 'UNKNOWN DEPT'		to dept-name. 
+ 
+    move dept-name			to h6-dept-name. 
+ 
+xt0-99-exit. 
+    exit. 
+xu0-new-class-head. 
+ 
+    move 1				to subs. 
+ 
+xu0-10-get-desc. 
+ 
+    if wf-class-code = const-class-ltr(subs) 
+    then 
+	move const-class-desc(subs)	to h7-class-desc 
+					   ws-class-code-desc(subs-dept-clinic,subs-class-code) 
+    else 
+	if subs < const-nbr-classes 
+	then 
+	    add 1			to subs 
+	    go to xu0-10-get-desc 
+	else 
+	    move 'UNKNOWN DESC'		to h7-class-desc 
+					   ws-class-code-desc(subs-dept-clinic,subs-class-code). 
+*	endif 
+*   endif 
+ 
+    move wf-class-code			to ws-class-code(subs-dept-clinic,subs-class-code) 
+					   h7-class. 
+ 
+xu0-99-exit. 
+    exit. 
+za0-common-error. 
+ 
+    move err-msg (err-ind)		to	err-msg-comment. 
+*   display err-msg-line. 
+    display err-msg-comment. 
+*   display confirm. 
+*   stop " ". 
+*   display blank-line-24. 
+ 
+za0-99-exit. 
+    exit. 
+ 
+
+    copy "y2k_default_sysdate_century.rtn".

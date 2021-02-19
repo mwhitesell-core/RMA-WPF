@@ -1,0 +1,1267 @@
+  ;Program: utl0020c.qts.txt auto generated program by utl0020c.qzs
+  ;Purpose: see utl0020c.qzs
+  ;
+
+  ;
+  cancel clear
+  set process nolimit
+  set lock record update
+  access tmp-pc-download-file		&
+  	link (7) 			&
+  	to   constants-mstr-rec-7 	&
+  	link doc-dept			&
+  	to   dept-nbr of f070-dept-mstr
+
+  sort	on doc-name			&
+  	on doc-inits			
+
+  def x-num-cr integer unsigned size 2 = 13
+  def x-cr        char*1 = char(x-num-cr)
+
+  def x-num-lf integer unsigned size 2 = 10
+  def x-lf        char*1 = char(x-num-lf)
+  def x-cr-lf     char*2 = x-cr + x-lf
+  def x-period    char*1 = '.'
+
+  def w-current-costing-ped           = current-costing-ped
+  def w-current-costing-ped-yymm      = current-costing-ped / 100
+
+  def doc-start-yymm zoned*6 = doc-date-fac-start / 100
+
+  ; 2006/apr be. added select for non-zero amt-ytd-incexp
+  select                                                              &
+  	     if   (     (   doc-date-fac-start  = 0000000                &
+                    or doc-start-yymm     <= w-current-costing-ped-yymm   &
+                  )                                                       &
+              and (   doc-date-fac-term   = 00000000                      &
+                   or doc-date-fac-term  >= current-fiscal-start-yymmdd   &
+                  )                                                       &
+              and (amt-ytd-totinc <> 0                                    &
+                  )                                                       &
+             )                                                            &
+          or amt-ytd-totinc <> 0                                          &
+          or amt-ytd-ytdear <> 0                                          &
+          or amt-mtd-payeft <> 0                                          &
+          or amt-ytd-incexp <> 0                                          &
+          or amt-ytd-bill   <> 0                                          &
+          or (    doc-dept >= 35      					 &
+              and doc-dept <= 39      				         &
+             )
+
+  def delimiter char*1 = '~'
+  def x-ep-year zoned*4 = current-ep-nbr/100
+  def x-ep-mth  zoned*2 = current-ep-nbr - (x-ep-year * 100)
+
+  ; 2003/04
+  def x-mthly-factor float        &
+          = 0500 if x-ep-mth =  1 & ;july &
+       else 1000 if x-ep-mth =  2 & ;aug  &
+       else 1727 if x-ep-mth =  3 & ;sept &
+       else 2671 if x-ep-mth =  4 & ;oct  &
+       else 3350 if x-ep-mth =  5 & ;nov  &
+       else 4272 if x-ep-mth =  6 & ;dec  &
+       else 5025 if x-ep-mth =  7 & ;jan  &
+       else 5849 if x-ep-mth =  8 & ;feb  &
+       else 6740 if x-ep-mth =  9 & ;mar  &
+       else 7467 if x-ep-mth = 10 & ;apr  &
+       else 8467 if x-ep-mth = 11 & ;may  &
+       else 9397 if x-ep-mth = 12 & ;jun  &
+       else 1000 		   ;yearend
+
+  def x-factored-amt float                                &
+          = 1
+  ;       = (  doc-yrly-require-revenue                   &
+  ;          * x-mthly-factor                             &
+  ;         )                                             &
+  ;       / 10000
+
+  def ytd-actual-vs-projected float               &
+          =  amt-ytd-totinc                       &
+           - x-factored-amt
+
+  def department-charge   float                   &
+          =  amt-ytd-depexm                       &
+           + amt-ytd-depexr
+
+  def actual-ceiling-paid float                   &
+          =  amt-ytd-ytdear                       &
+           + amt-mtd-paypot
+
+  ; currently only room for the first 40 characters of text
+  def        text-misc-truncated char*40                                  &
+          = text-misc              [1:40] if doc-date-fac-term = 0        &
+      else  'Term:'                                                       &
+            + ascii(doc-date-fac-term)[1:4]                               &
+            + '/'                                                         &
+            + ascii(doc-date-fac-term)[5:2]                               &
+            + '/'                                                         &
+            + ascii(doc-date-fac-term)[7:2]                               &
+            + '' + text-misc
+
+  ;def x-doc-name char*25                         &
+  def x-doc-name char*30                  &
+          =   truncate(lj(doc-name))      &
+            + ','                         &
+            + truncate(lj(doc-inits))     &
+            + delimiter
+
+  ;net - E minus H minus I minus K
+  def x-net float =                       &
+  ; E                                     &
+            amt-ytd-totinc                &
+  ; H                                     &
+          - amt-net-ytdcex                &
+  ; I                                     &
+          - department-charge             &
+  ; K                                     &
+          - actual-ceiling-paid
+
+;2007/oct/01 b.e. added 4 new misc rev columns
+; def x-formula-1-tot-rev char*15 = '=SUM($E1:$U1)'
+; def x-formula-2-actrev-minus-ytdrev char*15 = '=$V1-$D1'
+; def x-formula-3-tot-exp char*15 = '=SUM($Y1:$AB1)'
+; def x-formula-4-rev-minus-exp char*15 = '=$V1-$AC1-$AE1'
+use $src/utl0020c_formulas.qts 
+
+  subfile utl0020_01 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 01    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+; 2007/oct/01 b.e. added 18 thru 21
+  amt-ytd-rev-18 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-19 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-20 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-21 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_02 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 02    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_03 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 03    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_04 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 04    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_05 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 05    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_06 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 06    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_07 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 07     &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_08 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 08    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_10 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 10    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_11 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 11    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_12 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 12    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_13 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 13    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_14 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 14    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  ;
+
+  subfile utl0020_15 portable keep 	    &
+      if               dept-company = 1      &
+                  and  doc-dept     = 15    &
+      include   doc-full-part-ind  of tmp-pc-download-file           ,&
+      delimiter                   ,&
+  ;A
+      doc-nbr of tmp-pc-download-file                 ,&
+      delimiter                   ,&
+  ;B
+      x-doc-name                                      ,&
+  ;    delimiter                                  &
+  ; C
+      amt-ytd-totinc-end-of-last-fiscal-year of tmp-pc-download-file,&
+       delimiter                  ,&
+  ; D
+    doc-yrly-require-revenue of tmp-pc-download-file  ,&
+       delimiter                  ,&
+  ; 2006/sep/13 b.e. added 20 detailed incoming fields
+  amt-ytd-rev-01 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-02 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-03 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-04 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-05 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-06 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-07 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-08 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-09 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-10 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-11 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-12 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-13 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-14 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-15 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-16 of tmp-pc-download-file ,&
+  delimiter          ,&
+  amt-ytd-rev-17 of tmp-pc-download-file ,&
+  delimiter          ,&
+
+  x-formula-1-tot-rev      		  			  ,&
+  delimiter                  ,&
+  x-formula-2-actrev-minus-ytdrev                   ,&
+  delimiter                  			 ,&
+  ; G
+  amt-gross-ceiexp  of tmp-pc-download-file         ,&
+  delimiter                  			 ,&
+  ; H
+  amt-net-ytdcex   of tmp-pc-download-file          ,&
+  delimiter                  			 ,&
+  department-charge                    		 ,&
+  delimiter                  			 ,&
+  amt-ytd-rmaexr   of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  amt-ytd-gst      of tmp-pc-download-file      	 ,&
+  delimiter                  			 ,&
+  x-formula-3-tot-exp                    		 ,&
+  delimiter                  			 ,&
+  doc-yrly-ceiling-computed of tmp-pc-download-file ,&
+  delimiter                  			 ,&
+  actual-ceiling-paid                               ,&
+  delimiter                  			 ,&
+  x-formula-4-rev-minus-exp              		 ,&
+  delimiter                  			 ,&
+  text-misc-truncated	      			 ,&
+  x-cr-lf
+  build $obj/utl0020c_1

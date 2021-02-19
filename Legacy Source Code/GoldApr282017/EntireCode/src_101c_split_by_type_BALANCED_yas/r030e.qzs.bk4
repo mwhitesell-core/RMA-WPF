@@ -1,0 +1,267 @@
+cancel clear
+set verify errors
+;-----------------------------------------------------------------------
+;/T/ R030E.QZS PRINT NO ADJUST CLAIMS
+;
+;/A/ 
+;
+;/P/ Dyad Systems Inc.
+;
+;/Q/ QZC
+;
+;/D/ PROGRAM PURPOSE : PRINT THE NO ADJUST CLAIMS ON RU030B REPORT
+;
+;/M/ Modification History
+;/M/ --------------------
+;/M/ Date Programmer      Description
+;/M/
+;/M/ 950317      BML             CREATION FROM U023.CB
+;/M/ 91/MAR/04  M.C.         - ORIGINAL (SMS 138)
+;/M/ 91/MAY/02  M.C.           - PDR 492
+;/M/                           - SORT THE REPORT TO THE SAME AS R997.TXT
+;/M/                             (IE. DEPT, DOC-NBR, CLAIM-NBR...ETC)
+;/M/ 91/OCT/01  M.C.      - PDR 520
+;/M/                           - SHOW THE EQUIVALENCE FLAG "?" ON THE RPT
+;/M/                          - DISPLAY "****" FOR TWO AMOUNT BILLED DO
+;/M/                             NOT MATCH.
+;/M/ 93/SEP/03  M.C.        - SMS 143
+;/M/                           - REDO THE REPORT FORMAT SIMILIAR TO RA
+;/M/                               REPORT
+;/M/ 94/JAN/12  M.C.            - SMS 144
+;/M/                           - FOR THE LAST PASS, ADD THE CRITERIA FOR
+;/M/                             CHECKING NO ADJUSTMENT OR AUTO ADJUSTMENT
+;/M/ 95/03/16   BML          - DO NOT PRINT IF AGENT 81 AND MESSAGE CODE
+;/M/                           IS EV, EA, EF, OR 48
+;/M/ 96/04/14   YAS       - DO NOT PRINT IF AGENT 82 AND MESSAGE CODE
+;/M/                           IS EV, EA, EF, OR 48 ADD MESS CODE I2
+;/M/ 96/08/06   YAS              - DO NOT PRINT IF AGENT 83 AND MESSAGE CODE
+;/M/                           IS EV, EA, EF, OR 48 ADD MESS CODE I2
+;/M/ 97/09/17   M.C.             - PDR 663 - ADD SORT ON X-CLINIC-NBR AND
+;/M/                              FOOTING AT X-CLINIC-NBR
+;/M/ 98/03/25   YAS.           - PDR 668 - ADD CLINIC 80
+;/M/      
+;
+; 2002/09/05      yas        - add new clinic 95 (AA2K)
+;
+;-----------------------------------------------------------------------
+;/D/                       TRADE SECRET NOTICE
+;/D/
+;/D/  The techniques, algorithms, and processes contained herein, or
+;/D/  any modification, extraction, or extrapolation thereof, are the
+;/D/  proprietary property and trade secrets of Dyad Systems Inc.
+;/D/  and except as provided for by a License Agreement, shall not be
+;/D/  duplicated, used, or disclosed for any purpose, in whole or part
+;/D/  without the express written permission of Dyad Systems Inc.
+;-----------------------------------------------------------------------
+
+set report nolim
+set rep dev disc name ru030b
+set page length 63 width 132
+set formfeed
+set noclose
+
+
+access *u030_no_adj                                              &
+       link part-hdr-clinic-nbr, part-hdr-claim-nbr            &
+        to  part-dtl-clinic-nbr, part-dtl-claim-nbr  of        &
+            part-paid-dtl                                      &
+        link part-hdr-clinic-nbr  to  iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+select if                                                       &
+            (   part-dtl-clinic-nbr ne 80                         &
+            and part-dtl-clinic-nbr ne 81                      &
+            and part-dtl-clinic-nbr ne 82                      &
+            and part-dtl-clinic-nbr ne 83                      &
+            and part-dtl-clinic-nbr ne 95)                     &
+        or  ((    part-dtl-clinic-nbr eq 80                    &
+               or part-dtl-clinic-nbr eq 81                    &
+               or part-dtl-clinic-nbr eq 82                    &
+               or part-dtl-clinic-nbr eq 83                    &
+               or part-dtl-clinic-nbr eq 95)                   &
+          and (part-dtl-amt-paid  ne 0                         &
+          or  (part-dtl-explan-cd ne "EV"                      &
+            and  part-dtl-explan-cd ne "EA"                    &
+            and  part-dtl-explan-cd ne "EF"                    &
+            and  part-dtl-explan-cd ne "48"                    &
+            and  part-dtl-explan-cd ne "I2"                    &
+            and  part-dtl-explan-cd ne "  ")))
+
+def x-asterisks char*4 = "****" if x-bal-flag = "N" else " "
+
+def x-clinic-nbr char*2 = part-hdr-claim-id[1:2]
+
+def x-out-bal int*7 signed = part-hdr-amt-bill -                     &
+                            part-hdr-amt-paid
+
+def x-doc-nbr int*3 = nconvert(part-hdr-claim-id[4:3])
+
+
+def x-last-name char*6 = part-hdr-last-name[1:6]
+def x-first-name char*3 = part-hdr-first-name[1:3]
+
+
+;SORT ON X-DOC-NBR ON PART-HDR-LAST-NAME ON PART-HDR-FIRST-NAME  &
+sort on x-clinic-nbr                                            &
+     on x-doc-nbr on part-hdr-last-name on part-hdr-first-name  &
+     on part-hdr-register-nbr on part-hdr-claim-nbr
+
+page heading                                                       &
+  tab   1 "RU030B/"                                            &
+  tab   8 iconst-clinic-nbr                                    &
+  tab  42 "OHIP PARTIAL PAYMENTS   AS AT"                      &
+;y2k
+  tab  75 sysdate                                              &
+  tab 120 "PAGE"                                               &
+  tab 126 syspage                                              &
+skip 1                                                         &
+  tab   1 "CLINIC NUMBER:"                                     &
+  tab  16 iconst-clinic-nbr                                    &
+  tab  55 "R.  M.  A."                                         &
+skip 2                                                         &
+  tab   1 "RMA CLAIM  PATIENT'S  REGISTRATION  "               &
+  tab  49 "VER-  PAY  OHIP CLAIM    SERVICE   NO. OF  "                &
+  tab  94 "SERV    FEE     "                                   &
+  tab 110 " AMOUNT   EX  REFER"                                        &
+skip 1                                                         &
+  tab   1 " NUMBER      NAME        NUMBER    "                &
+  tab  49 "SION  PGM    NUMBER       DATE     SERV'S  "         &
+  tab  94 "CODE  SUBMITTED "                                          &
+  tab 110 "  PAID    CD "                                      &
+skip 2
+
+heading at part-hdr-claim-nbr                                    &
+  tab   1 part-hdr-claim-nbr significance 8                    &
+  tab  12 x-last-name                                          &
+  tab  18 x-first-name                                         &
+  tab  23 part-hdr-register-nbr                                 &
+  tab  50 part-hdr-version-cd                                 &
+  tab  55 part-hdr-pay-pgm                                     &
+  tab  60 part-hdr-ohip-clm-nbr                                        &
+  tab 124 x-asterisks
+
+report                                                            &
+;y2k
+  tab  73 part-dtl-serv-date of part-paid-dtl format yyyymmdd sep "/" &
+  tab  88 part-dtl-nbr-serv of part-paid-dtl                      &
+  tab  96 part-dtl-oma-cd   of part-paid-dtl                   &
+  tab 102 part-dtl-amt-bill of part-paid-dtl                   &
+  tab 111 part-dtl-amt-paid of part-paid-dtl                   &
+  tab 122 part-dtl-explan-cd of part-paid-dtl                  &
+  tab 128 part-dtl-equiv-flag of part-paid-dtl
+
+
+
+footing at part-hdr-claim-nbr                                    &
+  tab 100 "--------"                                           &       
+  tab 109 "--------"                                            &
+skip 1                                                         &
+  tab 100 part-dtl-amt-bill of part-paid-dtl subtotal          &
+  tab 109 part-dtl-amt-paid of part-paid-dtl subtotal          &
+skip 3
+
+footing at x-clinic-nbr                                          &
+skip 2                                                         &
+   tab   1 "      TOTAL CLINIC - "                             &
+   tab  24 x-clinic-nbr                                                &
+   tab  30 "ACCEPTED  NUMBER"                                  &
+   tab  50 count at part-hdr-claim-nbr       pic "^^^,^^^"     &
+   tab  61 "AMOUNT"                                            &
+   tab  69 part-dtl-amt-paid of part-paid-dtl subtotal pic "^^^,^^^.^^ " &
+   skip page
+
+final footing                                                    &
+skip 2                                                         &
+   tab   1 "FINAL TOTAL CLINIC - "                             &
+;  TAB  24 X-CLINIC-NBR                                                &
+   tab  30 "ACCEPTED  NUMBER"                                  &
+   tab  50 count at part-hdr-claim-nbr       pic "^^^,^^^"     &
+   tab  61 "AMOUNT"                                            &
+   tab  69 part-dtl-amt-paid of part-paid-dtl subtotal pic "^^^,^^^.^^ "
+
+
+build $pb_obj/r030e1
+
+access *u030_tot_claims                                    &
+       link part-hdr-clinic-nbr to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+def x-clinic-nbr char*2 = part-hdr-claim-id[1:2]
+
+def x-out-bal int*7 signed = part-hdr-amt-bill -                     &
+                            part-hdr-amt-paid
+ 
+def x-unadjust-amt int*8 signed = x-out-bal if x-auto-adj = " " &
+        and x-hold-back = "N" and x-over-pay = "N"
+
+def x-auto-adj-amt int*8 signed = x-out-bal if x-auto-adj = "Y" &
+     or x-hold-back = "Y" or x-over-pay = "Y"
+        
+
+select if                                                       &
+            (    part-hdr-clinic-nbr ne 80                     &
+             and part-hdr-clinic-nbr ne 81                     &
+             and part-hdr-clinic-nbr ne 82                     &
+             and part-hdr-clinic-nbr ne 83                     &
+             and part-hdr-clinic-nbr ne 95)                    &
+        or  ((    part-hdr-clinic-nbr eq 80                    &
+               or part-hdr-clinic-nbr eq 81                    &
+               or part-hdr-clinic-nbr eq 82                    &
+               or part-hdr-clinic-nbr eq 83                    &
+               or part-hdr-clinic-nbr eq 95)                   &
+       and (part-hdr-explan-cd ne "EV"                         &
+       and  part-hdr-explan-cd ne "EA"                         &
+       and  part-hdr-explan-cd ne "EF"                         &
+       and  part-hdr-explan-cd ne "48"                         &
+       and  part-hdr-explan-cd ne "I2"                         &
+       and  part-hdr-explan-cd ne "  "))
+
+sort on x-clinic-nbr
+
+page heading                                                       &
+  tab   1 "RU030B/"                                            &
+  tab   8 iconst-clinic-nbr                                    &
+  tab  42 "OHIP PARTIAL PAYMENTS   AS AT"                      &
+;y2k
+  tab  75 sysdate                                              &
+  tab 120 "PAGE  LAST"                                         &
+skip 1                                                         &
+  tab   1 "CLINIC NUMBER:"                                     &
+  tab  16 iconst-clinic-nbr                                    &
+  tab  55 "R.  M.  A."                                         &
+skip 2                                                         &
+  tab   1 "--CLAIM        ------- PATIENT -------"             &
+  tab  49 "---RMA---  ---------------OHIP-------------"                &
+  tab  94 "BALANCE   UNADJUSTED  AUTOMATIC"                    &
+  tab 127 "SRC"                                                        &
+skip 1                                                         &
+  tab   1 "  NUMBER   DP  ID           NAME       DOC LOCN"    &
+  tab  49 "$ BILLED   $BILLED      $ PAID   CODE  REAS"                &
+  tab  94 "OUTSTD       AMOUNT  ADJUSTMENT"                            &
+  tab 127 "TYPE"                                               &
+skip 2
+
+
+footing at x-clinic-nbr                                          &
+skip 1                                                         &
+  tab  20 "      TOTAL CLINIC - "                              &
+  tab  41 x-clinic-nbr                                         &
+  tab  47 part-hdr-amt-bill  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  58 part-hdr-ohip-bill subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  70 part-hdr-amt-paid  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  92 x-out-bal subtotal pic "^^^^^^.^^ " trail "-"       &
+  tab 105 x-unadjust-amt subtotal pic "^^^^^^.^^ " trail "-"   &
+  tab 116 x-auto-adj-amt subtotal pic "^^^^^^.^^ " trail "-"   &
+  skip 3
+
+final footing                                                  &
+skip 1                                                         &
+  tab  20 "FINAL TOTAL CLINIC - "                              &
+; TAB  41 X-CLINIC-NBR                                         &
+  tab  47 part-hdr-amt-bill  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  58 part-hdr-ohip-bill subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  70 part-hdr-amt-paid  subtotal pic "^^^^^^^.^^ " trail "-" &
+  tab  92 x-out-bal subtotal pic "^^^^^^.^^ " trail "-"       &
+  tab 105 x-unadjust-amt subtotal pic "^^^^^^.^^ " trail "-"   &
+  tab 116 x-auto-adj-amt subtotal pic "^^^^^^.^^ " trail "-"
+
+build $pb_obj/r030e2
+

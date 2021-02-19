@@ -1,0 +1,92 @@
+;for nephr report each oma cd and number of services for each code by month
+;
+;
+
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-cd  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+choose ep-yr 2006, 2007, 2008
+
+select if 			&
+        docrev-doc-nbr = "459"	&
+and (   docrev-clinic-1-2 = '22'      &
+     or docrev-clinic-1-2 = '34'      &
+     or docrev-clinic-1-2 = '98')
+
+
+def fixed-docrev-oma-cd char*5                  &
+    =    docrev-oma-cd[1:4]                     &
+      + "A"                                     &
+         if docrev-oma-cd[5:1] = "M"            &
+ else            docrev-oma-cd
+
+def oma-cd-desc char*55                                 &
+    = pack(fixed-docrev-oma-cd + " - " + fee-desc)      &
+         if record f040-oma-fee-mstr exists             &
+ else pack(fixed-docrev-oma-cd + " - UNKNOWN FEE CODE")
+
+sort on docrev-oma-cd
+
+temp x-2007-amt  zoned*9 signed 
+item x-2007-amt  = x-2007-amt  + (DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC)   &
+                   if (     iconst-date-period-end >= 20060701              &  
+                        and iconst-date-period-end <= 20070630 )            &  
+                   reset at docrev-oma-cd 
+
+temp x-2008-amt  zoned*9 signed
+item x-2008-amt  = x-2008-amt  + (DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC)   &
+                   if (     iconst-date-period-end >= 20070701              & 
+                        and iconst-date-period-end <= 20080630 )            &
+                   reset at docrev-oma-cd
+
+temp x-2009-amt  zoned*9 signed
+item x-2009-amt  = x-2009-amt  + (DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC)   &
+                   if (     iconst-date-period-end >= 20080701              &
+                        and iconst-date-period-end <= 20090630 )            &
+                   reset at docrev-oma-cd
+
+temp x-2007-svc  zoned*9 signed
+item x-2007-svc  = x-2007-svc  + (DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC)   &
+                   if (     iconst-date-period-end >= 20060701              & 
+                        and iconst-date-period-end <= 20070630 )            &
+                   reset at docrev-oma-cd
+
+temp x-2008-svc  zoned*9 signed
+item x-2008-svc  = x-2008-svc  + (DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC)   &
+                   if (     iconst-date-period-end >= 20070701              & 
+                        and iconst-date-period-end <= 20080630 )            &
+                   reset at docrev-oma-cd
+
+temp x-2009-svc  zoned*9 signed
+item x-2009-svc  = x-2009-svc  + (DOCREV-MTD-IN-SVC + DOCREV-MTD-OUT-SVC)   &
+                   if (     iconst-date-period-end >= 20080701              &
+                        and iconst-date-period-end <= 20090630 )            &
+                   reset at docrev-oma-cd
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile drrussell keep at docrev-oma-cd portable include		&
+oma-cd-desc          , &
+comma                , &
+x-2007-amt           , &
+comma                , &
+x-2008-amt           , &
+comma                , &
+x-2009-amt           , &
+comma                , &
+x-2007-svc           , &
+comma                , &
+x-2008-svc           , &
+comma                , &
+x-2009-svc           , &
+x-cr                
+
+build $pb_obj/drrussell
+

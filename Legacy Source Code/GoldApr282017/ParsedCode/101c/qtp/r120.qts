@@ -1,0 +1,271 @@
+cancel clear
+set verify errors
+;-----------------------------------------------------------------
+;#> PROGRAM-ID.     R120.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Print the Earnings Register
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     94/AUG/02  ____   B.M.L.   - original
+;     03/nov/20 	M.C.	 - alpha doc nbr
+;     03/dec/16		A.A.	 - alpha doctor nbr
+;   2010/aug/25         b.e.     - comment out the 'set lock record update' command
+;-----------------------------------------------------------------
+;
+
+run r120.qtc
+
+set process nolimit
+;brad 2010/aug/25 turned off due to error 
+;set lock record update
+
+request  extract_details
+
+access f112-pycdceilings                  	           	&
+	link ep-nbr	of f112-pycdceilings,		   &
+	     doc-nbr	of f112-pycdceilings 		   &
+	viaindex compensation-key2				&
+	to f110-compensation
+	
+
+choose viaindex f112-ep-doc-nbr					&
+		ep-nbr	parm range prompt "ENTER EP FROM: "     &
+				 toprompt "ENTER EP   TO: "     &
+			1 time
+
+output  f190-comp-codes						&
+		add						&
+		update						&
+		if 1 eq 2					&
+		noitems						&
+		viaindex	comp-code			&
+		using		comp-code of f110-compensation
+
+set file f190-comp-codes open share
+
+output  f020-doctor-mstr 					&
+		add						&
+		update						&
+		if 1 eq 2					&
+		noitems						&
+		viaindex	doc-nbr				&
+		using		doc-nbr   of f110-compensation
+
+set file f020-doctor-mstr open share
+
+output  constants-mstr-rec-6					&
+		add						&
+		update						&
+		if 1 eq 2					&
+		at final					&
+		noitems						&
+		viaindex	constants-mstr-rec-6		&
+		using		(6)
+
+set file constants-mstr-rec-6 open share
+
+define d-char-doc	character size 3 			&
+; 2003/11/20 - MC - alpha doc nbr
+;				= ascii(doc-nbr of f020-doctor-mstr,3)
+				= doc-nbr of f020-doctor-mstr
+; 2003/11/20 - end
+
+define d-char-dept      character size 2			&
+				= ascii(doc-dept of f020-doctor-mstr,2)
+
+define d-char-f-p-ind   character size 2			&
+				= doc-full-part-ind + "A"
+
+subfile r120aa							&
+	keep							&
+	include doc-dept		of f020-doctor-mstr,	&
+  		doc-nbr			of f112-pycdceilings,	&
+  		ep-nbr			of f112-pycdceilings,	&
+  		doc-pay-code 		of f112-pycdceilings,	&
+  		doc-pay-sub-code 	of f112-pycdceilings,	&
+  		factor       		of f112-pycdceilings,	&
+  		doc-yrly-ceiling	of f112-pycdceilings,	&
+  		doc-yrly-ceiling-guar-perc of f112-pycdceilings, &
+  		doc-yrly-ceil-guar	of f112-pycdceilings,	&
+  		doc-yrly-expense 	of f112-pycdceilings,	&
+  		doc-yrly-expn-alloc-pers   of f112-pycdceilings, &
+  		comp-type		of f190-comp-codes,  	&
+  		comp-code 		of f190-comp-codes,  	&
+		desc-short		of f190-comp-codes,	&
+  		factor			of f110-compensation    &
+			alias		compensation-factor,	&
+		amt-gross		of f110-compensation    &
+			integer size 8,				&
+  		amt-net			of f110-compensation    &
+			integer size 8,                         &
+  		compensation-status	of f110-compensation,   &
+  		doc-full-part-ind	of f020-doctor-mstr,	&
+  		process-seq		of f110-compensation,	&
+		doc-name		of f020-doctor-mstr,	&
+		d-char-doc,					&
+		d-char-dept,					&
+		d-char-f-p-ind
+
+item	doc-name of r120aa 	final 	"DR."			&
+			      + doc-inits of f020-doctor-mstr	&
+			      + doc-name  of f020-doctor-mstr	&
+		if record f020-doctor-mstr exists		&
+				else	"UNKNOWN"
+
+
+;-----------------------------------------------------------------
+request build_dept_totals
+
+access *r120aa
+
+sort 	on doc-dept						&
+	on comp-code
+
+temp t-amt-gross	integer signed size 8
+item t-amt-gross	subtotal amt-gross of r120aa		&
+				reset at comp-code
+
+temp t-amt-net  	integer signed size 8
+item t-amt-net  	subtotal amt-net   of r120aa		&
+				reset at comp-code
+
+
+subfile r120aa alias dept					&
+		append						&
+		at comp-code					&
+		include 	r120aa
+
+  item amt-gross  	of dept		final t-amt-gross
+  item amt-net    	of dept		final t-amt-net
+;2003/11/20 - MC - alpha doc nbr
+;  item doc-nbr    	of dept		final 0
+  item doc-nbr    	of dept		final '   '
+; 2003/11/20 - end
+  item doc-name   	of dept       	final "*** DEPT. TOTALS ***"
+  item doc-pay-code 	of dept 	final " "
+  item doc-pay-sub-code of dept 	final " "
+  item d-char-doc			final "ZZZ"
+  item d-char-f-p-ind   of dept 	final "ZZ"
+  item doc-yrly-ceiling		of dept final 0
+  item doc-yrly-ceiling-guar-perc of dept	final 0
+  item doc-yrly-ceil-guar	of dept final 0
+  item doc-yrly-expense		of dept final 0
+  item doc-yrly-expn-alloc-pers	of dept final 0
+  item doc-full-part-ind	of dept final " "
+
+;-----------------------------------------------------------------
+request build_dept_full_part
+
+access *r120aa
+
+select if d-char-doc ne "ZZZ"
+
+sort 	on doc-dept						&
+	on doc-full-part-ind					&
+	on comp-code
+
+temp t-amt-gross	integer signed size 8
+item t-amt-gross	subtotal amt-gross of r120aa		&
+				reset at comp-code
+
+temp t-amt-net  	integer signed size 8
+item t-amt-net  	subtotal amt-net   of r120aa		&
+				reset at comp-code
+
+
+subfile r120aa alias full-part					&
+		append						&
+		at comp-code        				&
+		include 	r120aa
+
+  item amt-gross  	of full-part	final t-amt-gross
+  item amt-net    	of full-part	final t-amt-net
+; 2003/11/20 - MC - alpha doc nbr
+;  item doc-nbr    	of full-part	final 0
+  item doc-nbr    	of full-part	final '   '
+; 2003/11/20 - end
+
+  item doc-name   	of full-part	final "*** F/P TOTAL ***"
+  item doc-pay-code 	of full-part	final " "
+  item doc-pay-sub-code of full-part	final " "
+  item d-char-doc			final "ZZ"		&
+					+ doc-full-part-ind
+  item d-char-f-p-ind	of full-part	final doc-full-part-ind + "Z"
+  item doc-yrly-ceiling	of full-part	final 0
+  item doc-yrly-ceiling-guar-perc of full-part	final 0
+  item doc-yrly-ceil-guar	of full-part	final 0
+  item doc-yrly-expense		of full-part	final 0
+  item doc-yrly-expn-alloc-pers	of full-part	final 0
+
+;-----------------------------------------------------------------
+request build_grand_full_part
+
+access *r120aa
+
+select if d-char-doc[1:2] eq "ZZ"				&
+      and d-char-doc[3:1] ne "Z"
+
+sort 	on doc-full-part-ind					&
+     	on comp-code
+
+temp t-amt-gross	integer signed size 8
+item t-amt-gross	subtotal amt-gross of r120aa         	&
+				reset at comp-code
+
+temp t-amt-net  	integer signed size 8
+item t-amt-net  	subtotal amt-net   of r120aa 		&
+				reset at comp-code
+
+subfile r120aa	alias grand_f_p       				&
+		append						&
+		at comp-code          				&
+		include 	r120aa
+
+  item amt-gross  	of grand_f_p	final t-amt-gross
+  item amt-net    	of grand_f_p	final t-amt-net
+  item doc-dept   	of grand_f_p	final 0
+  item d-char-dept			final "Z"		&
+					+ doc-full-part-ind
+  item doc-pay-code 	of grand_f_p	final " "
+  item doc-pay-sub-code of grand_f_p	final " "
+  item ep-nbr	  	of grand_f_p	final 0
+  item doc-name   	of grand_f_p	final "* F/P GRAND TOTALS *"
+
+;-----------------------------------------------------------------
+request build_grand_totals
+
+access *r120aa
+
+select if d-char-doc = "ZZZ"
+
+sort 	on comp-code
+
+temp t-amt-gross	integer signed size 8
+item t-amt-gross	subtotal amt-gross of r120aa         	&
+				reset at comp-code
+
+temp t-amt-net  	integer signed size 8
+item t-amt-net  	subtotal amt-net   of r120aa 		&
+				reset at comp-code
+
+subfile r120aa	alias grand					&
+		append						&
+		at comp-code					&
+		include 	r120aa
+
+  item amt-gross  	of grand	final t-amt-gross
+  item amt-net    	of grand	final t-amt-net
+  item doc-dept   	of grand	final 0
+  item d-char-dept			final "ZZ"
+  item d-char-f-p-ind 	of grand	final "ZZ"
+  item doc-full-part-ind of grand 	final " "
+  item doc-pay-code 	of grand	final " "
+  item doc-pay-sub-code of grand	final " "
+  item ep-nbr	  	of grand	final 0
+  item doc-name   	of grand	final "*** GRAND TOTALS ***"
+
+build $pb_obj/r120
+    

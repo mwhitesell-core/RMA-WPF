@@ -1,0 +1,132 @@
+; program: fix_adj_claim_file_1.qts
+;	   (1 of 2 programs in a series)
+
+; Purpose: This program can be used to correct records in the adj-claim-file
+;	   that is used to create automatic adjustment. 
+;	   The program can be used to either DELETE a record or to MODIFY
+;	   the contents of a record.
+;
+;	   The program works by reading the input file and modifying the data
+;	   before it's written to the output file. 
+;
+;	2013/08/20 -  now $cmd/fix_adj_file will run the below
+;
+;	   AFTER RUNNING THIS PROGRAM and BEFORE RUNNING THE 2ND PROGRAM 
+;	   you must manually rename the original adjustment file to some 
+;	   "backup name". 
+;
+;	  THEN you MUST RUN qutil to create  a new empty adj-claim-file
+;
+;	   Then when you run the 2nd program - fix_adj_claim_file2.qts
+;	   it will recreate the original adjustment file. To confirm that
+;	   all is well rerun by hand r990.qzs and the report should be empty.
+;
+; Procedures:
+; modify this file as needed and run it
+; then delete adj_claim_file.dat
+; then qutil to re-create file adj-claim-file
+; then run fix_adj_claim_file_2.qtc to update adj-claim file with subfile
+;      created by this program
+
+; 2004/jan/05 b.e. - alpha doctor number
+; 2013/aug/20 MC1  - allow up to 6 claims 
+; 2014/sep/10 MC2  - correct to delete record/modify record accordingly
+
+cancel clear
+set process nolimit
+set lock record update
+
+access adj-claim-file
+
+;*********************************************************
+; if you only want to update the records only, 
+
+;MC2
+;; Make sure the DEFINE item(delete-flag) for delete records are reset to DUMMY values
+;*********************************************************
+; if you only want to delete the records only, 
+
+; MC2
+;; Make sure the DEFINE items for change records are reset to DUMMY values
+;*********************************************************
+
+; the below code is setup as a template to allow 6 claims to be 
+; deleted or updated in 1 run .. clone it as appropriate 
+; most of the time you would want to change records
+
+;********************************************************
+; (use the below define if you want to CHANGE  record(s) )
+;********************************************************
+
+define fix-flag char*1						&
+   = "1" if adj-batch-nbr = "3546J037" and adj-claim-nbr  = 02	&
+else "2" if adj-batch-nbr = "3546J037" and adj-claim-nbr  = 03  &
+else "3" if adj-batch-nbr = "batch-3 " and adj-claim-nbr  = 99	&
+else "4" if adj-batch-nbr = "batch-4 " and adj-claim-nbr  = 99	&
+else "5" if adj-batch-nbr = "batch-5 " and adj-claim-nbr  = 99	&
+else "6" if adj-batch-nbr = "batch-6 " and adj-claim-nbr  = 99	&
+else "0"
+
+define fixed-adj-oma-cd-suff char*5		&
+   = adj-oma-cd-suff 	if fix-flag = "0"	&
+else "W195A"	      	if fix-flag = "1"	&
+else "W195A"	     	if fix-flag = "2"	&
+else "code3"	     	if fix-flag = "3"       &
+else "code4"	      	if fix-flag = "4"	&
+else "code5"	     	if fix-flag = "5"	&
+else "code6"      	if fix-flag = "6"
+
+define fixed-adj-serv-date date 		&
+    = adj-serv-date   	if fix-flag = "0"	&
+else 20161014   	if fix-flag = "1"	&
+else 20161014	 	if fix-flag = "2"	&
+else 99990131   	if fix-flag = "3"	&
+else 99990131   	if fix-flag = "4"	&
+else 99990131	 	if fix-flag = "5"	&
+else 99990131		if fix-flag = "6"
+
+
+;********************************************************
+; (use the below define if you want to DELETE  record(s) )
+;********************************************************
+def delete-flag char*1        	&
+   =  "Y" if   (    adj-batch-nbr = "xxxxxxxx" 	&
+                and adj-claim-nbr = 01		&  
+	       )				&
+	    or 					&
+               (    adj-batch-nbr = "xxxxxxxx" 	&
+                and adj-claim-nbr = 02		&
+	       )				&
+	    or 					&
+               (    adj-batch-nbr = "xxxxxxx3" 	&
+                and adj-claim-nbr = 99		&
+	       )				&
+	    or 					&
+               (    adj-batch-nbr = "xxxxxxx4" 	&
+                and adj-claim-nbr = 99		&
+	       )				&
+	    or 					&
+               (    adj-batch-nbr = "xxxxxxx5" 	&
+                and adj-claim-nbr = 99		&
+	       )				&
+	    or 					&
+               (    adj-batch-nbr = "xxxxxxx6" 	&
+                and adj-claim-nbr = 99		&
+	       )				&
+  else "N"
+
+; MC2
+;subfile adj_claim_file_fixed keep include 		&
+subfile adj_claim_file_fixed keep if delete-flag = "N" include 		&
+  ADJ-BATCH-NBR,&
+  ADJ-CLAIM-NBR,&
+  fixed-ADJ-OMA-CD-SUFF,&
+  fixed-ADJ-SERV-DATE,&
+  ADJ-AGENT-CD,&
+  ADJ-PAT-ACRONYM,&
+  ADJ-AMT-BAL,&
+  ADJ-DIAG-CD,&
+  ADJ-LINE-NO
+
+go
+exit

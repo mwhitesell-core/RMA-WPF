@@ -1,0 +1,479 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Thu Jan 28 15:03:32 EST 2016
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/u030bb_1.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ;#> Program-id.     u030bb_1.qts
+> ;
+> ; ((C)) Dyad Technologies
+> ;
+> ;  Program Purpose:  - separate module called by u030bb.qts to extract
+> ;			current RAT create f088-dtl recs and update
+> ;			f088-hdr records with appropriate charge status
+> ;			and OHIP error code.
+> ;		     - Placed into separate module so that if the charge
+> ;			rules change, this module can be re-run for any
+> ;			number of RATs by simplying running the u033b_1
+> ;			module and passing the RAT's PAYMENT DATE
+> ; MODIFICATION HISTORY
+> ;     DATE    WHO    DESCRIPTION
+> ; 2000/jul/13 B.E.   - original
+> ; 2000/jul/25 M.C.   - include ped in the u030bb_chargeable_detail subfile,
+> ;		     - include ped in the access statement in the request
+> ;		       u030bb_update_f088_dtl
+> ; 2003/dec/23 A.A.   - alpha doctor nbr
+> ; 2009/jan/15 M.C.   - there is a flaw in the last request, ohip-err-code did not set properly from subfile
+> ;		       ohip err code in f088 is blank, change to set lock record update
+> ;		       no charge for I4 for clinic 88 is added in $use/costing_charge_select.use
+> ; 2013/Nov/05 MC1    - whatever defined in selection criteria in u030b_autoadj_clinic_dtl.qts should have no charge
+> ;		       add/modify in $use/costing_charge_select.use
+> ; 2016/Jan/28 MC2    - modify/add selection criteria in $use/costing_charge_select.use
+> 
+> can clear
+> run u030bb_1
+> 
+> set default
+WORKSPACE and STACKSIZE can't be reset within a QTP run.
+> ; 2009/01/15 - MC
+> 
+> set lock record update
+> ; 2009/01/15 - end
+> 
+> ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+> ;request get_clinics_PED on calculation errors report &
+> ;                        on edit errors report
+> ; get the current PED of the Clinic being processed for update into f088 hdr
+> 
+> use $use/get_iconst_clinic_values_globals.qts   ;nol
+> ; File: get_const_clinic_values_globals.qts
+> 
+> ;-------------------------------------------------------------------------------
+> ; define items for clinic's iconstants master values
+> ;
+> global temp w-ped      zoned*8
+> use $use/get_iconst_clinic_values.qts           ;nol
+> ; File: get_iconst_clinic_values.qts
+> 
+> ;-------------------------------------------------------------------------------
+> ; obtain current iconstant clinic values
+> ;
+> 
+> request get_iconst_clinic_values                &
+>                 on edit        errors report    &
+>                 on calculation errors report
+> 
+> access iconst-mstr-rec
+> 
+> choose iconst-clinic-nbr-1-2 parm prompt "RAT Clinic Nbr:  "
+*W* Item (ICONST-CLINIC-NBR-1-2) is stored by the file system as a character 
+type.
+Choose viaindex ICONST-CLINIC-NBR-1-2.
+> 
+> item w-ped 	final iconst-date-period-end of iconst-mstr-rec
+> 
+> 
+> ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+> 
+> set process nolimit
+> 
+> ;request extract_explan_cd on calculation errors report on edit errors report
+> ;; (update header with the error code of the detail with the largest shortfall
+> ;;  ie. with the largest descrepancy between paid and billed)
+> ;
+> ;access part-paid-dtl
+> ;
+> ;; (select only details with an error code)
+> ;select  if    part-dtl-explan-cd <> '  ' &
+> ;          and part-dtl-explan-cd <> '00'
+> ;
+> ;def x-bal = part-dtl-amt-paid - part-dtl-amt-bill
+> ;
+> ;; (sort on x-bal so that the dtl with largest difference between paid/billed
+> ;;  is sorted last and then the error code of that dtl will be used to update
+> ;;  the header record)
+> ;
+> ;sort on part-dtl-clinic-nbr &
+> ;     on part-dtl-claim-nbr  &
+> ;     on x-bal               &
+> ;     on part-dtl-oma-cd
+> ;
+> ;subfile extract-explan-cd keep at part-dtl-claim-nbr include &
+> ;     part-dtl-clinic-nbr, &
+> ;     part-dtl-claim-nbr,  &
+> ;     part-dtl-explan-cd
+> ;
+> ;request update_explan_cd on calculation errors report on edit errors report
+> ;
+> ;access *extract-explan-cd               &
+> ;;link asc(part-dtl-clinic-nbr,2) + ascii(part-dtl-claim-nbr,9), sysdate       &
+> ; link asc(part-dtl-clinic-nbr,2) + ascii(part-dtl-claim-nbr,9), w-ped         &
+> ;   to rat-rejected-claim, ped of f088-rat-rejected-claims-hist-hdr
+> ;
+> ;output f088-rat-rejected-claims-hist-hdr update on errors report noitems
+> ; item ohip-err-code final part-dtl-explan-cd
+> 
+> 
+> 
+> 
+> ;-------------------------------------------------------------------------
+> ; REQUEST 3a - extract 'chargeable' details from f088-dtl for current RAT
+> ;-------------------------------------------------------------------------
+> 
+> request u030bb_extract_chargeable_dtls on calculation errors report 	&
+> 				       on edit errors report
+> 
+> access f088-rat-rejected-claims-hist-dtl                        &
+> 	   alias f088-dtl					&
+> ;  link part-hdr-clinic-nbr, part-hdr-claim-nbr                  &
+> ;    to part-dtl-clinic-nbr, part-dtl-claim-nbr of part-paid-dtl &
+>   link 'B',                                   			&
+> ;!       nconvert(rat-rejected-claim-dtl[1:9]),     		&
+> ;!       nconvert(rat-rejected-claim-dtl[10:2]),  		&
+>        (rat-rejected-claim-dtl[1:8]),     		&
+>        nconvert(rat-rejected-claim-dtl[9:2]),  		&
+>        '00000',                 				&
+>        '0'                                   			&
+>     to key-clm-type,                          			&
+>        key-clm-batch-nbr,                     			&
+>        key-clm-claim-nbr,                     			&
+>        key-clm-serv-code,                     			&
+>        key-clm-adj-nbr of f002-claims-mstr   opt		&
+>   link clmhdr-doc-nbr                                           &
+>     to doc-nbr                   of f020-doctor-mstr   opt      &
+>   link ohip-err-code to rat-code of f096-ohip-pay-code opt
+> 
+> define x-selected-rat-date date  			&
+> 	= w-ped
+> ;	= parm prompt "Enter PAYMENT DATE contained in RAT header record: "
+> 
+> 
+> ; (select only details for the current RAT that RMA has decided to charge for)
+> def x-pgm-name char*10 = "u030bb_1"
+> use $use/costing_charge_select.use
+> ; file: costing_charge_select.use
+> ; purpose: - contains selection logic for which RAT errors to charge for
+> ;          - used by pgm u030bb_1 which is run for a selected RAT
+> ;	     transactions and by fix_f088_b which will pass through the
+> ;	     entire file updating all but user updated transactions
+> 
+> ; 00/jul/31 B.E. - original
+> ; 00/aug/10 B.E. - resequenced into ascending ohip-err-code
+> ;		 - removed lookup of f086 table
+> ; 02/jul/16 B.E. - added no charge D7 if Z403/Z408 and
+> ;			 no charge M1/DA if G277A
+> ; 02/oct/31 M.C. - Yas requested to add no charge to S3
+> ; 03/dec/23 A.A. - alpha doctor nbr
+> ; 04/jul/12 M.C. - Yas requested to add no charge to C1  and
+> ;	           no charge to M1 with K013A
+> ; 05/sep/05 b.e. - no longer charge for "50" "57" "H3" and "H5"
+> ; 06/jul/26 M.C. - Yas requested to no longer charge for "F1" and "V8"
+> ; 07/nov/27 M.C. - Yas requested the following:
+> ;		   No charge if claim fully paid even if there is a reject code
+> ;                  No charge for 35 regardless of the department
+> ;	           No charge for MC
+> ;		   Charge for DP, 50
+> ;		   Don't charge for DA, V7, V1, F1, V8 , automatically adjust instead
+> ;  Note automatically adjust can not be done here
+> ; 08/jan/22 M.C. - Yas requested to add no charge for '36' with clinic 71 only
+> ; 09/jan/15 M.C. - Yas requested to add no charge for 'I4' and oma code  'G313' with clinic 88 only , automatically adjust instead
+> ; 13/Nov/05 MC1  - Do not charge for whatever have been defined in the selection criteria in program u030b_autoadj_clinic_dtl.qts
+> ; 16/Jan/28 MC2  - modify/add selection criteria
+> 
+> ; (select only details for the current RAT that RMA has decided to charge for)
+> ; note: 'pgm name' passed to determine is rat date to be tested
+> 
+> ;!def x-clinic-nbr char*2 = ascii(clmhdr-batch-nbr,9)[1:2]
+> def x-clinic-nbr char*2 = clmhdr-batch-nbr[1:2]
+> 
+> ; 2007/11/27 - MC - check claim balance
+> def x-bal-due = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+> ; 2007/11/27 - end
+> 
+> ; MC5 - transfer from u030bb_1.qts for claim detail balance
+> def x-bal = part-dtl-amt-paid - part-dtl-amt-bill
+> ; MC5 - end
+> 
+> select if   (   (    x-pgm-name = "u030bb_1"		&
+> 	         and ped        =  x-selected-rat-date 	&
+> 	         )					&
+> 	     or (    x-pgm-name = "fix_f088_b"		&
+> 	        )					&
+> 	    )						&
+>          and  ohip-err-code <> "  "			&
+>          and  ohip-err-code <> "00"     		&
+>          and  (   ohip-err-code <> "35"            	&; don't charge for 35
+> ; 2007/11/27 - MC - don't charge 35 regardless of the department - comment out
+> ;               or (   (   doc-dept = 5             	&; unless dept = 2 or 5
+> ;                       or doc-dept = 2             	&; and clinic = 22
+> ;	              )					&
+> ;	           and x-clinic-nbr = "22"		&
+> ;                  )                                	&
+> ; 2007/11/27 - end
+>               )                                    	&
+>          and  (   ohip-err-code <> "D7"                 &
+>                or (    ohip-err-code = "D7"		& ; charge for D7
+> 		   and (    clmhdr-adj-oma-cd <> "Z403"  &; UNLESS billing=Z403
+> 		        and clmhdr-adj-oma-cd <> "Z408") &;             or Z408
+> ; 2013/11/05 - MC1
+> ; MC1 - no charge for D7 with oma code K071A, K072A
+> 
+> ; MC2 - comment out
+> ;		   and (   (     clmhdr-adj-oma-cd <> "K071"  &; UNLESS billing=K071A
+> ;		             and clmhdr-adj-oma-cd <> "K072") &;             or K072A
+> ;	       		or clmhdr-adj-oma-suff <> 'A'	&
+> ;	               )				&
+> ; MC2 - end
+> 
+> ; 2013/11/05 - end
+>                   )                                     &
+>               )                                         &
+>          and  (   ohip-err-code <> "D8"                 &
+>                or (    ohip-err-code  =  "D8"           &; charge for D8
+> ;!                   and clmhdr-doc-nbr <> 309          &; EXCEPT for doc 309
+>                    and clmhdr-doc-nbr <> '309'          &; EXCEPT for doc 309
+>                   )                                     &
+>               )                                         &
+> ; 2007/11/27 - MC - charge for DP - comment out
+> ;         and  (   ohip-err-code <> "DP"                 &
+> ;               or (    ohip-err-code  =  "DP"           &; charge for DP
+> ;!                   and clmhdr-doc-nbr <> 891            &; EXCEPT  "   "  891
+> ;!                   and clmhdr-doc-nbr <> 976            &;    "    "   "  976
+> ;                   and clmhdr-doc-nbr <> '891'          &; EXCEPT  "   "  891
+> ;                   and clmhdr-doc-nbr <> '976'          &;    "    "   "  976
+> ;                  )                                     &
+> ;              )						&
+> ; 2007/11/27 - end
+> 
+> ; MC2 - redundant - exist below
+> ;        and  (   ohip-err-code <> "M1"                 &
+> ;               or (    ohip-err-code  =  "M1"           &; charge for M1
+> ;                  )                                     &
+> ;              )                                         &
+> ; MC2 - end
+>          and  (   ohip-err-code <> "D8"                 &
+>                or (    ohip-err-code  =  "D8"           &; charge for D8
+> ;!                   and clmhdr-doc-nbr <> 309          &; EXCEPT for doc 309
+>                    and clmhdr-doc-nbr <> '309'          &; EXCEPT for doc 309
+>                   )                                     &
+>               )                                         &
+> ; 2007/11/27 - MC - charge for DP - comment out
+> ;         and  (   ohip-err-code <> "DP"                 &
+> ;               or (    ohip-err-code  =  "DP"           &; charge for DP
+> ;!                   and clmhdr-doc-nbr <> 891            &; EXCEPT  "   "  891
+> ;!                   and clmhdr-doc-nbr <> 976            &;    "    "   "  976
+> ;                   and clmhdr-doc-nbr <> '891'          &; EXCEPT  "   "  891
+> ;                   and clmhdr-doc-nbr <> '976'          &;    "    "   "  976
+> ;                  )                                     &
+> ;              )						&
+> ; 2007/11/27 - end
+>          and  (   ohip-err-code <> "M1"                 &
+>                or (    ohip-err-code  =  "M1"           &; charge for M1
+>                    and clmhdr-adj-oma-cd <> "G277"      &; UNLESS billing=G277
+> ; 2004/07/12 - MC - no charge for M1 and K013A
+>                    and clmhdr-adj-oma-cd <> "K013"      &; UNLESS billing=K013
+> ; 2004/07/12 - end
+>                   )                                     &
+> ; MC2 - no charge for M1 and G388A or E423A or P005A and balance <= 46
+>                or (    (    ohip-err-code  =  "M1"           &; charge for M1
+>                         and clmhdr-adj-oma-cd <> "G388"      &; UNLESS billing=G388A
+>                         and clmhdr-adj-oma-cd <> "E423"      &; UNLESS billing=E423A
+>                         and clmhdr-adj-oma-cd <> "P005"      &; UNLESS billing=P005A
+> 		       )				     &
+>  	       	    or clmhdr-adj-oma-suff <> 'A'	     &
+>  	       	    or x-bal > 4600              	     &
+> 		  )					     &
+> ; MC2 - end
+>               )                                         &
+>          and  (   ohip-err-code <> "DA"                 &
+> ; 2007/11/27 - MC - no charge for DA - comment out
+> ;               or (    ohip-err-code  =  "DA"           &; charge for DA
+> ;                   and clmhdr-adj-oma-cd <> "G277"      &; UNLESS billing=G277
+> ;                  )                                     &
+> ; 2007/11/27 - end
+>               )                                         &
+>          and  ohip-err-code <> "48"			&
+>          and  ohip-err-code <> "51"			&
+>          and  ohip-err-code <> "55"			&
+>          and  ohip-err-code <> "80"			&
+>          and  ohip-err-code <> "C7"			&
+>          and  ohip-err-code <> "D2"			&
+>          and  ohip-err-code <> "EV"			&
+>          and  ohip-err-code <> "I2"			&
+>          and  ohip-err-code <> "I5"			&
+>          and  ohip-err-code <> "V7"			&
+>          and  ohip-err-code <> "V1"			&
+> ; 2002/10/31 - MC
+> 	 and  ohip-err-code <> "S3"			&
+> ; 2002/10/31 - end
+> ; 2004/07/12 - MC
+> 	 and  ohip-err-code <> "C1"			&
+> ; 2004/07/12 - end
+> ; 2007/11/27 - MC - charge for 50 - comment out
+> ;	 and  ohip-err-code <> "50"			&
+> ; 2007/11/27 - end
+> 	 and  ohip-err-code <> "57"			&
+> 	 and  ohip-err-code <> "H3"			&
+> 	 and  ohip-err-code <> "H5"			&
+> ; 2006/07/26 - MC
+> 	 and  ohip-err-code <> "F1"			&
+> 	 and  ohip-err-code <> "V8"			&
+> ; 2006/07/26 - end
+> ; 2008/01/22 - MC - no charge for 36 if clinic = 71
+> 	 and  (ohip-err-code <> '36' or x-clinic-nbr <> '71') &
+> ; 2008/01/22 - end
+> ; 2009/01/15 - MC - no charge for I4 with oma code 'G313' and clinic = 88
+> ; 2013/11/05 - MC1 - no charge for I4 & 36 with oma code G313A and clinic = 78, 79 or 88
+> ;	 and  (ohip-err-code <> 'I4' or clmhdr-adj-oma-cd <> "G313"  or x-clinic-nbr <> '88') &
+> 	 and  (    (     ohip-err-code <> 'I4' 		&
+> 		     and ohip-err-code <> '36'		&
+> 		   )					&
+> 		or clmhdr-adj-oma-cd <> "G313"  	&
+> 		or clmhdr-adj-oma-suff <> 'A'		&
+> 		or (    x-clinic-nbr <> '88' 		&
+> 		    and x-clinic-nbr <> '78'		&
+> 		    and x-clinic-nbr <> '79'		&
+> 		   )					&
+> 	      )						&
+> ; MC1 - no charge for 36 & 58 with oma code E082A, E083A, G271A, P007A and clinic = 22, 36 or 46
+> 
+> 	 and  (    (     ohip-err-code <> '36' 		&
+> 		     and ohip-err-code <> '58'		&
+> ; MC2 - no charge for D6 & O9 & O2 with oma code P025A and balance <=  56
+> 		     and ohip-err-code <> 'D6'		&
+> 		     and ohip-err-code <> 'O9'		&
+> 		     and ohip-err-code <> 'O2'		&
+> ; MC2 - end
+> 		   )					&
+> 		or (   (     clmhdr-adj-oma-cd <> "E082"  	&
+> 		        and  clmhdr-adj-oma-cd <> "E083"  	&
+> 		        and  clmhdr-adj-oma-cd <> "G271"  	&
+> 		        and  clmhdr-adj-oma-cd <> "P007"  	&
+> ; MC2 - no charge for oma code P025A and balance <=  56
+> 		        and  clmhdr-adj-oma-cd <> "P025"  	&
+> ; MC2 - end
+> 		       )					&
+> 		     or      clmhdr-adj-oma-suff <> 'A'	&
+> 		   )					&
+> ; MC2 - comment out - applies to all clinics
+> ;		or (    x-clinic-nbr <> '22' 		&
+> ;		    and x-clinic-nbr <> '36'		&
+> ;		    and x-clinic-nbr <> '46'		&
+> ;	   	   )					&
+> ; MC2 - no charge balance <=  56
+> 	        or x-bal > 5600				&
+> ; MC2 - end
+> 	      )						&
+> ; MC1 - no charge for 80 & clinic 61 to 75
+> 
+> 	 and  (    (     ohip-err-code <> '80' 		&
+> 		   )					&
+> ; MC2 - no charge for 80 & clinic 61 to 66, 71 to 75
+> ;               or  (    x-clinic-nbr < '61'             &
+> ;                     or x-clinic-nbr > '75'             &
+> 
+>                or  (    (    x-clinic-nbr < '61'        &
+>                           or x-clinic-nbr > '66'        &
+> 			)				&
+>                     and (    x-clinic-nbr < '71'        &
+>                           or x-clinic-nbr > '75'        &
+> 			)				&
+> ; MC2 - end
+> 		   )					&
+>               )                                         &
+> ; MC1 - no charge for SX with oma code E082A, E083A
+> 
+> ; MC2 - comment out
+> ;	 and  (    (     ohip-err-code <> 'SX' 		&
+> ;		   )					&
+> ;		or (   (     clmhdr-adj-oma-cd <> "E082"  	&
+> ;		        and  clmhdr-adj-oma-cd <> "E083"  	&
+> ;		       )					&
+> ;		     or      clmhdr-adj-oma-suff <> 'A'	&
+> ;		   )					&
+> ;              )                                         &
+> ; MC2 - end
+> 
+> ; 2013/11/05 - end
+> 
+> ; 2009/01/15 - end
+> ; 2007/11/27 - MC - no charge for MC and no charge if claim fully paid even there is a reject code
+>          and  ohip-err-code <> 'MC'			&
+> 	 and  x-bal-due > 0 				&
+> ; 2007/11/27 - end
+> 
+> ; note this last check will only be relevant in a re-run situation. On first
+> ; RA run the previous passes will have put a blank into this user-id field and
+> ; so the charge-flag may be set to 'Y'es if the other conditions are met.
+> ; However on a re-run situation we don't want to 'second guess' what an RMA user
+> ; has entered (either Y or N to charge-flag) so as soon as a non-blank
+> ; user-id is found we fail to meet the criteria of this select statement
+> ; and the charge-flag field won't be altered.
+>          and last-mod-user-id = " " 			; don't change if a
+> 							; user has manually
+> 							; altered the record
+> 
+> 
+> 
+> 
+> ; (determine outstanding balance of detail. The error code of the detail with
+> ; the largest difference is used to update the header rec)
+> 
+> ; MC2 - transfer to $use/costing_charge_select.use
+> ;def x-bal = part-dtl-amt-paid - part-dtl-amt-bill
+> ; MC2 - end
+> 
+> ; (sort on x-bal so that the dtl with largest difference between paid/billed
+> ;  is sorted last)
+> ;!define x-claim-nbr char*11 = rat-rejected-claim-dtl[1:11]
+> define x-claim-nbr char*10 = rat-rejected-claim-dtl[1:10]
+> sort on x-claim-nbr	&
+>      on x-bal
+> 
+> subfile u030bb_chargeable_details 		&
+>   keep at x-claim-nbr include 			&
+>      x-claim-nbr,  				&
+> ;2000/07/25 - MC - include ped
+>      ped,					&
+> ;2000/07/25 - MC end
+>      ohip-err-code
+> 
+> ;-------------------------------------------------------------------------
+> ; REQUEST 3b - udpate f088-dtl with least paid detail's OHIP error code
+> ;		and set charge-status to "Y"es
+> ;-------------------------------------------------------------------------
+> ; (update header with the error code of the detail with the largest shortfall
+> ;  ie. with the largest descrepancy between paid and billed)
+> request u030bb_update_f088_dtl  on calculation errors report 	&
+> 				on edit errors report
+> 
+> access *u030bb_chargeable_details		&
+>  link x-claim-nbr,				&
+> ;     w-ped         				&
+> ;2000/07/25 - MC - include ped
+>       ped         				&
+> ;2000/07/25- MC end
+>    to rat-rejected-claim, 			&
+> ;     ped of f088-rat-rejected-claims-hist-hdr	&
+> ;2000/07/25 - MC - reinstate ped
+>       ped 					&
+> ;2000/07/25 - MC end
+>       of f088-rat-rejected-claims-hist-hdr	&
+> 		alias f088-hdr
+> 
+> use $use/f088_charge_status.def nol
+> 
+> ; 2009/01/15 - MC
+> ;output f088-rat-rejected-claims-hist-hdr 		&
+> ;	alias f088-hdr-update update on errors report noitems
+> output f088-hdr update on errors report
+> ; item ohip-err-code final ohip-err-code
+>  item ohip-err-code final ohip-err-code of u030bb_chargeable_details
+> ; 2009/01/15 - end
+>  item charge-status final charged
+> 
+> build $pb_obj/u030bb_1
+0 ERRORS  1 WARNINGS.
+Thu Jan 28 15:03:33 EST 2016

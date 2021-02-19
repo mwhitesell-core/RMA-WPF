@@ -1,0 +1,53 @@
+;PROGRAM-ID.	U710.QTS
+;
+;PROGRAM PURPOSE: TO SELECT THE SPECIAL OMA CODES (E409A, E410A,
+;                 E400C, E401E AND CODES WITH 990-997) AND SET
+;                 THE STATUS TO "X" FOR CANCEL CLAIMS
+;
+;	MODIFICATION HISTORY
+;	  DATE	   SMS #	WHO	DESCRIPTION
+;       90.11.19   000          D.B.    ORIGINAL
+;	93.09.20   142          M.C.	SET STATUS TO "X" IF STATUS IS
+;					NOT EQUAL TO "R"
+;     1999/jan/27               B.E.	- y2k
+;     1999/May/27 		S.B.    - Added the use file
+;                        		  def_clmhdr_status.def to 
+;                        		  prevent hardcoding of clmhdr-status.
+;
+
+can clear
+
+run u710
+
+set process nolimit
+
+request u710_check_detail
+
+access f002-suspend-dtl
+
+select  if (clmdtl-oma-cd = "E409" and clmdtl-oma-suff = "A")	&
+        or (clmdtl-oma-cd = "E410" and clmdtl-oma-suff = "A")	&
+        or (clmdtl-oma-cd = "E400" and clmdtl-oma-suff = "C")	&
+        or (clmdtl-oma-cd = "E401" and clmdtl-oma-suff = "C")	&
+        or (clmdtl-oma-cd[2:3] > "989"			&
+        and clmdtl-oma-cd[2:3] < "998")
+
+subfile u710 include clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr
+
+request u710_update_header
+
+access *u710	&
+	link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr	&
+	to   clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr	&
+	of f002-suspend-hdr
+
+;S.B.
+use $use/def_clmhdr_status.def
+
+output f002-suspend-hdr update
+;S.B.
+; item clmhdr-status final "X" if clmhdr-status <> "R"
+ item clmhdr-status final clmhdr-status-error	&
+      if clmhdr-status <> clmhdr-status-resubmit
+
+build $pb_obj/u710

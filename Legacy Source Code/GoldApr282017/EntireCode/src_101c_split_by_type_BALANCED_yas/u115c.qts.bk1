@@ -1,0 +1,187 @@
+;  U115C.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             CALCULATE REQUIRED TRANSACTIONS AS OF CURRENT EP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     95/NOV/15  ____   M.C.     - original
+;     96/FEB/26  ----   M.C.	 - NO OPTIONAL TO F020-DOCTOR-EXTRA,
+;				   AND GENERATE INCREQ & INCTAR ONLY
+;				   IF DOC-YRLY-REQREV OR DOC-YRLY-TARREV
+;				   IS ZERO
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/June/01 	S.B.     - Added the use file
+;                        	   def_compensation_status.def to 
+;                        	   prevent hard coding of compensation-status.
+;   2003/dec/24		A.A.	 - alpha doctor nbr
+;   2005/sep/06		M.C.	 - extend the criteria for definition of amt-increq
+;				   and amt-inctar
+
+cancel clear
+run u115c
+
+set default
+
+
+global temp ytdinc-seq     zoned*2 unsigned
+
+global temp increq-seq     zoned*2 unsigned
+global temp increq-type    char*1
+global temp increq-group   char*1
+global temp increq-seq-rpt zoned*2 unsigned
+
+global temp inctar-seq     zoned*2 unsigned
+global temp inctar-type    char*1
+global temp inctar-group   char*1
+global temp inctar-seq-rpt zoned*2 unsigned
+
+
+;-----------------------------------------------------------------
+;
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u115_a_get_ytdinc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDINC"
+item ytdinc-seq     = process-seq
+
+request u115_a_get_increq                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "INCREQ"
+item increq-seq     = process-seq
+item increq-type    = comp-type
+item increq-group   = comp-code-group
+item increq-seq-rpt = reporting-seq
+
+request u115_a_get_inctar                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "INCTAR"
+item inctar-seq      = process-seq
+item inctar-type     = comp-type
+item inctar-seq-rpt  = reporting-seq
+item inctar-group    = comp-code-group
+
+;-------------------------------------------------------------------------------
+
+request u115_run_0                              &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                                           &
+        link current-ep-nbr viaindex  f112-ep-doc-nbr                 &
+        to   ep-nbr  of f112-pycdceilings                             &
+        link doc-nbr of f112-pycdceilings                             &
+        to   doc-nbr of f020-doctor-extra                             &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,			      &
+	     ytdinc-seq,					      &
+	     "YTDINC"						      &
+	 to  doc-nbr,                                		      &
+	     ep-nbr,                       			      &
+	     process-seq,          				      &
+	     comp-code of f110-compensation alias f110-ytdinc 	opt
+
+
+choose const-rec-nbr 6
+
+
+;def amt-increq   integer*8 signed size 4		 &
+def amt-increq   integer*10 signed 		        &
+                  = amt-net of f110-ytdinc - doc-ytdreq &
+	if doc-yrly-reqrev <> 0				&
+;  2005/09/06 - MC 
+       and doc-ytdreq <> 0				&
+       and doc-yrly-require-revenue <> 0
+; 2005/09/06 - end
+
+;def amt-inctar integer*8 signed size 4			 &
+def amt-inctar integer*10 signed       			&
+                 = amt-net of f110-ytdinc - doc-ytdtar  &
+	if doc-yrly-tarrev <> 0				&
+;  2005/09/06 - MC 
+       and doc-ytdtar <> 0				&
+       and doc-yrly-target-revenue <> 0
+; 2005/09/06 - end
+
+
+define x-rec-type  char*1 = "A"
+
+;def x-not-needed integer*8 signed size 4 = 0
+def x-not-needed integer*10 signed        = 0
+
+def x-comp-code-increq char*6 = "INCREQ"
+
+use $use/def_compensation_status.def
+
+subfile f119 alias f119-increq   append                     &
+  if amt-increq <> 0                   include              &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code-increq             , &
+         increq-seq-rpt                 , &
+         increq-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         amt-increq
+
+def x-comp-code-inctar char*6 = "INCTAR"
+subfile f119 alias f119-inctar   append                   &
+   if amt-inctar <> 0                     &
+      include                             &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code-inctar             , &
+         inctar-seq-rpt                 , &
+         inctar-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         amt-inctar
+
+;---------------------------------------------------------------
+
+output f110-compensation add alias f110-increq if amt-increq <> 0
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "INCREQ"
+        item comp-type       = increq-type
+        item process-seq     = increq-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = amt-increq
+;S.B.
+;        item compensation-status = " "
+        item compensation-status = compensation-status-accepted
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115C gen'd"
+
+output f110-compensation add alias f110-inctar if amt-inctar <> 0
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "INCTAR"
+        item comp-type       = inctar-type
+        item process-seq     = inctar-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = amt-inctar
+;S.B.
+;        item compensation-status = " "
+        item compensation-status = compensation-status-accepted
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115C gen'd"
+
+build $pb_obj/u115c
+  

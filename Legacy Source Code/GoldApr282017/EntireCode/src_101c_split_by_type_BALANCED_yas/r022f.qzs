@@ -1,0 +1,127 @@
+;#> PROGRAM-ID.     r022f.qzs 
+;
+;    Program Purpose	Generate a report for the almost staled date claims with
+;			'H'old  or 'C'ard status
+;
+;       ((C)) Dyad Technologies
+; 2007/mar/06 M.C     - original
+; 2007/mar/08 yas.    - report balance-due, add total at clinic and final total
+; 2008/Feb/20 yas.    - add column "MESS" pat-mess-code of f010                                     
+ 
+can clear
+set default
+set report  nolimit
+
+
+access f002-claims-mstr                                        		&
+  link clmhdr-pat-ohip-id-or-chart  to key-pat-mstr of f010-pat-mstr opt 
+
+choose key-clm-type "B", key-clm-batch-nbr, key-clm-claim-nbr, &
+	key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-clinic char*2 = clmhdr-claim-id[1:2]
+
+def balance-due zoned*7 signed                 &
+     =  clmhdr-tot-claim-ar-ohip               &
+      + clmhdr-manual-and-tape-payments        
+
+
+def x-days-since-service = days(sysdate) - days(clmhdr-serv-date)  &
+       if clmhdr-serv-date <> 0  else 99999
+
+
+select if   (    (                                                      &
+                      clmhdr-batch-type = "C"                           &
+                  and clmhdr-status-ohip <> "I2"              		&
+                  and balance-due > 0                                   &
+                  and x-days-since-service >= 150                       &
+                  and (     clmhdr-date-cash-tape-payment = " "         &
+                        or  clmhdr-date-cash-tape-payment = "00000000"  &
+		      )							&
+                  and (     clmhdr-agent-cd = 0                         &
+                        or  clmhdr-agent-cd = 2                         &
+                        or  clmhdr-agent-cd = 4                         &
+		      )							&
+	          and (     clmhdr-tape-submit-ind = 'H' 		&
+	                or  clmhdr-tape-submit-ind = 'C' 		&
+	                or  clmhdr-tape-submit-ind = ' ' 		&
+		      )							&
+                 )							&
+            )                                                           
+
+
+
+set subfile name r022f  keep 
+
+rep summary			&
+  x-clinic 			&
+  key-clm-batch-nbr             &
+  key-clm-claim-nbr             &
+  clmhdr-claim-id               &
+  clmhdr-pat-ohip-id-or-chart   &
+  clmhdr-agent-cd               &
+  clmhdr-tape-submit-ind 	&
+  clmhdr-status-ohip            &
+  clmhdr-serv-date		&
+  clmhdr-tot-claim-ar-ohip      &
+  clmhdr-manual-and-tape-payments  &
+  balance-due 			&
+  x-days-since-service 		&
+  pat-mess-code        		&
+  pat-surname	
+
+build $obj/r022f_1  
+
+
+set rep device disc name r022f
+set rep page width 132 length 60
+set formfeed
+
+
+access *r022f
+
+sort   on x-clinic on clmhdr-agent-cd on key-clm-batch-nbr on key-clm-claim-nbr
+
+
+page heading	&
+  tab   1 "R022F /"		&
+  tab   8  x-clinic            	&
+  tab  40 "STALED DATE CLAIMS   "	&
+  tab  99 "RUN DATE"		&
+  tab 108 sysdate		&
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 2	&
+  tab  01 "AGENT   "			&
+  tab  10 "CLAIM NBR"			&
+  tab  25 "SERVICE DATE"		&
+  tab  40 "STATUS"          		&
+  tab  50 "PATIENT  SURNAME"		&
+  tab  68 "BALANCE DUE"     		&
+  tab  80 "MESS"            		&
+skip 2
+
+heading at x-clinic skip page
+
+report					&
+  tab 02 clmhdr-agent-cd		&
+  tab 10 key-clm-batch-nbr		&
+  tab 18 key-clm-claim-nbr  significance 2		&
+  tab 25 clmhdr-serv-date		&
+  tab 42 clmhdr-tape-submit-ind		&
+  tab 50 pat-surname			&
+  tab 68 balance-due  pic "^^^^.^^ " trailing sign "-" &
+  tab 80 pat-mess-code                  &
+skip 2
+
+footing at x-clinic &
+  tab 44 "Clinic Total:"   &  
+  tab 65 balance-due  sub pic "^^^,^^^.^^ " trailing sign "-" &
+skip 2
+
+final footing       &
+  tab 44 "Grand  Total:"   &  
+  tab 65 balance-due  sub pic "^^^,^^^.^^ " trailing sign "-" &
+skip 2
+
+build $obj/r022f_2

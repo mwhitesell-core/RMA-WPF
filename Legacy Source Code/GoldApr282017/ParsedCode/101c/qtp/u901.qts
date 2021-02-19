@@ -1,0 +1,67 @@
+;UPDATE F050, F051, AND F060 FILES
+; 95/05/26	M. CHAN	- F060 DOES NOT EXIST ANY MORE, COMMENT
+; 99/10/20	M. CHAN	- add set lock file update statement   
+; 2000/03/02    M. CHAN - update f050 history and claims mstr as well
+; 2000/10/30    M. CHAN - update f050 history for the current fiscal periods
+; 2003/dec/24   A.A.	- alpha doctor nbr
+; 2004/04/07    M. CHAN - change x-doc-nbr to base on clmhdr-claim-id instead
+;                       of key-clm-batch-nbr
+; 2006/06/19    M. CHAN - change x-doc-nbr to base on clmhdr-claim-id with the
+;                       correct offset/alignment
+;
+
+;REQUEST UPDATE_F060
+;ACCESS F060-CHEQUE-REG-MSTR
+;CHOOSE CHQ-REG-KEY PARM PROMPT 'ENTER THE OLD CHQ REG KEY: '
+;DEFINE NEW-CHQ-KEY CHAR*7 = PARM PROMPT 'ENTER THE NEW CHQ REG KEY: '
+;OUTPUT F060-CHEQUE-REG-MSTR UPDATE
+;	ITEM CHQ-REG-KEY FINAL NEW-CHQ-KEY
+
+cancel clear
+set process nolimit
+set lock file update
+run update_files
+
+;!global temporary doc-nbr zoned*3 unsigned  parm prompt 'ENTER THE DOCTOR NO:   '
+global temporary doc-nbr char*3  parm prompt 'ENTER THE DOCTOR NO:   '
+global temporary new-dept-no zoned*2 unsigned parm prompt 'ENTER THE NEW DEPT NO:   '
+global temporary x-ped date  parm prompt 'ENTER FROM PERIOD END DATE:  '
+
+request update_f050
+access f050-doc-revenue-mstr
+select if docrev-doc-nbr = doc-nbr
+output f050-doc-revenue-mstr update on errors report
+	item docrev-dept       final new-dept-no
+
+request update_f051
+access f051-doc-cash-mstr
+select if docash-doc-nbr = doc-nbr
+output f051-doc-cash-mstr update on errors report
+	item docash-dept       final new-dept-no
+
+request update_f050_history
+access f050-doc-revenue-mstr-history
+select if docrev-doc-nbr = doc-nbr	&
+	and iconst-date-period-end >= x-ped
+output f050-doc-revenue-mstr-history update on errors report
+	item docrev-dept       final new-dept-no
+
+request update_f002
+access f002-claims-mstr
+choose key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr,  &
+	key-clm-serv-code '00000'
+;!define  x-doc-nbr zoned*3 = nconvert(ascii(key-clm-batch-nbr,9)[4:3])
+; 2004/04/07 - MC
+;define  x-doc-nbr char*3 = key-clm-batch-nbr[3:3]
+; 2006/06/19 - MC
+;define  x-doc-nbr char*3 = clmhdr-claim-id[4:3]
+define  x-doc-nbr char*3 = clmhdr-claim-id[3:3]
+; 2006/06/19 - end
+; 2004/04/07 - end
+select f002-claims-mstr if doc-nbr = x-doc-nbr	&
+	and clmhdr-date-period-end >= x-ped
+output f002-claims-mstr update on errors report
+	item clmhdr-doc-dept   final new-dept-no
+
+build $pb_obj/u901
+  

@@ -1,0 +1,87 @@
+;doc     : r997_total.qzs  
+;purpose : Create a total page record amount paid and submitted 
+;          separated by RMA and RMA INC.
+
+;Date           Who             Description
+;2003/03/06     Yasemin         Original
+;2004/06/03	M.C.		alpha doc nbr
+
+set report nolimit
+set rep page length 62
+set rep page widt 132
+set rep dev  disc name  r997_total
+set formfeed
+
+access u030-tape-145-file                                       &
+;!  link ( 'B', nconvert(rat-145-group-nbr[1:2] + '0'             &
+  link ( 'B', (rat-145-group-nbr[1:2]                   	&
+              + rat-145-account-nbr[1:6]),                      &
+              nconvert(rat-145-account-nbr[7:2]) ,              &
+              '00000', '0')                                     &
+   to key-clm-type,                                             &
+      key-clm-batch-nbr,                                        &
+      key-clm-claim-nbr,                                        &
+      key-clm-serv-code,                                        &
+      key-clm-adj-nbr of f002-claims-mstr opt                   &
+ link clmhdr-doc-dept to dept-nbr of f070-dept-mstr     opt
+
+def x-rma-paid       num*8 = rat-145-amt-paid    if dept-company = 1 	&
+	                     and rat-145-pay-prog = 'HCP'
+
+def x-rma-sub        num*8 = rat-145-amount-sub  if dept-company = 1 	&
+	                     and rat-145-pay-prog = 'HCP'
+
+def x-inc-paid       num*8 = rat-145-amt-paid    if dept-company = 2	&
+                             and rat-145-pay-prog = 'HCP'
+
+def x-inc-sub        num*8 = rat-145-amount-sub  if dept-company = 2	&
+                             and rat-145-pay-prog = 'HCP'
+
+def x-rmb-rma-paid   num*8 = rat-145-amt-paid    if dept-company = 1	&
+                             and rat-145-pay-prog = 'RMB'
+
+def x-rmb-rma-sub    num*8 = rat-145-amount-sub  if dept-company = 1	&
+                             and rat-145-pay-prog = 'RMB'
+
+def x-rmb-inc-paid   num*8 = rat-145-amt-paid    if dept-company = 2	&
+                             and rat-145-pay-prog = 'RMB'
+
+def x-rmb-inc-sub    num*8 = rat-145-amount-sub  if dept-company = 2	&
+                             and rat-145-pay-prog = 'RMB'
+
+page heading                    &
+  tab   1 'RUN DATE:'           &
+  tab  12 sysdate               &
+  tab  25 sysname               &
+  tab 127 syspage               &
+skip 3                          
+
+
+final footing                                                              &
+  tab   1   "Fee Submitted     (RMA):"                                     &
+  tab   30   x-rma-sub     subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Submitted RMB (RMA):"                                     &
+  tab   30   x-rmb-rma-sub subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Submitted     (INC):"                                     &
+  tab   30   x-inc-sub     subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Submitted RMB (INC):"                                     &
+  tab   30   x-rmb-inc-sub subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Paid          (RMA):"                                     &
+  tab   30   x-rma-paid    subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Paid RMB      (RMA):"                                     &
+  tab   30  x-rmb-rma-paid subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Paid          (INC):"                                     &
+  tab   30   x-inc-paid    subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 2                                                                     &
+  tab   1   "Fee Paid RMB      (INC):"                                     &
+  tab   30  x-rmb-inc-paid subtotal pic "^,^^^,^^^.^^ " trailing sign '-'  &
+skip 3                                                                     
+
+build $obj/r997_total
+

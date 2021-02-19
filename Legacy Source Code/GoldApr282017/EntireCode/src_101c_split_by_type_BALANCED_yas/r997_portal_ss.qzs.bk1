@@ -1,0 +1,164 @@
+;#> PROGRAM-ID.     R997_PORTAL_SS.QZS
+;
+;	((C)) Dyad Technologies
+;
+
+;    PROGRAM PURPOSE : PRODUCE portal R.A. REPORT for the department manager within the clinic
+;	               generate the record if record f020-rpt does not exist.
+;
+;    MODIFICATION HISTORY
+;	DATE	SMS #	WHO	DESCRIPTION
+;     2013/Apr/22       M.C.    (clone from r997_portal.qzs)
+
+can clear
+set rep dev disc name r997_portal_ss
+set report nolimit
+set page width 262 
+set page length 0  
+set nohead
+set noblanks
+set noformfeed
+
+
+access *u997_good_srt			&
+    link ('Z'+ascii(doc-dept,2), 2)	&
+     to   doc-nbr, report-id of f020-rpt opt
+
+;sel if doc-dept = 07 or (doc-dept >= 70 and doc-dept <=76)
+sel if not record f020-rpt exists
+
+def x-pay-pgm = 2 if rat-145-pay-prog = 'RMB'	&
+	else    1
+
+; set dept manager as 'Z' + dept #
+def x-doc-dept-nbr char*7= '"' + 'Z' + ascii(doc-dept,2) + ascii(doc-dept,2) + '"'
+
+sort on doc-nbr, w-rat-145-clinic-nbr,  doc-dept, x-pay-pgm,     &
+        w-rat-145-last-name,	&
+	w-rat-145-first-name, rat-145-health-ohip-nbr,	&
+	rat-145-account-nbr
+
+def delimiter char*1 = ','
+def x-tab     char*1 = "	"  
+
+; (CHECK IF NEGATIVE SIGN WILL BE PRINTED)
+def x-amt-paid-sign char*1 = "-"   if rat-145-amt-paid  < 0            &
+                   else " "
+
+def x-period char*1 = "."
+
+def x-submit-fee-dollars = abs(rat-145-amount-sub) / 100 if rat-145-amount-sub <> 0       &
+                else  0
+def x-submit-fee-cents   = mod(abs(rat-145-amount-sub),100) if rat-145-amount-sub <> 0    &
+                else  0
+def x-amt-paid-dollars = abs(rat-145-amt-paid) / 100 if rat-145-amt-paid  <> 0       &
+                else  0
+def x-amt-paid-cents   = mod(abs(rat-145-amt-paid),100) if rat-145-amt-paid <> 0    &
+                else  0
+
+def x-doc-nbr      char*5  = '"' + doc-nbr + '"'
+def x-clinic	   char*4  = '"' + w-rat-145-clinic-nbr + '"'
+def x-doc-dept     char*4  = pack('"' + ascii(doc-dept) + '"')
+def x-doc-name	   char*26 = pack('"' + doc-name + '"')
+def x-doc-inits    char*5  = pack('"' + doc-inits + '"')
+def x-claim-nbr    char*10 =  pack('"' + rat-145-account-nbr  + '"')
+def x-pat-surname  char*11 =  pack('"' + w-rat-145-last-name  + '"')
+def x-pat-first-name char*7 =   pack('"' + w-rat-145-first-name + '"')
+def x-health-ohip-nbr char*14 =   pack('"' + rat-145-health-ohip-nbr + '"')
+def x-pay-prog        char*5  =   pack('"' + rat-145-pay-prog        + '"')
+def x-service-date char*12 = '"' + ascii(rat-145-service-date)[1:4]  &
+			   + "-" + ascii(rat-145-service-date)[5:2]  &
+			   + "-" + ascii(rat-145-service-date)[7:2]  + '"'
+def x-nbr-svcs-alpha char*4 =   pack('"' + ascii(rat-145-nbr-of-serv)   + '"')
+def x-oma-cd         char*7 =   pack('"' + rat-145-service-cd + '"')
+def x-submit-fee-alpha char*9 =  pack('"' + trunc(ascii(x-submit-fee-dollars) +       &
+                                              x-period +                        &
+                                              ascii(x-submit-fee-cents,2))  + '"')
+def x-amt-paid-alpha char*10 =  pack('"' + trunc(lj(x-amt-paid-sign +           &
+                                              ascii(x-amt-paid-dollars) +       &
+                                              x-period +                        &
+                                              ascii(x-amt-paid-cents,2))) + '"')
+def x-explan-cd       char*4  =   pack('"' + rat-145-explan-cd       + '"')
+
+initial heading                         &
+  tab  01 '"Doc#"'                      &
+  tab  07 x-tab                         &
+  tab  08 '"Clinic"'                    &
+  tab  16 x-tab                         &
+  tab  17 '"Dept#"'                     &
+  tab  24 x-tab                         &
+  tab  25 '"Doc Name"'                  &
+  tab  35 x-tab                         &
+  tab  36 '"Initials"'                  &
+  tab  46 x-tab                         &
+  tab  47 '"RMA Claim#"'                &
+  tab  59 x-tab                         &
+  tab  60 '"Pat Last Name"'             &
+  tab  75 x-tab                         &
+  tab  76 '"Pat First Name"'            &
+  tab  92 x-tab                         &
+  tab  93 '"Health#"'                   &
+  tab 102 x-tab                         &
+  tab 103 '"Pay Prg"'                   &
+  tab 112 x-tab                         &
+  tab 113 '"Serv Date"'                 &
+  tab 124 x-tab                         &
+  tab 125 '"#Serv"'                     &
+  tab 132 x-tab                         &
+  tab 133 '"Oma Cd"'                    &
+  tab 141 x-tab                         &
+  tab 142'"Fee Submit"'                 &
+  tab 154 x-tab                         &
+  tab 155 '"Amount Paid"'               &
+  tab 168 x-tab                         &
+  tab 169 '"EX Code"'                   &
+  tab 178 x-tab                         &
+  tab 179 x-doc-dept-nbr      
+
+define x-line char*160 =                                        &
+            lj(                                                 &
+                pack (          x-doc-nbr                       &
+                        +       x-tab                           &
+                        +       x-clinic                        &
+                        +       x-tab                           &
+                        +       x-doc-dept                      &
+                        +       x-tab                           &
+                        +       x-doc-name                      &
+                        +       x-tab                           &
+                        +       x-doc-inits                     &
+                        +       x-tab                           &
+                        +       x-claim-nbr                     &
+                        +       x-tab                           &
+                        +       x-pat-surname 			&
+                        +       x-tab                           &
+                        +       x-pat-first-name                &
+                        +       x-tab                           &
+                        +       x-health-ohip-nbr   		&
+                        +       x-tab                           &
+                        +       x-pay-prog          		&
+                        +       x-tab                           &
+                        +       x-service-date                  &
+                        +       x-tab                           &
+                        +       x-nbr-svcs-alpha                &
+                        +       x-tab                           &
+                        +       x-oma-cd                        &
+                        +       x-tab                           &
+                        +       x-submit-fee-alpha              &
+                        +       x-tab                           &
+                        +       x-amt-paid-alpha                &
+                        +       x-tab                           &
+                        +       x-explan-cd                     &
+                        +       x-tab                           &
+                        +       x-doc-dept-nbr                  &
+                     )                                          &
+                 )
+
+report tab 01 x-line
+
+
+
+
+build $pb_obj/r997_portal_ss
+
+
+

@@ -1,0 +1,220 @@
+;#> program-id.     d119tithe.qks
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician Tithe Calculations 'D' type transaction
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 2008/may/21 M.C.      - original, cloned from d119.qks
+;
+
+can clear
+screen $pb_obj/d119tithe on line 6 for 18 message on line 24        	&
+        receiving w-doc-nbr,  constants-mstr-rec-6, f020-doctor-mstr
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 master
+
+temp w-doc-nbr char*3
+temp x-srch-code char*6
+
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query the Physician Tithe         " &
+"       Calculation transactions.                                      " &
+"                                                                      "
+
+
+file  f119-doctor-ytd  primary  occurs 14
+     access  viaindex f119-doc-ohip-nbr using doc-ohip-nbr  of f020-doctor-mstr 
+     select if 		  rec-type        = "D" 			&
+         	and (     doc-nbr of f119-doctor-ytd = w-doc-nbr        &
+	              or  doc-nbr of f119-doctor-ytd = '000')
+
+	item doc-nbr      initial doc-nbr of f020-doctor-mstr
+	item doc-ohip-nbr initial doc-ohip-nbr of f020-doctor-mstr
+	item rec-type     initial "D"
+
+;file f119-doctor-ytd alias f119-summary secondary occurs with f119-doctor-ytd open 1
+file f119-doctor-ytd alias f119-summary designer occurs with f119-doctor-ytd open 1
+	access viaindex f119-doc-ohip-nbr			&
+		using doc-ohip-nbr of f020-doctor-mstr,  	&
+	              '000', comp-code of f119-doctor-ytd, 'D'
+        
+	item doc-nbr      initial '000' fixed
+	item doc-ohip-nbr initial doc-ohip-nbr of f020-doctor-mstr
+	item comp-code    initial comp-code of f119-doctor-ytd
+	item rec-type     initial 'D'
+
+;item amt-mtd of f119-doctor-ytd sum into amt-mtd of f119-summary
+;item amt-ytd of f119-doctor-ytd sum into amt-ytd of f119-summary
+
+file f190-comp-codes      reference
+     access viaindex comp-code using comp-code of f119-doctor-ytd
+
+
+temp old-amt-mtd zoned*8 signed occurs with f119-doctor-ytd
+temp old-amt-ytd zoned*8 signed occurs with f119-doctor-ytd
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+define x-screen-name char*44 = "Earnings - Tithe Calculation transactions"
+use $use/scrtitle.use  nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+;         1         2         3         4         5         6         7 
+;1234567890123456789012345678901234567890123456789012345678901234567890123456789
+align (1,4,20) 
+field w-doc-nbr label 'DOCTOR NBR: '  display
+
+skip
+title &
+"   DOC OHIP  DOC  --------COMP---------- GROUP STMNT  ---------AMOUNT----------" &
+        at ,1
+skip
+title &
+"      NBR    NBR  --CODE/DESCRIPTION---- CODE   SEQ          MTD           YTD" &
+        at ,1
+
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 999999  XXX  XXXXXX-xxxxxxxxxxxxxxx  X      99   9,999,999.99- 9,999,999.99-
+
+align (1,,4) (,,14) (,,19) (,25,26) (,,43) (,,49) (,,53) (,,67)
+cluster occurs with f119-doctor-ytd
+field doc-ohip-nbr      of f119-doctor-ytd display
+field doc-nbr 		of f119-doctor-ytd display
+field comp-code         of f119-doctor-ytd                      &
+      lookup on f190-comp-codes                                 &
+      message "Error -  Invalid COMPENSATION Code." required 
+field desc-short        of f190-comp-codes label "-" display
+
+field comp-code-group   of f119-doctor-ytd display
+field process-seq       of f119-doctor-ytd display
+
+field amt-mtd           of f119-doctor-ytd 
+field amt-ytd           of f119-doctor-ytd
+
+procedure input comp-code
+begin
+  if fieldtext = "."
+  then begin
+    let x-srch-code = " "
+    run screen $pb_obj/sy033.qkc clear lines 13 to 23 passing x-srch-code mode f
+    if x-srch-code ne " "
+    then let fieldtext = x-srch-code
+    else error "Error - A Compensation Code is required."
+  end
+end
+
+
+procedure process comp-code
+begin
+  display desc-short      of f190-comp-codes
+  let     process-seq     of f119-doctor-ytd = reporting-seq    of f190-comp-codes
+  display process-seq     of f119-doctor-ytd
+  let comp-code-group     of f119-doctor-ytd = comp-code-group  of f190-comp-codes
+  display comp-code-group of f119-doctor-ytd
+end
+
+procedure edit amt-mtd
+begin
+  if changemode
+  then let old-amt-mtd = oldvalue(amt-mtd of f119-doctor-ytd)
+  end
+
+procedure edit amt-ytd
+begin
+  if changemode
+  then let old-amt-ytd = oldvalue(amt-ytd of f119-doctor-ytd)
+  end
+
+
+;;PROCEDURE FIND
+;;BEGIN
+;;  FOR MISSING F119-DOCTOR-YTD
+;;    BEGIN
+;;      GET F119-DOCTOR-YTD VIAINDEX F119-DOC-OHIP-NBR USING &
+;;            DOC-OHIP-NBR OF F020-DOCTOR-MSTR
+;;;     GET F119-SUMMARY OPTIONAL
+;;      END
+;;
+;; END
+
+PROCEDURE preupdate
+BEGIN
+  FOR F119-DOCTOR-YTD
+    BEGIN
+      if newrecord 
+      then begin
+        get f119-summary using doc-ohip-nbr of f119-doctor-ytd, '000', comp-code of f119-doctor-ytd, 'D' opt
+        if not accessok 
+        then begin
+  	  let doc-ohip-nbr of f119-summary = doc-ohip-nbr of f119-doctor-ytd
+          let doc-nbr of f119-summary = '000'
+          let rec-type of f119-summary = 'D'
+	  let comp-code of f119-summary = comp-code of f119-doctor-ytd
+          let process-seq of f119-summary = process-seq of f119-doctor-ytd
+          let comp-code-group of f119-summary = comp-code-group of f119-doctor-ytd
+	  let amt-mtd of f119-summary = amt-mtd of f119-doctor-ytd
+ 	  let amt-ytd of f119-summary = amt-ytd of f119-doctor-ytd
+	  end
+	else begin
+	  let amt-mtd of f119-summary = amt-mtd of f119-summary + amt-mtd of f119-doctor-ytd
+ 	  let amt-ytd of f119-summary = amt-ytd of f119-summary + amt-ytd of f119-doctor-ytd
+          end 
+	put f119-summary reset
+        end
+
+      else if deletedrecord              
+      then begin
+        if doc-nbr of f119-doctor-ytd = '000'  
+        then error='You cannot delete doctor summary record'
+        else begin
+           get f119-summary using doc-ohip-nbr of f119-doctor-ytd, '000', comp-code of f119-doctor-ytd, 'D' opt
+           if not accessok 
+	   then error='Doctor summary record not found - cannot delete'  
+           else begin
+             let amt-mtd of f119-summary = amt-mtd of f119-summary - amt-mtd of f119-doctor-ytd
+             let amt-ytd of f119-summary = amt-ytd of f119-summary - amt-ytd of f119-doctor-ytd
+	     put f119-summary reset
+	     end
+           end
+        end
+        
+      else if alteredrecord
+      then begin
+        get f119-summary using doc-ohip-nbr of f119-doctor-ytd, '000', comp-code of f119-doctor-ytd, 'D' opt
+        if not accessok 
+        then error='Doctor summary record does not exist'
+	else begin
+          let amt-mtd of f119-summary = amt-mtd of f119-summary - old-amt-mtd + amt-mtd of f119-doctor-ytd
+          let amt-ytd of f119-summary = amt-ytd of f119-summary - old-amt-ytd + amt-ytd of f119-doctor-ytd
+          put f119-summary reset
+          end
+        end
+
+	END
+    END
+
+;;PROCEDURE UPDATE
+;;BEGIN
+;;  FOR F119-DOCTOR-YTD
+;;    BEGIN
+;;      PUT F119-DOCTOR-YTD
+;;;     PUT F119-SUMMARY
+;;      END
+;  PUT F020-DOCTOR-MSTR
+;  PUT CONSTANTS-MSTR-REC-6
+;; END
+
+;;PROCEDURE DELETE
+;;BEGIN
+;;  DELETE F119-DOCTOR-YTD
+;;; DELETE F119-SUMMARY
+;;  END
+
+build detail list

@@ -1,0 +1,84 @@
+;#> program-id.     r022a7.qzs
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SELECT CLAIMS FOR RE-SUBMIT
+;		       IF CHANGES REQUIRED FOR HOSPITAL CODES, MAKE
+;		       SURE TO CHANGE IN HOSPITAL_CODE.DEF
+;
+;    MODIFICATION HISTORY
+;    DATE   WHO          DESCRIPTION
+; 00/sep/18 B.E.        - moved from r022a.qzs into separate source module
+; 03/nov/13 M.C.	- modify to extract claim description records into
+;			  the subfile r022a7_desc_reject
+
+cancel clear
+set default
+set rep nolimit
+
+
+access *u022a4	&
+  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),	&
+             (nconvert(clmhdr-claim-id[10:2])))			&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr		&
+	of f002-claims-mstr 
+
+select if key-clm-serv-code[1:4] = "ZZZZ"
+
+def w-health-nbr char*12 =	&
+	ascii(pat-health-nbr,10) if pat-health-nbr <> 0	&
+	else w-pat-ohip-mmyy
+
+def w-wcb char*1 = "Y" if batctrl-agent-cd = 2
+
+def w-clmdtl-desc char*22 = clmdtl-desc	&
+	if clmhdr-adj-oma-cd[1:4] = "ZZZZ"
+
+; 2003/11/13 - MC
+def x-type char*1 = 'D'
+
+def edt-oma-service-cd-and-suffix char*5 = ' '
+def edt-service-date zoned*8 unsigned = 0
+def edt-nbr-serv zoned*2 unsigned = 0
+def edt-amount-submitted zoned*6 unsigned = 0
+def edt-dtl-diag-cd char*4 = ' '
+def edt-dtl-err-cd-1 char*3 = ' '
+def edt-dtl-err-cd-2 char*3 = ' '
+def edt-dtl-err-cd-3 char*3 = ' '
+def edt-dtl-err-cd-4 char*3 = ' '
+def edt-dtl-err-cd-5 char*3 = ' '
+def edt-process-date zoned*8 unsigned = 0
+; 2003/11/13 - end
+
+set subfile name r022a7_desc_reject keep
+
+report	summ				&
+   w-health-nbr                   	& 
+   translated-group-nbr             	& 
+   batctrl-doc-nbr-ohip             	&
+   clmhdr-doc-spec-cd			&
+   clmhdr-claim-id               	&
+   pat-prov-cd				&
+   w-wcb				&
+   clmdtl-sv-date                 	&
+   w-clmdtl-desc			&
+; 2003/11/13 - MC
+   x-type				&
+   edt-oma-service-cd-and-suffix 	&
+   edt-service-date 			&
+   edt-nbr-serv 			&
+   edt-amount-submitted 		&
+   edt-dtl-diag-cd 			&
+   edt-dtl-err-cd-1 			&
+   edt-dtl-err-cd-2 			&
+   edt-dtl-err-cd-3 			&
+   edt-dtl-err-cd-4 			&
+   edt-dtl-err-cd-5 			&
+   edt-process-date 			&
+   pat-birth-date			&
+   pat-version-cd			&
+   clmhdr-loc
+; 2003/11/13 - end
+
+build $pb_obj/r022a7
+

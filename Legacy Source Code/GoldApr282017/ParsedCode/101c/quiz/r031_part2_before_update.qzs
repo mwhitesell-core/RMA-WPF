@@ -1,0 +1,73 @@
+;  2013/05/16 	M.C.	clone from r031_before_update.qzs  
+;			access the message file (record 8 of RA) to split out the tech/prof paid amt
+;			by doctor and clinic
+;  2016/07/14	MC1	change grand total field size
+
+can clear
+set rep nolimit
+set rep dev disc name r031b_part2
+set rep page length 60 width 132
+set formfeed
+
+access r031a-ohip-premiums	&
+	link (doc-ohip-nbr, ' ', ascii(iconst-clinic-nbr-1-2,2))  &
+	 to  doc-ohip-nbr, doc-nbr, tmp-alpha-field-1 of tmp-doctor-alpha opt
+
+def x-paid-amt zoned*8 signed = &
+	nconvert(dollars-paid[2:2] + dollars-paid[5:3] + dollars-paid[9:2]) * -1	&
+	if dollars-paid[1:1] = '-'						&
+	else  nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+
+def x-tech-amt zoned*8 signed = x-paid-amt * tmp-counter-1 / tmp-counter-3
+def x-prof-amt zoned*8 signed = x-paid-amt - x-tech-amt  
+
+sort on iconst-clinic-nbr-1-2 on doc-ohip-nbr on clmhdr-adj-cd
+
+page heading 			&
+tab  1 'R031B_part2'     	&
+tab 25 'AGEP / AGE3 / MOHR / MOHD Payments before update'	&
+tab 75 sysdate			&
+tab 90 'Page'			&
+tab 96 syspage			&
+skip 2				&
+tab 32 'Paid Amt'   		&
+tab 47 'Tech Amt'   		&
+tab 63 'Prof Amt'   		&
+skip 2
+
+
+footing at clmhdr-adj-cd          	&
+skip 2					&
+tab 1  'Doc Total: '			&
+tab 13  doc-ohip-nbr			&
+tab 21  clmhdr-adj-cd			&
+tab 30  x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-' &
+tab 45  x-tech-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+tab 60  x-prof-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+skip 2
+
+footing at ICONST-CLINIC-NBR-1-2  	&
+skip 2					&
+tab 1  'Clinic '             		&
+tab 10 iconst-clinic-nbr-1-2		&
+tab 15 'Totals: '			&
+tab 30  x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-' &
+tab 45  x-tech-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+tab 60  x-prof-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+skip 2
+
+final footing 			&
+skip 2				&
+tab 1  'Grand Totals: '		&
+; MC1
+;tab 30  x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-' &
+;tab 45  x-tech-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+;tab 60  x-prof-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+tab 29  x-paid-amt  subtotal pic "^^^^,^^^.^^ " trail '-' &
+tab 44  x-tech-amt  subtotal pic "^^^^,^^^.^^ " trail '-' & 
+tab 59  x-prof-amt  subtotal pic "^^^^,^^^.^^ " trail '-' & 
+skip 1
+
+
+
+build $pb_obj/r031_part2_before_update

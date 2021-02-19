@@ -1,0 +1,138 @@
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+
+access *afp_dept7                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr                                            
+
+select f002-claims-mstr if                         &
+            clmdtl-sv-date     >= '20040401'       &
+       and  clmdtl-sv-date     <= '20050331'       &
+       and  clmdtl-oma-cd      <> "0000"           &; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"           &; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"            ; no payments
+	    
+def x-doc-nbr cha*3 = clmdtl-id[3:3]
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]        
+
+;************************************************************************
+;If this is run for the previous year misc payments are purged at yearend
+; you have to go to f119-history to get misc payments or f050-hist 
+; x-code will only pick up the following "K" codes
+
+def x-code cha*4 = "Y" if clmdtl-oma-cd = "MICM"    &
+                       or clmdtl-oma-cd = "MISJ"    &
+                       or clmdtl-oma-cd = "MISC"    &
+                       or clmdtl-oma-cd = "MICV"    &
+                       or clmdtl-oma-cd = "MISP"    &
+                       or clmdtl-oma-cd = "MICB"    &
+                       or clmdtl-oma-cd = "MIBR"    &
+                       or clmdtl-oma-cd = "MINH"    &
+                       or clmdtl-oma-cd = "MHSC"    &
+                       or clmdtl-oma-cd = "NHSC"    &
+                       or clmdtl-oma-cd = "MOHR"    &
+                       or clmdtl-oma-cd = "K018"    &
+                       or clmdtl-oma-cd = "K021"    &
+                       or clmdtl-oma-cd = "K051"    &
+                       or clmdtl-oma-cd = "K052"    &
+                       or clmdtl-oma-cd = "K061"    &
+     else "N"
+
+sort on x-clinic     
+
+temp x-shadow   zoned*9 signed
+item x-shadow   = x-shadow  + clmdtl-fee-ohip         &
+                if (          x-code    = "N"         &
+                     and      x-payment = "HCP"       &
+                     and (   clmhdr-agent-cd = 0      &
+                          or clmhdr-agent-cd = 4)     &
+                   )                                  &
+                reset at x-clinic  
+
+temp x-diag    zoned*9 signed
+item x-diag    = x-diag  + clmdtl-fee-ohip       &
+               if (        x-code = "N"          &
+                    and    x-payment = "HCP"     &
+                    and    clmhdr-agent-cd = 1   &
+                  )                              &
+               reset at x-clinic  
+
+
+temp x-rmb     zoned*9 signed
+item x-rmb     = x-rmb   + clmdtl-fee-ohip       &
+               if (        x-code = "N"          &
+                    and    x-payment = "RMB"     &
+                  )                              &
+               reset at x-clinic
+
+temp x-2       zoned*9 signed
+item x-2       = x-2     + clmdtl-fee-ohip       &
+               if (        x-code = "N"          &
+                    and    x-payment = "HCP"     &
+                    and    clmhdr-agent-cd = 2   &
+                  )                              &
+               reset at x-clinic
+
+temp x-6       zoned*9 signed
+item x-6       = x-6     + clmdtl-fee-ohip       &
+               if (        x-code = "N"          &
+                    and    x-payment = "HCP"     &
+                    and    clmhdr-agent-cd = 6   &
+                  )                              &
+               reset at x-clinic
+
+temp x-9       zoned*9 signed
+item x-9       = x-9     + clmdtl-fee-ohip       &
+               if (        x-code = "N"          &
+                    and    x-payment = "HCP"     &
+                    and    clmhdr-agent-cd = 9   &
+                  )                              &
+               reset at x-clinic
+
+
+temp x-m       zoned*9 signed
+item x-m       = x-m     + clmdtl-fee-ohip       &
+                    if     x-code = "Y"          &
+               reset at x-clinic
+
+temp x-other   zoned*9 signed
+item x-other   = x-other  +  clmdtl-fee-ohip         &
+               if (          x-code ="Y"             &
+                    or       x-payment = "RMB"       &
+                    or (     x-payment = "HCP"       &
+                        and (   clmhdr-agent-cd =  2     &
+                             or clmhdr-agent-cd =  6     &
+                             or clmhdr-agent-cd =  9)    &
+		       )				 &
+                  )                                  &
+               reset at x-clinic  
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile afp-test   portable keep at x-clinic  include         &
+x-clinic                                            ,&
+comma                                               ,&
+x-shadow                                            ,&
+comma                                               ,&
+x-diag                                              ,&
+comma                                               ,&
+x-rmb                                               ,&
+comma                                               ,&
+x-2                                                 ,&
+comma                                               ,&
+x-6                                                 ,&
+comma                                               ,&
+x-9                                                 ,&
+comma                                               ,&
+x-m                                                 ,&
+comma                                               ,&
+x-other                                             ,&
+x-cr
+

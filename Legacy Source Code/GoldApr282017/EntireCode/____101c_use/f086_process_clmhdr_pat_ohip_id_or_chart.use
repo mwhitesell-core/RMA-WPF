@@ -1,0 +1,43 @@
+;file: f086_process_clmhdr_pat_ohip_id_or_chart.use
+; 01jun/04 B.E. - change f086-2b-updated to be set to "N"
+; 2003/dec/10 A.A. 	- alpha doctor nbr
+;
+; (1 - patient changed - set flag to indicate update needed) 
+;  let f086-2b-updated = "Y"
+;  udpate of this file no longer needed when I-key changed. If only 1 claim 
+;  is being changed, code in section (5) belog sets the appropriate 
+;  ohip submission status and if all claims for a patient are to be changed
+;  the update program that processes f085a- file will adjust claim status's
+;  as appropriate
+  let f086-2b-updated = "N"
+
+; (2 - reset 'old' values based upon changed patient)
+  do internal set-old-pat-values
+
+; (3 - update claim head with new acronym even though it's not displayed)
+  let clmhdr-pat-acronym of f002-claims-mstr = pat-acronym of f010-pat-mstr
+
+; (4 - display acronym of new patient pointed to by ikey entered)
+  display pat-acronym of f010-pat-mstr
+
+; (5 -  
+; 00/jun/07 B.E. - force resubmit "R" status, unless the claim belongs
+;                  to the current cycle in which case set a blank status so that
+;                  the OHIP submission pgm will pick it up. For previously
+;                  bypassed claims (ie. no submit date but not part of
+;                  current cycle) force resubmission by setting "X"
+;;;;  if    record f001-batch-control-file exists                  	&
+;  (if f001 doesn't exist then buffer will contain zeros)
+;!   if     batctrl-batch-nbr of f001-batch-control-file   <>  0	        &
+   if     batctrl-batch-nbr of f001-batch-control-file   <>  " "       &
+      and batctrl-batch-status   <   batctrl-batch-status-ohip-sent 
+   then let clmhdr-tape-submit-ind = " " 
+   else
+       if clmhdr-submit-date = 0
+       then let clmhdr-tape-submit-ind = "X"
+       else let clmhdr-tape-submit-ind = "R"
+;      endif
+;  endif
+
+; (6 - ask if all claims for old patient to be transferred to new patient)
+   accept f086-a-2b-updated 

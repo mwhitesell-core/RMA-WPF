@@ -1,0 +1,197 @@
+can clear
+;#> PROGRAM-ID.     R702.QZS
+;
+;	((C)) Dyad Technologies
+;
+
+;    PROGRAM PURPOSE : PLACE NEW PATIENTS INTO A SUBFILE FOR FURTHER
+;		       PROCESSING BY OTHER PROGRAMS WITHIN THE SERIES.
+
+;
+;            DESCRIP : SELECT ALL PATIENTS IN THE SUSPENDED CLAIMS FILES
+;                      THAT HAVE NOT BEEN ENTERED INTO THE PATIENT
+;                      MASTER YET (IE. HAVE NO PAT-I-KEY ASSIGNED). THIS
+;                      PROGRAM WILL PLACE SUCH PATIENTS INTO A SUBFILE
+;                      THAT WILL BE USED BY THE NEXT PROGRAM IN THE
+;                      SERIES TO APPLY THE PATIENTS AGAINST THE PATIENT
+;                      DATABASE TO OBTAIN THEIR "I-KEY".
+;
+;
+;    MODIFICATION HISTORY
+;       DATE    SMS #   WHO        DESCRIPTION
+;     90/JUN/01 000     D.B.       - ORIGINAL
+;     91/APR/23 138	M.C.	   - CHANGE THE SIZE OF "TP-PAT-OHIP-NO"
+;				     FROM 8 TO 10 CHARACTERS
+;
+;     91/SEP/23       M.C./B.M.L.  - ADDED HEALTH VERSION CODE.
+;
+;     93/JUL/20 142	M.C.	   - CHANGE THE SIZE OF "TP-PAT-OHIP-NO"
+;				     FROM 10 TO 12 CHARACTERS
+;				   - USE CLMHDR-HEALTH-CARE-PROV IF NOT
+;				     BLANK
+;				   - USE ADD-PHONE-NO
+;				   - SET RELATIONSHIP TO BLANK
+;
+;     93/AUG/31 142     M.C.	   - EXCLUDE "R"ESUBMIT CLAIMS
+;     94/MAR/28		M.C.	   - USE CLMHDR-HEALTH-CARE-NBR INSTEAD
+;				     OF CLMHDR-PAT-KEY-DATA FOR OHIP-NO
+;   1999/jan/28         B.E.	   - y2k
+;   1999/May/27		S.B.       - Added the use file
+;                       	     def_clmhdr_status.def to 
+;                        	     prevent hardcoding of clmhdr-status.
+;   2001/01/09          yas        - add sort by 3 digit doc-nbr 
+;   2001/03/01          M.C.       - create direct key when agent = 6 or 9
+;				     otherwise, use health or registration nbr
+;   2001/03/05          M.C.       - include clmhdr-agent-cd into the subfile
+;   2003/09/25		M.C.	   - Brad requested to set city with address-line-3
+;				     if address-line-2 is blank
+;   2003/dec/16		A.A.	   - alpha doctor nbr
+;   2011/mar/22	        brad1	   - uploading oscar EFT files phone nbr changed from numeric to character
+;   2011/jun/15		MC1	   - increase the field size for phone no, postal-code, subscr-surname and pat-last-name
+
+set default
+set report nolimit
+
+access f002-suspend-hdr	&
+	link clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr &
+         to  add-doc-ohip-nbr, add-accounting-nbr of f002-suspend-address
+
+
+sort on clmhdr-doc-nbr
+
+
+; INITIALLY THE PATIENT "KEY FIELD" IN THE HDR WILL CONTAIN THE PATIENT"S
+; HEALTH/REGISTRATION NUMBER, WHEN THE PATIENT HAS BEEN PROCESSED AND AN
+; I-KEY CALCULATED.  THIS "KEY FIELD" IN THE HEADER WILL CONTAIN THE
+; LETTER "I".  SELECT ONLY THOSE PATIENTS THAT HAVE NOT BEEN PROCESSED
+;;; SELECT IF CLMHDR-PAT-KEY-TYPE   NE "I"
+
+;S.B.
+use $use/def_clmhdr_status.def
+
+select f002-suspend-hdr if clmhdr-pat-key-type   ne "I" &
+;S.B.
+;	and clmhdr-status <> "R"
+	and clmhdr-status <> clmhdr-status-resubmit
+
+def tp-pat-func-code char*2 = "AA"
+; 2011/06/15 - MC1 - increase 1 byte
+;def tp-pat-subscr-surname char*24 = add-surname
+def tp-pat-subscr-surname char*25 = add-surname
+; 2011/06/15 - end
+
+def tp-pat-first-name char*24 = add-first-name
+def tp-pat-birth-date char*8 = 				&
+ 	   ascii(add-birth-date,8)[1:4]   		&
+ 	+  ascii(add-birth-date,8)[5:2]   		&
+ 	+  ascii(add-birth-date,8)[7:2]
+
+def tp-pat-sex char*1 = add-sex
+
+; ID-NO IS MUMC CHART NBR
+def tp-pat-id-no char*9 = " "
+
+def tp-pat-street-addr char*28 = add-address-line-1[1:26]
+
+def w-comma-2 = index(add-address-line-2,",")
+def w-comma-3 = index(add-address-line-3,",")
+
+def tp-pat-prov char*4 =	&
+	clmhdr-health-care-prov if clmhdr-health-care-prov <> " " &
+   else add-address-line-3[1:3]	&
+		if (add-address-line-3 <> " " and w-comma-3 = 0)  &
+   else add-address-line-3[(w-comma-3 + 2):3]                     &
+		if (add-address-line-3 <> " " and w-comma-3 <> 0) &
+   else add-address-line-2[(w-comma-2 + 2):3]
+
+; 2003/09/25 - MC
+;def tp-pat-city char*18 =	&
+;	add-address-line-2[1:w-comma-2 - 1]	&
+;		if add-address-line-3 = " "	&
+;   else add-address-line-3[1:w-comma-3 - 1]	&
+;		if w-comma-3 <> 0		&
+;   else add-address-line-2
+
+def tp-pat-city char*18 =	&
+	add-address-line-2[1:w-comma-2 - 1]	&
+		if add-address-line-2 <> " "	&
+		and w-comma-2 <> 0		&
+   else add-address-line-2                      &
+		if add-address-line-2 <> ' '	&
+		and w-comma-2 = 0		&
+   else add-address-line-3[1:w-comma-3 - 1]	&
+		if add-address-line-3 <> ' '	&
+		and w-comma-3 <> 0		&
+   else add-address-line-3                      &
+		if add-address-line-3 <> ' '	&
+		and w-comma-3 = 0		&
+   else add-address-line-2
+; 2003/09/25 - end
+
+; 2011/06/15 - MC1 - increase 3 bytes
+;def tp-pat-postal-code char*6 = add-postal-code
+def tp-pat-postal-code char*9 = add-postal-code
+; 2011/06/15 - end
+
+;DEF TP-PAT-PHONE-NO CHAR*10 = " "
+
+;brad1
+;def tp-pat-phone-no char*10 = ascii(add-phone-no,10)
+
+; 2011/06/15 - MC1 - increase 10 bytes - suspend-address has defined as x(20)
+;def tp-pat-phone-no char*10 = add-phone-no[1:10]
+def tp-pat-phone-no char*20 = add-phone-no
+; 2011/06/15 - end
+
+;DEF TP-PAT-OHIP-NO CHAR*10 = CLMHDR-PAT-KEY-DATA
+;DEF TP-PAT-OHIP-NO CHAR*12 = CLMHDR-PAT-KEY-DATA
+
+def tp-pat-version-cd   char*2    = clmhdr-health-care-ver
+
+;DEF TP-PAT-RELATIONSHIP CHAR*1    = "?"
+;DEF TP-PAT-RELATIONSHIP CHAR*1    = CLMHDR-RELATIONSHIP
+def tp-pat-relationship char*1    = " "
+
+; USE SUBSCRIBER"S SURNAME IF PATIENT SURNAME IS BLANK
+; 2011/06/15 - MC1 - increase 1 byte
+;def tp-pat-last-name char*24				&
+def tp-pat-last-name char*25				&
+; 2011/06/15 - end
+ 		= clmhdr-patient-surname if clmhdr-patient-surname ne " " &
+	     else add-surname
+
+def tp-pat-subscr-initials char*3= clmhdr-subscr-initials
+
+;2001/03/01 - MC
+;def tp-pat-ohip-no char*12 = clmhdr-health-care-nbr
+def tp-pat-ohip-no char*12 = tp-pat-last-name[1:3] 	&
+			   + tp-pat-birth-date[3:6]	&
+			if clmhdr-agent-cd = 6 or clmhdr-agent-cd = 9 &
+			else  clmhdr-health-care-nbr
+
+set subfile name submit_disk_pat_in keep
+
+report summary			&
+	tp-pat-func-code	&
+	clmhdr-doc-ohip-nbr	&
+	clmhdr-accounting-nbr	&
+	tp-pat-subscr-surname	&
+	tp-pat-first-name	&
+	tp-pat-birth-date	&
+	tp-pat-sex		&
+	tp-pat-id-no		&
+	tp-pat-street-addr	&
+	tp-pat-city		&
+	tp-pat-prov		&
+	tp-pat-postal-code	&
+	tp-pat-phone-no		&
+	tp-pat-ohip-no		&
+        tp-pat-version-cd       &
+	tp-pat-relationship	&
+	tp-pat-last-name	&
+	tp-pat-subscr-initials  &
+;2001/03/05 - MC - include clmhdr-agent-cd
+	clmhdr-agent-cd
+
+build $pb_obj/r702
+  

@@ -1,0 +1,119 @@
+; Program: u140_e.qts
+;
+; Purpose:	upload AFP payments to the payroll's f0?? special payments
+;		file so that they can be paid during the next payroll
+; modification history
+; 2004/??/?? b.e.	- original
+; 2004/11/25 b.e.	- amt-gross now set to afp-payment-amt instead 
+;			  of afp-payment-amt-total
+; 2004/feb/04 b.e.	- added access to f020 doctor master to get data to
+;			  store doctor data in audit subfile so that later
+;			  reports don't have to access f020 to get this info.
+; 05/mar/08 M.C.        - substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+
+
+cancel clear
+set process nolimit
+run u140_e
+set lock record update
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        zoned unsigned
+global temp w-current-ep-nbr-minus1 zoned unsigned
+global temp w-current-ep-nbr-plus1  zoned unsigned
+global temp w-ep-fiscal-nbr         zoned unsigned
+global temp afpcon-seq    numeric
+global temp afpcon-type   char*1
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u114a_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+
+set lock record update
+
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item w-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item w-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item w-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+
+item w-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u140_get_afpcon                        	&
+                on edit        errors report    &
+                on calculation errors report
+set lock record update
+
+access f190-comp-codes
+choose comp-code "AFPCON"
+item afpcon-seq  = process-seq
+item afpcon-type = comp-type
+
+;------------------------------------------------
+request u140_update_f114                        &
+                on edit        errors report    &
+                on calculation errors report
+
+set lock record update
+
+access f075-afp-doc-mstr				&
+    link doc-afp-paym-group   				&
+    to   doc-afp-paym-group	of f074-afp-group-mstr  &
+    link doc-nbr of f075-afp-doc-mstr			&
+     to  doc-nbr of f020-doctor-mstr opt
+
+def x-selected-payroll char*1  				&
+	= parm prompt "Enter PAYROLL ID:"  upshift
+
+select if    afp-payment-amt <> 0					&
+	and  x-selected-payroll = batctrl-payroll of f074-afp-group-mstr
+
+def x-tmp-amt-gross =  afp-payment-amt 
+def x-tmp-amt-net   =  afp-payment-amt 
+output f114-special-payments add
+  item doc-nbr			final doc-nbr  		of f075-afp-doc-mstr
+  item comp-code		final "AFPCON"
+  item ep-nbr-from 		final w-current-ep-nbr   
+  item ep-nbr-to	 	final w-current-ep-nbr   
+; 2005/03/08 - MC
+;  item comp-units		final afp-payment-percentage 	&
+  item comp-units		final afp-multi-doc-ra-percentage 	&
+; 2005/03/08 - end
+							of f075-afp-doc-mstr  
+;  item amt-gross		 final afp-payment-amt-total	&
+  item amt-gross		final afp-payment-amt		&
+						 	of f075-afp-doc-mstr  
+  item amt-net  		final afp-payment-amt 	of f075-afp-doc-mstr  
+  item last-mod-date    	final sysdate
+  item last-mod-time		final systime / 10000
+  item last-mod-user-id		final "U140_b  gen'd"
+  
+subfile u140_e_audit keep append include	&
+  x-selected-payroll,				&
+  doc-nbr of f075-afp-doc-mstr,			&
+  doc-afp-paym-group	of f020-doctor-mstr,	&
+  doc-name       	of f020-doctor-mstr,	&
+  doc-inits		of f020-doctor-mstr,	&
+  doc-dept		of f020-doctor-mstr,	&
+  comp-code,					&
+  ep-nbr-from,					&
+  ep-nbr-to,					&
+  comp-units,					&
+  x-tmp-amt-gross,				&
+  x-tmp-amt-net
+;  amt-gross,					&
+;  amt-net
+
+build $obj/u140_e

@@ -1,0 +1,264 @@
+;PURPOSE: REPORT AGENT 6 or 9 suspend claims  
+;	  first pass of 2 programs
+
+;DATE:		WHO:		MODIFICATION
+;2011/apr/07    M.C.		ORIGINAL
+;2011/jul/20    MC1		include new fields as dr name, cpso#, referring dr name, chart #   
+;				include f020 & f020-extra in the access statement
+;				include diagnostic & oma description
+;2017/Apr/06    MC2             include clmhdr-pat-ohip-id-or-chart in the subfile for debugging purpose
+;				to tell why patient information is blank for the report (suspend_agent_detail.txt)
+;				which is generated from suspend_agent_detail.qzs
+
+can clear
+set process nolimit
+set lock record update
+
+request extract_suspend_detail
+
+access f002-suspend-hdr                            &
+  link clmhdr-pat-ohip-id-or-chart		   &
+   to  key-pat-mstr of f010-pat-mstr opt	   &
+  link clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr  &
+   to  clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr  &
+                             of f002-suspend-dtl   &
+; 2011/07/20 - MC1
+  link clmdtl-oma-cd 				   &
+   to  fee-oma-cd of f040-oma-fee-mstr opt	   &
+  link ascii(clmdtl-diag-cd,3)			   &
+   to  diag-cd of f091-diag-codes-mstr opt	   &
+  link clmhdr-doc-nbr	   			   &
+   to  doc-nbr of f020-doctor-mstr opt		   &
+  link clmhdr-doc-nbr	   			   &
+   to  doc-nbr of f020-doctor-extra opt
+; 2011/07/20 - end
+  
+
+sel if clmhdr-agent-cd = 6 or clmhdr-agent-cd = 9
+
+sorted on clmhdr-doc-ohip-nbr on clmhdr-accounting-nbr
+
+def x-type zoned*1 = 1
+
+temp x-seq  zoned*2 
+item x-seq = x-seq + 1 reset at clmhdr-accounting-nbr
+
+def x-line char*70 = 				&
+	 CLMDTL-OMA-CD +			&
+	 CLMDTL-OMA-SUFF + '     ' +		&
+	 ascii(CLMDTL-NBR-SERV,2)  + '     ' +  &
+	 ascii(CLMDTL-DIAG-CD,3)   + '     ' +	&
+	 CLMDTL-SV-DATE[1:4] + '/' +		&
+	 CLMDTL-SV-DATE[5:2] + '/' + 		&
+	 CLMDTL-SV-DATE[7:2] 
+
+def x-line-oma char*70 = 			&
+	 CLMDTL-OMA-CD + ' : ' + fee-desc
+
+def x-line-diag char*70 =		        &
+	 diag-cd + ' : ' + diag-cd-desc
+
+
+; 2011/07/20 - MC1
+def x-chart-key char*11 =			&
+	pat-chart-nbr   if pat-chart-nbr[1:1] = 'M'   &
+  else  pat-chart-nbr-2 if pat-chart-nbr-2[1:1] = 'K' &
+  else  pat-chart-nbr-3 if pat-chart-nbr-3[1:1] = 'H' &
+  else  pat-chart-nbr-5 if pat-chart-nbr-5[1:1] = 'J' &
+  else  pat-chart-nbr-4 if pat-chart-nbr-4 <> key-pat-mstr[6:10] 
+; 2011/07/20 - end
+
+ 
+subfile susp_agent_dtl keep		  	  &
+include  clmhdr-doc-ohip-nbr 	 of f002-suspend-hdr	, &
+	 clmhdr-accounting-nbr	 of f002-suspend-hdr	, &
+	 CLMHDR-CLINIC-NBR-1-2   of f002-suspend-hdr	, &
+	 CLMHDR-DOC-NBR		 of f002-suspend-hdr	, &
+	 CLMHDR-DOC-SPEC-CD	 of f002-suspend-hdr	, &
+	 CLMHDR-REFER-DOC-NBR	 of f002-suspend-hdr	, &
+	 CLMHDR-LOC 		 of f002-suspend-hdr	, &
+	 CLMHDR-AGENT-CD	 of f002-suspend-hdr	, &
+	 CLMHDR-I-O-PAT-IND 	 of f002-suspend-hdr	, &
+	 CLMHDR-DOC-DEPT	 of f002-suspend-hdr	, &
+	 CLMHDR-DATE-ADMIT 	 of f002-suspend-hdr	, &
+	 CLMHDR-CONFIDENTIAL-FLAG of f002-suspend-hdr	, &
+; MC2
+	 clmhdr-pat-ohip-id-or-chart of f002-suspend-hdr	, &
+; MC2 - end
+	 PAT-SURNAME 			of f010-pat-mstr	, &
+	 PAT-GIVEN-NAME			of f010-pat-mstr	, &
+	 PAT-HEALTH-NBR			of f010-pat-mstr	, &
+	 PAT-VERSION-CD			of f010-pat-mstr	, &
+	 PAT-OHIP-MMYY			of f010-pat-mstr	, &
+	 PAT-BIRTH-DATE			of f010-pat-mstr	, &
+	 PAT-SEX			of f010-pat-mstr	, &
+	 SUBSCR-ADDR1			of f010-pat-mstr	, &
+	 SUBSCR-ADDR2			of f010-pat-mstr	, &
+	 SUBSCR-ADDR3			of f010-pat-mstr	, &
+	 SUBSCR-POSTAL-CD 		of f010-pat-mstr	, &
+	 SUBSCR-PROV-CD			of f010-pat-mstr	, &
+	 PAT-PHONE-NBR			of f010-pat-mstr	, &
+	 x-type					, &
+	 x-seq					, &
+	 x-line					, &
+; 2011/07/20 - MC1
+	 doc-name	of f020-doctor-mstr	, &
+	 cpso-nbr	of f020-doctor-extra	, &
+	 x-chart-key   
+; 2011/07/20 - end
+
+; 2011/07/26 - MC1 - oma desc 
+subfile susp_agent_dtl alias susp_oma_desc append  	  &
+include  clmhdr-doc-ohip-nbr 	 of f002-suspend-hdr	, &
+	 clmhdr-accounting-nbr	 of f002-suspend-hdr	, &
+	 CLMHDR-CLINIC-NBR-1-2   of f002-suspend-hdr	, &
+	 CLMHDR-DOC-NBR		 of f002-suspend-hdr	, &
+	 CLMHDR-DOC-SPEC-CD	 of f002-suspend-hdr	, &
+	 CLMHDR-REFER-DOC-NBR	 of f002-suspend-hdr	, &
+	 CLMHDR-LOC 		 of f002-suspend-hdr	, &
+	 CLMHDR-AGENT-CD	 of f002-suspend-hdr	, &
+	 CLMHDR-I-O-PAT-IND 	 of f002-suspend-hdr	, &
+	 CLMHDR-DOC-DEPT	 of f002-suspend-hdr	, &
+	 CLMHDR-DATE-ADMIT 	 of f002-suspend-hdr	, &
+	 CLMHDR-CONFIDENTIAL-FLAG of f002-suspend-hdr	, &
+; MC2
+	 clmhdr-pat-ohip-id-or-chart of f002-suspend-hdr	, &
+; MC2 - end
+	 PAT-SURNAME 			of f010-pat-mstr	, &
+	 PAT-GIVEN-NAME			of f010-pat-mstr	, &
+	 PAT-HEALTH-NBR			of f010-pat-mstr	, &
+	 PAT-VERSION-CD			of f010-pat-mstr	, &
+	 PAT-OHIP-MMYY			of f010-pat-mstr	, &
+	 PAT-BIRTH-DATE			of f010-pat-mstr	, &
+	 PAT-SEX			of f010-pat-mstr	, &
+	 SUBSCR-ADDR1			of f010-pat-mstr	, &
+	 SUBSCR-ADDR2			of f010-pat-mstr	, &
+	 SUBSCR-ADDR3			of f010-pat-mstr	, &
+	 SUBSCR-POSTAL-CD 		of f010-pat-mstr	, &
+	 SUBSCR-PROV-CD			of f010-pat-mstr	, &
+	 PAT-PHONE-NBR			of f010-pat-mstr	, &
+	 x-type					, &
+	 x-seq					, &
+	 x-line-oma				, &
+	 doc-name	of f020-doctor-mstr	, &
+	 cpso-nbr	of f020-doctor-extra	, &
+	 x-chart-key   
+
+   Item x-type of susp_oma_desc  final  3
+
+subfile susp_agent_dtl alias susp_diag_desc append  	  &
+	if clmdtl-diag-cd of f002-suspend-dtl <> 0	  &
+include  clmhdr-doc-ohip-nbr 	 of f002-suspend-hdr	, &
+	 clmhdr-accounting-nbr	 of f002-suspend-hdr	, &
+	 CLMHDR-CLINIC-NBR-1-2   of f002-suspend-hdr	, &
+	 CLMHDR-DOC-NBR		 of f002-suspend-hdr	, &
+	 CLMHDR-DOC-SPEC-CD	 of f002-suspend-hdr	, &
+	 CLMHDR-REFER-DOC-NBR	 of f002-suspend-hdr	, &
+	 CLMHDR-LOC 		 of f002-suspend-hdr	, &
+	 CLMHDR-AGENT-CD	 of f002-suspend-hdr	, &
+	 CLMHDR-I-O-PAT-IND 	 of f002-suspend-hdr	, &
+	 CLMHDR-DOC-DEPT	 of f002-suspend-hdr	, &
+	 CLMHDR-DATE-ADMIT 	 of f002-suspend-hdr	, &
+	 CLMHDR-CONFIDENTIAL-FLAG of f002-suspend-hdr	, &
+; MC2
+	 clmhdr-pat-ohip-id-or-chart of f002-suspend-hdr	, &
+; MC2 - end
+	 PAT-SURNAME 			of f010-pat-mstr	, &
+	 PAT-GIVEN-NAME			of f010-pat-mstr	, &
+	 PAT-HEALTH-NBR			of f010-pat-mstr	, &
+	 PAT-VERSION-CD			of f010-pat-mstr	, &
+	 PAT-OHIP-MMYY			of f010-pat-mstr	, &
+	 PAT-BIRTH-DATE			of f010-pat-mstr	, &
+	 PAT-SEX			of f010-pat-mstr	, &
+	 SUBSCR-ADDR1			of f010-pat-mstr	, &
+	 SUBSCR-ADDR2			of f010-pat-mstr	, &
+	 SUBSCR-ADDR3			of f010-pat-mstr	, &
+	 SUBSCR-POSTAL-CD 		of f010-pat-mstr	, &
+	 SUBSCR-PROV-CD			of f010-pat-mstr	, &
+	 PAT-PHONE-NBR			of f010-pat-mstr	, &
+	 x-type					, &
+	 x-seq					, &
+	 x-line-diag			, &
+	 doc-name	of f020-doctor-mstr	, &
+	 cpso-nbr	of f020-doctor-extra	, &
+	 x-chart-key   
+
+   Item x-type of susp_diag_desc final   4
+
+request extract_suspend_desc
+ 
+access f002-suspend-hdr                            &
+  link clmhdr-pat-ohip-id-or-chart		   &
+   to  key-pat-mstr of f010-pat-mstr opt	   &
+  link clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr  &
+   to  clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr  &
+                             of f002-suspend-desc  &
+; 2011/07/20 - MC1
+  link clmhdr-doc-nbr    			   &
+   to  doc-nbr of f020-doctor-mstr opt		   &
+  link clmhdr-doc-nbr    			   &
+   to  doc-nbr of f020-doctor-extra opt
+; 2011/07/20 - end
+  
+
+sel if clmhdr-agent-cd = 6 or clmhdr-agent-cd = 9
+
+sorted on clmhdr-doc-ohip-nbr on clmhdr-accounting-nbr
+
+def x-type zoned*1 = 2
+
+def x-seq  zoned*2 = clmdtl-line-no
+
+def x-line char*70 = CLMDTL-SUSPEND-DESC
+
+; 2011/07/20 - MC1
+def x-chart-key char*11 =			&
+	pat-chart-nbr   if pat-chart-nbr[1:1] = 'M'   &
+  else  pat-chart-nbr-2 if pat-chart-nbr-2[1:1] = 'K' &
+  else  pat-chart-nbr-3 if pat-chart-nbr-3[1:1] = 'H' &
+  else  pat-chart-nbr-5 if pat-chart-nbr-5[1:1] = 'J' &
+  else  pat-chart-nbr-4 if pat-chart-nbr-4 <> key-pat-mstr[6:10] 
+; 2011/07/20 - end
+
+ 
+subfile susp_agent_dtl alias susp_agent_desc  append	&
+include  clmhdr-doc-ohip-nbr 			, &
+	 clmhdr-accounting-nbr			, &
+	 CLMHDR-CLINIC-NBR-1-2  		, &
+	 CLMHDR-DOC-NBR				, &
+	 CLMHDR-DOC-SPEC-CD			, &
+	 CLMHDR-REFER-DOC-NBR			, &
+	 CLMHDR-LOC 				, &
+	 CLMHDR-AGENT-CD			, &
+	 CLMHDR-I-O-PAT-IND 			, &
+	 CLMHDR-DOC-DEPT			, &
+	 CLMHDR-DATE-ADMIT 			, &
+	 CLMHDR-CONFIDENTIAL-FLAG		, &
+; MC2
+	 clmhdr-pat-ohip-id-or-chart of f002-suspend-hdr	, &
+; MC2 - end
+	 PAT-SURNAME 				, &
+	 PAT-GIVEN-NAME				, &
+	 PAT-HEALTH-NBR				, &
+	 PAT-VERSION-CD				, &
+	 PAT-OHIP-MMYY				, &
+	 PAT-BIRTH-DATE				, &
+	 PAT-SEX				, &
+	 SUBSCR-ADDR1				, &
+	 SUBSCR-ADDR2				, &
+	 SUBSCR-ADDR3				, &
+	 SUBSCR-POSTAL-CD 			, &
+	 SUBSCR-PROV-CD				, &
+	 PAT-PHONE-NBR				, &
+	 x-type					, &
+	 x-seq					, &
+	 x-line					, &
+; 2011/07/20 - MC1
+	 doc-name				, &
+	 cpso-nbr				, &
+	 x-chart-key   
+; 2011/07/20 - end
+
+
+
+build $obj/suspend_agent_detail

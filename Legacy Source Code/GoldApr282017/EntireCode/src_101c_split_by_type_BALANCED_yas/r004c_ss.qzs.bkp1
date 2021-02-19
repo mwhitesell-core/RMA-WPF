@@ -1,0 +1,165 @@
+;doc: r004c_ss.qzs
+;
+;program purpose : transaction summary (detail report)
+;                  use r004b.sf and create detail report
+;                  r004c.txt control break at doc-nbr
+;
+;  modification history
+;date       by whom   description
+;12/Jan/17  MC        original (clone from r004c_portal.qzs)
+;			to show column headings and values, do not need page titles and totals as suggested by Brad
+
+can clear
+set rep nolimit
+set rep device disc name r004c_ss        
+set page length 0  width 264
+set noblanks
+set formfeed
+
+access *r004b  							  
+
+sort    on iconst-clinic-nbr-1-2                                &
+        on clmhdr-doc-dept of r004b                             &
+        on x-doc-nbr                                            &
+        on x-pat-name                                           &
+        on clmdtl-sv-date                                       &
+        on x-claim-dtl-id                                       &
+        on x-oma-code
+
+
+def delimiter char*1 = "~"
+def x-doc-dept-nbr char*7= '~' + x-doc-nbr + ascii(clmhdr-doc-dept of r004b,2) + '~'
+;def x-adj-cd-src char*3 = clmdtl-adj-cd + x-source
+def x-oma-cd-suff char*5 = clmdtl-oma-cd + clmdtl-oma-suff
+
+def x-agent char*40 =								&
+               "0  OHIP BILLING"   			if clmdtl-agent-cd = 0  &
+       else    "1  DIAGNOSTIC BILLING"			if clmdtl-agent-cd = 1  &
+       else    "2  OHIP WCB BILLING"			if clmdtl-agent-cd = 2  &
+       else    "3  ICU (85) DIRECT BILL"		if clmdtl-agent-cd = 3  &
+       else    "4  INELIGIBLE OHIP/BILL PATIENT"	if clmdtl-agent-cd = 4  &
+       else    "5  MOH REMITTANCE REDUCTION (MOHR)"	if clmdtl-agent-cd = 5  &
+       else    "6  PATIENT/INSURANCE BILLING"		if clmdtl-agent-cd = 6  &
+       else    "7  MISCELLANEOUS PAYMENT"		if clmdtl-agent-cd = 7  &
+       else    "8  NEONATAL (SURROGATE) / GERIATRICS ALTERNATIVE / ICU ALTERNATIVE" if clmdtl-agent-cd = 8  &
+       else    "9  W.C.B. BILLING / W.C.B. MISCELLANEOUS" if clmdtl-agent-cd = 9	&
+       else    ascii(clmdtl-agent-cd)
+
+def x-source-cd char*16 =					&
+		"D - Diskette"		if x-source[2:1] = 'D'	&
+	else	"W - Webstar"		if x-source[2:1] = 'W'  &
+	else	"A - A Adjustment"	if x-source[2:1] = 'A'	&
+	else	"R - R Adjustment"	if x-source[2:1] = 'R'	&
+	else	x-source
+
+;initial heading                                              	&
+;        tab 3   "PATIENT"                                       &
+;        tab 15  "CLAIM"                                         &
+;        tab 23  "PATIENT ID/"                                   &
+;        tab 37  "AGENT"                                         &
+;        tab 45  "ADJ/OR"                                        &
+;        tab 57  "OHIP"                                          &
+;        tab 64  "ADJUSTMENT"                                    &
+;        tab 77  "SERVICE"                                       &
+;        tab 87  "CLAIM"                                         &
+;        tab 96  "DIAG"                                          &
+;        tab 102 "OMA"                                           &
+;        tab 109 "#OF"                                           &
+;        tab 114 "BATCH"                                         &
+;        tab 122 "FORM#"                                         &
+; 	tab 133 x-doc-dept-nbr 					&
+;skip 1  tab 4   "NAME"                                          &
+;        tab 15  "NUMBER"                                        &
+;        tab 23  "CHART NUMBER"                                  &
+;        tab 37  "CODE"                                          &
+;        tab 45  "SOURCE"                                        &
+;        tab 57  "FEE"                                           &
+;        tab 66  "AMOUNT"                                        &
+;        tab 79  "DATE"                                          &
+;        tab 87  "DATE"                                          &
+;        tab 96  "CODE"                                          &
+;        tab 102 "CODE"                                          &
+;        tab 109 "SRV"                                           &
+;        tab 114 "NUMBER"                                        &
+;        tab 122 "NOTE"                                          &
+; 	tab 133 x-doc-dept-nbr 					&
+;skip 2
+
+initial heading                                              	&
+                "Patient Surname"                               &
+		delimiter					&
+                "Patient Given Name"                            &
+		delimiter					&
+                "Claim Nbr"                                  	&
+		delimiter					&
+                "Patient Id"                                    &
+		delimiter					&
+                "Billing Agent"                                 &
+		delimiter					&
+                "Adjustment Code"                               &
+		delimiter					&
+                "Source Code"                                   &
+		delimiter					&
+                "OHIP Fee"                                      &
+		delimiter					&
+                "Adjustment Amt"                                &
+		delimiter					&
+                "Service Date"                                  &
+		delimiter					&
+                "Claim Entry Date"                              &
+		delimiter					&
+                "Diag Code"                                     &
+		delimiter					&
+                "OMA Code"                                      &
+		delimiter					&
+                "Nbr Services"                                  &
+		delimiter					&
+                "RMA BATCH Id"                                  &
+		delimiter					&
+                "Note"                                 		&
+;		delimiter					&
+ 	        x-doc-dept-nbr 					
+
+report                                                          &
+;         x-pat-name   						&
+          pat-surname   					&
+	  delimiter						&
+          pat-given-name					&
+	  delimiter						&
+          x-claim-dtl-id					&
+	  delimiter						&
+          x-pat-id-info						&
+	  delimiter						&
+;         clmdtl-agent-cd                                       &
+          x-agent                                       	&
+	  delimiter						&
+          clmdtl-adj-cd                                         &
+	  delimiter						&
+;         x-source                                              &
+	  x-source-cd 						&
+	  delimiter						&
+          x-rev-ohip-fee pic '^^^^^.^^ ' trail '-' bwz  	&
+	  delimiter						&
+          x-rev-ohip-adj pic '^^^^^.^^ ' trail '-' bwz  	&
+	  delimiter						&
+          clmdtl-sv-date                                        &
+	  delimiter						&
+          clmhdr-date-sys                                       &
+	  delimiter						&
+          clmdtl-diag-cd bwz                                    &
+	  delimiter						&
+;          clmdtl-oma-cd                                         &
+;  	delimiter						&
+;          clmdtl-oma-suff                                       &
+	  x-oma-cd-suff						&
+	  delimiter						&
+          x-nbr-svcs                                            &
+	  delimiter						&
+          x-orig-batch                                          &
+	  delimiter						&
+          clmhdr-reference                                      &
+;	  delimiter						&
+          x-doc-dept-nbr 					
+
+
+build $obj/r004c_ss

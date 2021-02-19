@@ -1,0 +1,354 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Thu Jul 23 13:18:51 EDT 2015
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/u118.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ;#> PROGRAM-ID.     U118.QTS
+> ;
+> ;       ((C)) Dyad Technologies
+> ;
+> ;    purpose: sub-process within "earnings generation" process.
+> ;	      - calculates 'tot' "deductions" and "advances" trans.
+> ;	      - also places deduction type transactions into the f119 subfile
+> ;	  	for eventual upload into the f119-doctor-ytd EXCEPT 'percentage
+> ;		based deductions such as TAX which are placed there in u117
+> ; Note: - originally program also did a o'TOT'al 'ADV'ances TRANS
+> ;         but advances/deficit processing now handled as just
+> ;         another deduction.
+> ;
+> ;    MODIFICATION HISTORY
+> ;        DATE    SAF #  WHO      DESCRIPTION
+> ;     93/JAN/01  ____   B.E.     - original
+> ;     93/MAY/19  ____   B.E.     - sort to sorted, added *F119
+> ;     93/MAY/27  ____   B.E.     - added F119-DOCTOR-YTD
+> ;     93/JUN/21  ____   B.E.     - added ADVANCES
+> ;     93/JUN/22  ____   B.E.     - optimize (calculate TOT values and
+> ;				   add to YTD values in F020)
+> ;				   removed LINKAGE to F119-DOCTOR-YTD
+> ;     93/JUN/24  ____   B.E.     - added update of F020's YTDDED
+> ;     98/oct/21         B.E.     - in conversion to unix values in data base
+> ;				   were changed to 'numeric size 8'. The
+> ;				   f119 subfile contained variables that
+> ;				   were defined int*8 size 4. The database
+> ;				   fields were assigned to temp field to make
+> ;				   them match.
+> ;				   in this pgm modified to use new size defn.
+> ;   1999/Feb/18         S.B.     - Checked for Y2K.
+> ;   1999/may/05		B.E.	 - getting data conversion errors in field amt-gross
+> ;				   within f119 - changed to use x-tmp-amt instead
+> ;				   of amt-net taken directly from f110
+> ;
+> ;   1999/June/01 	S.B.     - Added the use file
+> ;                        	   def_compensation_status.def to
+> ;                        	   prevent hard coding of compensation-status.
+> ;   2001/apr/12  B.E.	- TOTDED now written out if non-zero, not just if
+> ;			  positive amount. This allows 'negative' adjustments
+> ;			  to increase the PAYEFT amount
+> ; 2001/nov/08 B.E.	- all 'D'eduction type transactions EXCEPT 'TAX' where
+> ;			  placed into f119 subfile. At the time TAX was the
+> ;			  only 'percentage' based deduction. Changed to NOT
+> ;			  put ANY percentage based deduction rather than
+> ;			  specifically TAX.
+> ; 2002/jul/23 B.E.	- fixed bug on above change for percentage based
+> ;			  deductions - logic on output to f119 should have
+> ;			  only output 'flat' based deductions which have
+> ;			  are identified due to their factor being = 1.0000
+> ; 2003/dec/24 A.A.	- alpha doctor nbr
+> ; 2006/may/10 b.e.      - $1M payroll changes to size of calculated fields
+> ; 2010/dec/14 MC1	- comment out write record in subfile f119
+> ; 2012/May/05 MC2	- add new temp item amt-totded-true to exclude 'DEFIC'
+> ;			  this value will be used to update f119 amt-ytd in u122.qts
+> cancel clear
+> set default
+> set stacksize 450
+> set process nolimit
+> run u118
+> 
+> set default
+WORKSPACE and STACKSIZE can't be reset within a QTP run.
+> set process nolimit
+> 
+> global temp w-current-ep-nbr            integer*8 signed size 4
+> global temp w-first-ep-nbr-of-fiscal-yr integer*8 signed size 4
+> 
+> ;GLOBAL TEMP YTDDED-SEQ     ZONED*2 UNSIGNED
+> ;GLOBAL TEMP YTDDED-TYPE    CHAR*1
+> ;GLOBAL TEMP YTDDED-GROUP   CHAR*1
+> 
+> global temp totded-seq     zoned*2 unsigned
+> global temp totded-seq-rpt zoned*2 unsigned
+> global temp totded-type    char*1
+> global temp totded-group   char*1
+> global temp totadv-seq     zoned*2 unsigned
+> global temp totadv-seq-rpt zoned*2 unsigned
+> global temp totadv-type    char*1
+> global temp totadv-group   char*1
+> 
+> ;-------------------------------------------------------------------------------
+> ; OBTAIN CONSTANTS VALUES FOR PASSING TO SUBSEQUENT REQUESTS
+> ;
+> request u118_a_constants_values_ep_nbr	     &
+>  		on edit        errors report &
+> 		on calculation errors report
+> access constants-mstr-rec-6
+> choose const-rec-nbr 6
+*W* Item (CONST-REC-NBR) is stored by the file system as a character type.
+Choose viaindex CONSTANTS-MSTR-REC-6.
+> item w-current-ep-nbr            = current-ep-nbr
+> item w-first-ep-nbr-of-fiscal-yr = first-ep-nbr-of-fiscal-yr
+> 
+> ;
+> ; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+> ; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+> 
+> request u118_a_get_totded                    &
+>  		on edit        errors report &
+> 		on calculation errors report
+> access f190-comp-codes
+> choose comp-code "TOTDED"
+Choose viaindex COMP-CODE.
+> item totded-seq     = process-seq
+> item totded-seq-rpt = reporting-seq
+> item totded-type    = comp-type
+> item totded-group   = comp-code-group
+> 
+> request u118_a_get_totadv                    &
+>  		on edit        errors report &
+> 		on calculation errors report
+> access f190-comp-codes
+> choose comp-code "TOTADV"
+Choose viaindex COMP-CODE.
+> item totadv-seq     = process-seq
+> item totadv-seq-rpt = reporting-seq
+> item totadv-type    = comp-type
+> item totadv-group   = comp-code-group
+> 
+> ;-------------------------------------------------------------------------------
+> 
+> request u118_run_0_calc_totded			&
+> 		on edit        errors report	&
+>                 on calculation errors report
+> 
+> ;ACCESS CONSTANTS-MSTR-REC-6		                   	      &
+> ;        LINK CURRENT-EP-NBR VIAINDEX COMPENSATION-KEY2		      &
+> ;        TO   EP-NBR  OF F110-COMPENSATION
+> 
+> ;CHOOSE CONST-REC-NBR 6
+> 
+> access constants-mstr-rec-6					&
+> 	link current-ep-nbr viaindex compensation-key2		&
+> 	to   ep-nbr    of f110-compensation			&
+> 	link comp-code of f110-compensation			&
+> 	to   comp-code of f190-comp-codes     opt
+> 
+> ;SELECT IF    EP-NBR OF F110-COMPENSATION >=W-FIRST-EP-NBR-OF-FISCAL-YR &
+> ;	 AND EP-NBR OF F110-COMPENSATION <=W-CURRENT-EP-NBR	       &
+> 
+> choose const-rec-nbr  6
+*W* Item (CONST-REC-NBR) is stored by the file system as a character type.
+Choose viaindex CONSTANTS-MSTR-REC-6.
+> 
+> select  if (   comp-type of f190-comp-codes = "D"		&
+>             or comp-type of f190-comp-codes = "A")
+> 
+> sorted on doc-nbr 				&
+>        on ep-nbr 				&
+>        on comp-code of f110-compensation
+> ;SORT TO SORTED 93/MAY/19, COMP-CODE MAY/27
+> 
+> ;TEMP AMT-YTDDED-G INTEGER*8 SIGNED SIZE 4
+> ;ITEM AMT-YTDDED-G = AMT-YTDDED-G + AMT-GROSS OF F110-COMPENSATION    &
+> ;			IF    COMP-TYPE OF F190-COMP-CODES = "D"     &
+> ;			  AND EP-NBR   <= W-CURRENT-EP-NBR	     &
+> ;	     ELSE AMT-YTDDED-G					     &
+> ;		  RESET AT DOC-NBR
+> 
+> ;TEMP AMT-YTDADV-G INTEGER*8 SIGNED SIZE 4
+> ;ITEM AMT-YTDADV-G = AMT-YTDADV-G + AMT-GROSS OF F110-COMPENSATION  &
+> ;			IF    COMP-TYPE OF F190-COMP-CODES = "A"     &
+> ;			  AND EP-NBR   <= W-CURRENT-EP-NBR	     &
+> ;	     ELSE AMT-YTDADV-G 				     &
+> ;		  RESET AT DOC-NBR
+> 
+> ;TEMP AMT-YTDDED-N INTEGER*8 SIGNED SIZE 4
+> ;ITEM AMT-YTDDED-N = AMT-YTDDED-N + AMT-NET OF F110-COMPENSATION      &
+> ;			IF    COMP-TYPE OF F190-COMP-CODES = "D"     &
+> ;			  AND EP-NBR   <= W-CURRENT-EP-NBR	     &
+> ;	     ELSE AMT-YTDDED-N					     &
+> ;		  RESET AT DOC-NBR
+> 
+> ;temp amt-totded-g integer*8 signed size 4
+> temp amt-totded-g integer*10 signed
+> item amt-totded-g=amt-totded-g + amt-gross of f110-compensation &
+> 			if    comp-type of f190-comp-codes = "D"     &
+> ;			  AND EP-NBR    =  W-CURRENT-EP-NBR	     &
+> 	     else amt-totded-g				      &
+> 	     reset at doc-nbr
+> 
+> ;temp amt-totadv-g integer*8 signed size 4
+> temp amt-totadv-g integer*10 signed
+> item amt-totadv-g=amt-totadv-g + amt-gross of f110-compensation&
+> 			if    comp-type of f190-comp-codes = "A"     &
+> ;			  AND EP-NBR    =  W-CURRENT-EP-NBR	     &
+> 	     else amt-totadv-g				      &
+> 	     reset at doc-nbr
+> 
+> ;temp amt-totded-n integer*8 signed size 4
+> temp amt-totded-n integer*10 signed
+> item amt-totded-n = amt-totded-n + amt-net of f110-compensation &
+> 			if    comp-type of f190-comp-codes = "D"     &
+> ;			  and ep-nbr    =  w-current-ep-nbr	      &
+> 	     else amt-totded-n				      &
+> 		  reset at doc-nbr
+> 
+> ;temp amt-totadv-n integer*8 signed size 4
+> temp amt-totadv-n integer*10 signed
+> item amt-totadv-n = amt-totadv-n + amt-net of f110-compensation&
+> 			if    comp-type of f190-comp-codes = "A"     &
+> ;			  and ep-nbr    =  w-current-ep-nbr	      &
+> 	     else amt-totadv-n				      &
+> 		  reset at doc-nbr
+> 
+> ;S.B.
+> use $use/def_compensation_status.def
+> ; DEF_COMPENSATION_STATUS.DEF
+> ; This program is called from the following programs:
+> ;
+> ;     	holdbk6.qts, u111c.qts, u113.qts, u114a.qts, u115c.qts,
+> ;	u116_paycode0.qts, u116_paycode1.qts, u116_paycode2.qts,
+> ;	u116_paycode34.qts, u116_paycode5.qts, u117.qts,
+> ;	u118.qts, u119.qts
+> 
+> def compensation-status-accepted         	char*1 = " "
+> 
+> ; ------------- F 1 1 0 -------------------------------------------------------
+> 
+> output f110-compensation add alias f110-ep-tot-deduct at doc-nbr      &
+>     if amt-totded-n <> 0
+> 	item ep-nbr          = w-current-ep-nbr
+> 	item ep-nbr-entry    = w-current-ep-nbr
+> 	item comp-code       = "TOTDED"
+> 	item comp-type       = totded-type
+> 	item process-seq     = totded-seq
+> 	item factor          = 0.0
+> 	item factor-override = " "
+> 	item comp-units      = 0
+> 	item amt-gross       = amt-totded-g
+> 	item amt-net         = amt-totded-n
+> ;S.B.
+> ;	item compensation-status = " "
+> 	item compensation-status = compensation-status-accepted
+> 	item last-mod-date    = sysdate
+> 	item last-mod-time    = systime / 10000
+> 	item last-mod-user-id = "U118 gen'd"
+> 
+> 
+> output f110-compensation add alias f110-totadv at doc-nbr      &
+>     if amt-totadv-n > 0
+> 	item ep-nbr          = w-current-ep-nbr
+> 	item ep-nbr-entry    = w-current-ep-nbr
+> 	item comp-code       = "TOTADV"
+> 	item comp-type       = totadv-type
+> 	item process-seq     = totadv-seq
+> 	item factor          = 0.0
+> 	item factor-override = " "
+> 	item comp-units      = 0
+> 	item amt-gross       = amt-totadv-g
+> 	item amt-net         = amt-totadv-n
+> ;S.B.
+> ;	item compensation-status = " "
+> 	item compensation-status = compensation-status-accepted
+> 	item last-mod-date    = sysdate
+> 	item last-mod-time    = systime / 10000
+> 	item last-mod-user-id = "U118 gen'd"
+> 
+> 
+> ; ------  * F 1 1 9 ------------------------
+> def x-rec-type  char*1 = "A"
+> ;def x-not-needed integer*8 signed size 4 = 0
+> def x-not-needed integer*10 signed        = 0
+> ; 98/oct/21 B.E. (amt-net from f110 size doesn't match subfile element)
+> ;def x-tmp-amt    integer*8 signed size 4 = amt-net of f110-compensation
+> def x-tmp-amt    integer*10 signed        = amt-net of f110-compensation
+> 
+> ; 2010/12/14 - MC1 - I think this is redundant because
+> ;		     records should have already created from  u117.qts
+> ;		     hence it created duplicate records for the deduction that
+> ;		     has factor < 10000 when run last month payroll
+> 
+> ;subfile f119 append                        at comp-code 	      &
+> ;  if (    comp-type of f190-comp-codes = "D"			      &
+> ;     and comp-code of f190-comp-codes <> "TAX" &;)		      	      &
+> ;      and factor of f110-compensation < 10000 			      &
+> ;;;;;      and factor of f110-compensation = 10000 			      &
+> ;     )								      &
+> ;      include							     &
+> ;         doc-nbr   of f110-compensation		, &
+> ;         comp-code of f110-compensation		, &
+> ;         reporting-seq   of f190-comp-codes	, &
+> ;         comp-code-group of f190-comp-codes	, &
+> ;         x-rec-type				, &
+> ;        x-not-needed                  		, &
+> ; 1999/may/05 B.E. used x-tmp-amt instead of f110 value
+> ;        amt-net   of f110-compensation
+> ;	 x-tmp-amt
+> ; 2010/12/14 - end
+> 
+> ; 2012/05/03 - MC2 - calculate the true TOTDED without including DEFIC
+> temp amt-totded-true integer*10 signed
+> item amt-totded-true = amt-totded-true + amt-net of f110-compensation &
+> 			if    comp-type of f190-comp-codes = "D"     &
+> 			  and comp-code of f110-compensation <> 'DEFIC'   &
+> 		  reset at doc-nbr
+> ; 2012/05/03 - end
+> 
+> temp x-comp-code-totded char*6
+> item x-comp-code-totded = "TOTDED"
+> subfile f119 alias f119-totded append     at doc-nbr  &
+>       include				  &
+>          doc-nbr of f110-compensation	, &
+>          x-comp-code-totded		, &
+>          totded-seq-rpt            	, &
+>          totded-group  			, &
+>          x-rec-type			, &
+> ; 2012/05/03 - MC2
+> ;        x-not-needed 		        , &
+>          amt-totded-true	        , &
+> ; 2012/05/03 - end
+>          amt-totded-n
+> 
+> temp x-comp-code-totadv char*6
+> item x-comp-code-totadv = "TOTADV"
+> subfile f119 alias f119-totadv append   at doc-nbr    &
+>     if amt-totadv-n > 0			  &
+>       include				  &
+>          doc-nbr of f110-compensation	, &
+>          x-comp-code-totadv		, &
+>          totadv-seq-rpt            	, &
+>          totadv-group  			, &
+>          x-rec-type			, &
+>          x-not-needed 		        , &
+>          amt-totadv-n
+> 
+> ; ------------- F 0 2 0 -------------------------------------------------------
+> output f020-doctor-mstr update
+Access F020-DOCTOR-MSTR viaindex DOC-NBR.
+Access via DOC-NBR using DOC-NBR OF F110-COMPENSATION.
+> ; 2012/05/03 - MC2
+> ;   item doc-ytdded final doc-ytdded + amt-totded-n
+>     item doc-ytdded final doc-ytdded + amt-totded-true
+> ; 2012/05/03 - end
+> 
+> 
+> build $pb_obj/u118
+0 ERRORS  2 WARNINGS.
+The file /alpha/rmabill/rmabill101/obj/u118.qtc already exists. Ok to delete?
+Item DOC-NBR OF F110-EP-TOT-DEDUCT initial DOC-NBR OF F110-COMPENSATION.
+Item FILLER OF F110-EP-TOT-DEDUCT initial FILLER OF CONSTANTS-MSTR-REC-6.
+Item DOC-NBR OF F110-TOTADV initial DOC-NBR OF F110-COMPENSATION.
+Item FILLER OF F110-TOTADV initial FILLER OF CONSTANTS-MSTR-REC-6.
+> 
+Thu Jul 23 13:18:54 EDT 2015

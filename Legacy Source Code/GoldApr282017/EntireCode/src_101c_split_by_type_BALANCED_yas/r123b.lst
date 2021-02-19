@@ -1,0 +1,590 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   1
+*                      r123b.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - LIST
+* Accepted - RESEQ
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Options: int(r123b.int) verbose nolist endp list(r123b.lst)
+identification division.
+program-id.  r123b.
+author. dyad computer systems inc.
+installation. rma.
+date-written. 81/07/07.
+date-compiled. 02-Jun-16 17:02.
+security.
+*
+*    files      : f020 - doctor master
+*               : f060 - cheque register
+*               : f070 - department master
+*               : f080 - bank master
+*               : f090 - iconstants master
+*               : work file
+*               : "R123A" - doctor statement of earnings
+*               : "R123B" - bank deposit list report
+*               : "R123C" - bank cheques
+*
+*    additional  files for eft development
+*               : "R123EF"  -  eft summary report
+*               : "EFT_TAPE"  -  eft file   for tape generation
+*
+*    program purpose : to print the doctor statement of earnings,
+*                      bank deposit list and bank cheques  &
+*                      to print eft summary  report  and
+*                      create eft disk file for eft tape generation.
+*       r123a - does the sort phase
+*       r123b - creates EFT file/reports
+*
+*   revision history:
+*     date       programmer      reason
+*   82/05/        d. miller      - changed to access new cheque, constants &
+*                                  doctor masters
+*   82/09/        d. miller      - programs r123 (dr.statements) & r140
+*                                  (bank list & cheques) combined
+*   83/07/07      b. west        - add printing of department name on physician
+*
+*   85/02/14      i. warsh       - temporary removal of the error message for
+*                                  columns don'T BALANCE
+*
+*    86/06/05     k. pirani     - include faculty expense for paycode
+*                               - 4 in the statement of earnings
+*
+*    86/06/19     k. pirani     - expansion of bank-master-file address
+*                                 field. this expanded address field
+*                                 is printed on bank deposit list
+*                                 report and bank cheques.
+*
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   2
+*                      r123b.cbl
+*    86/06/25     k. pirani     - include yearend option.
+*
+*    86/11/22     j. lam        - changes in bank nbr field, bank branch
+*                                 field, and bank account nbr field.
+*                               - modified  input screen.
+*                               - create disk file for "electronic fund
+*                                 transfer".
+*                               - print  eft summary report.
+*
+*    87/04/06     j. lam        - change r123eft to r123ef (pdr 329)
+*
+*    87/05/27     s. blair      - coversion from aos to aos/vs.
+*                                 change field size for
+*                                 status clause to 2 and
+*                                 feedback clause to 4.
+*
+*    88/06/15     j. lam        - pdr 377
+*                               - operator can write comment or date
+*                                 on the last label of  statement of
+*                                 earnings if it is a yearend statement.
+*
+*    89/03/10     s. fader      - sms 114
+*                               - string the doctor name with 2 spaces
+*                                 rather than 1 space, so dr. van der
+*                                 meulen can be printed properly.
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*   revised june 28/89 : - s.f.
+*                        - modify section wa3 to be consistent with wa1
+*
+*   revised july 20/89 : - s.f.
+*                        - print tye report name on the top of all
+*                          reports
+*
+*   revised dec 6/89   : - s.f.
+*                        - comment out edit of date to allow date of
+*                          less than period end date
+*
+*   revised dec 6/90   : - b.m.l. sms 137
+*                        - increase percent sizes by 2 decimal places.
+*
+*   revised jul 7/91   : - b.m.l. pdr 501
+*                        - print of gst # for part time doctors.
+*           jul 16/91  : - b.m.l. add "r" infront of g.s.t. number.
+*
+*   revised nov 22/91    - m.c. pdr 433, 455, 515
+*                        - print the report name at the upper left
+*                          corner of the last page of r123a report
+
+*   93/jun/15   b.e.    - added access to u119_payeft file.  values
+*                         from this file are then preset into f060
+*                         and programs works from the values in f060
+*                         as it originally did.  the statement generated
+*                         by this program are no longer valid - see
+*                         output of r124x.qzs programs.  bank statements
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   3
+*                      r123b.cbl
+*                         are valid.
+*   98/jun/15   B.E.    - unix conversion - sort had to be split from other
+*                         processes so r123 split into r123a/b with
+*                         r123a performing only the sort. and r123b creating
+*                         the EFT file and reports.
+*
+*   99/aug/19   B.E.    - added multi-payroll option for clinic 22 and 81
+*
+*   99/nov/15   B.E.    - added copybook so that all unique data for RMA
+*                         clinic 22/80 is not hard coded in pgm
+*   00/nov/10   B.E.    - added 'mp' payroll processing - NOTE that clinic 99
+*                         is used to run the 'mp' clinic payroll
+*   03/nov/18   M.C.    - alpha doc nbr
+* 2006/may/10 be      - $1M payroll changes to size of calculated fields
+* 2007/nov/14 be - cosmetic change to variable name  ws-nbr-settlement-account
+* 2010/Oct/26 MC - extend the field size to 9(8)v99 for r123c-p7-fin-total and r
+*                  so that user can balance
+* 2016/Apr/27 MC1 - delete the codes that are not needed as they are very confus
+*                   r123b creates the EFT file (eft_tape) from work_file_a.
+
+environment division.
+input-output section.
+file-control.
+*
+*   place your file select statements here
+*
+    copy "f090_constants_mstr.slr".
+select iconst-mstr
+assign to disk "$pb_data/f090_constants_mstr"
+organization is indexed
+access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+lock mode is manual
+record key   is iconst-clinic-nbr-1-2
+*       eof-flag     is eof-iconst-mstr
+status is status-cobol-iconst-mstr.
+*
+    copy "eft_logical_rec_file.slr".
+    select eft-logical-rec-file
+        assign to ws-work-file-a
+        organization is sequential.
+
+    select sorted-file
+        assign to ws-sorted-file
+        organization is  sequential.
+
+    select output-file
+        assign to ws-output-file
+        organization is  sequential.
+
+data division.
+file section.
+*
+    copy "f090_constants_mstr.fd".
+* 99/Jan/29     MC      - change iconst-clinic-nbr from numeric to character
+* 03/nov/05 b.e. - alpha doctor nbr
+* 06/nov/08     MC      - include iconst-clinic-pay-batch-nbr
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   4
+*                      r123b.cbl (/alpha/rmabill/rmabill101c/use/f090)
+fd  iconst-mstr
+*       index block contains   2 characters
+              block contains 384 characters
+        record      contains 384 characters  .
+*       feedback is feedback-iconst-mstr.
+
+01 iconst-mstr-rec.
+    05  iconst-clinic-nbr-1-2                   pic   99.
+*    05  iconst-clinic-nbr                      pic  9(4).
+    05  iconst-clinic-nbr                       pic  x(4).
+    05  iconst-clinic-name                      pic x(20).
+    05  iconst-clinic-cycle-nbr                 pic   99.
+    05  iconst-date-period-end.
+* y2k   10  iconst-date-period-end-yy           pic   99.
+        10  iconst-date-period-end-yy           pic   9999.
+        10  iconst-date-period-end-mm           pic   99.
+        10  iconst-date-period-end-dd           pic   99.
+    05  iconst-clinic-addr.
+        10  iconst-clinic-addr-l1               pic  x(25).
+        10  iconst-clinic-addr-l2               pic  x(25).
+        10  iconst-clinic-addr-l3               pic  x(25).
+    05  iconst-clinic-addr-r redefines iconst-clinic-addr.
+        10  iconst-clinic-addr                  pic x(25)   occurs  3  times.
+    05  iconst-clinic-card-colour               pic    x.
+    05  iconst-clinic-over-lim1                 pic 99v99.
+    05  iconst-clinic-under-lim2                pic 99v99.
+    05  iconst-clinic-under-lim3                pic 99v99.
+    05  iconst-clinic-over-lim4                 pic 99v99.
+
+*!    05  iconst-clinic-batch-nbr                 pic 9(6).
+    05  iconst-clinic-batch-nbr                 pic x(6).
+
+    05  iconst-reduction-factor                 pic 99v99.
+    05  iconst-overpay-factor                   pic 99v99.
+* 2006/11/08
+*   05  filler                                  pic x(242).
+    05  filler                                  pic x(106).
+    05  iconst-clinic-pay-batch-nbr             pic x(6).
+    05  filler                                  pic x(130).
+* 2006/11/08 - end
+
+    copy "f090_const_mstr_rec_3.ws".
+01  constants-mstr-rec-3.
+*
+*       the percentage code for rma misc code 0 is stored on the
+*       doctor record; misc codes 1 to 9 are stored on this
+*       constants master record
+*
+*  dec 21/90 (b.m.l.) - increase all decimal places by 2 to allow for
+*                       the g.s.t.
+*
+    05  const-rec-3-rec-nbr                             pic 99.
+    05  const-percentages-misc-curr.
+        10  const-misc-curr occurs 9 times              pic 9v9999.
+    05  const-percentages-misc-curr-r redefines const-percentages-misc-curr.
+        10  const-misc-1-curr                           pic 9v9999.
+        10  const-misc-2-curr                           pic 9v9999.
+        10  const-misc-3-curr                           pic 9v9999.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   5
+*                      r123b.cbl (/alpha/rmabill/rmabill101c/use/f090)
+        10  const-misc-4-curr                           pic 9v9999.
+        10  const-misc-5-curr                           pic 9v9999.
+        10  const-misc-6-curr                           pic 9v9999.
+        10  const-misc-7-curr                           pic 9v9999.
+        10  const-misc-8-curr                           pic 9v9999.
+        10  const-misc-9-curr                           pic 9v9999.
+    05  const-percentages-misc-prev.
+        10  const-misc-prev occurs 9 times              pic 9v9999.
+    05  const-percentages-misc-prev-r redefines const-percentages-misc-prev.
+        10  const-misc-1-prev                           pic 9v9999.
+        10  const-misc-2-prev                           pic 9v9999.
+        10  const-misc-3-prev                           pic 9v9999.
+        10  const-misc-4-prev                           pic 9v9999.
+        10  const-misc-5-prev                           pic 9v9999.
+        10  const-misc-6-prev                           pic 9v9999.
+        10  const-misc-7-prev                           pic 9v9999.
+        10  const-misc-8-prev                           pic 9v9999.
+        10  const-misc-9-prev                           pic 9v9999.
+    05  filler                                          pic x(292).
+
+
+    copy "eft_logical_rec_file.fd".
+* 99/dec/16 B.E. separated originator number and file creation number
+*                into 2 separate fields
+
+
+fd    eft-logical-rec-file
+                block    contains   1464  characters
+                record   contains   1464  characters.
+
+01    eft-record-type-a.
+*mf          05   a-01-record-type                 pic a.
+             05   a-01-record-type                 pic x.
+             05   a-02-record-count                pic 9(9).
+             05   a-03-originator-number           pic x(10).
+             05   a-04-file-creation-number        pic 9(4).
+             05   a-05-creation-date               pic 9(6).
+             05   a-06-destination-data-centre     pic 9(5).
+             05   a-07-filler                      pic x(1213).
+             05   a-08-version-number              pic 9(4).
+             05   a-09-settlement-account          pic 99.
+             05   a-10-institution-account.
+                  10   institution-account  occurs  10 times.
+                       15   institution-id         pic 9(9).
+                       15   settlement-account     pic x(12).
+
+01    eft-record-type-c.
+
+             05    c-01-record-type                pic a.
+             05    c-02-record-count               pic 9(9).
+*            05    c-03-origin-contl-nbr           pic x(14).
+             05    c-03-originator-nbr             pic x(10).
+             05    c-03-file-creation-nbr          pic 9(04).
+
+             05    c-04-transaction-type           pic 9(3).
+             05    c-05-amount                     pic 9(8)v99.
+             05    c-06-fund-available-date        pic 9(6).
+             05    c-07-bank-nbr                   pic 9(9).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   6
+*                      r123b.cbl (/alpha/rmabill/rmabill101c/use/eft_)
+             05    c-08-payee-acc-nbr              pic x(12).
+             05    c-09-reserved                   pic x(22).
+             05    c-10-stored-trans-type          pic 9(3).
+*            05    c-11-rma-short-name             pic x(15).
+             05    c-11-short-name                 pic x(15).
+             05    c-12-payee-name                 pic x(30).
+*            05    c-13-rma-long-name              pic x(30).
+             05    c-13-long-name                  pic x(30).
+             05    c-14-originator-nbr             pic x(10).
+             05    c-15-cross-ref-nbr              pic x(19).
+             05    c-16-institution-return         pic 9(9).
+             05    c-17-account-return             pic x(12).
+             05    c-18-sundry                     pic x(15).
+             05    c-19-filler                     pic x(22).
+             05    c-20-settlement-indicator       pic 9(2).
+             05    c-21-invalid-indicator          pic 9(11).
+             05    c-seg-two-six                   pic x(1200).
+
+
+01    eft-record-type-z.
+
+             05    z-01-record-type                pic a.
+             05    z-02-record-count               pic 9(9).
+*                05    z-03-origin-contl-nbr           pic x(14).
+             05    z-03-originator-nbr             pic x(10).
+             05    z-03-file-creation-number       pic 9(4).
+             05    z-04-total-debit-value          pic 9(12)v99.
+             05    z-05-total-debit-nbr            pic 9(8).
+             05    z-06-total-credit-value         pic 9(12)v99.
+             05    z-07-total-credit-nbr           pic 9(8).
+             05    z-08-filler                     pic x(1396).
+
+
+sd    sorted-file
+                block    contains   1464  characters
+                record   contains   1464  characters.
+
+01    sorted-record.
+             05   s-record-type                   pic x.
+             05   s-record-count                  pic x(9).
+             05   s-originator-nbr                pic x(14).
+             05   s-mix-1                         pic x(150).
+             05   s-x-ref-nbr                     pic x(3).
+             05   s-mix-2                         pic x(1287).
+
+
+fd    output-file
+                block    contains   1464  characters
+                record   contains   1464  characters.
+
+01    output-record                               pic x(1464).
+
+working-storage section.
+
+
+77  sel-clinic                          pic 99          value zeroes.
+77  err-ind                             pic 99          value zeroes.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   7
+*                      r123b.cbl                                     )
+*       status file indicators
+*
+77  common-status-file                  pic x(2)       value zero.
+77  status-iconst-mstr                  pic x(11)       value spaces.
+77  status-cobol-iconst-mstr            pic xx          value zero.
+*
+
+
+77   ws-work-file-a             pic x(11)       value "work_file_a".
+77   ws-sorted-file             pic x(11)       value "sorted_file".
+77   ws-output-file             pic x(8)        value "eft_tape".
+
+
+copy "mth_desc_max_days.ws".
+*
+*       (each position contains:
+*               - maximum nbr of days in month
+*               - non-abreviated spelling of month
+*               - nbr of julian days from jan-01 until last day of month
+*       note: table does not take into consideration leap year)
+*
+01  month-descs-and-max-days-mth.
+    05  mth-desc-max-days.
+        10  filler                      pic x(14) value '31  JANUARY031'.
+        10  filler                      pic x(14) value '29 FEBRUARY059'.
+        10  filler                      pic x(14) value '31    MARCH090'.
+        10  filler                      pic x(14) value '30    APRIL120'.
+        10  filler                      pic x(14) value '31      MAY151'.
+        10  filler                      pic x(14) value '30     JUNE181'.
+        10  filler                      pic x(14) value '31     JULY212'.
+        10  filler                      pic x(14) value '31   AUGUST243'.
+        10  filler                      pic x(14) value '30SEPTEMBER273'.
+        10  filler                      pic x(14) value '31  OCTOBER304'.
+        10  filler                      pic x(14) value '30 NOVEMBER334'.
+        10  filler                      pic x(14) value '31 DECEMBER365'.
+    05  mth-desc-max-days-r   redefines mth-desc-max-days.
+        10  mth-desc-max-days-occur     occurs  12  times.
+            15  max-nbr-days            pic 99.
+            15  mth-desc                pic x(9).
+            15  nbr-julian-days-ytd     pic 9(3).
+
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                "INVALID CLINIC NUMBER".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs 1 times.
+
+01  err-msg-comment                             pic x(60).
+
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   8
+*                      r123b.cbl (/alpha/rmabill/rmabill101c/use/sysd)
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+
+
+procedure division.
+declaratives.
+
+err-constants-mstr-file section.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page   9
+*                      r123b.cbl                                     )
+    use after standard error procedure on iconst-mstr.
+err-constants-mstr.
+    move status-iconst-mstr             to common-status-file.
+    display common-status-file.
+    stop "ERROR IN ACCESSING CONSTANTS MASTER".
+    stop run.
+
+end declaratives.
+
+main-line section.
+mainline.
+
+    perform aa0-initialization                  thru    aa0-99-exit.
+
+    perform ab3-sort-eft-record                 thru    ab3-99-exit.
+
+    perform az0-end-of-job                      thru    az0-99-exit.
+
+    stop run.
+
+
+
+sec-51 section 51.
+
+
+aa0-initialization.
+
+    accept sys-date                     from date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+
+    open input iconst-mstr.
+
+
+aa0-10-clinic.
+
+    accept sel-clinic.
+    move sel-clinic                     to      iconst-clinic-nbr-1-2.
+
+    read iconst-mstr
+      invalid key
+        move 1                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to aa0-10-clinic.
+
+    close iconst-mstr.
+
+
+*------------------------------------------------------------------*
+
+aa0-99-exit.
+    exit.
+
+ab3-sort-eft-record.
+
+
+        sort    sorted-file
+                on   ascending key    s-record-type,
+                                      s-record-count,
+* Micro Focus COBOL for UNIX         V4.0 revision 005 02-Jun-16 17:02 Page  10
+*                      r123b.cbl                                     )
+                                      s-x-ref-nbr
+                using    eft-logical-rec-file
+                giving   output-file.
+
+
+ab3-99-exit.
+   exit.
+
+
+az0-end-of-job.
+
+    accept sys-time                     from time.
+
+    stop run.
+
+az0-99-exit.
+    exit.
+
+
+
+
+za0-common-error.
+
+    move err-msg (err-ind)              to      err-msg-comment.
+    display err-msg-comment.
+
+za0-99-exit.
+    exit.
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        6640     Code:         417

@@ -1,0 +1,72 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE R124B_MP.QZS
+COMMENT "#> program-id.     r124b_mp.qzs"
+COMMENT "********************************************************************"
+COMMENT "IF YOU MODIFY THIS PROGRAM ALSO MODIFY the year end pgm ????"
+COMMENT "********************************************************************"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: Print the STATEMENT OF EARNINGS for the physician"
+COMMENT "for the  * MANUAL PAYMENTS('mp') *   payment subsystem"
+COMMENT "PHASE II - READ SUBFILE AND CREATE ACTUAL STATEMENT"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE   WHO  DESCRIPTION"
+COMMENT "00/nov/13 B.E. - cloned from r124b_rma.qzs to create this 'mp' statement"
+COMMENT "00/nov/15 B.E. - moved x-date-title  from r124a into this pgm so it could"
+COMMENT "be customized for each clinic"
+COMMENT "00/sep/02 B.E. - removed 'from November' message from YTD column"
+COMMENT "06/jan/17 b.e. - added x-parm-portal to indicate if printing the regular"
+COMMENT "print version of report or generating the portal upload"
+COMMENT "file in which case include doctor id/dept on print lines"
+COMMENT "07/mar/26 b.e.  - print the 'privacy masked' bank account now created in "
+COMMENT "r124a.qzs so that the full bank account nbr is not visible"
+COMMENT "07/sep/04 M.C.  - add new defined item x-new-parm and x-eol-doc-nbr for"
+COMMENT "portal (DOC or DEP)"
+COMMENT "07/sep/25 b.e.  - portal DEP run should ignore any dept 14,15 and 31 doctors"
+COMMENT "because there is not manager for that dept."
+COMMENT "07/sep/26 b.e.  - form feed at end of page wasn't working - noticed when"
+COMMENT "manager PDF was created with multi-page doc report. Added"
+COMMENT "x-ff-pdf to last line of page to get FF right."
+COMMENT "08/nov/18 M.C.  - Yasemin requested to take out the messages (x-msg2c/d/e/f)"
+COMMENT "on the statement"
+COMMENT "11/Apr/28 MC1   - remove 'of Hamilton' in company name and  "
+COMMENT "centre for company name in x-title-0"
+COMMENT "11/May/03 MC2   - access to f070 and f123 to get company name"
+COMMENT "- modify x-title-0 to pick up company name instead of hardcode"
+COMMENT "13/Jul/09 MC3   - change from Mary Brownridge to Helena Vecera and extension 20397"
+COMMENT "14/Dec/01 MC4   - change from Helena Vecera   to Rizwan Khan   and extension 23350"
+COMMENT "15/Aug/27 MC5   - change from Rizwan Khan back to Helena Vecera, from extension 23350 to 20397"
+COMMENT "16/Mar/30 MC6   - change from Helena Vecera   to Nenita Hernandez  and extension 23350"
+COMMENT "16/Oct/20 MC7   - Yasemin requests to add Nenita's email to be the same as 101c"
+CANCEL CLEAR
+SET DEFAULT
+SET REPORT NOLIMIT
+SET REPORT DEV DISC NAME R124B
+COMMENT "set page width 200 length 0"
+SET PAGE WIDTH 202 LENGTH 0
+SET NOHEAD
+SET NOFORMFEED
+COMMENT "2011/05/03 - MC2"
+COMMENT "access *r124a                                               "
+ACCESS *R124A LINK DOC-DEPT TO DEPT-NBR OF F070-DEPT-MSTR OPT LINK DEPT-COMPANY TO COMPANY-NBR OF F123-COMPANY-MSTR OPT
+COMMENT "2011/05/03 - end"
+COMMENT "(these statements don't require printing of the following lines)"
+SELECT IF COMP-CODE <> "INCEXP" AND COMP-CODE <> "PAYPOT"
+SORT ON DOC-DEPT ON DOC-NBR ON COMP-CODE-GROUP ON PROCESS-SEQ
+COMMENT "if PORTAL version of progrma then include doctor/dept info on print lines"
+DEFINE X-PARM-PORTAL CHAR*7 = PARM UPSHIFT PROMPT "Enter PRINT    or  PORTAL  : "
+COMMENT "2007/09/04 - if PORTAL, then either include doctor or dept info on print lines"
+DEFINE X-NEW-PARM CHAR*3 = PARM UPSHIFT PROMPT "Enter  DOC   or   DEP  : "
+AND SELECT IF X-NEW-PARM = "DOC" OR ( X-NEW-PARM = "DEP" AND DOC-DEPT <> 14 AND DOC-DEPT <> 15 AND DOC-DEPT <> 31 )
+DEF X-EOL-DOC-NBR CHAR*3 = DOC-NBR IF X-NEW-PARM = 'DOC' ELSE 'Z' + ASCI(DOC-DEPT,2) IF X-NEW-PARM = 'DEP'
+COMMENT "2007/09/04 - end"
+COMMENT "2007/09/04 - MC"
+COMMENT "+ doc-nbr[1:3]                                           &"
+COMMENT "2007/09/04 - end"
+DEF X-PORTAL-FIELDS CHAR*7 = "~" + X-EOL-DOC-NBR + ASCII(DOC-DEPT,2)[1:2] + "~" IF X-PARM-PORTAL = "PORTAL" ELSE ""
+BEGININCLUDE $PB_SRC/PRINTER_CODES.DEF

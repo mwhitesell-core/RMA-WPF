@@ -1,0 +1,230 @@
+; NAME: U116_PAYCODE2.USE  (INCLUDED IN PGM U116.QTS)
+; THIS COPYBOOK IS USED BY THE FOLLOWING PROGRAMS:
+; 	u116.qts
+;
+;
+; ???? CAN CODE 'YTDEXP' BE REPLACED BY 'YTDCEX'. IF SO REMOVE FROM
+; F190 AND U114/5 PGM THAT CALC'S IT.
+;
+;
+;   MODIFICATION HISTORY
+;  DATE     WHO        DESCRIPTION
+; 92/SEP/22 B.E.       ADDED FACTOR OF F112 TO AFFECT NET PAY CALC.
+; 92/SEP/28 B.E.       ADDED 'ZONED*8'  DEFS
+;                      ADDED CHECK AGAINST CEILING (YTDCEA)
+; 92/OCT/10 B.E.       added UNDER comp code calculation
+; 93/FEB/21 B.E.       replaced YTDxxx of F110 with DOC-YTDxxx of F020
+; 93/APR/20 B.E.       with DOC- values being used YTDEXP no longer required
+; 93/MAY/06 B.E.       Added subfile F119
+;                      Paycode 3/4 removed F110 linkage files
+; 93/MAY/18 B.E.       INTEGER*8 SIZE 4 VS ZONED
+; 93/MAY/25 B.E.       changed UNDER to STATUS
+; 93/MAY/27 B.E.       output F110 STATUS rec even if $ value is 0
+; 93/JUN/01 B.E.       in F119 PAYPOT record changed X-NOT-NEEDED to DOC-YTDEAR
+; 94/JAN/20 M.C.       ADD THE LOGIC FOR ADD/UPDATE TO F110-COMPENSATION
+;                      FOR GTYPEA COMP CODE, SET FACTOR TO 0.0 FROM 1.0
+; 94/JAN/24 B.E.       CALCULATION OF 'GTYPE' TRANSACTION ADDED. SIMILAR
+;                      TO PAY CODE 1A 'W-POTGUAR-AMT-NET' IS CALC'D AND
+;                      'GTYPE' TRANS OUTPUT TO F110 AND *F119
+; 94/NOV/03 B.E.       CHANGED CALC. OF W-PAYPOT-AMT-NET TO USE 'YTD' VALUES
+;                      AND TAKE INTO CONSIDERATION YTD EARNINGS.
+; 94/NOV/19 B.E.       REDUCE POTENTIAL PAY BY AMOUNT OF ANY ADVANCES
+;
+
+; 96/MAR/05 M.C.       UPDATE DOC-EP-PAY-CODE AND SUB CODE IN F020
+; 1999/June/01 S.B.    - Added the use file
+;                        def_compensation_status.def to 
+;                        prevent hard coding of compensation-status.
+; 2006/may/10 b.e.      - $1M payroll changes to size of calculated fields
+; 2015/Aug/04 MC1       - allow negative paypot 
+
+request u116_run_2_calc_paycd_2                 &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                             &
+        link current-ep-nbr                             &
+        viaindex f112-ep-doc-nbr                        &
+        to   ep-nbr of f112-pycdceilings                &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+             ytdinc-seq,                                              &
+             "YTDINC"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation alias f110-ytdinc opt  &
+        link doc-nbr of f112-pycdceilings,                            &
+;	     (this F110 transaction used here rather than DOC-YTDEAR in
+;	     F020 because any Manual Payments this EP have been
+;	     been included in the F110 transaction amt but aren't
+;	     reflected in F020 value)
+             ep-nbr  of f112-pycdceilings,                            &
+             ytdear-seq,                                              &
+             "YTDEAR"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation alias f110-ytdear opt  &
+        link doc-nbr of f112-pycdceilings                             &
+        to   doc-nbr of f020-doctor-mstr opt                          &
+        link doc-nbr of f112-pycdceilings,                            &
+             ep-nbr  of f112-pycdceilings,                            &
+;            totadv-seq,                                              &
+             advout-seq,                                              &
+;            "TOTADV"                                                 &
+             "ADVOUT"                                                 &
+        to   doc-nbr,                                                 &
+             ep-nbr,                                                  &
+             process-seq,                                             &
+             comp-code    of f110-compensation                        &
+                       alias f110-totadv          opt
+
+choose const-rec-nbr 6
+
+select f112-pycdceilings                                              &
+        if    doc-pay-code of f112-pycdceilings = "2"
+;98/nov/17
+;def w-amt-net-f110-ytdinc integer*8 signed size 4                        &
+;def w-amt-net-f110-ytdinc numeric*8                            	  &
+def w-amt-net-f110-ytdinc numeric*10                            &
+       = amt-net  of f110-ytdinc   if record f110-ytdinc exists &
+    else 0
+;def w-amt-net-f110-ytdear integer*8 signed size 4                        &
+;def w-amt-net-f110-ytdear  numeric*8			   		  &
+def w-amt-net-f110-ytdear  numeric*10				   &
+       = amt-net  of f110-ytdear  if record f110-ytdear exists     &
+    else 0
+;def w-amt-net-f110-totadv integer*8 signed size 4                        &
+;def w-amt-net-f110-totadv numeric*8			    		  &	
+def w-amt-net-f110-totadv numeric*10			    	   &
+       = amt-net  of f110-totadv   if record f110-totadv exists    &
+    else 0
+
+;DEF W-PAYPOT-AMT-NET INTEGER*8 SIGNED SIZE 4                          &
+;     = (  AMT-NET OF F110-TOTINC                                      &
+;        * FACTOR  OF F112-PYCDCEILINGS) / 10000
+
+;def w-paypot-amt-net-2 integer*8 signed size 4                         &
+def w-paypot-amt-net-2 integer*10 signed                  &
+;    = (  (   amt-net of f110-ytdinc                                   &
+;           - amt-net of f110-ytdear                                   &
+     = (  (   w-amt-net-f110-ytdinc                     &
+            - w-amt-net-f110-ytdear                     &
+          )                                             &
+         * factor  of f112-pycdceilings                 &
+       ) / 10000
+
+
+;(DON'T ALLOW NEGATIVE PAYMENT)
+;def w-paypot-amt-net-3 integer*8 signed size 4                         &
+def w-paypot-amt-net-3 integer*10 signed                &
+; MC1 - allow negative paypot
+;    = w-paypot-amt-net-2 if w-paypot-amt-net-2 > 0	&
+; else 0
+     = w-paypot-amt-net-2 
+; MC1 - end
+
+; (94/NOV/18)
+; (POTENTIAL Payment for this EP has now been calculated. However, if
+;  any ADVANCE payments have been made the POTPAY must be reduced by the
+;  Outstanding Advances)
+def totadv-flag char*1 = "Y" if  record f110-totadv exists &
+	else "N"
+;def w-paypot-amt-net-4 integer*8 signed size 4                          &
+def w-paypot-amt-net-4 integer*10 signed                              &
+        =  w-paypot-amt-net-3                                         &
+;        - amt-net  of f110-totadv   if record f110-totadv exists     &
+         - w-amt-net-f110-totadv     if record f110-totadv exists     &
+     else  w-paypot-amt-net-3
+
+; (if Advances greater than amt to be paid, carry excess over to next
+;  PED as ADVANCE OUTSTANDING transaction)
+;def w-amt-advout integer*8 signed size 4                                  &
+def w-amt-advout integer*10 signed                                    &
+        = 0              if w-paypot-amt-net-4 >= 0                   &
+     else abs(w-paypot-amt-net-4)
+
+; (if Advances where greater than amt to be paid, pay zero)
+;def w-paypot-amt-net integer*8 signed size 4                              &
+def w-paypot-amt-net integer*10 signed                                &
+; MC1 - allow negative paypot
+;        = w-paypot-amt-net-4 if w-paypot-amt-net-4 >= 0               &
+;    else 0
+        = w-paypot-amt-net-4 
+; MC1 - end
+
+;S.B.
+use $use/def_compensation_status.def
+
+;----------------------------
+subfile debugu116cd2 keep include                         &
+        ep-nbr of f112-pycdceilings,                      &
+        doc-nbr of f112-pycdceilings,                     &
+        doc-pay-code of f112-pycdceilings,                &
+        doc-pay-sub-code of f112-pycdceilings,            &
+    w-paypot-amt-net-2,                                   &
+;   amt-net of f110-ytdinc,                               &
+    w-amt-net-f110-ytdinc,                                &
+;   amt-net of f110-ytdear,                               &
+    w-amt-net-f110-ytdear,                                &
+    factor  of f112-pycdceilings,                         &
+    w-paypot-amt-net-3,                                   &
+    w-paypot-amt-net-4,                                   &
+;   amt-net  of f110-totadv,                              &
+    amt-net  of f110-totadv,                              &
+    w-amt-advout,                                         &
+    w-paypot-amt-net,					&
+;   totadv-seq,						&
+    advout-seq,						&
+     w-amt-net-f110-totadv,				&
+     totadv-flag
+
+;------------- F 1 1 0 --------------------------------------------------------
+output f110-compensation add alias f110-output-paypot
+        item ep-nbr          = w-current-ep-nbr
+        item ep-nbr-entry    = w-current-ep-nbr
+        item comp-code       = "PAYPOT"
+        item comp-type       = paypot-type
+        item process-seq     = paypot-seq
+        item factor          = factor          of f112-pycdceilings
+        item factor-override = "*" if factor of f112-pycdceilings <> 10000 &
+                          else " "
+        item comp-units      = comp-units      of f110-ytdinc
+        item amt-gross       = amt-gross       of f110-ytdinc
+        item amt-net         = w-paypot-amt-net
+;S.B.
+;        item compensation-status = " "
+        item compensation-status = compensation-status-accepted
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U116 gen'd"
+
+;------------- F 0 2 0 --------------------------------------------------------
+
+;def  new-doc-ytdear integer*8 signed size 4                     	&
+def  new-doc-ytdear integer*10 signed                           &
+    =   doc-ytdear of f020-doctor-mstr                          &
+      + w-paypot-amt-net
+
+;(update Doctor rec's YTD EARNINGS with calculated earnings for this EP)
+output f020-doctor-mstr alias f020-update update ; AT DOC-NBR
+   item doc-ytdear final new-doc-ytdear
+;  ITEM DOC-YTDEAR FINAL DOC-YTDEAR + W-PAYPOT-AMT-NET
+   item doc-ep-pay-code final doc-pay-code of f112-pycdceilings
+   item doc-ep-pay-sub-code final doc-pay-sub-code of f112-pycdceilings
+
+;------------- F 1 1 9 --------------------------------------------------------
+;def x-not-needed integer*8 signed size 4 = 0
+def x-not-needed integer*10 signed        = 0
+def x-rec-type  char*1 = "A"
+def x-comp-code char*6 = "PAYPOT"
+subfile f119 append                                   include &
+         doc-nbr of f112-pycdceilings   , &
+         x-comp-code                    , &
+         paypot-seq-rpt                 , &
+         paypot-group                   , &
+         x-rec-type                     , &
+         new-doc-ytdear                 , &
+         w-paypot-amt-net
+  

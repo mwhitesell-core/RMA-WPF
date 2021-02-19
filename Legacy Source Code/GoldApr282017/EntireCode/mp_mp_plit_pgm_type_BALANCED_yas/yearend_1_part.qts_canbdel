@@ -1,0 +1,113 @@
+cancel clear
+set verify errors
+;-----------------------------------------------------------------------
+run yearend_1
+
+  set process nolimit
+  set lock record update
+
+  global temp t-current-ep-nbr		zoned unsigned
+  global temp t-current-ep-nbr-minus1	zoned unsigned
+  global temp t-next-yr-yy		zoned unsigned
+  global temp t-next-yr-first-ep-nbr	zoned unsigned
+
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+request get-const-ep-nbr
+
+access constants-mstr-rec-6
+
+choose const-rec-nbr 6
+
+item t-current-ep-nbr		= current-ep-nbr	
+item t-current-ep-nbr-minus1	= (current-ep-nbr - 1)	
+item t-next-yr-yy		= (floor(current-ep-nbr / 100) + 1)
+item t-next-yr-first-ep-nbr	= (t-next-yr-yy * 100) + 1
+;-----------------------------------------------------------------------
+request setup_f112_next_year on calculation errors report on edit errors report
+
+access f112-pycdceilings						&
+	link doc-nbr			of f112-pycdceilings		&
+	  to doc-nbr			of f020-doctor-mstr		&
+	link doc-nbr			of f112-pycdceilings,		&
+	     t-next-yr-first-ep-nbr					&
+	  to doc-nbr,							&
+	     ep-nbr			of f112-pycdceilings		&
+					alias f112-next-yr opt
+
+select f112-pycdceilings 						&
+	if 	ep-nbr of f112-pycdceilings = t-current-ep-nbr	
+
+define d-next-pay-code		character size 1	= "1"		&
+	if 	doc-pay-code		of f112-pycdceilings = "4"	&
+	    and doc-pay-sub-code	of f112-pycdceilings = "A"	&
+	else	doc-pay-code		of f112-pycdceilings
+
+; 2011/06/22 - MC1 - check if doctor is terminated more than 2 years (730 days)
+def terminated-days zoned*5 unsigned = 					&
+         days(sysdate) - days(doc-date-fac-term)			&
+	if    doc-date-fac-term <> 0  					
+; 2011/06/22 - end 
+
+
+output f112-pycdceilings 						&
+	add								&
+	alias f112-add							&
+	if not record f112-next-yr exists				&
+; 2011/06/22 - MC1
+	  and terminated-days <= 730  on errors report
+; 2011/06/22 - end
+  item doc-nbr		of f112-add = doc-nbr		of f112-pycdceilings
+  item ep-nbr		of f112-add = t-next-yr-first-ep-nbr
+  item doc-pay-code	of f112-add = d-next-pay-code
+  item doc-pay-sub-code	of f112-add = doc-pay-sub-code	of f112-pycdceilings
+  item factor		of f112-add = factor		of f112-pycdceilings
+  item retro-to-ep-nbr	of f112-add = 0
+  item doc-yrly-ceiling	of f112-add = doc-yrly-ceiling	of f112-pycdceilings
+  item doc-yrly-ceiling-adjusted	of f112-add = 0
+  item doc-yrly-ceiling-computed	of f112-add 		&
+				    = doc-yrly-ceiling	of f112-pycdceilings
+  item doc-yrly-expense	of f112-add = 0
+  item doc-yrly-expense-adjusted	of f112-add = 0
+  item doc-yrly-expense-computed	of f112-add = 0
+  item doc-yrly-expn-alloc-pers		of f112-add = 0
+  item doc-yrly-ceil-guar		of f112-add = 0
+  item doc-yrly-ceiling-guar-perc	of f112-add = 0
+  item doc-rma-expense-percent-reg	of f112-add = 0
+  item doc-rma-expense-percent-misc	of f112-add = 0
+  item doc-dept-expense-percent-reg	of f112-add = 0
+  item doc-dept-expense-percent-misc	of f112-add = 0
+  item last-mod-date			of f112-add = sysdate
+  item last-mod-time			of f112-add = systime / 10000
+  item last-mod-user-id			of f112-add = "Comp.YrEndRoll"
+
+output f020-doctor-mstr 						&
+	update								&
+	alias f020-update
+  item doc-yrly-ceiling-computed of f020-update 			&
+		= 100 * doc-yrly-ceiling of f112-pycdceilings
+
+
+;-----------------------------------------------------------------------
+request split_f112_year_into_subfiles on calculation errors report on edit errors report
+
+access f112-pycdceilings	
+
+  temp t-ep-nbr-yy		zoned unsigned
+  item t-ep-nbr-yy		= floor(ep-nbr of f112-pycdceilings / 100)
+
+subfile f112_yearend_old					&
+	keep							&
+	if t-ep-nbr-yy lt t-next-yr-yy				&
+	include							&
+		f112-pycdceilings
+
+subfile f112_yearend_new					&
+	keep							&
+	if t-ep-nbr-yy ge t-next-yr-yy				&
+	include							&
+		f112-pycdceilings
+
+;-----------------------------------------------------------------------
+;build $pb_obj/yearend_1
+  

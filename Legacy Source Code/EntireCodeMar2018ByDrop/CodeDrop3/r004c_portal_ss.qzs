@@ -1,0 +1,196 @@
+;doc: r004c_portal_ss.qzs
+;
+;program purpose : transaction summary (detail report) for import into excel - (column titles and data only)
+;                  use r004b.sf and create detail report
+;                  r004c.txt control break at doc-nbr
+;
+;  modification history
+;date       by whom   description
+; 2013/Jan/17 MC        original (clone from r004c_portal.qzs)
+;			to show column headings and values, do not need page titles and totals as suggested by Brad
+; 2013/Jan/22 be1	- change delimiter from tilde to ,  and double quote all character fields and reformat dates for xls
+; 2013/Apr/03 MC1	- add f020-rpt to access statement, and add select statement
+
+can clear
+set rep nolimit
+set rep device disc name r004c_portal_ss        
+set page length 0  width 264
+set nohead
+set noblanks
+set noformfeed
+
+; 2013/04/03 - MC1
+;access *r004b  							  
+access *r004b  					&
+	link (x-doc-nbr, 1)			&
+	 to  doc-nbr, report-id of f020-rpt optional
+
+; if no record for the report id (in this case report id 1 for r004c_portal_ss) for the doctor, then create report for the doctor
+sel if not record f020-rpt exists
+
+; 2012/04/03 - end
+
+sort    on iconst-clinic-nbr-1-2                                &
+        on clmhdr-doc-dept of r004b                             &
+        on x-doc-nbr                                            &
+        on x-pat-name                                           &
+        on clmdtl-sv-date                                       &
+        on x-claim-dtl-id                                       &
+        on x-oma-code
+
+
+;be1 def delimiter char*1 = '~'
+def delimiter char*1 = ','
+;be1 def x-doc-dept-nbr char*7= '~' + x-doc-nbr + ascii(clmhdr-doc-dept of r004b,2) + '~'
+def x-doc-dept-nbr char*7= '"' + x-doc-nbr + ascii(clmhdr-doc-dept of r004b,2) + '"'
+
+;be1
+;def x-tab-num   int*2 unsigned = 11
+;def x-tab       char*1         = char(x-tab-num)[1:1]
+def x-tab       char*1         = "	"
+
+;be1
+def x-service-date char*12 = '"' + clmdtl-sv-date[1:4]  + "-" + clmdtl-sv-date[5:2]  + "-" + clmdtl-sv-date[7:2]  + '"'
+def x-entry-date   char*12 = '"' + clmhdr-date-sys[1:4] + "-" + clmhdr-date-sys[5:2] + "-" + clmhdr-date-sys[7:2] + '"'
+
+def x-oma-cd-suff char*7 = '"' + clmdtl-oma-cd + clmdtl-oma-suff + '"'
+def x-clmdtl-adj-cd char*3 = '"' + clmdtl-adj-cd + '"'
+
+def x-agent char*40 =									&
+               '"0 - OHIP BILLING"'   				if clmdtl-agent-cd = 0  &
+       else    '"1 - DIAGNOSTIC BILLING"'			if clmdtl-agent-cd = 1  &
+       else    '"2 - OHIP WCB BILLING"'				if clmdtl-agent-cd = 2  &
+       else    '"3 - ICU (85) DIRECT BILL"'			if clmdtl-agent-cd = 3  &
+       else    '"4 - INELIGIBLE OHIP/BILL PATIENT"'		if clmdtl-agent-cd = 4  &
+       else    '"5 - MOH REMITTANCE REDUCTION (MOHR)"'		if clmdtl-agent-cd = 5  &
+       else    '"6 - PATIENT/INSURANCE BILLING"'		if clmdtl-agent-cd = 6  &
+       else    '"7 - MISCELLANEOUS PAYMENT"'			if clmdtl-agent-cd = 7  &
+       else    '"8 - NEONATAL / GERIATRICS ALT / ICU ALT"'	if clmdtl-agent-cd = 8  &
+       else    '"9 - W.C.B. BILLING / W.C.B. MISC."' 		if clmdtl-agent-cd = 9	&
+       else    pack('"' + ascii(clmdtl-agent-cd) + '"')
+
+def x-source-cd char*23 =							&
+		'"D - Diskette"'		if x-source[2:1] = 'D'	&
+	else	'"W - Webstar"'			if x-source[2:1] = 'W'  &
+;be1	else	'"A - A Adjustment"'		if x-source[2:1] = 'A'	&
+	else	'"A - Cash+Revenue Adj."'	if x-source[2:1] = 'A'	&
+;be1	else	'"R - R Adjustment"'		if x-source[2:1] = 'R'	&
+	else	'"R - Revenue only Adj."'	if x-source[2:1] = 'R'	&
+	else	pack('"' + x-source + '"' )
+
+; (CHECK IF NEGATIVE SIGN WILL BE PRINTED)
+def x-ohip-fee-sign char*1 = "-"            if x-rev-ohip-fee < 0      &
+                   else " "
+def x-ohip-adj-sign char*1 = "-"            if x-rev-ohip-adj < 0      &
+                   else " "
+
+def x-period char*1 = "."
+
+def x-ohip-fee-dollars = abs(x-rev-ohip-fee) / 100 if x-rev-ohip-fee <> 0	&
+		else  0
+def x-ohip-fee-cents   = mod(abs(x-rev-ohip-fee),100) if x-rev-ohip-fee <> 0	&
+		else  0
+def x-ohip-adj-dollars = abs(x-rev-ohip-adj) / 100 if x-rev-ohip-adj <> 0	&
+		else  0
+def x-ohip-adj-cents   = mod(abs(x-rev-ohip-adj),100) if x-rev-ohip-adj <> 0	&
+		else  0
+
+
+def x-diag-cd-alpha char*5 = 	pack('"' + ascii(clmdtl-diag-cd) 	+ '"')
+def x-nbr-svcs-alpha char*5 = 	pack('"' + ascii(x-nbr-svcs) 		+ '"')
+def x-pat-surname char*27 = 	pack('"' + pat-surname 			+ '"')
+def x-pat-given-name char*19 = 	pack('"' + pat-given-name 		+ '"')
+def x-x-claim-dtl-id char*18 = 	pack('"' + pack(x-claim-dtl-id)		+ '"')
+;def x-ohip-fee-alpha char*12 = pack('"' + ascii(x-rev-ohip-fee) 	+ '"')
+;def x-ohip-adj-alpha char*12 = pack('"' + ascii(x-rev-ohip-adj) 	+ '"')
+def x-ohip-fee-alpha char*12 = 	pack('"' + trunc(lj(x-ohip-fee-sign +		&
+					      ascii(x-ohip-fee-dollars) + 	&
+					      x-period +			&
+					      ascii(x-ohip-fee-cents,2))) + '"')
+def x-ohip-adj-alpha char*12 = 	pack('"' + trunc(lj(x-ohip-adj-sign +		&
+					      ascii(x-ohip-adj-dollars) + 	&
+					      x-period +			&
+					      ascii(x-ohip-adj-cents,2))) + '"')
+def x-x-pat-id-info  char*14 =	pack('"' + x-pat-id-info	 	+ '"') 
+def x-x-orig-batch   char*10 =	pack('"' + x-orig-batch	 		+ '"') 
+def x-clmhdr-reference char*13= pack('"' + clmhdr-reference  		+ '"')
+
+
+initial heading                         &
+  tab  01 '"Pat Surname"'		& 
+  tab  15 x-tab				&
+  tab  16 '"Pat Given Name"'		&
+  tab  33 x-tab				&
+  tab  34 '"Claim Nbr"' 		&
+  tab  45 x-tab				&
+  tab  46 '"Patient Id"' 		&
+  tab  58 x-tab				&
+  tab  59 '"Billing Agent"'		&
+  tab  74 x-tab				&
+  tab  75 '"Adjust Code"'  		&
+  tab  88 x-tab				&	
+  tab  89 '"Source Code"'		&
+  tab 102 x-tab				&	
+  tab 103 '"OHIP Fee"'			& 
+  tab 113 x-tab				&	
+  tab 114 '"Adjustment Amt"'		& 
+  tab 130 x-tab				&	
+  tab 131 '"Service Date"'		&
+  tab 145 x-tab				&	
+  tab 146 '"Claim Entry Date"' 		&
+  tab 164 x-tab				&	
+  tab 165 '"Diag Code"'			&
+  tab 176 x-tab				&
+  tab 177 '"OMA Code"'			&
+  tab 187 x-tab				&
+  tab 188 '"Nbr Services"' 		&
+  tab 202 x-tab				&
+  tab 203 '"RMA BATCH Id"'		&
+  tab 217 x-tab				&
+  tab 218 '"Note"'			&
+  tab 224 x-tab				&
+  tab 225 x-doc-dept-nbr 					
+
+
+define x-line char*262 =					&
+	    lj(							&
+		pack (		x-pat-surname			&
+			+	x-tab				&
+			+ 	x-pat-given-name 		&
+			+	x-tab				&
+			+ 	x-x-claim-dtl-id 		&
+			+	x-tab				&
+			+ 	x-x-pat-id-info	 		&
+			+	x-tab				&
+			+ 	x-agent 			&
+			+	x-tab				&
+			+ 	x-clmdtl-adj-cd 	 	&
+			+	x-tab				&
+			+ 	x-source-cd 			&
+			+	x-tab				&
+			+ 	x-ohip-fee-alpha 		&
+			+	x-tab				&
+			+ 	x-ohip-adj-alpha 		&
+			+	x-tab				&
+			+	x-service-date			&
+			+	x-tab				&
+			+ 	x-entry-date 	 		&
+			+	x-tab				&
+			+ 	x-diag-cd-alpha 		&
+			+	x-tab				&
+			+ 	x-oma-cd-suff  			&
+			+	x-tab				&
+			+ 	x-nbr-svcs-alpha		&
+			+	x-tab				&
+			+ 	x-x-orig-batch 			&
+			+	x-tab				&
+			+ 	x-clmhdr-reference		&
+			+	x-tab				&
+			+ 	x-doc-dept-nbr 	      		&
+		     )						&
+		 )
+
+report tab 01 x-line
+	
+
+build $obj/r004c_portal_ss

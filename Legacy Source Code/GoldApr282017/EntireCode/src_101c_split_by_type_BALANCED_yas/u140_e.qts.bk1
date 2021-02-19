@@ -1,0 +1,436 @@
+; Program: u140_e.qts
+;
+; Purpose:	upload AFP payments to the payroll's f114 special payments
+;		file so that they can be paid during the next payroll
+;		Additionally this pgm now creates non-payable but 
+;		tithe-able transactions for calculating dept tithe amounts.
+;
+; modification history
+; 2004/??/?? b.e.	- original
+; 2004/11/25 b.e.	- amt-gross now set to afp-payment-amt instead 
+;			  of afp-payment-amt-total
+; 2004/feb/04 b.e.	- added access to f020 doctor master to get data to
+;			  store doctor data in audit subfile so that later
+;			  reports don't have to access f020 to get this info.
+; 05/mar/08 M.C.        - substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+; 07/aug/13 b.e.	- summarize all payments for a doctor into a single
+;			  f114 payment transaction
+; 07/aug/15 M.C.	- change temp item to reset at doc-nbr and output f114 at doc-nbr
+;		          and subfile u140_e_audit at doc-nbr as well
+;
+; 08/may/09 brad 	- upload goverance transactions (AFPCON) to f119 "C" 
+; 			  records INSTEAD OF f114 (otherwise they go to f110 and
+;			  get paid - don't want that). 
+;			  We want to track the payments  for tithe calculations
+;			  but not pay them. 
+; 08/jun/16 M.C.	- add a new request to create NONRB and NONRBP for rec type D
+; 08/jun/30 M.C.	- Brad changed his mind, he would like to create 
+;			  transactions in f114-special-payment
+;			  instead of f119 subfile for AFPCON, NONRB & NONRBP
+; 08/jul/31 b.e.	- originally payroll was A = 101c, B = mp. July 2008
+;			  brought tithing and dep membership (depmem) charges
+;			  and a new solo payroll - payroll C.
+; 			  Now payrolls B(mp) and C(solo) can't just check the 
+;			  f074 flag - they must also consider the afp group 
+; 			  and dept of doctor
+;			  The current afp group that is 'fuzzy' is H132 where
+;			  some doctors get  paid in payroll B and others 
+;			  in payroll C.
+;			  Thus when running payroll B (in mp) test afp group
+;			  and dept of doctor to exclude payroll C docs and 
+;			  when running payroll C (in solo) ONLY include
+;			  certain H132 docs based upon their dept and ignore
+;			  the fact that f074 shows payroll B for H132.
+; 08/aug/05 M.C.	- change the selection criteria for payroll C and comment out for B
+; 08/sep/02 M.C.	- change the definition for solo doctors
+; 08/sep/18 M.C.	- ensure rec-type = 'A' for solo and 'C' for 101c
+; 08/oct/14 M.C.	- subtotal does not work properly, change to final old value + new value instead
+
+cancel clear
+run u140_e
+
+set default
+set process nolimit
+set lock record update
+
+global temp w-current-ep-nbr        zoned unsigned
+global temp w-current-ep-nbr-minus1 zoned unsigned
+global temp w-current-ep-nbr-plus1  zoned unsigned
+global temp w-ep-fiscal-nbr         zoned unsigned
+global temp afpcon-seq    	    zoned unsigned size 2
+global temp afpcon-type   	    char*1
+global temp afpcon-code-group 	    char*1
+; 2008/06/16 - MC
+global temp nonrb-seq    	    zoned unsigned size 2
+global temp nonrb-type   	    char*1
+global temp nonrb-code-group 	    char*1
+global temp nonrbp-seq    	    zoned unsigned size 2
+global temp nonrbp-type   	    char*1
+global temp nonrbp-code-group 	    char*1
+; 2008/06/16 - end
+;
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u114a_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item w-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item w-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item w-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+
+item w-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u140_get_afpcon                        	&
+                on edit        errors report    &
+                on calculation errors report
+
+access f190-comp-codes
+choose comp-code "AFPCON"
+item afpcon-seq = reporting-seq
+item afpcon-code-group  = comp-code-group 
+
+;------------------------------------------------
+request u140_get_nonrb                         	&
+                on edit        errors report    &
+                on calculation errors report
+
+access f190-comp-codes
+choose comp-code "NONRB"  
+item nonrb-seq  = reporting-seq
+item nonrb-code-group  = comp-code-group 
+
+request u140_get_nonrbp                        	&
+                on edit        errors report    &
+                on calculation errors report
+
+access f190-comp-codes
+choose comp-code "NONRBP"
+item nonrbp-seq  = reporting-seq
+item nonrbp-code-group  = comp-code-group 
+
+;------------------------------------------------------------------------
+
+request u140_update_f114                        &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access f075-afp-doc-mstr				&
+    link doc-afp-paym-group   				&
+    to   doc-afp-paym-group	of f074-afp-group-mstr  &
+    link "AFPCON" to comp-code of f190-comp-codes opt   &
+    link doc-nbr of f075-afp-doc-mstr			&
+     to  doc-nbr of f020-doctor-mstr opt		
+
+def x-selected-payroll char*1  				&
+	= parm prompt "Enter PAYROLL ID:"  upshift
+
+sort	on doc-nbr				  &	
+	on doc-afp-paym-group of f075-afp-doc-mstr
+
+; 2008/07/03 - it has confirmed that afp-payment-amt = afp-conversion-amt from the original incoming file 
+temp x-tmp-amt-gross  zoned*10 numeric
+item x-tmp-amt-gross = x-tmp-amt-gross + afp-payment-amt reset at doc-nbr
+temp x-tmp-amt-net zoned*10 numeric
+item x-tmp-amt-net   = x-tmp-amt-net   + afp-payment-amt reset at doc-nbr
+
+; 2008/07/03 - MC
+def x-solo-doc  char*1 = 'Y'						    &
+	             if    doc-afp-paym-group of f020-doctor-mstr  = 'H132' &
+;		       and doc-dept of f020-doctor-mstr = 31		    &
+;		       and batctrl-payroll of f074-afp-group-mstr  = 'C'        
+		       and x-selected-payroll  = 'C'        
+
+def x-gft-doc       char*1 = 'Y'						&
+	             if    doc-afp-paym-group of f020-doctor-mstr  = 'H111'     &
+		       and (    doc-dept of f020-doctor-mstr = 14		&
+		            or  doc-dept of f020-doctor-mstr = 15		&
+			   )							&
+;		       and batctrl-payroll of f074-afp-group-mstr  = 'A'        
+		       and x-selected-payroll  = 'A'        
+		  
+def x-non-gft-doc   char*1 = 'Y'						&
+	             if    doc-dept of f020-doctor-mstr = 4			&
+;		       and batctrl-payroll of f074-afp-group-mstr  = 'A'        
+		       and x-selected-payroll  = 'A'        
+
+; 2.1.2.3 - solo doctor		  
+;def x-rec-type char*1 = 'A' if x-solo-doc = 'Y'				&
+; 2.1.2.2 - GFT and non-GFT doctor 
+;		else    'C' if x-gft-doc = 'Y' or x-non-gft-doc ='Y'
+
+; 2008/07/03 - end
+
+; solo doctors are the only one's paid for these transactions so only they are 
+; output to f114 special payments for upload f119
+def x-rec-type char*1 = 'A' if batctrl-payroll of f074-afp-group-mstr = 'C'	&
+		else    'C'
+
+
+; payroll was A = 101c, B = mp 
+; in 2008, with new solo payroll - payroll C
+; can't just check the f074 flag - they must also check the afp group 
+; and dept of doctor
+
+select 									       &
+  if   	  afp-payment-amt <> 0						       &
+     and  x-selected-payroll = batctrl-payroll of f074-afp-group-mstr  	       &
+     and  afp-group-process-flag of f074-afp-group-mstr = 'E' 
+	
+
+; solo doctors are the only one's paid for these transactions so only they are 
+; output to f114 special payments for upload f119
+output f114-special-payments add update at doc-nbr 		&
+	via doc-nbr, comp-code				&
+	 using doc-nbr of f075-afp-doc-mstr,  "AFPCON"  on errors report 
+  item doc-nbr			final doc-nbr  		of f075-afp-doc-mstr
+  item comp-code		final "AFPCON"
+  item ep-nbr-from 		final w-current-ep-nbr   
+  item ep-nbr-to	 	final w-current-ep-nbr   
+  item comp-units		final afp-multi-doc-ra-percentage 	&
+							of f075-afp-doc-mstr  
+; 2008/06/30 - MC
+;  item amt-gross		final afp-payment-amt		&
+;						 	of f075-afp-doc-mstr  
+;  item amt-net  		final afp-payment-amt 	of f075-afp-doc-mstr  
+  
+
+; 2008/10/14 - MC
+; item amt-gross		subtotal x-tmp-amt-gross
+; item amt-net  		subtotal x-tmp-amt-net  
+  item amt-gross		final amt-gross + x-tmp-amt-gross
+  item amt-net  		final amt-net + x-tmp-amt-net  
+; 2008/10/14 - end
+; 2008/06/30 - end
+  item last-mod-date    	final sysdate
+  item last-mod-time		final systime / 10000
+  item last-mod-user-id		final "U140_e  gen'd"
+; 2008/06/30 - MC - include rec-type
+; item rec-type 		final 'C'        
+  item rec-type 		final x-rec-type
+; 2008/06/30 - end
+ 
+subfile u140_e_audit keep append at doc-nbr   include	&
+  x-selected-payroll,				&
+  doc-nbr of f075-afp-doc-mstr,			&
+  doc-afp-paym-group	of f075-afp-doc-mstr,   &
+  doc-name       	of f020-doctor-mstr,	&
+  doc-inits		of f020-doctor-mstr,	&
+  doc-dept		of f020-doctor-mstr,	&
+  comp-code             of f190-comp-codes,	&
+  ep-nbr-from,					&
+  ep-nbr-to,					&
+  comp-units,					&
+  x-tmp-amt-gross,				&
+  x-tmp-amt-net,				&
+; 2008/07/03 - MC
+  x-rec-type
+; 2008/07/03 - end
+
+;brad2 - 'hide' AFPCON transaction in "C" type record of f119-doctor-ytd
+;def x-rec-type  char*1 = "C"
+;def comp-code char*6 = "AFPCON"
+def x-amt-net    integer*10 signed        = afp-payment-amt of f075-afp-doc-mstr 
+def x-amt-gross  integer*10 signed        = afp-payment-amt of f075-afp-doc-mstr 
+
+
+;2008/07/03 - MC - note:  records created in f114-special-payments will be uploaded
+;		to f110-compensation for rec-type = 'A' and to f119-doctor-ytd for rec-type = 'C'
+;		in program u130.qts which is part of $cmd/teb1  payroll run
+
+;2008/06/16 - MC - add new request
+
+request u140_nonrb_nonrbp                       &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access f075-afp-doc-mstr				&
+    link doc-afp-paym-group   				&
+    to   doc-afp-paym-group	of f074-afp-group-mstr  &
+    link doc-nbr of f075-afp-doc-mstr			&
+    to   doc-nbr of f020-doctor-mstr opt		
+
+def x-selected-payroll char*1  				&
+	= parm prompt "Enter PAYROLL ID:"  upshift
+
+ 
+
+; 'NONRB'  for solo doctors with incoming group H132 or
+; 'NONRBP' for GFT & non-GFT doctors with incoming group H262, H513 to H519, H526, H528 & H529
+;      and for solo doctors with incoming group H262, H513 to H519, H520 to H524, H526, H528 & H529
+
+;; 2008/07/03 - MC - Brad decided to set rec-type 'A" instead of 'D' - but NOT SURE
+;;def x-rec-type  char*1 = "D" ; hide records - used for tithe calc only
+;def x-rec-type  char*1 = "A"  
+; 2008/07/03 - end
+
+def x-solo-doc  char*1 = 'Y'						    &
+	             if    doc-afp-paym-group of f020-doctor-mstr  = 'H132' &
+;		       and doc-dept of f020-doctor-mstr = 31		    &
+;		       and batctrl-payroll of f074-afp-group-mstr  = 'C'        
+		       and x-selected-payroll  = 'C'        
+
+def x-gft-doc       char*1 = 'Y'						&
+	             if    doc-afp-paym-group of f020-doctor-mstr  = 'H111'     &
+		       and (    doc-dept of f020-doctor-mstr = 14		&
+		            or  doc-dept of f020-doctor-mstr = 15		&
+			   )							&
+;		       and batctrl-payroll of f074-afp-group-mstr  = 'A'        
+		       and x-selected-payroll  = 'A'        
+		  
+def x-non-gft-doc   char*1 = 'Y'						&
+	             if    doc-dept of f020-doctor-mstr = 4			&
+;		       and batctrl-payroll of f074-afp-group-mstr  = 'A'        
+		       and x-selected-payroll  = 'A'        
+
+; 2008/sep/03 be. hide (ie "D") if NOT solo - otherwise include in TOTINC calculations ("A")
+; 2.1.1.4 - solo doctor		  
+;def x-rec-type char*1 = 'A' if x-solo-doc = 'Y'				&
+; 2.1.1.5/6 - GFT and non-GFT doctor 
+;		else    'D' if x-gft-doc = 'Y' or x-non-gft-doc ='Y'
+
+
+def x-rec-type char*1 = 'D'
+
+def x-nonrbp-group char*1 = 'Y'						           &
+	           if      (      doc-afp-paym-group of f075-afp-doc-mstr = 'H262' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H513' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H514' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H515' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H516' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H517' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H518' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H519' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H526' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H528' &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H529' &
+			   )
+
+def x-solo-nonrbp-group char*1 = 'Y'						        &
+	           if      (      doc-afp-paym-group of f075-afp-doc-mstr = 'H262'      &
+	                    or (      doc-afp-paym-group of f075-afp-doc-mstr >= 'H513' &
+	                        and   doc-afp-paym-group of f075-afp-doc-mstr <= 'H524' &
+			       )							&
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H526'      &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H528'      &
+	                    or    doc-afp-paym-group of f075-afp-doc-mstr = 'H529'      &
+			   )
+
+; 2.1.1.4.1 - solo doctors
+def x-nonrb    char*1  = 'Y'						    &
+             if     x-solo-doc = 'Y'                                        &
+	        and doc-afp-paym-group of f075-afp-doc-mstr = 'H132' 
+
+; 2.1.1.4.2 - solo doctors
+def x-nonrbp   char*1   = 'Y'						    &
+                     if (    (    x-solo-doc = 'Y'                          &
+	                      and x-solo-nonrbp-group = 'Y'  		    &
+			     )						    &
+; 2.1.1.5 - GFT doctors
+                         or  (    x-gft-doc = 'Y'                           &
+	                      and x-nonrbp-group = 'Y'  		    &
+			     )						    &
+; 2.1.1.6 - non-GFT doctors
+                         or  (    x-non-gft-doc = 'Y'                       &
+	                      and x-nonrbp-group = 'Y'  		    &
+			     )						    &
+                       )
+
+select if    afp-submission-amt <> 0					&
+; 2008/09/09 - MC - including the blank payroll of f074 
+;	and  (   x-selected-payroll = batctrl-payroll of f074-afp-group-mstr  &
+;	      or batctrl-payroll of f074-afp-group-mstr = ' '	        &
+;	     )								&
+ 	 and (     x-nonrb = 'Y'                                        &
+		or x-nonrbp = 'Y'                             		&
+	     )
+; 2008/09/09 - end
+
+def x-comp-code char*6 	&
+	= "NONRB"    if    x-nonrb    = 'Y'                                 &
+  else   "NONRBP"    if    x-nonrbp   = 'Y'                         
+
+
+def reporting-seq zoned*2 unsigned 	&
+	= nonrb-seq  if    x-nonrb    = 'Y'                                 &
+  else    nonrbp-seq if    x-nonrbp   = 'Y'  
+
+def comp-code-group char*1 	&
+	= nonrb-code-group   if    x-nonrb    = 'Y'                         &
+     else nonrbp-code-group  if    x-nonrbp   = 'Y'  
+
+def x-amt-net    integer*10 signed    = afp-submission-amt of f075-afp-doc-mstr 
+def x-amt-gross  integer*10 signed    = afp-submission-amt of f075-afp-doc-mstr 
+
+sort	on doc-nbr			&	
+	on x-comp-code                                       
+
+temp x-tmp-amt-gross zoned*10 numeric
+item x-tmp-amt-gross = x-tmp-amt-gross + afp-submission-amt reset at x-comp-code
+temp x-tmp-amt-net zoned*10 numeric 
+item x-tmp-amt-net   = x-tmp-amt-net   + afp-submission-amt reset at x-comp-code
+
+output f114-special-payments add update at x-comp-code	&
+	via doc-nbr, comp-code				&
+	 using doc-nbr of f075-afp-doc-mstr,  x-comp-code  on errors report 
+  item doc-nbr			final doc-nbr  		of f075-afp-doc-mstr
+  item comp-code		final x-comp-code
+  item ep-nbr-from 		final w-current-ep-nbr   
+  item ep-nbr-to	 	final w-current-ep-nbr   
+  item comp-units		final afp-multi-doc-ra-percentage 	&
+							of f075-afp-doc-mstr  
+;  item amt-gross		final x-tmp-amt-gross
+;  item amt-net  		final x-tmp-amt-net  
+
+; 2008/10/14 - MC
+;  item amt-gross		subtotal x-tmp-amt-gross
+;  item amt-net  		subtotal x-tmp-amt-net  
+  item amt-gross		final amt-gross + x-tmp-amt-gross
+  item amt-net  		final amt-net + x-tmp-amt-net  
+; 2008/10/14 - end
+  item last-mod-date    	final sysdate
+  item last-mod-time		final systime / 10000
+  item last-mod-user-id		final "U140_e  gen'd"
+; 2008/07/03 - MC - Brad changes his mind to set rec-type = 'A' - but NOT SURE
+;  item rec-type 		final 'D'
+  item rec-type 		final x-rec-type
+; 2008/07/03 - end
+
+
+; 2008/06/30 - end
+
+
+; 2008/07/03 - MC
+;subfile u140_e_audit append at doc-nbr   include	&
+subfile u140_e_audit append at x-comp-code  include	&
+  x-selected-payroll,				&
+  doc-nbr of f075-afp-doc-mstr,			&
+  doc-afp-paym-group	of f075-afp-doc-mstr,   &
+  doc-name       	of f020-doctor-mstr,	&
+  doc-inits		of f020-doctor-mstr,	&
+  doc-dept		of f020-doctor-mstr,	&
+  comp-code,                                    &
+  ep-nbr-from,					&
+  ep-nbr-to,					&
+  comp-units,					&
+  x-tmp-amt-gross,				&
+  x-tmp-amt-net,				&
+; 2008/07/03 - MC
+  x-rec-type
+; 2008/07/03 - end
+
+;
+build $obj/u140_e

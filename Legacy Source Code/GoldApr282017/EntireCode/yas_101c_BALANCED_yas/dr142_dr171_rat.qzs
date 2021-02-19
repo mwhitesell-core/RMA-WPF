@@ -1,0 +1,84 @@
+;doc     : dr142_dr171_rat.qts
+;purpose : create report count Z129 code for Leena 
+;          selected dept 1 doctors
+;who     : RMA Lori and Leena 
+
+
+;Date           Who             Description
+;2001/01/15     Yasemin         Original
+
+
+cancel clear
+set rep nolimit
+
+access f002-claims-mstr                           ; &
+; link clmhdr-pat-ohip-id-or-chart                 &
+;  link ('I' + key-p-clm-data)                      &
+;    to key-pat-mstr of  f010-pat-mstr  opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220142000 to 220142999,   &
+                                              220171000 to 220171999,   &
+                                              220174000 to 220174999,   &
+                                              220134000 to 220134999,   &
+                                              220915000 to 220915999,   &
+                                              220387000 to 220387999,   &
+                                              220362000 to 220362999,   &
+                                              220218000 to 220218999,   &
+        key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                      &
+                clmdtl-oma-cd       = "Z129"    & ; ignore claim header recs 
+           and  clmdtl-oma-cd      <> "0000"    & ; ignore claim header recs
+           and  clmdtl-oma-cd      <> "ZZZZ"    & ; ignore description recs
+           and  clmdtl-oma-cd      <> "PAID"    & ; no payments
+           and  clmdtl-oma-cd      <> "MICM"    & ; no miscellaneous billings
+           and  clmdtl-oma-cd      <> "MISJ"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MISC"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MICV"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MISP"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MOHR"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MICB"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MIBR"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MINH"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "MHSC"    & ; "  "             "
+           and  clmdtl-oma-cd      <> "NHSC"    & ; "  "             "
+           and  clmdtl-adj-nbr     = 0            ; ignore adjustments
+
+
+set subfile name dr142 keep 
+report summary     &
+key-clm-type       &
+key-clm-batch-nbr  &
+key-clm-claim-nbr  &
+clmdtl-oma-cd      &
+clmdtl-id
+
+build $obj/dr142a
+
+can clear
+set rep nolimit
+set rep dev disc name dr142
+
+access *dr142                                                   &
+  link ('B', key-clm-batch-nbr, key-clm-claim-nbr, '00000' , '0') &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt &
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr opt
+
+select f002-claims-mstr if                                      &
+                 clmhdr-date-cash-tape-payment = '20010114'     &
+              or clmhdr-date-cash-tape-payment = '20001211'     
+
+def x-doc cha*3 = clmdtl-id[4:3]
+
+sort on x-doc
+
+
+footing at x-doc                 &
+tab 1   x-doc          &
+tab 5   clmdtl-oma-cd  &
+tab 15  count          &
+skip 1
+
+build $obj/dr142b
+

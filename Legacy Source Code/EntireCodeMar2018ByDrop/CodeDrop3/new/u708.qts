@@ -1,0 +1,152 @@
+;program-id.	u708.qts
+;
+;program purpose: To set the status to "C"ompleted if detail and
+;                 header records have valid values or have been
+;		  marked as 'D'elete/to be 'I'gnored
+;
+;	MODIFICATION HISTORY
+;	  DATE	   SMS #	WHO	DESCRIPTION
+;       90.10.18   000          D.B.    ORIGINAL
+;	93.07.21   142		M.C.	CHECK ON DIAG-CD-ALPHA,
+;					NBR-SERV-ALPHA,
+;					FEE-OMA-ALPHA, FEE-OHIP-ALPHA
+;	93.09.20   142          M.C.    ADD THE SELECTION CRITERIA THE
+;					STATUS NOT EQUAL TO "R" IN THE
+;					SECOND REQUEST "U708_UPDATE_HEADER"
+;   1999/jan/28          	B.E.    - y2k 
+;   1999/May/27 		S.B.    - Added the use file
+;                        		  def_clmhdr_status.def to 
+;                        		  prevent hardcoding of clmhdr-status.
+; 2000/oct/02 	B.E. 	- don't update status to 'not complete' if current hdr
+;                  	  status is 'i'gnore or 'd'elete.
+; 2014/Apr/01	MC1	- include the check of clinic nbr <> 00
+; 2016/May/03   MC2     - add a new request to final check to make sure the clinic nbr
+;			  is valid for the doctor 
+; 2017/Jan/24   MC3     - include the check of clmdtl-status <> 'D' in the first request
+
+can clear
+
+run u708
+
+set process nolimit
+set lock record update
+
+request u708_check_detail
+
+access f002-suspend-dtl
+
+; MC3
+;select  if clmdtl-oma-cd[1:1] = "?"			&
+select  if clmdtl-status <> 'D'				&
+   and (   clmdtl-oma-cd[1:1] = "?"			&
+; MC3 - end
+	or clmdtl-oma-suff[1:1] ="?"			&
+	or clmdtl-agent-cd-alpha[1:1] = "?"		&
+ 	or clmdtl-nbr-serv-alpha[1:1] = "?"		&
+	or clmdtl-sv-yy-alpha[1:1] = "?"		&
+	or clmdtl-sv-mm-alpha[1:1] = "?"		&
+	or clmdtl-sv-dd-alpha[1:1] = "?"		&
+;          (00/sep/21 B.E.)
+;		or clmdtl-consecutive-sv-date-alpha(1) = "???"	&
+;		or clmdtl-consecutive-sv-date-alpha(2) = "???"	&
+;		or clmdtl-consecutive-sv-date-alpha(3) = "???"	&
+        or clmdtl-consecutive-sv-days(1) = "???"	&
+        or clmdtl-consecutive-sv-days(2) = "???"	&
+        or clmdtl-consecutive-sv-days(3) = "???"	&
+;	OR CLMDTL-AMT-TECH-BILLED-ALPHA[1:1] = "?"	&
+ 	or clmdtl-fee-oma-alpha[1:1] = "?"		&
+ 	or clmdtl-fee-ohip-alpha[1:1] = "?"		&
+; MC3
+;   	or clmdtl-diag-cd-alpha[1:1] = "?"
+   	or clmdtl-diag-cd-alpha[1:1] = "?")
+; MC3 - end
+
+subfile u708 keep include clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr
+
+request u708_update_header
+
+access *u708	&
+	link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr	&
+	to   clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr	&
+	of f002-suspend-hdr
+
+;S.B.
+use $use/def_clmhdr_status.def
+
+;select if     clmhdr-status <> "X" 	&
+;	  and clmhdr-status <> "R"
+; (00/oct/02 B.E. - added checks for delete/ignore status
+select if     clmhdr-status <> clmhdr-status-error 	&
+	  and clmhdr-status <> clmhdr-status-resubmit	&
+	  and clmhdr-status <> clmhdr-status-delete	&
+	  and clmhdr-status <> clmhdr-status-ignor
+
+output f002-suspend-hdr update
+;S.B.
+; item clmhdr-status final "N"
+; item clmhdr-status final clmhdr-status-nocancel
+ item clmhdr-status final clmhdr-status-not-complete
+
+
+
+request f708_check_header
+
+access f002-suspend-hdr
+
+;S.B.
+use $use/def_clmhdr_status.def
+
+;select  if  clmhdr-status                   eq " "	&
+select  if   (     clmhdr-status               = clmhdr-status-default	&
+	        or clmhdr-status	       = updated  		&
+	     ) 						&
+; MC1
+	  and clmhdr-clinic-nbr-1-2           <> 00	&
+; MC1 - end
+  	  and clmhdr-refer-doc-nbr-alpha[1:1] <> "?"	&
+	  and clmhdr-diag-cd-alpha[1:1]       <> "?"	&
+	  and clmhdr-loc[1:1]                 <> "?"	&
+	  and clmhdr-hosp[1:1]                <> "?"	&
+	  and clmhdr-agent-cd-alpha[1:1]      <> "?"	&
+	  and clmhdr-i-o-pat-ind[1:1]         <> "?"	&
+	  and clmhdr-pat-key-type[1:1]        <> "?"	&
+	  and clmhdr-pat-key-type[1:1]        <> "O"	&
+;	  AND CLMHDR-PAT-KEY-DATA[1:1]        <> "?"	&
+	  and clmhdr-doc-spec-cd-alpha[1:1]   <> "?"	&
+	  and clmhdr-msg-nbr		    <> "?"	&
+	  and clmhdr-reprint-flag 	    <> "?"	&
+	  and clmhdr-sub-nbr[1:1]             <> "?"	&
+	  and clmhdr-auto-logout		    <> "?"	&
+	  and clmhdr-fee-complex		    <> "?"	&
+	  and clmhdr-date-admit[1:1]          <> "?"
+
+output f002-suspend-hdr update
+;S.B.
+; item clmhdr-status final "C"
+ item clmhdr-status final clmhdr-status-complete
+
+;MC2
+request f708_check_header_clinic
+
+access f002-suspend-hdr		&
+	link clmhdr-doc-nbr	&
+	 to  doc-nbr of f020-doctor-mstr
+
+use $use/def_clmhdr_status.def
+
+sel if clmhdr-status = clmhdr-status-complete 	&
+   and (clmhdr-clinic-nbr-1-2 <> doc-clinic-nbr)  &
+   and (clmhdr-clinic-nbr-1-2 <> doc-clinic-nbr-2)  &
+   and (clmhdr-clinic-nbr-1-2 <> doc-clinic-nbr-3)  &
+   and (clmhdr-clinic-nbr-1-2 <> doc-clinic-nbr-4)  &
+   and (clmhdr-clinic-nbr-1-2 <> doc-clinic-nbr-5)  &
+   and (clmhdr-clinic-nbr-1-2 <> doc-clinic-nbr-6)
+
+subfile u708_invalid_clinic keep include f002-suspend-hdr
+
+output  f002-suspend-hdr update on errors report
+   item clmhdr-status final clmhdr-status-error
+
+; MC2 - end
+
+build $pb_obj/u708

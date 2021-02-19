@@ -1,0 +1,1 @@
+copy CREATE_F001.qks C:\CLIENTS\RMA\GoldAPR282017\ParsedCode\fixup\quick

@@ -1,0 +1,47 @@
+; File: u020_use.qts
+;97/JUN/12 - KEVIN MILES - ADDED THIS OUTPUT STATEMENT
+;             CLAIMS SUBMITTED TO OHIP ARE SUBMITTED AS A 8 DIGIT
+;             NUMBER (6 DIGIT BATCH NBR + 2 DIGIT CLAIM NBR) PLUS
+;             A 4 DIGIT 'GROUP NBR' THAT IN THE PAST REPRESENTED
+;             THE 2 DIGIT CLINIC NUMBER THAT COMPRISED THE FIRST
+;             2 DIGITS OF THE CLAIM NUMBER.  CHANGES TO OHIP RULES
+;             NECESSIATED DOCTORS SUBMITTING CLAIMS UNDER THEIR
+;             OWN 'GROUP NBR' SO A CLAIM STORED IN THE F002-CLAIMS-MSTR
+;             COULD BE SUBMITTED UNDER A 'GROUP NBR' THAT COULDN'T
+;             BE TIED BACK TO THE 2 DIGIT CLINIC NBR OF THE CLAIM.
+;             THEREFORE THE "TRANSLATION TABLE" F099-GROUP-CLAIM-NBR
+;             IS MAINTAINED TO ALLOW OHIP RAT TAPE PROCESSING PROGRAM
+;             TO TAKE THE PAYMENT RECS AND DETERMINE WHAT THE ORIGINAL
+;             CLAIMS'S CLINIC NBR WAS. THIS ALLOWS THE PGM TO RE-ACCESS
+;             THE ORIGINAL CLAIM AND UPDATE IT.
+;97/AUG/08 - B.E. ADD RECORD ONLY IF IT DOESN'T ALREADY EXIST
+;                 AND THIS RECORD IS BEING SUBMITTED TO OHIP
+;97/AUG/12 - M.C. ADD ACCOUNTING-NBR INTO F099 FILE
+;04/jan/08 - M.C. alpha doc nbr
+
+def  x-accounting-nbr char*8                          &
+; 2004/01/08 - MC
+;!       = clmhdr-claim-id of u020b[4:6]  +              &
+;!          clmhdr-claim-id of u020b[10:2]
+       = clmhdr-claim-id of u020b[3:8]  
+; 2004/01/08 - end
+
+; DON'T KEEP TRANSLATION IF THE GROUP-NBR IS BLANK SINCE THAT
+; IMPLIES THAT NO TRANSLATION IS NEEDED AND REAL CLINIC WAS
+; SENT TO OHIP
+output f099-group-claim-mstr add update                          &
+       viaindex accounting-nbr                                 &
+               using    x-accounting-nbr                               &
+       if    w-count = 1                                       &
+         and translated-group-nbr <> "    "                    &
+       on errors report
+
+; 2004/01/08 - MC
+;!item clmhdr-batch-nbr final    nconvert(clmhdr-claim-id[1:9])
+;!item clmhdr-claim-nbr final    nconvert(clmhdr-claim-id[10:2])
+  item clmhdr-batch-nbr final    clmhdr-claim-id[1:8]
+  item clmhdr-claim-nbr final    nconvert(clmhdr-claim-id[9:2])
+; 2004/01/08 - end
+  item accounting-nbr   final    x-accounting-nbr
+  item group-nbr        final    translated-group-nbr
+

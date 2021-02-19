@@ -1,0 +1,1290 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   1
+*                      u030aa2.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. u030aa2.
+author. dyad systems inc.
+installation. rma.
+date-written. september 1993.
+date-compiled. 18-May-06 15:42.
+security.
+*
+*    files      : u030 -   ohip remittance advice tape
+*               : f090 -   isam constants master
+*               : u030 -   out ohip rat tape
+*               : u030aa - parameter file
+*               : f071 -   client-rma-claim-nbr
+*               : f072 -   client-mstr
+*               : f073 -   client-doc-mstr
+*
+*    program purpose : - this is the 2nd in a series of 2 programs that
+*                        process the RA for doctors who submit claims
+*                        to RMA via diskette. For a description of how
+*                        u030aa1 and u030aa2 work - refer to the documentation
+*                        in u030aa1.cbl
+*
+*
+*  93/jul/21  m. chan   - sms 142
+*                       - clone from u030.cb
+*                       - second pass of u030aa
+*                       - modify this program to only read the
+*                         input tape and extract records based
+*                         on certain client/doc/claim #
+*  97/sep/08  m. chan   - pdr 663 - change the pgm to accept the
+*                         group nbr instead of clinic nbr, make
+*                         the necessary changes for checking
+*                       - read constant mstr rec 1 instead of
+*                         clinic record
+*  98/sep/24  B.E.      - client-mstr and client-doc-mstr .fd and .slr
+*                         were hard coded within this program. Now file
+*                         definitions in other programs so copylib files
+*                         setup and called from this program.
+*  98/dec/09  M.C.      - change RU030aa to ru030aa for report name
+*                       - specify the key when reading  client-rma-claim-nbr
+*  03/aug/22  M.C.      - change to read client-rma-claim-nbr by the new key
+*                         claim-nbr-rma-clinic instead of claim-nbr-rma
+*  03/dec/10  M.C.      - alpha doc nbr
+*  05/Jan/04  M.C.      - check up to 63 clinics instead of 40
+
+
+*
+*
+environment division.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   2
+*                      u030aa2.cbl
+input-output section.
+file-control.
+*
+    select ohip-rat-tape
+          assign to "$pb_data/ohip_rat_ascii".
+*
+    select out-ohip-rat-tape
+          assign to "out_ohip_rat_ascii".
+*
+    select u030aa-parm-file
+          assign to "u030aa_parm_file".
+*
+copy "f071_client_rma_claim_nbr.slr".
+    select client-rma-claim-nbr
+*mf       assign index to "F071_CLAIM_NBR_RMA"
+*mf       assign data  to "F071_CLIENT_RMA_CLAIM_NBR.DB"
+          assign to disk  "$pb_data/f071_client_rma_claim_nbr"
+          organization is indexed
+          access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+          lock mode is manual
+
+*mf changed primary key to alternative  (B.E. 98/Sep/09)
+          record key   is claim-nbr-client
+
+*mf added alternative key below (B.E. 98/Sep/09)
+* 2003/06/10 - MC
+*          alternate key is claim-nbr-rma
+          alternate key is claim-nbr-rma-clinic
+* 2003/06/10 - end
+
+          status is status-cobol-client-rma-nbr.
+*          infos status is status-client-rma-claim-nbr.
+
+*
+copy "f072_client_mstr.slr".
+    select client-mstr
+*mf       assign index to "F072_CLIENT_ID"
+*mf       assign data  to "F072_CLIENT_MSTR.DB"
+          assign to disk  "$pb_data/f072_client_mstr"
+          organization is indexed
+          access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+          lock mode is manual
+          record key   is client-id of client-mstr-rec
+*         infos status is status-client-mstr.
+          status is status-cobol-client-mstr.
+*
+copy "f073_client_doc_mstr.slr".
+    select client-doc-mstr
+*mf       assign index to "F073_DOC_NBR"
+*mf       assign data  to "F073_CLIENT_DOC_MSTR.DB"
+          assign to disk  "$pb_data/f073_client_doc_mstr"
+          organization is indexed
+          access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+          lock mode is manual
+          record    key is doc-nbr   of client-doc-rec
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   3
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/f0)
+*         alternate key is client-id of client-doc-rec with duplicates
+          alternate key is client-doc of  client-doc-rec
+*         infos status is status-client-doc-mstr.
+          status is status-cobol-client-doc-mstr.
+*
+copy "f090_constants_mstr.slr".
+select iconst-mstr
+assign to disk "$pb_data/f090_constants_mstr"
+organization is indexed
+access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+lock mode is manual
+record key   is iconst-clinic-nbr-1-2
+*       eof-flag     is eof-iconst-mstr
+status is status-cobol-iconst-mstr.
+*
+    select error-rpt
+          assign to printer "ru030aa"
+          status is status-report.
+data division.
+file section.
+*
+    copy "u030_ohip_rat_tape.fd".
+* 1999/mar/26 B.E.      - y2k format - changed to allow 'old format' processing
+* 1999/dec/26 B.E.      - total y2k format usage
+* 2003/feb/05 B.E.      - added 1 bytes to length of record with move
+*                         to EDT file
+*
+fd  ohip-rat-tape
+    record contains 80 characters.
+
+01  rat-record-1.
+
+    05  rat-1-trans-cd                          pic xx.
+    05  rat-1-record-type                       pic x.
+* y2k
+    05  rat-1-release-id                        pic x(3).
+
+    05  rat-1-filler-1                          pic x.
+    05  rat-1-group-nbr                         pic x(4).
+    05  rat-1-doc-nbr                           pic 9(6).
+*   05  rat-1-specialty-cd                      pic 99.
+    05  rat-1-specialty-cd                      pic xx.
+    05  rat-1-moh-off-cd                        pic x.
+    05  rat-1-data-seq-nbr                      pic 9.
+    05  rat-1-payment-date.
+* y2k
+        10  rat-1-payment-date-yy               pic 9(4).
+        10  rat-1-payment-date-mm               pic 99.
+        10  rat-1-payment-date-dd               pic 99.
+    05  rat-1-payee-name.
+        10  rat-1-last-name                     pic x(25).
+        10  rat-1-title                         pic xxx.
+        10  rat-1-initials                      pic xx.
+    05  rat-1-tot-amt-pay                       pic 9(7)v99.
+    05  rat-1-tot-amt-pay-sign                  pic x.
+    05  rat-1-cheq-nbr                          pic x(8).
+* y2k
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   4
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/u0)
+*   05  rat-1-filler-2                          pic x(7).
+* 2003/feb/5 B.E.
+*    05  rat-1-filler-2                         pic x(2).
+     05  rat-1-filler-2                         pic x(3).
+
+01  rat-record-2-3.
+    05  filler                                  pic x(79).
+
+01  rat-record-4.
+
+    05  rat-4-trans-id                          pic xx.
+    05  rat-4-record-type                       pic x.
+    05  rat-4-claim-nbr                         pic x(11).
+    05  rat-4-trans-type                        pic 9.
+    05  rat-4-doc-nbr                           pic 9(6).
+    05  rat-4-specialty-cd                      pic 99.
+    05  rat-4-account-nbr                       pic x(8).
+    05  rat-4-last-name                         pic x(14).
+    05  rat-4-first-name                        pic x(5).
+    05  rat-4-prov-cd                           pic xx.
+    05  rat-4-health-ohip-nbr                   pic x(12).
+    05  rat-4-version-cd                        pic xx.
+    05  rat-4-pay-prog                          pic xxx.
+
+* y2k
+    05  rat-4-ministry-location-cd              pic x(4).
+*   05  rat-4-conv-health-nbr                   pic x(10).
+* 2003/feb/5 B.E.
+*    05  rat-4-filler                            pic x(6).
+    05  rat-4-filler                            pic x(8).
+
+
+01  rat-record-5.
+    05  rat-5-trans-id                          pic xx.
+    05  rat-5-record-type                       pic x.
+    05  rat-5-claim-nbr                         pic x(11).
+    05  rat-5-trans-type                        pic 9.
+* y2k
+    05  rat-5-service-date                      pic 9(8).
+
+    05  rat-5-nbr-of-serv                       pic 99.
+    05  rat-5-service-cd                        pic x(5).
+
+* y2k
+*   05  rat-5-filler-1                          pic xx.
+
+    05  rat-5-eligibility-ind                   pic x.
+    05  rat-5-amount-sub                        pic 9(4)v99.
+    05  rat-5-amt-paid                          pic 9(4)v99.
+    05  rat-5-amt-paid-sign                     pic x.
+    05  rat-5-explan-cd                         pic xx.
+* 2003/feb/5 B.E.
+*    05  rat-5-filler-2                         pic x(33).
+    05  rat-5-filler-2                          pic x(35).
+
+01  rat-record-6.
+    05  rat-6-trans-id                          pic xx.
+    05  rat-6-record-type                       pic x.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   5
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/u0)
+    05  rat-6-amt-claims-adj                    pic 9(7)v99.
+    05  rat-6-amt-claims-adj-sgn                pic x.
+    05  rat-6-amt-advances                      pic 9(7)v99.
+    05  rat-6-amt-advances-sgn                  pic x.
+    05  rat-6-amt-reductions                    pic 9(7)v99.
+    05  rat-6-amt-reductions-sgn                pic x.
+    05  rat-6-amt-deductions                    pic 9(7)v99.
+    05  rat-6-amt-deductions-sgn                pic x.
+* 2003/feb/5 B.E.
+*    05  rat-6-filler                           pic x(36).
+    05  rat-6-filler                            pic x(38).
+
+01  rat-record-7.
+    05  rat-7-trans-id                          pic xx.
+    05  rat-7-record-type                       pic x.
+    05  rat-7-trans-cd                          pic xx.
+    05  rat-7-cheque-ind                        pic x.
+* y2k
+    05  rat-7-trans-date                        pic 9(8).
+
+    05  rat-7-trans-amt                         pic 9(6)v99.
+    05  rat-7-trans-amt-sgn                     pic x.
+    05  rat-7-trans-message                     pic x(50).
+* y2k
+*   05  rat-7-filler                            pic x(8).
+* 2003/feb/5 B.E. removed filler with move to EDT file
+*    05  rat-7-filler                           pic x(6).
+    05  rat-7-filler                            pic x(4).
+
+01  rat-record-8.
+
+    05  rat-8-trans-id                          pic xx.
+    05  rat-8-record-type                       pic x.
+    05  rat-8-mess-text                         pic x(70).
+* 2003/feb/5 B.E. removed filler with move to EDT file
+*    05  rat-8-filler                           pic x(6).
+    05  rat-8-filler                            pic x(4).
+
+*
+    copy "f090_constants_mstr.fd".
+* 99/Jan/29     MC      - change iconst-clinic-nbr from numeric to character
+* 03/nov/05 b.e. - alpha doctor nbr
+
+fd  iconst-mstr
+*       index block contains   2 characters
+              block contains 384 characters
+        record      contains 384 characters  .
+*       feedback is feedback-iconst-mstr.
+
+01 iconst-mstr-rec.
+    05  iconst-clinic-nbr-1-2                   pic   99.
+*    05  iconst-clinic-nbr                      pic  9(4).
+    05  iconst-clinic-nbr                       pic  x(4).
+    05  iconst-clinic-name                      pic x(20).
+    05  iconst-clinic-cycle-nbr                 pic   99.
+    05  iconst-date-period-end.
+* y2k   10  iconst-date-period-end-yy           pic   99.
+        10  iconst-date-period-end-yy           pic   9999.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   6
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/f0)
+        10  iconst-date-period-end-mm           pic   99.
+        10  iconst-date-period-end-dd           pic   99.
+    05  iconst-clinic-addr.
+        10  iconst-clinic-addr-l1               pic  x(25).
+        10  iconst-clinic-addr-l2               pic  x(25).
+        10  iconst-clinic-addr-l3               pic  x(25).
+    05  iconst-clinic-addr-r redefines iconst-clinic-addr.
+        10  iconst-clinic-addr                  pic x(25)   occurs  3  times.
+    05  iconst-clinic-card-colour               pic    x.
+    05  iconst-clinic-over-lim1                 pic 99v99.
+    05  iconst-clinic-under-lim2                pic 99v99.
+    05  iconst-clinic-under-lim3                pic 99v99.
+    05  iconst-clinic-over-lim4                 pic 99v99.
+
+*!    05  iconst-clinic-batch-nbr                 pic 9(6).
+    05  iconst-clinic-batch-nbr                 pic x(6).
+
+    05  iconst-reduction-factor                 pic 99v99.
+    05  iconst-overpay-factor                   pic 99v99.
+    05  filler                                  pic x(242).
+*
+    copy "f090_const_mstr_rec_1.ws".
+* 2005/jan/04   - extend from 40 clinic to the max clinics allowed (63)
+
+01 constants-mstr-rec-1.
+    05  const-rec-1-rec-nbr                     pic 99.
+    05  const-max-nbr-clinics                   pic 99.
+    05  const-clinic-data.
+* 2005/01/04 - MC
+*       10  const-clinic-data-r occurs  40  times.
+        10  const-clinic-data-r occurs  63  times.
+            15  const-clinic-nbr-1-2            pic 99.
+            15  const-clinic-nbr                pic x(4).
+    05  const-scr-data  redefines  const-clinic-data.
+        10  const-clinic-1-2-nbr-1              pic 99.
+        10  const-clinic-nbr-1                  pic x(4).
+        10  const-clinic-1-2-nbr-2              pic 99.
+        10  const-clinic-nbr-2                  pic x(4).
+        10  const-clinic-1-2-nbr-3              pic 99.
+        10  const-clinic-nbr-3                  pic x(4).
+        10  const-clinic-1-2-nbr-4              pic 99.
+        10  const-clinic-nbr-4                  pic x(4).
+        10  const-clinic-1-2-nbr-5              pic 99.
+        10  const-clinic-nbr-5                  pic x(4).
+        10  const-clinic-1-2-nbr-6              pic 99.
+        10  const-clinic-nbr-6                  pic x(4).
+        10  const-clinic-1-2-nbr-7              pic 99.
+        10  const-clinic-nbr-7                  pic x(4).
+        10  const-clinic-1-2-nbr-8              pic 99.
+        10  const-clinic-nbr-8                  pic x(4).
+        10  const-clinic-1-2-nbr-9              pic 99.
+        10  const-clinic-nbr-9                  pic x(4).
+        10  const-clinic-1-2-nbr-10             pic 99.
+        10  const-clinic-nbr-10                 pic x(4).
+        10  const-clinic-1-2-nbr-11             pic 99.
+        10  const-clinic-nbr-11                 pic x(4).
+        10  const-clinic-1-2-nbr-12             pic 99.
+        10  const-clinic-nbr-12                 pic x(4).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   7
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/f0)
+        10  const-clinic-1-2-nbr-13             pic 99.
+        10  const-clinic-nbr-13                 pic x(4).
+        10  const-clinic-1-2-nbr-14             pic 99.
+        10  const-clinic-nbr-14                 pic x(4).
+        10  const-clinic-1-2-nbr-15             pic 99.
+        10  const-clinic-nbr-15                 pic x(4).
+        10  const-clinic-1-2-nbr-16             pic 99.
+        10  const-clinic-nbr-16                 pic x(4).
+        10  const-clinic-1-2-nbr-17             pic 99.
+        10  const-clinic-nbr-17                 pic x(4).
+        10  const-clinic-1-2-nbr-18             pic 99.
+        10  const-clinic-nbr-18                 pic x(4).
+        10  const-clinic-1-2-nbr-19             pic 99.
+        10  const-clinic-nbr-19                 pic x(4).
+        10  const-clinic-1-2-nbr-20             pic 99.
+        10  const-clinic-nbr-20                 pic x(4).
+        10  const-clinic-1-2-nbr-21             pic 99.
+        10  const-clinic-nbr-21                 pic x(4).
+        10  const-clinic-1-2-nbr-22             pic 99.
+        10  const-clinic-nbr-22                 pic x(4).
+        10  const-clinic-1-2-nbr-23             pic 99.
+        10  const-clinic-nbr-23                 pic x(4).
+        10  const-clinic-1-2-nbr-24             pic 99.
+        10  const-clinic-nbr-24                 pic x(4).
+        10  const-clinic-1-2-nbr-25             pic 99.
+        10  const-clinic-nbr-25                 pic x(4).
+        10  const-clinic-1-2-nbr-26             pic 99.
+        10  const-clinic-nbr-26                 pic x(4).
+        10  const-clinic-1-2-nbr-27             pic 99.
+        10  const-clinic-nbr-27                 pic x(4).
+        10  const-clinic-1-2-nbr-28             pic 99.
+        10  const-clinic-nbr-28                 pic x(4).
+        10  const-clinic-1-2-nbr-29             pic 99.
+        10  const-clinic-nbr-29                 pic x(4).
+        10  const-clinic-1-2-nbr-30             pic 99.
+        10  const-clinic-nbr-30                 pic x(4).
+        10  const-clinic-1-2-nbr-31             pic 99.
+        10  const-clinic-nbr-31                 pic x(4).
+        10  const-clinic-1-2-nbr-32             pic 99.
+        10  const-clinic-nbr-32                 pic x(4).
+        10  const-clinic-1-2-nbr-33             pic 99.
+        10  const-clinic-nbr-33                 pic x(4).
+        10  const-clinic-1-2-nbr-34             pic 99.
+        10  const-clinic-nbr-34                 pic x(4).
+        10  const-clinic-1-2-nbr-35             pic 99.
+        10  const-clinic-nbr-35                 pic x(4).
+        10  const-clinic-1-2-nbr-36             pic 99.
+        10  const-clinic-nbr-36                 pic x(4).
+        10  const-clinic-1-2-nbr-37             pic 99.
+        10  const-clinic-nbr-37                 pic x(4).
+        10  const-clinic-1-2-nbr-38             pic 99.
+        10  const-clinic-nbr-38                 pic x(4).
+        10  const-clinic-1-2-nbr-39             pic 99.
+        10  const-clinic-nbr-39                 pic x(4).
+        10  const-clinic-1-2-nbr-40             pic 99.
+        10  const-clinic-nbr-40                 pic x(4).
+* 2005/01/04 - MC - include clinic 41 to 63
+*    05  filler                                 pic x(140).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   8
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/f0)
+        10  const-clinic-1-2-nbr-41             pic 99.
+        10  const-clinic-nbr-41                 pic x(4).
+        10  const-clinic-1-2-nbr-42             pic 99.
+        10  const-clinic-nbr-42                 pic x(4).
+        10  const-clinic-1-2-nbr-43             pic 99.
+        10  const-clinic-nbr-43                 pic x(4).
+        10  const-clinic-1-2-nbr-44             pic 99.
+        10  const-clinic-nbr-44                 pic x(4).
+        10  const-clinic-1-2-nbr-45             pic 99.
+        10  const-clinic-nbr-45                 pic x(4).
+        10  const-clinic-1-2-nbr-46             pic 99.
+        10  const-clinic-nbr-46                 pic x(4).
+        10  const-clinic-1-2-nbr-47             pic 99.
+        10  const-clinic-nbr-47                 pic x(4).
+        10  const-clinic-1-2-nbr-48             pic 99.
+        10  const-clinic-nbr-48                 pic x(4).
+        10  const-clinic-1-2-nbr-49             pic 99.
+        10  const-clinic-nbr-49                 pic x(4).
+        10  const-clinic-1-2-nbr-50             pic 99.
+        10  const-clinic-nbr-50                 pic x(4).
+        10  const-clinic-1-2-nbr-51             pic 99.
+        10  const-clinic-nbr-51                 pic x(4).
+        10  const-clinic-1-2-nbr-52             pic 99.
+        10  const-clinic-nbr-52                 pic x(4).
+        10  const-clinic-1-2-nbr-53             pic 99.
+        10  const-clinic-nbr-53                 pic x(4).
+        10  const-clinic-1-2-nbr-54             pic 99.
+        10  const-clinic-nbr-54                 pic x(4).
+        10  const-clinic-1-2-nbr-55             pic 99.
+        10  const-clinic-nbr-55                 pic x(4).
+        10  const-clinic-1-2-nbr-56             pic 99.
+        10  const-clinic-nbr-56                 pic x(4).
+        10  const-clinic-1-2-nbr-57             pic 99.
+        10  const-clinic-nbr-57                 pic x(4).
+        10  const-clinic-1-2-nbr-58             pic 99.
+        10  const-clinic-nbr-58                 pic x(4).
+        10  const-clinic-1-2-nbr-59             pic 99.
+        10  const-clinic-nbr-59                 pic x(4).
+        10  const-clinic-1-2-nbr-60             pic 99.
+        10  const-clinic-nbr-60                 pic x(4).
+        10  const-clinic-1-2-nbr-61             pic 99.
+        10  const-clinic-nbr-61                 pic x(4).
+        10  const-clinic-1-2-nbr-62             pic 99.
+        10  const-clinic-nbr-62                 pic x(4).
+        10  const-clinic-1-2-nbr-63             pic 99.
+        10  const-clinic-nbr-63                 pic x(4).
+
+    05  filler                                  pic x(2).
+* 2005/01/04 - end
+
+*
+fd  out-ohip-rat-tape
+    record contains 79 characters.
+
+01  out-rat-record                      pic x(79).
+
+*
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   9
+*                      u030aa2.cbl                                   )
+fd  u030aa-parm-file
+*   record contains 18 characters.
+    record contains 20 characters.
+
+01  u030aa-parm-rec.
+    05  u030aa-client-id                pic x(5).
+    05  u030aa-total-amt-paid           pic s9(7)v99.
+*   05  u030aa-clinic-nbr               pic 99.
+    05  u030aa-clinic-nbr               pic 9(4).
+    05  u030aa-month-id                 pic 99.
+
+*
+copy "f071_client_rma_claim_nbr.fd".
+* 2000/jan/18 m.c.      - include clinic nbr
+* 2003/jun/10 m.c.      - include clinic nbr as part of claim-nbr-rma-clinic
+* 2003/dec/10 m.c.      - alphd doc nbr
+
+fd  client-rma-claim-nbr
+*    index block contains  8 characters
+*    data  block contains 22 characters
+*    block contains 22 characters
+*    record contains 22 characters .
+     block contains 24 characters
+     record contains 24 characters .
+*    feedback is feedback-client-rma-claim-nbr.
+
+01  client-rma-claim-nbr-rec.
+    05  claim-nbr-client.
+        10  doc-ohip-nbr                pic x(6).
+        10  doc-account-nbr             pic x(8).
+* 2003/06/10 - MC
+*   05  claim-nbr-rma                   pic 9(8).
+*   05  clinic-nbr                      pic 9(2).
+    05  claim-nbr-rma-clinic.
+        10  clinic-nbr                  pic 9(2).
+*!        10  claim-nbr-rma               pic 9(8).
+        10  claim-nbr-rma               pic x(8).
+* 2003/06/10 - end
+
+*
+copy "f072_client_mstr.fd".
+fd  client-mstr
+*    index block contains  5 characters
+*    data  block contains 38 characters
+    block contains 38 characters
+    record contains 38 characters .
+*   feedback is feedback-client-mstr.
+
+01  client-mstr-rec.
+    05  client-id                       pic x(5).
+    05  client-operator-nbr             pic 9(3).
+    05  client-desc                     pic x(30).
+
+*
+copy "f073_client_doc_mstr.fd".
+fd  client-doc-mstr
+*    index block contains  3 characters
+*    data  block contains  8 characters
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  10
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/f0)
+     block contains  8 characters
+     record contains 8 characters .
+*    feedback is feedback-client-doc-mstr.
+
+01  client-doc-rec.
+* 2003/11/25 - MC - change sequence
+*   05  doc-nbr                         pic 9(3).
+*   05  client-id                       pic x(5).
+    05  client-doc.
+        10  client-id                   pic x(5).
+*!      10  doc-nbr                     pic 9(3).
+        10  doc-nbr                     pic x(3).
+* 2003/11/25 - end
+
+*
+
+fd  error-rpt
+    record contains 132 characters.
+
+01  print-err-rpt                       pic x(132).
+working-storage section.
+
+77  err-ind                                     pic 99  value zero.
+77  last-claim-nbr                              pic x(11).
+77  ctr-line                                    pic 99 value 70.
+
+
+*
+*  status file indicators
+*
+*mf 77  status-file                                     pic x(11).
+*mf 77  status-iconst-mstr                              pic x(11) value zero.
+*mf 77  status-client-mstr                              pic x(11) value zero.
+*mf 77  status-client-doc-mstr                  pic x(11) value zero.
+77  status-file                                 pic x(2).
+77  status-cobol-iconst-mstr                    pic x(2) value zero.
+77  status-cobol-client-mstr                    pic x(2) value zero.
+77  status-cobol-client-doc-mstr                pic x(2) value zero.
+77  status-report                               pic x(02) value zero.
+*mf 77  status-client-rma-claim-nbr             pic x(11) value zero.
+77  status-cobol-client-rma-nbr                 pic x(2) value zero.
+77  feedback-iconst-mstr                        pic x(4).
+77  feedback-client-mstr                        pic x(4).
+77  feedback-client-doc-mstr                    pic x(4).
+77  feedback-client-rma-claim-nbr               pic x(4).
+
+77  i                                           pic 99.
+
+01  group-nbr-flag                              pic x.
+    88  group-nbr-found                         value 'Y'.
+    88  group-nbr-not-found                     value 'N'.
+
+
+01  rat-eof-flag                                pic x.
+    88  rat-eof                                 value "Y".
+
+01  hcp-rmb-flag                                pic x.
+    88  rmb-claims                              value 'Y'.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  11
+*                      u030aa2.cbl                                   )
+    88  hcp-claims                              value 'N'.
+
+01  doc-flag                                    pic x.
+    88 doc-found                                value 'Y'.
+    88 doc-not-found                            value 'N'.
+
+01  client-flag                                 pic x.
+    88 correct-client                           value 'Y'.
+    88 wrong-client                             value 'N'.
+
+01  claim-flag                                  pic x.
+    88 correct-claim                            value 'Y'.
+    88 wrong-claim                              value 'N'.
+
+01  hold-account-nbr.
+*!    05  hold-doc-nbr                          pic 9(3).
+    05  hold-doc-nbr                            pic x(3).
+    05  hold-doc-claim                          pic 9(5).
+
+01  ws-rat-1-tot-amt-pay                        pic s9(7)v99.
+
+
+*   counters for records read/written for all input/output files
+
+01  counters.
+    05  ctr-rat-tape-reads                      pic 9(7).
+    05  ctr-rat-rec1-reads                      pic 9(7).
+    05  ctr-rat-rec2-reads                      pic 9(7).
+    05  ctr-rat-rec3-reads                      pic 9(7).
+    05  ctr-rat-rec4-reads                      pic 9(7).
+    05  ctr-rat-rec5-reads                      pic 9(7).
+    05  ctr-rat-rec6-reads                      pic 9(7).
+    05  ctr-rat-rec7-reads                      pic 9(7).
+    05  ctr-rat-rec8-reads                      pic 9(7).
+    05  hcp-records                             pic 9(7).
+    05  rmb-records                             pic 9(7).
+    05  ctr-rat-write                           pic 9(7).
+    05  ctr-page                                pic 9(4).
+
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  12
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/sy)
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+
+    copy "mth_desc_max_days.ws".
+*
+*       (each position contains:
+*               - maximum nbr of days in month
+*               - non-abreviated spelling of month
+*               - nbr of julian days from jan-01 until last day of month
+*       note: table does not take into consideration leap year)
+*
+01  month-descs-and-max-days-mth.
+    05  mth-desc-max-days.
+        10  filler                      pic x(14) value '31  JANUARY031'.
+        10  filler                      pic x(14) value '29 FEBRUARY059'.
+        10  filler                      pic x(14) value '31    MARCH090'.
+        10  filler                      pic x(14) value '30    APRIL120'.
+        10  filler                      pic x(14) value '31      MAY151'.
+        10  filler                      pic x(14) value '30     JUNE181'.
+        10  filler                      pic x(14) value '31     JULY212'.
+        10  filler                      pic x(14) value '31   AUGUST243'.
+        10  filler                      pic x(14) value '30SEPTEMBER273'.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  13
+*                      u030aa2.cbl (/alpha/rmabill/rmabill101c/use/mt)
+        10  filler                      pic x(14) value '31  OCTOBER304'.
+        10  filler                      pic x(14) value '30 NOVEMBER334'.
+        10  filler                      pic x(14) value '31 DECEMBER365'.
+    05  mth-desc-max-days-r   redefines mth-desc-max-days.
+        10  mth-desc-max-days-occur     occurs  12  times.
+            15  max-nbr-days            pic 99.
+            15  mth-desc                pic x(9).
+            15  nbr-julian-days-ytd     pic 9(3).
+
+
+01  head-line.
+    05  filler                          pic x(12) value "RU030AA".
+    05  filler                          pic x(12) value "RUN DATE: ".
+* (y2k)
+    05  l1-run-date                     pic x(8).
+    05  filler                          pic x(18) value spaces.
+    05  filler                          pic x(60) value
+                "RMA CLAIMS DO NOT HAVE CLIENT CLAIM NBRS".
+    05  filler                          pic x(6)  value "PAGE: ".
+    05  prt-page                        pic zzz9.
+
+
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(70)   value
+                        "NO RAT TAPE HEADER - RECORD #1 ".
+        10  filler                              pic x(70)   value
+                        "RAT TAPE RECORD #5 DOES NOT BELONG IN SERIES".
+        10  filler                              pic x(70)    value
+                        "INVALID GROUP IDENTIFIER".
+        10  filler                              pic x(70)   value
+                        "RAT TAPE MONTH MUST BE NUMERIC ONLY".
+        10  filler                              pic x(70)   value
+                        "GROUP IDENTIFICATION MUST BE NUMERIC".
+        10  filler                              pic x(70)   value
+                        "INVALID REPLY".
+        10  filler                              pic x(70)    value
+                        "INVALID CLIENT".
+        10  filler                              pic x(70)   value
+                        "CONSTANT MSTR RECORD 1 DOES NOT EXIST".
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(70)
+                        occurs  8 times.
+
+01  err-msg-comment                             pic x(70).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                        "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+screen section.
+
+01  scr-title.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  14
+*                      u030aa2.cbl                                   )
+    05  blank screen.
+    05  line 01 col 01 value is "U030AA2".
+    05  line 01 col 20 value is "RAT TAPE APPLICATION FOR DISKETTE".
+* (y2k - auto fix)
+*   05  line 01 col 73 pic 99 from sys-yy.
+    05  line 01 col 73 pic 9(4) from sys-yy.
+    05  line 01 col 75 value is "/".
+    05  line 01 col 76 pic 99 from sys-mm.
+    05  line 01 col 78 value is "/".
+    05  line 01 col 79 pic 99 from sys-dd.
+
+01  program-in-progress.
+
+    05  line 21 col 20 value "PROGRAM U030AA2 IN PROGRESS".
+
+01  confirm.
+    05  line 23 col 01 value " ".
+
+01  blank-line-24.
+
+    05  line 24 col 01 blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+01  err-msg-line.
+    05  line 24 col 01 value " ERROR -   " bell blink.
+    05  line 24 col 11 pic x(60) from err-msg-comment.
+
+
+01  ring-bell.
+    05  line 23 col 01 value " " bell.
+
+procedure division.
+
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+    perform ab0-processing              thru ab0-99-exit
+        until rat-eof.
+
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+* (y2k)
+    accept sys-date                     from date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+    move sys-mm                         to run-mm.
+    move sys-dd                         to run-dd.
+* (y2k)
+    move sys-yy                         to run-yy.
+
+    accept sys-time                     from time.
+    move sys-hrs                        to run-hrs.
+    move sys-min                        to run-min.
+    move sys-sec                        to run-sec.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  15
+*                      u030aa2.cbl                                   )
+
+* (y2k)
+    move run-date                       to l1-run-date.
+
+    move zeros                          to counters.
+
+    move "N"                            to rat-eof-flag.
+    move "N"                            to hcp-rmb-flag.
+    move "N"                            to group-nbr-flag.
+
+    display scr-title.
+    display program-in-progress.
+
+    open input u030aa-parm-file.
+
+    read u030aa-parm-file
+        at end
+            go to zb1-close-files.
+
+    open input iconst-mstr.
+
+*   move u030aa-clinic-nbr              to iconst-clinic-nbr-1-2.
+    move 01                             to iconst-clinic-nbr-1-2.
+
+    read iconst-mstr
+        invalid key
+                move 8 to err-ind
+                perform za0-common-error        thru za0-99-exit
+                go to zb1-close-files.
+
+    perform aa2-verify-group-nbr        thru aa2-99-exit
+        varying i from 1 by 1
+* 2005/01/04 - MC
+*       until   group-nbr-found or i > 40.
+        until   group-nbr-found or i > 63.
+* 2005/01/04 - end
+
+    if group-nbr-not-found
+    then
+        move 3                          to err-ind
+        perform za0-common-error        thru za0-99-exit
+        perform zb0-abend               thru zb0-99-exit.
+*    endif
+
+
+    open input client-mstr.
+
+    move u030aa-client-id               to client-id of client-mstr-rec.
+    read client-mstr
+        invalid key
+            move 7                      to err-ind
+            perform za0-common-error    thru za0-99-exit
+            go to zb1-close-files.
+
+
+    open input  ohip-rat-tape
+                client-doc-mstr
+                client-rma-claim-nbr.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  16
+*                      u030aa2.cbl                                   )
+
+*    expunge out-ohip-rat-tape.
+
+    open output out-ohip-rat-tape.
+
+*    expunge error-rpt.
+
+    open output error-rpt.
+
+aa0-20-continue-reading.
+
+    perform xa0-read-rat-tape           thru xa0-99-exit
+        until rat-1-record-type = "1"
+           or rat-eof.
+
+    if not rat-eof
+    then
+*       if iconst-clinic-nbr = rat-1-group-nbr
+        if u030aa-clinic-nbr = rat-1-group-nbr
+        then
+            if rat-1-record-type = "1"
+            then
+                add 1                           to ctr-rat-rec1-reads
+                perform aa1-record-1-process    thru aa1-99-exit
+            else
+                go to aa0-20-continue-reading
+*               endif
+        else
+            perform xa0-read-rat-tape           thru    xa0-99-exit
+            go to aa0-20-continue-reading
+*       endif
+    else
+        move 1                                  to      err-ind
+        perform za0-common-error                thru    za0-99-exit
+        perform zb0-abend                       thru    zb0-99-exit.
+*   endif
+
+
+    move client-desc                            to rat-1-payee-name.
+
+    write out-rat-record from rat-record-1.
+    add 1                                       to ctr-rat-write.
+
+    perform xa0-read-rat-tape                   thru    xa0-99-exit.
+
+
+aa0-99-exit.
+    exit.
+
+aa1-record-1-process.
+
+    if  u030aa-total-amt-paid not less than 0
+    then
+        move u030aa-total-amt-paid to  rat-1-tot-amt-pay
+        move spaces                to  rat-1-tot-amt-pay-sign
+    else
+        multiply u030aa-total-amt-paid  by -1 giving
+                                           rat-1-tot-amt-pay
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  17
+*                      u030aa2.cbl                                   )
+        move '-'                        to rat-1-tot-amt-pay-sign.
+*   endif
+
+aa1-99-exit.
+    exit.
+
+
+
+aa2-verify-group-nbr.
+
+    if u030aa-clinic-nbr  = const-clinic-nbr(i)
+    then
+        move 'Y'                to group-nbr-flag.
+*   endif
+
+aa2-99-exit.
+    exit.
+
+ab0-processing.
+
+    if rat-1-record-type = "1"
+    then
+*       if iconst-clinic-nbr not = rat-1-group-nbr
+        if u030aa-clinic-nbr not = rat-1-group-nbr
+        then
+            move "Y"                    to rat-eof-flag
+            go to ab0-99-exit.
+*       endif
+*   endif
+
+    perform xa1-create-tape-files       thru xa1-99-exit.
+
+    if rat-1-record-type = "4"
+    then
+        move rat-4-claim-nbr            to last-claim-nbr.
+*   endif
+
+    if rat-1-record-type = "5"
+    then
+        if rat-5-claim-nbr = last-claim-nbr
+        then
+            next sentence
+        else
+            move 2                      to err-ind
+            perform za0-common-error    thru za0-99-exit
+            display "RAT 5 CLAIM NBR=", rat-5-claim-nbr
+            display "LAST CLAIM NBR =", last-claim-nbr
+            stop "HIT NEW-LINE TO CONTINUE"
+            move zero                   to err-ind
+            go to ab0-10-read-next-rat.
+*       endif
+*   endif
+
+    if rat-1-record-type = '7'
+    then
+        move 'Y'                        to hcp-rmb-flag.
+*   endif
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  18
+*                      u030aa2.cbl                                   )
+
+ab0-10-read-next-rat.
+
+    perform xa0-read-rat-tape           thru xa0-99-exit.
+
+
+ab0-99-exit.
+    exit.
+
+az0-end-of-job.
+
+
+    display blank-screen.
+    display " ".
+    display "OHIP RATS READ          "  ctr-rat-tape-reads.
+    display "OHIP RATS REC 1 READ    "  ctr-rat-rec1-reads.
+    display "OHIP RATS REC 2 READ    "  ctr-rat-rec2-reads.
+    display "OHIP RATS REC 3 READ    "  ctr-rat-rec3-reads.
+    display "OHIP RATS REC 4 READ    "  ctr-rat-rec4-reads.
+    display "OHIP RATS REC 5 READ    "  ctr-rat-rec5-reads.
+    display "OHIP RATS REC 6 READ    "  ctr-rat-rec6-reads.
+    display "OHIP RATS REC 7 READ    "  ctr-rat-rec7-reads.
+    display "OHIP RATS REC 8 READ    "  ctr-rat-rec8-reads.
+    display "HCP HEADER REC READ     "  hcp-records.
+    display "RMB HEADER REC READ     "  rmb-records.
+    display "OUT OHIP RAT TAPE WRITE "  ctr-rat-write.
+
+    close iconst-mstr
+          ohip-rat-tape
+          out-ohip-rat-tape
+          u030aa-parm-file
+          client-rma-claim-nbr
+          client-mstr
+          client-doc-mstr
+          error-rpt.
+
+    display " ".
+    display "NORMAL END OF JOB - U030AA2".
+
+    stop run.
+
+az0-99-exit.
+    exit.
+xa0-read-rat-tape.
+
+    read ohip-rat-tape
+        at end
+            move "Y" to rat-eof-flag
+            go to xa0-99-exit.
+
+    add 1 to ctr-rat-tape-reads.
+
+
+xa0-99-exit.
+    exit.
+
+xa1-create-tape-files.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  19
+*                      u030aa2.cbl                                   )
+    if rat-1-record-type = '1'
+    then
+        add 1                                   to ctr-rat-rec1-reads
+    else
+    if rat-1-record-type = '2'
+    then
+        write out-rat-record from rat-record-2-3
+        add 1                                   to ctr-rat-rec2-reads
+                                                   ctr-rat-write
+    else
+    if rat-1-record-type = '3'
+    then
+        write out-rat-record from rat-record-2-3
+        add 1                                   to ctr-rat-rec3-reads
+                                                   ctr-rat-write
+    else
+    if rat-1-record-type = '4'
+    then
+        add 1                                   to ctr-rat-rec4-reads
+        perform xb0-process-rec-4               thru xb0-99-exit
+    else
+    if rat-1-record-type = '5'
+    then
+        add 1                                   to ctr-rat-rec5-reads
+        perform xb1-process-rec-5               thru xb1-99-exit
+    else
+    if rat-1-record-type = '6'
+    then
+        add 1                                   to ctr-rat-rec6-reads
+    else
+    if rat-1-record-type = '7'
+    then
+        add 1                                   to ctr-rat-rec7-reads
+    else
+    if rat-1-record-type = '8'
+    then
+        add 1                                   to ctr-rat-rec8-reads.
+*   endif
+*   endif
+*   endif
+*   endif
+*   endif
+*   endif
+*   endif
+
+xa1-99-exit.
+    exit.
+
+xb0-process-rec-4.
+
+
+    if rat-4-prov-cd = 'ON'
+    then
+        move "N"                        to hcp-rmb-flag
+    else
+        move "Y"                        to hcp-rmb-flag.
+*   endif
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  20
+*                      u030aa2.cbl                                   )
+    move rat-4-account-nbr              to hold-account-nbr.
+    move hold-doc-nbr                   to doc-nbr.
+    move 'Y'                            to doc-flag
+                                           client-flag
+                                           claim-flag.
+    read client-doc-mstr
+        invalid key
+                move 'N'                to doc-flag
+                go to xb0-99-exit.
+
+    if client-id of client-doc-rec not = u030aa-client-id
+    then
+        move 'N'                        to client-flag
+        go to xb0-99-exit.
+*   endif
+
+* 2003/dec/10 - MC
+    move const-clinic-nbr-1-2(i)        to clinic-nbr.
+* 2003/dec/10 - end
+
+    move rat-4-account-nbr              to claim-nbr-rma.
+*mf    read client-rma-claim-nbr
+* 2003/08/22 - MC
+*   read client-rma-claim-nbr  key is claim-nbr-rma
+    read client-rma-claim-nbr  key is claim-nbr-rma-clinic
+* 2003/08/22 - end
+       invalid key
+           move 'N'                     to claim-flag
+           perform zc0-print-err-rpt    thru zc0-99-exit.
+
+
+    move spaces                         to out-rat-record.
+
+    if claim-flag = 'N'
+    then
+        move spaces                     to rat-4-account-nbr
+    else
+        move doc-account-nbr            to rat-4-account-nbr.
+*   endif
+
+    write out-rat-record from rat-record-4.
+    add 1                               to ctr-rat-write.
+
+    if hcp-claims
+    then
+        add 1                           to hcp-records
+    else
+    if rmb-claims
+    then
+        add 1                           to rmb-records.
+*   endif
+
+xb0-99-exit.
+    exit.
+
+
+xb1-process-rec-5.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  21
+*                      u030aa2.cbl                                   )
+    if doc-not-found or wrong-client
+    then
+        go to xb1-99-exit
+    else
+        move spaces                     to out-rat-record
+        write out-rat-record from rat-record-5
+        add 1                           to ctr-rat-write.
+*   endif
+
+xb1-99-exit.
+    exit.
+
+za0-common-error.
+
+    move err-msg (err-ind)              to      e1-error-msg.
+    display confirm.
+    display e1-error-line.
+
+za0-99-exit.
+    exit.
+
+zb0-abend.
+
+    display "U030AA2 ABENDING"
+    display " ".
+
+
+zb1-close-files.
+    close iconst-mstr
+          ohip-rat-tape
+          out-ohip-rat-tape
+          u030aa-parm-file
+          client-rma-claim-nbr
+          client-mstr
+          client-doc-mstr
+          error-rpt.
+
+    stop run.
+
+zb0-99-exit.
+    exit.
+
+
+zc0-print-err-rpt.
+
+    if ctr-line > 60
+    then
+        add 1                           to ctr-page
+        move ctr-page                   to prt-page
+        write print-err-rpt from head-line after advancing page
+        move spaces                     to print-err-rpt
+        write print-err-rpt after advancing 3 lines
+        move 4                          to ctr-line.
+*   endif
+
+    move spaces to print-err-rpt.
+
+    write print-err-rpt from rat-4-account-nbr after advancing 2 lines.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  22
+*                      u030aa2.cbl                                   )
+
+    add 1                               to ctr-line.
+
+
+zc0-99-exit.
+    exit.
+
+
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        4620     Code:        4163

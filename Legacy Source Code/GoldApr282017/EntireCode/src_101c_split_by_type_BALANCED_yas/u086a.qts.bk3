@@ -1,0 +1,63 @@
+;#> PROGRAM-ID.     u086a.qts
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE:	When a claim is assigned to the wrong patient the
+;			users are allowed to update the 'ikey' of the claim
+;			to point to the corrected patient. If ALL claims
+;		        of the "original" or "old" patient are to be re-assigned
+;			to the "new" patient then the old/new patient info
+;			is write to f086a-orig-new-pat-ids file.
+;			This file is used by this program as a driver file
+;			to change ownership of the claims.
+;
+;    MODIFICATION HISTORY
+;     DATE   WHO        DESCRIPTION
+;  01/mar/20 B.E.	- original 
+
+can clear
+set default
+set process nolimit
+
+run u086a
+
+request patient_claims_update
+
+access f086a-orig-new-pat-ids					&
+   link "P", (orig-clmhdr-pat-ohip-id-or-chart[2:17])		&
+     to  key-p-clm-type, key-p-clm-data				&
+			 of f002-claims-mstr			&
+   link orig-clmhdr-pat-ohip-id-or-chart			&
+     to key-pat-mstr of f010-pat-mstr alias f010-orig opt	&
+   link      clmhdr-pat-ohip-id-or-chart			&
+     to key-pat-mstr of f010-pat-mstr alias f010-new  opt	&
+   link clmhdr-batch-nbr of f002-claims-mstr                    &
+    to  batctrl-batch-nbr of f001-batch-control-file  opt
+
+
+; (update claim's 'p' key and i-key link to f010 with new pat's info)
+output f002-claims-mstr update on errors report
+   item clmhdr-pat-ohip-id-or-chart of f002-claims-mstr	final		&
+		clmhdr-pat-ohip-id-or-chart of f086a-orig-new-pat-ids 
+    item key-p-clm-data of f002-claims-mstr 	final			&
+	 clmhdr-pat-ohip-id-or-chart  of f086a-orig-new-pat-ids[2:17]
+   item clmhdr-pat-acronym  of f002-claims-mstr	final			&
+			pat-acronym of f010-new
+
+
+
+; (save before/after for audit purposes)
+subfile u086a_audit keep include		&
+	f086a-orig-new-pat-ids, 		&
+	clmhdr-pat-ohip-id-or-chart  of f002-claims-mstr,	&
+	clmhdr-pat-acronym		of f002-claims-mstr,	&
+	pat-surname 			of f010-orig,		&
+	pat-given-name			of f010-orig,		&
+	pat-surname 			of f010-new, 		&
+	pat-given-name			of f010-new, 		&
+	clmhdr-claim-id 		of f002-claims-mstr,	&
+	key-claims-mstr   		of f002-claims-mstr,	&
+	key-p-claims-mstr       	of f002-claims-mstr
+
+build $pb_obj/u086a
+  

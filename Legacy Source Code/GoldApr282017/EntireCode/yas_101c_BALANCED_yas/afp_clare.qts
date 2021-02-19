@@ -1,0 +1,139 @@
+;doc     : afp_alldept_ohip.qts
+;purpose : create report for AFP  by service date Jan 2003 to june 30, 2003.
+;          dept 7, (dept 14 and doc 889), (dept3 and docs 317,340,385,626)  
+;	   by doctor $ agent 0/4/1 include "B" adjustments
+;who     : Coleen Fotheringham
+;
+; *************************************************************
+
+;Date		Who		Description
+;2003/08/21	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access f002-claims-mstr                   &
+  link clmhdr-pat-ohip-id-or-chart        &
+    to key-pat-mstr of f010-pat-mstr opt  &
+  link (nconvert(clmhdr-claim-id[4:3]))   &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220317000 to 220317999,   &
+                                              220909000 to 220909999,   &
+                                              220340000 to 220340999,   &
+                                              220385000 to 220385999,   &
+                                              220626000 to 220626999,   &
+                                              910317000 to 910317999,   &
+                                              910909000 to 910909999,   &
+                                              910340000 to 910340999,   &
+                                              910385000 to 910385999,   &
+                                              910626000 to 910626999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select if           clmhdr-batch-type  = 'C'                           & 
+           and (   clmhdr-agent-cd    = 0                              &
+                or clmhdr-agent-cd    = 1                              &
+                or clmhdr-agent-cd    = 4                              &
+               )                                                       
+
+def x-payment cha*3 = "HCP" if pat-prov-cd = "ON"    &
+                 else "RMB"
+
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile afp_dept7     keep include               &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-agent-cd		     of f002-claims-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-dept                     of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr,&
+x-payment       	                        ,&
+x-clinic        	                                 
+
+
+build $obj/afp_alldept_ohip
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *afp_dept7                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr                                            
+
+select f002-claims-mstr if                                              &
+            clmdtl-sv-date     >= '20020701'                            &
+       and  clmdtl-sv-date     <= '20030630'                            &
+       and  x-payment           = 'HCP'                                 &
+       and  x-clinic            = '91'                                  &
+       and  clmdtl-oma-cd      <> "0000"             &; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"             &; ignore desc recs
+       and  clmdtl-oma-cd      <> "PAID"             & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"             & ; details only
+       and  clmdtl-oma-cd      <> "MISJ"             & ; details only
+       and  clmdtl-oma-cd      <> "MISC"             & ; details only
+       and  clmdtl-oma-cd      <> "MICV"             & ; details only
+       and  clmdtl-oma-cd      <> "MISP"             & ; details only
+       and  clmdtl-oma-cd      <> "MOHR"             & ; "  "
+       and  clmdtl-oma-cd      <> "MICB"             & ; "  "
+       and  clmdtl-oma-cd      <> "MIBR"             & ; "  "
+       and  clmdtl-oma-cd      <> "MINH"             & ; "  "
+       and  clmdtl-oma-cd      <> "MHSC"             & ; "  "
+       and  clmdtl-oma-cd      <> "NHSC"             
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]        
+
+sorted on doc-nbr    
+
+;temp x-jan-2003 zoned*7 signed
+;item x-jan-2003  = x-jan-2003 + clmdtl-fee-ohip/100 &
+;                    if (x-yyyymm   = "200301")      &
+;                    reset at doc-nbr 
+
+temp x-amount-1   zoned*7 signed
+item x-amount-1    = x-amount-1   + clmdtl-fee-ohip/100 &
+                    if (    x-yyyymm   >= "200207"  &
+                        and x-yyyymm   <= "200212") &
+                    reset at doc-nbr 
+
+temp x-amount-2   zoned*7 signed
+item x-amount-2    = x-amount-2   + clmdtl-fee-ohip/100 &
+                    if (    x-yyyymm   >= "200301"  &
+                        and x-yyyymm   <= "200304") &
+                    reset at doc-nbr
+
+temp x-amount-3   zoned*7 signed
+item x-amount-3    = x-amount-3   + clmdtl-fee-ohip/100 &
+                    if (    x-yyyymm   >= "200305"  &
+                        and x-yyyymm   <= "200306") &
+                    reset at doc-nbr
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile afp-dept7a portable keep at doc-nbr include         &
+doc-nbr                                           ,&
+comma                                             ,&
+doc-name                                          ,&
+comma                                             ,&
+x-amount-1                                        ,&
+comma                                             ,&
+x-amount-2                                        ,&
+comma                                             ,&
+x-amount-3                                        ,&
+x-cr
+
+build $obj/afp_alldept_ohip1

@@ -1,0 +1,105 @@
+;#V PROGRAM-ID.     U122.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             - Update F119-DOCTOR-YTD with values from current EP
+;		run (that were placed into *F119)
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/Apr/19  ____   B.E.     - original
+;     93/SEP/15  ____   B.E.     - added access to F190 so that GROSS amts
+;                                  are updated into F119-YTD for INCOME based
+;                                  based transactions and NET for NON-INCOME
+;     93/NOV/26  ____   B.E.     - STATUS updated into YTD only, MTD zeroed
+;     93/DEC/24  ____   B.E.     - YTDEAR updated into YTD only, MTD zeroed
+;     93/DEC/28  ____   B.E.     - variables renamed to reflect change in
+;				   in *F119 from AMT-GROSS to X-AMT-GROSS
+;     93/DEC/31  ____   B.E.     - changed f119 to unique keys
+
+;     96/JAN/19  ____   M.C.     - INCREQ & INCTAR updated into YTD
+;                                  only, MTD zeroed. (SMS 147)
+;     96/APR/18  ____   Y.B.     - ADD "REVCLA" TO TMP-AMT-MTD AND
+;                                  TO TMP-AMT-YTD (to pick up net-amt)
+;                                  REVCLA ONE TIME ONLY. MAKE TMPMTD
+;                                  AND TMPYTD THE SAME YTD DOES NOT
+;                                  UPDATE OTHERWISE.
+;     98/oct/22         B.E.	  - f119 database fields defined as 'numeric
+;				    size 8' as part of unix conversion.
+;				    tmp-amt fields changed to match.
+;  1999/Feb/18		S.B.	 - Checked for Y2K.
+;  2003/dec/24          A.A.	 - alpha doctor nbr
+;
+
+cancel clear
+set default
+set process limit 100000
+run u122
+
+request u122_run_0_update_f119          &
+        on edit        errors report    &
+        on calculation errors report
+
+access *f119                                     &
+        link doc-nbr,                            &
+             comp-code                           &
+        to   doc-nbr,                            &
+             comp-code of f119-doctor-ytd opt    &
+        link comp-code                           &
+        to   comp-code of f190-comp-codes  opt
+
+; (98/oct/22 B.E.
+;  Certain comp-codes are calculated only as YTD values, therefore the
+;  YTD should be moved into, not added to the current YTD values.)
+;def tmp-amt-ytd integer signed size 4                          &
+; 99/apr/30 B.E. 8 to 10
+;def tmp-amt-ytd zoned numeric size  8				&
+ def tmp-amt-ytd zoned numeric size 10				&
+        = x-amt-gross of f119                                   &
+                       if       comp-code of f119 = "STATUS"    &
+                         or     comp-code of f119 = "YTDEAR"    &
+                         or     comp-code of f119 = "INCREQ"    &
+                         or     comp-code of f119 = "INCTAR"    &
+                         or not record f119-doctor-ytd exists   &
+     else x-amt-net of f119           				&
+      		       if comp-code of f119 = "REVCLA"     	&
+     else  amt-ytd   of f119-doctor-ytd                         &
+         + x-amt-gross of f119
+
+; (98/oct/22 B.E.
+;  For certain codes the calculations are based upon YTD criteria and
+;  therefore no MTD is calculated -- it is thus set to zero)
+;def tmp-amt-mtd integer signed size 4		            	&
+; 99/apr/30 B.E. 8 to 10
+;def tmp-amt-mtd zoned numeric size  8				&
+ def tmp-amt-mtd zoned numeric size 10				&
+        = 0                                                     &
+                       if    comp-code of f119 = "STATUS"       &
+                          or comp-code of f119 = "YTDEAR"       &
+                          or comp-code of f119 = "INCREQ"       &
+                          or comp-code of f119 = "INCTAR"       &
+    else x-amt-net of f119					&
+    		       if comp-code of f119 = "REVCLA" 		&
+    else x-amt-gross of f119
+
+
+;OUTPUT F119-DOCTOR-YTD ALIAS F119-UPDATE UPDATE                 &
+ output f119-doctor-ytd                   update                 &
+    if     record f119-doctor-ytd exists
+  item amt-mtd final tmp-amt-mtd
+  item amt-ytd final tmp-amt-ytd
+
+output f119-doctor-ytd  alias f119-add  add                     &
+    if not record f119-doctor-ytd exists
+  item doc-nbr         final doc-nbr          of f119
+  item comp-code       final comp-code        of f119
+  item process-seq     final reporting-seq    of f119
+  item comp-code-group final comp-code-group  of f119
+  item rec-type        final x-rec-type       of f119
+  item amt-mtd         final tmp-amt-mtd
+  item amt-ytd         final tmp-amt-ytd
+
+
+build $pb_obj/u122
+  

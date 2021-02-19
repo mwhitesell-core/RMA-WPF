@@ -1,0 +1,870 @@
+;#> PROGRAM-ID.     U115.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             CALCULATE REQUIRED 'TOT'AL / 'YTD' TRANSACTIONS AS OF CURRENT EP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;     92/MAY/01  ____   B.E.     - Added YTDGUC logic
+;     92/MAY/11  ____   B.E.     - YTDGUC logic changed from 1C to 1B (YTDGUC)
+;     92/AUG/11  ____   B.E.     - MOVED YTD LOGIC INTO 2ND REQUEST
+;     92/SEP/14  ----   B.E.     - COMMENT OUT OUTPUT OF YTDGUx TRANSACTION
+;                                  SINCE GTYPEx IS NOW CALCULATED AS YTD NOT
+;                                  CURRENT EP.  IF GTYPEx CHANGED RE-ACTIVATE
+;                                  THE TYDGUx code.
+;     92/OCT/26  ----   B.E.     - Updated F020 with YTDINC value
+;     92/NOV/10         B.E.     - updated F020 within this run with OUTPUT stmt
+;                                  rather than using U115 SUBFILE.
+;     93/APR/10         B.E.     - YTDCEA/CEX use values in DOCTOR-MSTR rather
+;                                  than calculated ones.
+;     93/MAY/06         B.E.     - Added SUBFILE F119
+;     93/MAY/11         B.E.     - Added ACCESS of F119-DOCTOR-YTD to preset
+;     93/MAY/18         B.E.     - INTEGER*4 for zoned*8, F119/F119 SUBFILE changes
+;                                  YTD values
+;     93/MAY/27         B.E.     - *F119 exclude records added to F119
+;                                - add/subtract F110 "M"anual type recs to F020's YTDEAR (ytd earnings)
+;                                - changed YTDxxx to use = not < current-ep-nbr
+;                       ?????? WITH ABOVE = VS < CHANGE IS THIS CODE NOW NOT REQUIRED ????????????????
+;     93/JUN/01         B.E.     - removed ADD of recs to F119-DOCTOR-YTD, all records
+;                                 now added to *F119 and then U122 adds them to F119-YTD
+;     93/JUN/22         B.E.     - added Part timer Expense logic
+;     93/AUG/09         B.E.     - GST/AMT EXPENSE now calculated by
+;                                  separating these two amounts from the
+;                                  the amount of the difference between
+;                                  GROSS and NET amounts.
+;     93/SEP/14         B.E.     - added RMA+GST and DEPT MISC/REG Expense Logic
+;                                  and rounding of result
+;     93/SEP/20         B.E.     - added separate expenses for RMA MISC/REG.
+;                                  now using RMAEXR(RMA  Regular expense),
+;                                            RMAEXM(RMA  Misc.   expense),
+;                                            DEPEXR(DEPT Regular expense),
+;                                            DEPEXM(DEPT Misc.   expense)
+;                                  OUTPUT RMA and DEPT expense only if > 0
+;     93/SEP/24         B.E.     - added DOCTOR'S CEIEXP to TOTEXP amount
+;     93/SEP/28         B.E.     - changed update of *F119 from GROSS to NET values
+;     93/OCT/02         B.E.     - OUTPUT TOTxxx records to *F119 only if > 0
+;     93/OCT/05         B.E.     - RMA-EXPENSE calc. as diff between GROSS and NET
+;                                  minus DEPT-EXPENSE even if doctor's RMA
+;                                  EXPENSE PERCENTAGES are zero.
+;     93/OCT/26         B.E.     - changed IF > 0  to IF <> 0 on all OUTPUT stmnts
+;     93/OCT/30         B.E.     - AMT-INCOME-MINUS-EXPENSES-G now allowed  to go
+;                                  negative (otherwise negative income
+;                                  wasn't reported correctly)
+;     93/NOV/26         B.E.     - Reversed GROSS/NET fields on CEIEXP output to *F119
+;     93/DEC/03         B.E.     - for CEIEXP used AMT-NET not 0 in calc.
+;     93/DEC/24         B.E.     - put YTDEAR into *F119 for update into F119-DOCTOR-YTD
+;
+;     94/MAR/07         M.C.     - ADD THE CONDITIONAL COMPILE FOR 'INCEXP'
+;                                  LOGIC
+;     94/MAR/16         M.C.     - INCLUDE COMP-TYPE 'P' IN THE SUBFILE,
+;                                - CHANGE THE FORMULA FOR CALCULATING
+;                                  DEPT AND RMA EXPENSE
+;     95/MAY/02		M.C.	 - ADD THE BACKHOLD AS PART OF THE
+;				   EXPENSE
+;     95/MAY/08         M.C.     - COMMENT OUT THE SUBFILE DEBUGU115A,
+;				   MESSAGE 'VIRTUAL MEMORY HAS EXCEEDED'
+;				   OCCURRED WHEN EXECUTING PROGRAM EVEN
+;				   THE STACKSIZE HAS INCREASED FROM 1500
+;				   TO 10000. NOTE:  KEEP IN MIND THAT
+;				   SIMILIAR PROBLEM MAY OCCUR IF THERE
+;				   ARE MORE ITEMS, SUBFILES OR RECORDS
+;				   TO BE ADDED IN THE REQUESTS
+;     95/MAY/09		M.C.	 - CALCULATE THE RMA EXPENSE BY THE
+;				   DOCTOR RMA EXPENSE PERCENTAGE RATHER
+;				   THAN THE REMAINING VALUE BETWEEN
+;				   GROSS - NET - DEPT
+;     95/JUL/05         M.C.     - IF HOLDBACK < 10 CENTS, ADD TO RMA
+;				   EXPENSE IF RMA-EXPENSE IS NON-ZERO;
+;				   OTHERWISE, ADD TO DEPT EXPENSE
+;     95/JUL/14 	M.C.	 - DUE TO VIRTUAL MEMORY HAS EXCEEDED
+;				   SPLIT THE LAST REQUEST INTO A NEW
+;				   PROGRAM(U115B.QTS).  IF CHANGES ARE
+;				   REQUIRED IN THE LAST REQUEST, ALSO
+;				   MAKE THE SAME CHANGE IN U115B.QTS
+;     95/SEP/15		M.C.	 - INCLUDE 'E'XPENSE RECORDS AS PART OF
+;				   FINAL-ALL-EXPENSES
+;     95/OCT/23 	M.C.	 - INCLUDE TOT-REVHBK IN DOC-YTDINC
+;				   SINCE TOT-REVHBK IS A NEGATIVE VALUE
+;				   SUBTRACT TOT-REVHBK TO GET THE POSITIVE
+;				   VALUE
+;     95/NOV/07		M.C.	 - PDR 634 - INCLUDE NEW CONDITION TO
+;				   TOT-REVHBK DEFINITION
+;     95/NOV/22		M.C.	 - OPTIMIZE PROGRAM BY DELETING ALL THE
+;				   UNUSED TEMP & DEFINE ITEMS
+;     96/APR/19		M.C.	 - INCLUDE 'REVCLA' IN TOT-REVHBK
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/Jun/07		S.B.	 - Altered the call to gst.use to be 
+;				   called from $use instead of src.
+
+
+cancel clear
+set stacksize 10000
+run u115
+
+set default
+set process 50000
+
+global temp ytdcea-seq     zoned*2 unsigned
+global temp ytdcea-type    char*1
+
+global temp ytdcex-seq     zoned*2 unsigned
+global temp ytdcex-type    char*1
+
+global temp ytdear-seq     zoned*2 unsigned
+global temp ytdear-type    char*1
+
+global temp rmaexr-seq     zoned*2 unsigned
+global temp rmaexr-type    char*1
+
+global temp rmaexm-seq     zoned*2 unsigned
+global temp rmaexm-type    char*1
+
+global temp incexp-seq     zoned*2 unsigned
+global temp incexp-type    char*1
+
+global temp ytdinc-seq     zoned*2 unsigned
+global temp ytdinc-type    char*1
+
+global temp totinc-seq     zoned*2 unsigned
+global temp totinc-type    char*1
+
+global temp totexp-seq     zoned*2 unsigned
+global temp totexp-type    char*1
+
+global temp ytdgua-seq     zoned*2 unsigned
+global temp ytdgua-type    char*1
+
+global temp ytdgub-seq     zoned*2 unsigned
+global temp ytdgub-type    char*1
+
+global temp ytdguc-seq     zoned*2 unsigned
+global temp ytdguc-type    char*1
+
+global temp depexr-seq     zoned*2 unsigned
+global temp depexr-type    char*1
+
+global temp depexm-seq     zoned*2 unsigned
+global temp depexm-type    char*1
+
+global temp gst-seq     zoned*2 unsigned
+global temp gst-type    char*1
+
+global temp holdback-seq     zoned*2 unsigned
+global temp holdback-type    char*1
+
+;--------------------------------------------------------------------
+;
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u115_a_get_ytdcea                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDCEA"
+item ytdcea-seq  = process-seq
+item ytdcea-type = comp-type
+
+request u115_a_get_ytdcex                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDCEX"
+item ytdcex-seq  = process-seq
+item ytdcex-type = comp-type
+
+request u115_a_get_ytdear                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDEAR"
+item ytdear-seq     = process-seq
+item ytdear-type    = comp-type
+
+request u115_a_get_rmaexr                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "RMAEXR"
+item rmaexr-seq     = process-seq
+item rmaexr-type    = comp-type
+
+request u115_a_get_rmaexm                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "RMAEXM"
+item rmaexm-seq     = process-seq
+item rmaexm-type    = comp-type
+
+request u115_a_get_ytdinc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDINC"
+item ytdinc-seq  = process-seq
+item ytdinc-type = comp-type
+
+request u115_a_get_incexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "INCEXP"
+item incexp-seq      = process-seq
+item incexp-type     = comp-type
+
+request u115_a_get_totinc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTINC"
+item totinc-seq      = process-seq
+item totinc-type     = comp-type
+
+request u115_a_get_totexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTEXP"
+item totexp-seq      = process-seq
+item totexp-type     = comp-type
+
+request u115_a_get_ytdgua                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDGUA"
+item ytdgua-seq  = process-seq
+item ytdgua-type = comp-type
+
+request u115_a_get_ytdgub                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDGUB"
+item ytdgub-seq  = process-seq
+item ytdgub-type = comp-type
+
+request u115_a_get_ytdguc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDGUC"
+item ytdguc-seq  = process-seq
+item ytdguc-type = comp-type
+
+request u115_a_get_depexr                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPEXR"
+item depexr-seq     = process-seq
+item depexr-type    = comp-type
+
+request u115_a_get_depexm                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPEXM"
+item depexm-seq     = process-seq
+item depexm-type    = comp-type
+
+request u115_a_get_gst                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "GST"
+item gst-seq     = process-seq
+item gst-type    = comp-type
+
+request u115_a_get_holdback                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "HOLDBK"
+item holdback-seq     = process-seq
+item holdback-type    = comp-type
+
+;-------------------------------------------------------------------------------
+
+request u115_run_1                              &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                                           &
+        link current-ep-nbr viaindex compensation-key2                &
+        to   ep-nbr  of f110-compensation                             &
+        link doc-nbr of f110-compensation                             &
+        to   doc-nbr of f020-doctor-mstr   opt                        &
+        link comp-code of f110-compensation                           &
+        to   comp-code of f190-comp-codes
+
+choose const-rec-nbr 6
+sorted on doc-nbr   of f110-compensation                        &
+       on ep-nbr    of f110-compensation                        &
+       on comp-code of f110-compensation  ; CHANGED TO SORTED WHEN CHOOSE ADDED !!!!
+
+
+;use $pb_src/gst.use
+use $use/gst.use
+
+; ----------- CALCULATIONS PERFORMED AT COMP-CODE LEVEL ------------
+
+; (Determine Expenses charged (difference between GROSS and NET) using
+;  FACTOR or non-zero Expense Percentages as indicators as to type of charges
+;  applied)
+
+
+def x-income-gross-minus-net       int*8 signed size 4           &
+   =  amt-gross  of f110-compensation                            &
+    - amt-net    of f110-compensation
+
+def x-amt-dept-expense-pot-g   int*8 signed size 4                    &
+      = round ( (  amt-gross of f110-compensation                     &
+                 * doc-dept-expense-percent-reg   ) / 1000000,0,near) &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "R"               &
+   else round ( (  amt-gross of f110-compensation                     &
+                 * doc-dept-expense-percent-misc  ) / 1000000,0,near) &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "M"               &
+   else 0
+
+; (check for inconsistent data where calc'd expense greater than
+;  difference between gross and net)
+def x-amt-dept-expense-g   int*8 signed size 4                         &
+     = x-amt-dept-expense-pot-g                                        &
+     if       (x-amt-dept-expense-pot-g <  x-income-gross-minus-net    &
+           and amt-gross of f110-compensation > 0)                     &
+        or    (x-amt-dept-expense-pot-g >  x-income-gross-minus-net    &
+           and amt-gross of f110-compensation < 0)                     &
+  else x-income-gross-minus-net
+
+
+def x-amt-rma-expense-pot-g   int*8 signed size 4                    &
+      = round ( (  amt-gross of f110-compensation                     &
+                 * doc-rma-expense-percent-reg   ) / 1000000,0,near) &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "R"               &
+   else round ( (  amt-gross of f110-compensation                     &
+                 * doc-rma-expense-percent-misc  ) / 1000000,0,near) &
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "M"               &
+   else 0
+
+def x-amt-rma-expense-only       int*8 signed size 4    &
+    =  x-amt-rma-expense-pot-g                          &
+  if 	(x-income-gross-minus-net > (x-amt-dept-expense-g &
+                              + x-amt-rma-expense-pot-g)  &
+          and  amt-gross of f110-compensation > 0)      &
+     or (x-income-gross-minus-net < (x-amt-dept-expense-g &
+                              + x-amt-rma-expense-pot-g)  &
+          and  amt-gross of f110-compensation < 0)      &
+ else (x-income-gross-minus-net - x-amt-dept-expense-g)
+
+def x-amt-gst-pot-g     int*8 signed size 4       &
+     =  x-amt-rma-expense-only                       &
+      * gst-percent / 100                         &
+           if doc-ind-pays-gst = "Y"              &
+  else 0
+
+def x-amt-gst-only      int*8 signed size 4       &
+     =  x-amt-gst-pot-g                           &
+  if   (x-income-gross-minus-net > (x-amt-dept-expense-g  &
+           + x-amt-rma-expense-only +  x-amt-gst-pot-g)      &
+          and amt-gross of f110-compensation > 0) &
+    or (x-income-gross-minus-net < (x-amt-dept-expense-g  &
+	   + x-amt-rma-expense-only +  x-amt-gst-pot-g)      &
+         and amt-gross of f110-compensation < 0)            &
+  else (x-income-gross-minus-net - x-amt-dept-expense-g   &
+	   - x-amt-rma-expense-only)
+
+def x-amt-rma-expense-plus-gst-g    int*8 signed size 4         &
+         =  x-amt-rma-expense-only                              &
+          + x-amt-gst-only
+
+; (RMA 'Holdback ' calculated as difference between 'GROSS and NET'
+;  minus 'DEPT Expense + RMA Expense + GST')
+def x-amt-holdback-g             int*8 signed size 4    &
+    =  x-income-gross-minus-net                         &
+     - x-amt-dept-expense-g                             &
+     - x-amt-rma-expense-plus-gst-g                     &
+   if         (x-income-gross-minus-net > (x-amt-dept-expense-g &
+		+  x-amt-rma-expense-plus-gst-g)	&
+          and  amt-gross of f110-compensation > 0)      &
+      or      (x-income-gross-minus-net < (x-amt-dept-expense-g &
+		+  x-amt-rma-expense-plus-gst-g)	&
+          and  amt-gross of f110-compensation < 0)      &
+ else 0
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;(IF HOLDBACK IS LESS THAN OR = 10 CENTS AND THERE WAS PREVIOUS
+; NON-ZERO EXPENSE CALCULATIONS, THEN IGNORE THE CALCULATED HOLDBACK
+; AND ADD THE AMOUNT OF THE LEFT OVER "HOLDBACK" BACK INTO THE
+; LAST NON-ZERO EXPENSE CALCUATION)
+def  x-amt-holdback-final					&
+    = x-amt-holdback-g						&
+	if   x-amt-holdback-g > 10				&
+          or (    x-amt-rma-expense-only = 0			&
+              and x-amt-dept-expense-g   = 0			&
+	     )							&
+ else 0
+
+def x-amt-rma-expense-final					&
+    =   x-amt-rma-expense-only					&
+      + x-amt-holdback-g					&
+     	if     x-amt-holdback-g < 10				&
+           and x-amt-rma-expense-only <> 0			&
+   else   x-amt-rma-expense-only
+
+def x-amt-dept-expense-final					&
+        =   x-amt-dept-expense-g				&
+	  + x-amt-holdback-g					&
+     if     x-amt-holdback-g < 10				&
+ 	and x-amt-dept-expense-g <>  0				&
+   else   x-amt-dept-expense-g
+
+def x-amt-rma-expense-plusgst-final int*8 signed size 4            &
+         =  x-amt-rma-expense-final                                &
+          + x-amt-gst-only
+
+; ----------- CALCULATIONS SUMMED TO DOC-NBR LEVEL ------------
+temp    tot-income-gross-reg  int*8 signed size 4
+item    tot-income-gross-reg                            &
+     =  tot-income-gross-reg                            &
+      + amt-gross of f110-compensation                  &
+            if comp-sub-type = "R"                      &
+  else tot-income-gross-reg                             &
+  reset at doc-nbr
+temp    tot-income-gross-misc int*8 signed size 4
+item    tot-income-gross-misc                           &
+     =  tot-income-gross-misc                           &
+      + amt-gross of f110-compensation                  &
+            if comp-sub-type = "M"                      &
+  else tot-income-gross-misc                            &
+  reset at doc-nbr
+
+temp    tot-income-net-reg  int*8 signed size 4
+item    tot-income-net-reg                              &
+     =  tot-income-net-reg                              &
+      + amt-net of f110-compensation                    &
+            if comp-sub-type = "R"                      &
+  else tot-income-net-reg                               &
+  reset at doc-nbr
+temp    tot-income-net-misc int*8 signed size 4
+item    tot-income-net-misc                             &
+     =  tot-income-net-misc                             &
+      + amt-net of f110-compensation                    &
+            if comp-sub-type = "M"                      &
+  else tot-income-net-misc                              &
+  reset at doc-nbr
+
+temp    tot-dept-expense-reg         int*8 signed size 4
+item    tot-dept-expense-reg                            &
+     =  tot-dept-expense-reg                            &
+      + x-amt-dept-expense-final                            &
+          if comp-sub-type = "R"                        &
+  else  tot-dept-expense-reg                            &
+  reset at doc-nbr
+temp    tot-dept-expense-misc        int*8 signed size 4
+item    tot-dept-expense-misc                           &
+     =  tot-dept-expense-misc                           &
+      + x-amt-dept-expense-final                            &
+          if comp-sub-type = "M"                        &
+  else  tot-dept-expense-misc                           &
+  reset at doc-nbr
+
+temp    tot-rma-expense-plus-gst-reg        int*8 signed size 4
+item    tot-rma-expense-plus-gst-reg                            &
+     =  tot-rma-expense-plus-gst-reg                            &
+      + x-amt-rma-expense-plusgst-final                 &
+          if comp-sub-type = "R"                        &
+  else  tot-rma-expense-plus-gst-reg                            &
+  reset at doc-nbr
+
+temp    tot-rma-expense-plus-gst-misc       int*8 signed size 4
+item    tot-rma-expense-plus-gst-misc                           &
+     =  tot-rma-expense-plus-gst-misc                           &
+      + x-amt-rma-expense-plusgst-final                        &
+          if comp-sub-type = "M"                                &
+  else  tot-rma-expense-plus-gst-misc                           &
+  reset at doc-nbr
+
+temp    tot-rma-expense-only-reg        int*8 signed size 4
+item    tot-rma-expense-only-reg                                &
+     =  tot-rma-expense-only-reg                                &
+      + x-amt-rma-expense-final                                  &
+          if comp-sub-type = "R"                                &
+  else  tot-rma-expense-only-reg                                &
+  reset at doc-nbr
+temp    tot-rma-expense-only-misc       int*8 signed size 4
+item    tot-rma-expense-only-misc                               &
+     =  tot-rma-expense-only-misc                               &
+      + x-amt-rma-expense-final                                  &
+          if comp-sub-type = "M"                                &
+  else  tot-rma-expense-only-misc                               &
+  reset at doc-nbr
+
+temp    tot-gst-only-reg        int*8 signed size 4
+item    tot-gst-only-reg                                &
+     =  tot-gst-only-reg                                &
+      + x-amt-gst-only                                  &
+          if comp-sub-type = "R"                        &
+  else  tot-gst-only-reg                                &
+  reset at doc-nbr
+temp    tot-gst-only-misc       int*8 signed size 4
+item    tot-gst-only-misc                               &
+     =  tot-gst-only-misc                               &
+      + x-amt-gst-only                                  &
+          if comp-sub-type = "M"                        &
+  else  tot-gst-only-misc                       &
+  reset at doc-nbr
+
+temp    tot-holdback-only-reg   int*8 signed size 4
+item    tot-holdback-only-reg                           &
+     =  tot-holdback-only-reg                           &
+      + x-amt-holdback-final                                &
+          if comp-sub-type = "R"                        &
+  else  tot-holdback-only-reg                           &
+  reset at doc-nbr
+temp    tot-holdback-only-misc  int*8 signed size 4
+item    tot-holdback-only-misc                          &
+     =  tot-holdback-only-misc                          &
+      + x-amt-holdback-final                                &
+          if comp-sub-type = "M"                        &
+  else  tot-holdback-only-misc                  &
+  reset at doc-nbr
+
+temp    tot-revhbk	int*8 signed size 4
+item    tot-revhbk = tot-revhbk + amt-net of f110-compensation &
+	if  comp-type of f110-compensation = 'E'	&
+  	and (comp-code of f110-compensation = 'REVHBK'	&
+  	 or  comp-code of f110-compensation = 'REVCLA')	&
+   else tot-revhbk    reset at doc-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; current EP Manual Payments affect the YTD Earnings (YTDEAR)
+temp amt-manpay   integer*8 signed size 4
+item amt-manpay   = amt-manpay   + amt-net of f110-compensation    &
+                        if    comp-type of f110-compensation="M"   &
+               else amt-manpay                                     &
+                        reset at doc-nbr
+
+
+temp amt-ytdgua   integer*8 signed size 4
+item amt-ytdgua   = amt-ytdgua   + amt-net of f110-compensation       &
+                        if    comp-code of f110-compensation="GTYPEA" &
+               else amt-ytdgua                                        &
+                        reset at doc-nbr
+
+temp amt-ytdgub   integer*8 signed size 4
+item amt-ytdgub   = amt-ytdgub   + amt-net of f110-compensation       &
+                        if    comp-code of f110-compensation="GTYPEB" &
+               else amt-ytdgub                                        &
+                        reset at doc-nbr
+
+temp amt-ytdguc   integer*8 signed size 4
+item amt-ytdguc   = amt-ytdguc   + amt-net of f110-compensation       &
+                        if    comp-code of f110-compensation="GTYPEC" &
+               else amt-ytdguc                                        &
+                        reset at doc-nbr
+
+; if new record, initial YTD record in F119.  (required only for
+; "I"ncome, AND "E"xpense records - .ie calc rec types like CEICEA are
+;  needed AND the "D"eduction records are handled in the tax/eft processing)
+
+define x-rec-type  char*1 = "A"
+
+
+def x-not-needed integer*8 signed size 4 = 0
+
+; (GROSS VALUES ARE USUALLY PUT INTO F119 HOWEVER FOR CEIEXP THE NET VALUE IS REQUIRED)
+
+def x-amt-net int*8 signed size 4                                      &
+        = amt-gross of f110-compensation                               &
+                 if comp-code of f110-compensation = "CEIEXP"          &
+     else amt-net   of f110-compensation
+def x-amt-gross int*8 signed size 4                                    &
+        = amt-net   of f110-compensation                               &
+                 if comp-code of f110-compensation = "CEIEXP"          &
+     else amt-gross of f110-compensation
+
+
+def tot-gst-only integer*8 signed size 4		&
+    =  tot-gst-only-reg					&
+     + tot-gst-only-misc
+
+def tot-holdback-only integer*8 signed size 4		&
+    =  tot-holdback-only-reg				&
+     + tot-holdback-only-misc
+
+def tot-income-gross integer*8 signed size 4		&
+    =  tot-income-gross-reg				&
+     + tot-income-gross-misc
+
+def tot-income-net integer*8 signed size 4		&
+    =  tot-income-net-reg				&
+     + tot-income-net-misc
+
+temp final-all-expenses integer*8 size 4
+item final-all-expenses                                    &
+     =  tot-dept-expense-reg                               &
+      + tot-dept-expense-misc                              &
+      + tot-rma-expense-only-reg                           &
+      + tot-rma-expense-only-misc                          &
+      + tot-gst-only                                       &
+      + tot-holdback-only                                  &
+      + tot-revhbk					   &
+      + doc-ceicex        ; 93/SEP/24
+
+
+temp amt-income-minus-expenses-g integer*8 signed size 4
+item amt-income-minus-expenses-g                        &
+       =  tot-income-gross                              &
+        - final-all-expenses
+
+temp doc-ytdear-plus-amt-manpay integer*8 signed size 4
+item doc-ytdear-plus-amt-manpay				&
+ =   doc-ytdear of f020-doctor-mstr			&
+   + amt-manpay
+
+;-------------- F 1 1 0 --------------------------------------------------------
+
+output f110-compensation add alias f110-income at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "YTDINC"
+        item comp-type       = ytdinc-type
+        item process-seq     = ytdinc-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       =  doc-ytdinc-g of f020-doctor-mstr      &
+                              + tot-income-gross
+        item amt-net         =  doc-ytdinc   of f020-doctor-mstr      &
+                              + tot-income-net - tot-revhbk
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-ep-tot-income at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "TOTINC"
+        item comp-type       = totinc-type
+        item process-seq     = totinc-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       =   tot-income-gross-reg   &
+                               + tot-income-gross-misc
+        item amt-net         =   tot-income-net-reg     &
+                               + tot-income-net-misc
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-rmaexr at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "RMAEXR"
+        item comp-type       = rmaexr-type
+        item process-seq     = rmaexr-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = tot-rma-expense-only-reg
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+output f110-compensation add alias f110-rmaexm at doc-nbr       &
+  if tot-rma-expense-only-misc <> 0
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "RMAEXM"
+        item comp-type       = rmaexm-type
+        item process-seq     = rmaexm-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = tot-rma-expense-only-misc
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-gst at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "GST"
+        item comp-type       = gst-type
+        item process-seq     = gst-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = tot-gst-only
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-holdback at doc-nbr          &
+   if tot-holdback-only <> 0
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "HOLDBK"
+        item comp-type       = holdback-type
+        item process-seq     = holdback-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = tot-holdback-only
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-depexr at doc-nbr       &
+  if tot-dept-expense-reg  <> 0
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "DEPEXR"
+        item comp-type       = depexr-type
+        item process-seq     = depexr-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = tot-dept-expense-reg
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+output f110-compensation add alias f110-depexm at doc-nbr       &
+  if tot-dept-expense-misc <> 0
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "DEPEXM"
+        item comp-type       = depexm-type
+        item process-seq     = depexm-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = tot-dept-expense-misc
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-ep-tot-expense at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "TOTEXP"
+        item comp-type       = totexp-type
+        item process-seq     = totexp-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = final-all-expenses
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-ep-incexp      at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "INCEXP"
+        item comp-type       = incexp-type
+        item process-seq     = incexp-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = amt-income-minus-expenses-g
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+output f110-compensation add alias f110-ceiear  at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "YTDCEA"
+        item comp-type       = ytdcea-type
+        item process-seq     = ytdcea-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = doc-ytdcea of f020-doctor-mstr
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+
+; SHOULD OUTPUT THIS RECORD ONLY IF DOC IS PAYCODE 4 !
+output f110-compensation add alias f110-ceiexp  at doc-nbr   ;  &
+; IF DOC-PAY-CODE OF F112-PYCDCEILINGS = "4"
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "YTDCEX"
+        item comp-type       = ytdcex-type
+        item process-seq     = ytdcex-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = doc-ytdcex of f020-doctor-mstr
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+
+output f110-compensation add alias f110-ytdear  at doc-nbr
+        item ep-nbr          = current-ep-nbr
+        item ep-nbr-entry    = current-ep-nbr
+        item comp-code       = "YTDEAR"
+        item comp-type       = ytdear-type
+        item process-seq     = ytdear-seq
+        item factor          = 0.0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         =   doc-ytdear-plus-amt-manpay
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U115B gen'd"
+
+;-------------- F 0 2 0 --------------------------------------------------------
+output f020-doctor-mstr update if record f020-doctor-mstr exists at doc-nbr
+    item doc-totinc-g final                tot-income-gross
+    item doc-totinc   final                tot-income-net
+    item doc-ytdinc-g final doc-ytdinc-g + tot-income-gross
+    item doc-ytdinc   final doc-ytdinc   + tot-income-net	&
+         		  - tot-revhbk
+    item doc-ytdear   final doc-ytdear   + amt-manpay
+    item doc-ytdgua   final doc-ytdgua   + amt-ytdgua
+    item doc-ytdgub   final doc-ytdgub   + amt-ytdgub
+    item doc-ytdguc   final doc-ytdguc   + amt-ytdguc
+
+
+build $pb_obj/u115b
+  

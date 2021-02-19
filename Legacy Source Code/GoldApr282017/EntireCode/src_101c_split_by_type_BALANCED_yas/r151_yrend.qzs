@@ -1,0 +1,134 @@
+; R151_YREND.QZS
+; PURPOSE:	QUARTERLY TAX DEDUCTION REPORT INCLUDING 12 & 13 PERIODS
+;
+; 95/08/23	M. CHAN		- ORIGINAL
+;				- CLONE FROM R151.QZS
+; 00/03/02      Yas             - create a subfile r151 for excel
+; 02/08/28      M.C.            - modify to select if doc-tax-rpt-flag = 'Y'
+;				  instead of amt-taxable <> 0
+;
+; 03/dec/16	A.A.		- alpha doctor nbr
+;
+
+cancel clear
+set report nolimit
+
+access f110-compensation-history				&
+  link comp-code to comp-code of f190-comp-codes
+
+choose ep-nbr parm prompt "ENTER EP NBR (YYYYMM): " 1 time
+
+sel f110-compensation-history if amt-net <>  0
+
+; 2002/08/28 - MC
+;sel f190-comp-codes if amt-taxable <> 0
+sel f190-comp-codes if doc-tax-rpt-flag = 'Y'
+; 2002/08/28 - end
+
+set subfile name r151_yrend keep
+
+rep summary                 					&
+	doc-nbr amt-net
+
+build $pb_obj/r151a_yrend
+
+
+
+access f110-compensation					&
+  link comp-code to comp-code of f190-comp-codes
+
+choose  ep-nbr   parm range prompt "FROM EP NBR (YYYYMM): "  	&
+                          toprompt " TO  EP NBR (YYYYMM): "  1 time
+
+sel f110-compensation if amt-net <>  0
+
+; 2002/08/28 - MC
+;sel f190-comp-codes if amt-taxable <> 0
+sel f190-comp-codes if doc-tax-rpt-flag = 'Y'
+; 2002/08/28 - end
+
+set subfile name r151_yrend append
+
+rep summary                 					&
+	doc-nbr amt-net
+
+build $pb_obj/r151b_yrend
+
+set report device disc name r151
+set rep page length 60 width 132
+set formfeed
+
+
+access *r151_yrend      					&
+  link doc-nbr   to doc-nbr of f020-doctor-mstr optional	&
+  link (22)       to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+sort on doc-clinic-nbr on doc-nbr
+
+def w-doctor-name char*25 =					&
+	truncate(doc-name) + ", " + 				&
+	doc-init1 + "." + doc-init2 + "." + doc-init3 + "."	&
+if doc-init1 <> " " and doc-init2 <> " " and doc-init3 <> " " 	&
+  else  truncate(doc-name) + ", " +				&
+	doc-init1 + "." + doc-init2 + "."			&
+if doc-init1 <> " " and doc-init2 <> " "                      	&
+  else  truncate(doc-name) + ", " +				&
+	doc-init1 + "."                  			&
+if doc-init1 <> " "
+
+page heading							&
+	tab  1  "R151    P.E.D."				&
+	tab 16  iconst-date-period-end				&
+	tab 30 "QUARTERLY TAX INSTALLMENT REPORT"		&
+	tab 65 "RUN DATE"					&
+	tab 75 sysdate						&
+	tab 90 "PAGE"						&
+	tab 99 syspage pic "^^^"				&
+skip 2  tab  1 "CLINIC"						&
+	tab 11 "DEPARTMENT"					&
+	tab 25 "DOCTOR"						&
+	tab 35 "NAME"						&
+	tab 64 "SIN"						&
+        tab 75 "TAX INSTALLMENT"				&
+skip 2
+
+footing at doc-nbr						&
+	tab  3  doc-clinic-nbr print at doc-clinic-nbr		&
+	tab 15  doc-dept significance 2				&
+;! 	tab 26  doc-nbr  significance 3				&
+ 	tab 26  doc-nbr                   	&
+	tab 35  w-doctor-name					&
+ 	tab 60  doc-sin-nbr pic "^^^ ^^^ ^^^"			&
+	tab 78  amt-net  subt pic "^^^,^^^.^^ " trail "-"
+
+footing at doc-clinic-nbr					&
+skip 2  tab 35  "CLINIC TOTAL **********"			&
+	tab 78 amt-net  subt pic "^^^,^^^.^^ " trail "-" &
+skip page
+
+final footing            					&
+skip 2  tab 35  "GRAND  TOTAL **********"			&
+	tab 78 amt-net  subt pic "^^^,^^^.^^ " trail "-"
+
+; create a comma delimited text file for Mary to upload to excell
+def x-comma cha*1 = ","
+
+set subfile name r151 keep at doc-nbr
+report summary                                                &
+doc-clinic-nbr                                                &
+x-comma                                                       &
+doc-dept significance 2                                       & 
+x-comma                                                       &
+;!doc-nbr  significance 3                                       &         
+doc-nbr                                                       &         
+x-comma                                                       & 
+doc-name                                                      & 
+x-comma                                                       &
+doc-inits                                                     & 
+x-comma                                                       &
+doc-sin-nbr pic "^^^ ^^^ ^^^"                                 & 
+x-comma                                                       &
+amt-net subt pic " ^^^,^^^.^^" leading sign "-"  
+
+build $pb_obj/r151c_yrend
+  

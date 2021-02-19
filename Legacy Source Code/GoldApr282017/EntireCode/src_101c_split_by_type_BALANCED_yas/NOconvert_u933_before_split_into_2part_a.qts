@@ -1,0 +1,437 @@
+; Program: u933.qts
+; Purpose: create payroll transactions for ICU doctors
+
+; 94/JUN/22	M.C.	- ORIGINAL (SMS 145)
+;			- ICU/APP FOR CLINIC 81 AGENT 8
+; 98/Sep/22     B.E.    - added "set lock file update" statement
+; 00/nov/06	B.E.	- total billings reduced by 95%S
+; 00/feb/06 	B.E.	- added logic to obtain current adjustment/payments
+;			  for doctors for which payroll is to be performed.
+;			- ALL doctors are put into u933a2 subfile
+;			  which is then accessed within the payroll 
+;			  generation process, however for RMA doctors
+;			  these is no 'charge' or 'expense' transactions
+;			  and no 'potential pay'(PAYPOT) transaction
+; 01/mar/13    B.E.	- access to f001 to pickup all 81 adjustments not
+;			  just those for ICU doctors
+;			  
+;
+
+can clear
+run u933
+
+set process nolimit
+set lock file update
+
+global temp advout-seq     zoned*2 unsigned
+global temp advout-seq-rpt zoned*2 unsigned
+global temp advout-type    char*1
+global temp advout-group   char*1
+global temp advout-factor  numeric
+global temp defic-seq      zoned*2 unsigned
+global temp defic-seq-rpt  zoned*2 unsigned
+global temp defic-type     char*1
+global temp defic-group    char*1
+global temp defic-factor   numeric
+
+;---------------------------------------------------------------------
+request u116_a_get_advout                    &
+                on edit        errors report &
+                on calculation errors report
+;------------------------------------------------------------
+access f190-comp-codes
+choose comp-code "ADVOUT"
+item advout-seq     =  process-seq
+item advout-seq-rpt =  reporting-seq
+item advout-type    =  comp-type
+item advout-group   =  comp-code-group
+item advout-factor  =  factor
+
+;---------------------------------------------------------------------
+request u116_a_get_defic                     &
+                on edit        errors report &
+                on calculation errors report
+;------------------------------------------------------------
+access f190-comp-codes
+choose comp-code "DEFIC"
+item defic-seq      =  process-seq
+item defic-seq-rpt  =  reporting-seq
+item defic-type     =  comp-type
+item defic-group    =  comp-code-group
+item defic-factor   =  factor
+
+
+;---------------------------------------------------------------------
+request one
+;------------------------------------------------------------
+
+access icu-app-file
+
+sort on doc-nbr 			&
+     on clmhdr-pat-ohip-id-or-chart	&
+     on clmdtl-sv-date
+
+temp w-nbr-claims
+item w-nbr-claims = w-nbr-claims + 1 at clmdtl-sv-date reset at doc-nbr
+
+temp w-nbr-svcs
+item w-nbr-svcs = w-nbr-svcs + clmdtl-nbr-serv reset at doc-nbr
+
+temp w-tot-fees-billed
+item w-tot-fees-billed = w-tot-fees-billed + clmdtl-fee-ohip reset at doc-nbr
+
+temp w-tot-adjustments
+item w-tot-adjustments = 0
+
+subfile u933_claim_adjust_totals   keep at doc-nbr      include         &
+        doc-nbr, 							&
+	w-nbr-claims, 							&
+	w-nbr-svcs,             					&
+        w-tot-fees-billed,                                              &
+        w-tot-adjustments
+
+;------------------------------------------------------------
+request u933_2_get_current_adjustments 
+;------------------------------------------------------------
+; Purpose: pickup adjustments that affect ICU payroll calculations and
+;          bring them into f110 as ICUADJ MINUS "R"evenue calculation
+;
+
+access f001-batch-control-file  &
+  link "B" , batctrl-batch-nbr                                &
+  to   key-clm-type, key-clm-batch-nbr of f002-claims-mstr      &
+  link (floor(batctrl-batch-nbr / 10000000))                    &
+  to   iconst-clinic-nbr-1-2 of  iconst-mstr-rec  opt           &
+  link (nconvert(clmhdr-claim-id[4:3]))                         &
+  to   doc-nbr of f020-doctor-mstr  opt
+
+use $use/icu_depts.def nol
+
+choose batctrl-batch-nbr 810000000 to 819999999 ; clinic 81 claims only
+
+; (current PED adjustments only)
+select f001-batch-control-file                                  &
+        if    (   (     batctrl-batch-type = "A"                &
+                   and (   batctrl-adj-cd = "B"                 &
+                        or batctrl-adj-cd = "R"                 &
+                       )                                        &
+                  )                                             &
+               or (     batctrl-batch-type = "P"                &
+                    and batctrl-adj-cd     = "M"                &
+                  )                                             &
+             )
+
+select if batctrl-date-period-end  = ascii(iconst-date-period-end,8) 
+
+select f002-claims-mstr                                              &
+   if    clmhdr-oma-suff-adj = "000000" ; &	; PICK HEADER REC"S ONLY
+
+;  and clmhdr-doc-dept = icu-dept-1   ; clinic 81 ICU doctors only
+
+def doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[4:3])
+
+sorted on doc-nbr
+
+temp w-nbr-claims
+item w-nbr-claims = 0
+temp w-nbr-svcs
+item w-nbr-svcs = 0
+temp w-tot-fees-billed
+item w-tot-fees-billed = 0
+temp w-tot-adjustments
+item w-tot-adjustments =  w-tot-adjustments 				&
+			+ clmhdr-tot-claim-ar-ohip    reset at doc-nbr
+
+subfile u933_claim_adjust_totals  append  keep at doc-nbr      include   &
+        doc-nbr, 							&
+	w-nbr-claims, 							&
+	w-nbr-svcs,             					&
+        w-tot-fees-billed,                                              &
+        w-tot-adjustments
+
+;---------------------------------------------------------------------
+request u933_3_merge_doctors_claim_adj_records
+;------------------------------------------------------------
+
+access *u933_claim_adjust_totals
+
+sort on doc-nbr
+
+temp tot-nbr-claims
+item tot-nbr-claims = tot-nbr-claims + w-nbr-claims 	   reset at doc-nbr
+temp tot-nbr-svcs
+item tot-nbr-svcs   = tot-nbr-svcs   + w-nbr-svcs	   reset at doc-nbr
+
+temp tot-fees-billed
+item tot-fees-billed = tot-fees-billed + w-tot-fees-billed reset at doc-nbr
+temp tot-adjustments
+item tot-adjustments = tot-adjustments + w-tot-adjustments reset at doc-nbr
+
+subfile u933_totals keep at doc-nbr include 				&
+  doc-nbr,								&
+  tot-nbr-claims, 							&
+  tot-nbr-svcs,             						&
+  tot-fees-billed,							&
+  tot-adjustments
+
+;---------------------------------------------------------------------
+request u933_4_calculate_comp_codes
+;------------------------------------------------------------
+
+set process nolimit
+
+access *u933_totals						&
+   link doc-nbr							&
+     to doc-nbr of f020-doctor-mstr opt 			&
+   link 81							&
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt		&
+   link  6							&
+     to  constants-mstr-rec-6                             	&
+   link doc-nbr of u933_totals,					&
+        current-ep-nbr of constants-mstr-rec-6,			&
+        advout-seq,                                             &
+        "ADVOUT"                                                &
+     to doc-nbr,                                                &
+        ep-nbr,                                                 &
+        process-seq,                                            &
+        comp-code    of f110-compensation                       &
+                  alias f110-advout          opt
+
+use $use/icu_depts.def nol
+
+def w-clawback-percent = parm prompt  "CLAWBACK % (99.99): "
+def w-charge-per-claim = parm prompt "RMA CHARGE PER CLAIM: "
+
+; (NOTE adjustments already negative - so add then don't subtract) 
+def w-net-fees 		= (  tot-fees-billed 			&
+			   + tot-adjustments			&
+			  )
+def w-less-clawback 	= round (  (  w-net-fees  		&
+   			            * w-clawback-percent	&
+			           )				&
+		                  / 100				&
+				)
+
+def w-tot-billing 	= w-net-fees - w-less-clawback
+def w-tot-billing-at-95%= round (w-tot-billing * .95)
+def w-amt-holdback-icu	= w-tot-billing - w-tot-billing-at-95%
+def w-rma-icu-charge 	= tot-nbr-claims * (w-charge-per-claim * 100)
+
+use $use/gst.use nol
+def w-gst 		= round ((w-rma-icu-charge * gst-percent) / 100)
+
+def w-tot-exp 		= w-rma-icu-charge + w-gst
+def w-net 		= w-tot-billing-at-95% - w-tot-exp
+
+
+temp w-comp-code char*6
+temp w-factor
+temp w-units
+temp w-amt-mtd
+temp w-amt-ytd
+
+item w-comp-code= "NBRCLM"
+item w-factor	= w-charge-per-claim * 10000
+item w-units	= tot-nbr-claims
+item w-amt-mtd	= tot-nbr-claims * 100 ; no decimals allowed so bump up nbr
+item w-amt-ytd	= tot-nbr-claims * 100
+
+subfile u933a2  alias  u933a2-nbrclm keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "NBRSVC"
+item w-factor	= 0
+item w-units	= tot-nbr-svcs
+item w-amt-mtd	= tot-nbr-svcs * 100 ; no decimals allowed so bump up nbr
+item w-amt-ytd	= tot-nbr-svcs * 100
+
+
+subfile u933a2  alias  u933a2-nbrsvc keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "BILICU"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= tot-fees-billed
+item w-amt-ytd	= tot-fees-billed
+
+subfile u933a2  alias  u933a2-bilicu keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "ADJICU"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= tot-adjustments
+item w-amt-ytd	= tot-adjustments
+
+subfile u933a2  alias  u933a2-adjicu keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "NETBIL"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-net-fees
+item w-amt-ytd	= w-net-fees
+
+subfile u933a2  alias  u933a2-netbil keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "CLAWBK"
+item w-factor	= w-clawback-percent * 100
+item w-units	= 0
+item w-amt-mtd	= w-less-clawback
+item w-amt-ytd	= w-less-clawback
+
+subfile u933a2  alias  u933a2-clawbk keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "TOTBIL"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-tot-billing
+item w-amt-ytd	= w-tot-billing
+
+subfile u933a2  alias  u933a2-totbil keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "HOLDIC"
+item w-factor	= 500	; 5%  
+item w-units	= 0
+item w-amt-mtd	= w-amt-holdback-icu
+item w-amt-ytd	= w-amt-holdback-icu
+
+subfile u933a2  alias  u933a2-holdic keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "BILL95"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-tot-billing-at-95%
+item w-amt-ytd	= w-tot-billing-at-95%
+
+subfile u933a2  alias  u933a2-bill95 keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+
+
+;
+;ICU Charges and expense only for non-RMA doctors
+;
+
+
+item w-comp-code= "ICUCHR"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-rma-icu-charge
+item w-amt-ytd	= w-rma-icu-charge
+
+subfile u933a2  alias  u933a2-rmachr keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "ICUGST"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-gst
+item w-amt-ytd	= w-gst
+
+subfile u933a2  alias  u933a2-icugst keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "TOTEXP"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-tot-exp
+item w-amt-ytd	= w-tot-exp
+
+subfile u933a2  alias  u933a2-totexp keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+; (advances are taken off potential pay for NON-RMA doctors only)
+def w-amt-net-f110-advout numeric*8                         	&
+       = amt-net  of f110-advout   				&
+		if     record f110-advout exists 		&
+                   and doc-dept = icu-dept-1			&
+    else 0
+
+; 'basic' potential pay calculation is the 'net' amount if non-rma doctor 
+; otherwise show the 'net revenue' for rma doctors
+item w-comp-code= "PAYPOT"
+item w-factor	= 0
+item w-units	= 0
+
+; (basic potential pay calculation)
+def  w-paypot-1	= w-net 					&
+			if doc-dept = icu-dept-1	 	&	
+            else  w-tot-billing-at-95%
+
+; (for non-rma doctor's subtract any advances coming into this EP)
+def  w-paypot-2 = w-paypot-1					&
+			if   w-amt-net-f110-advout = 0		&
+	     else   w-paypot-1 					&
+	          - w-amt-net-f110-advout
+
+; (if Advances greater than amt to be paid, create a deduction that will
+;  be processed in Deductions processing and reduce PAY EFT)
+def w-amt-defic integer*8 signed size 4                      	&
+        = 0		if w-paypot-2 >= 0                   	&
+     else abs(w-paypot-2)
+; (if Advances where greater than amt to be paid, pay zero)
+def w-paypot-3 integer*8 signed size 4                    	&
+        = w-paypot-2	if w-paypot-2 >= 0               	&
+     else 0
+
+item w-amt-mtd	= w-paypot-3 
+item w-amt-ytd	= w-paypot-3 
+
+subfile u933a2  alias  u933a2-paypot keep			&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+item w-comp-code= "DEFIC"
+item w-factor	= 0
+item w-units	= 0
+item w-amt-mtd	= w-amt-defic
+item w-amt-ytd	= w-amt-defic 
+
+subfile u933a2  alias  u933a2-defic keep			&
+ if doc-dept = icu-dept-1					&
+     include							&
+	doc-nbr of u933_totals,					& 
+	w-comp-code, w-factor, w-units, w-amt-mtd, w-amt-ytd
+
+subfile u933a1     keep include                    			&
+        doc-nbr of u933_totals,                    			&
+        doc-name, doc-dept, tot-nbr-claims, tot-nbr-svcs, 		&
+	tot-fees-billed, tot-adjustments, w-less-clawback, 		&
+	w-tot-billing, w-tot-billing-at-95%, w-rma-icu-charge, 		&
+	w-gst, w-tot-exp, w-net, iconst-date-period-end
+
+build $obj/u933

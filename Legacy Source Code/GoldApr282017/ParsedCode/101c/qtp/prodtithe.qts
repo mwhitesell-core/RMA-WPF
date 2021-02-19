@@ -1,0 +1,175 @@
+;doc     : prodtithe.qts           
+;purpose : create a excel file for dept 4 or group H111                      
+;	   sort by doc-name  
+;who     : For Dwayne Martins                                    
+;
+; *************************************************************
+
+;Date		Who		Description
+;2008/10/07	Yasemin	        original
+;2008/10/30	MC		- exclude terminated doctors, only pick the summarized TOTITE from rec-type 'D'
+;2008/12/02	MC		- include terminated doctors
+;2009/05/28     MC		- modify the selection criteria in the second request
+; 2016/Aug/04   MC1             - add a new column for term date as requested by Yasemin
+; 2016/Sep/08  			- Yasemin agreed to include new column primary-flag
+; 2017/Mar/01  MC2		- replace INCEXP with totded as Yasemin requested
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd          &
+  link doc-nbr to doc-nbr       &
+    of f020-doctor-mstr 	&
+;MC1
+  link doc-nbr to doc-nbr	&
+    of f020-doctor-extra opt
+
+choose doc-nbr, comp-code, rec-type 'A'
+
+select if (	(       (doc-dept = 04 or doc-dept = 42 or doc-dept = 79)&
+	   	  or  (      doc-afp-paym-group = "H111"                 &
+      			and (doc-dept = 14 or doc-dept = 15)		 &
+    		      )							 &
+		)						         &
+;	   and   doc-date-fac-term = 0					 &
+	  ) 
+
+sorted on doc-nbr                   
+
+temp tithe1     zoned*9 numeric
+item tithe1    = tithe1 + amt-ytd/100     &
+                    if comp-code =  "TITHE1"  &
+                    reset at doc-nbr
+
+temp tithe2     zoned*9 numeric
+item tithe2    = tithe2 + amt-ytd/100     &
+                    if comp-code =  "TITHE2"  &
+                    reset at doc-nbr
+
+temp tithe3     zoned*9 numeric
+item tithe3    = tithe3 + amt-ytd/100     &
+                    if comp-code =  "TITHE3"  &
+                    reset at doc-nbr
+
+temp totite     zoned*9 numeric
+item totite    = totite + amt-ytd/100     &
+                    if comp-code =  "TOTITE"  &
+                    reset at doc-nbr
+
+;temp nonrbp     zoned*9 numeric
+;item nonrbp    = nonrbp + amt-ytd/100     &
+;                    if comp-code =  "NONRBP"  &
+;                    reset at doc-nbr
+
+temp depmem     zoned*9 numeric
+item depmem    = depmem + amt-ytd/100     &
+                    if comp-code =  "DEPMEM"  &
+                    reset at doc-nbr
+
+temp payeft     zoned*9 numeric
+item payeft    = payeft + amt-ytd/100     &
+                    if comp-code =  "PAYEFT"  &
+                    reset at doc-nbr
+
+;;;;; As per Mary print incexp ytd for deficit column intead of advout - advout is for solo incexp for 101c
+temp incexp     zoned*9 numeric
+item incexp    = incexp + amt-ytd/100     &
+                    if comp-code =  "INCEXP"  &
+                    reset at doc-nbr
+
+subfile prodtithe_dtl  keep at doc-nbr include       &
+doc-ohip-nbr 	    of f119-doctor-ytd		    ,&
+doc-afp-paym-group  of f020-doctor-mstr             ,&
+doc-nbr             of f020-doctor-mstr             ,&
+doc-dept                                            ,&
+doc-name                                            ,&
+doc-inits                                           ,&
+; MC1
+doc-flag-primary                                   ,&
+doc-date-fac-term                                  ,&
+; MC1 - end
+;nonrbp                                            ,&
+totite                                            ,&
+tithe1                                            ,&
+tithe2                                            ,&
+tithe3                                            ,&
+depmem                                            ,&
+payeft                                            ,&
+incexp                                           
+
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *prodtithe_dtl           &
+  link doc-ohip-nbr,            &
+       '000', 			&
+       'TOTITE',		&
+       'D'			&
+   to  doc-ohip-nbr,		&
+       doc-nbr,			&
+       comp-code,		&
+       rec-type of f119-doctor-ytd   opt
+
+; each selected record must have DEPMEM
+select if depmem <> 0		&  
+; 2009/05/28 - MC  - or either tithe1/2/3 has non-zero amt
+     or  (tithe1 <> 0 or tithe2 <> 0 or tithe3 <> 0)
+; 2009/05/28 - end
+
+; MC1 
+def term-date char*8 = ascii(doc-date-fac-term) if doc-date-fac-term <> 0
+
+def totite zoned*9 numeric   =  amt-ytd/100     
+
+;MC2
+def totded zoned*9 numeric = tithe1 + tithe2 + tithe3 + depmem
+; MC2 - end
+
+def comma cha*1 = "~"
+def num-cr integer unsigned size 2 = 13
+def cr        char*2 = char(num-cr)
+
+subfile prodtithe  portable keep include  	     &
+doc-afp-paym-group                                  ,&
+comma                                               ,&
+doc-nbr of prodtithe_dtl                            ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+;nonrbp                                            ,&
+;comma                                               ,&
+totite                                            ,&
+comma                                               ,&
+tithe1                                            ,&
+comma                                               ,&
+tithe2                                            ,&
+comma                                               ,&
+tithe3                                            ,&
+comma                                               ,&
+depmem                                            ,&
+comma                                               ,&
+; MC2
+;incexp                                            ,&
+totded                                            ,&
+; MC2 - end
+; MC1
+comma                                               ,&
+term-date                                           ,&
+comma                                               ,&
+doc-flag-primary                                    ,&
+; MC1 - end
+cr
+
+build $obj/prodtithe

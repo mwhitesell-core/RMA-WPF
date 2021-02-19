@@ -1,0 +1,70 @@
+request u122_run_1_update_f119_tithe          &
+        on edit        errors report    &
+        on calculation errors report
+
+access *f119_tithe                               &
+        link doc-ohip-nbr,                       &
+             doc-nbr,                            &
+             comp-code,                          &
+             rec-type-d                          &
+        to   doc-ohip-nbr,                       &
+             doc-nbr,                            &
+             comp-code,                          &
+             rec-type  of f119-doctor-ytd opt    
+
+sort on doc-ohip-nbr on doc-nbr on comp-code
+
+;  Certain comp-codes are calculated only as YTD values, therefore the
+;  YTD should be moved into, not added to the current YTD values.)
+ def tmp-amt-ytd zoned numeric size 10                          &
+        =   amt-ytd   of f119-doctor-ytd                        &
+          + x-amt-net   of f119_tithe                           &
+                       if comp-code of f119_tithe = "BILADJ"            &
+     else x-amt-gross of f119_tithe                                   &
+                       if       comp-code of f119_tithe = "STATUS"    &
+                         or     comp-code of f119_tithe = "YTDEAR"    &
+                         or     comp-code of f119_tithe = "INCREQ"    &
+                         or     comp-code of f119_tithe = "INCTAR"    &
+                         or not record f119-doctor-ytd exists   &
+     else x-amt-net of f119_tithe                                       &
+                       if comp-code of f119_tithe = "REVCLA"            &
+     else  amt-ytd   of f119-doctor-ytd                         &
+         + x-amt-gross of f119_tithe
+
+;  For certain codes the calculations are based upon YTD criteria and
+;  therefore no MTD is calculated -- it is thus set to zero)
+ def tmp-amt-mtd zoned numeric size 10                          &
+        = 0                                                     &
+                       if    comp-code of f119_tithe = "STATUS"       &
+                          or comp-code of f119_tithe = "YTDEAR"       &
+                          or comp-code of f119_tithe = "INCREQ"       &
+                          or comp-code of f119_tithe = "INCTAR"       &
+    else x-amt-net of f119_tithe                                        &
+                       if   comp-code of f119_tithe = "REVCLA"  &
+                         or comp-code of f119_tithe = "BILADJ"  &
+    else x-amt-gross of f119_tithe
+
+temp x-amt-mtd zoned numeric size 10
+item x-amt-mtd = x-amt-mtd + tmp-amt-mtd  reset at comp-code
+
+temp x-amt-ytd zoned numeric size 10
+item x-amt-ytd = x-amt-ytd + tmp-amt-ytd  reset at comp-code
+
+
+output f119-doctor-ytd     update  at comp-code                &
+    if     record f119-doctor-ytd exists on errors report
+  item amt-mtd final x-amt-mtd
+  item amt-ytd final x-amt-ytd
+
+output f119-doctor-ytd  alias f119-add  add  at comp-code       &
+     if not record f119-doctor-ytd exists on errors report
+  item doc-ohip-nbr    final doc-ohip-nbr     of f119_tithe       
+  item doc-nbr         final doc-nbr          of f119_tithe
+  item comp-code       final comp-code        of f119_tithe
+  item process-seq     final reporting-seq    of f119_tithe
+  item comp-code-group final comp-code-group  of f119_tithe
+  item rec-type        final rec-type-d       of f119_tithe
+  item amt-mtd         final x-amt-mtd
+  item amt-ytd         final x-amt-ytd
+; 2008/06/10 - end
+

@@ -1,0 +1,55 @@
+; DOC: UPDATE94.QTS
+; DOC: UPDATE DOC 519 CEIEXP, TOTEXP AND INCEXP
+; DOC:
+; DOC: RUN FOR: ACCOUNTING Mary Brownridge
+;
+;PROGRAM PURPOSE : UPDATE F119
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;96/11/18   YASEMIN      ORIGINAL
+;96/11/21   M. CHAN	 REVISED
+;
+can clear
+set verify errors
+set default
+set process nolimit
+
+request update_f119_history             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history
+
+choose doc-nbr 519,509,568,025,650,516,345,747,598,064,  &
+               506,541,851,512,531,029,501,594,550,511,  &
+               736,526,529,533,576,532,018,145,881,737, ep-nbr 9604
+
+select if    comp-code = "CEIEXP" &
+          or comp-code = "TOTEXP" &
+          or comp-code = "INCEXP"
+
+sorted on doc-nbr
+
+temp mtd-incexp zoned*8 signed
+item mtd-incexp = mtd-incexp + amt-mtd                         &
+  	if comp-code = "INCEXP" or comp-code = "CEIEXP"        &
+	reset at doc-nbr
+
+temp ytd-incexp zoned*8 signed
+item ytd-incexp = ytd-incexp + amt-ytd                         &
+  	if comp-code = "INCEXP" or comp-code = "CEIEXP"        &
+	reset at doc-nbr
+
+output f119-doctor-ytd-history update
+  item amt-mtd of f119-doctor-ytd-history final 0	&
+    if comp-code = "CEIEXP" or comp-code = "TOTEXP"
+  item amt-ytd of f119-doctor-ytd-history final 0  	&
+    if comp-code = "CEIEXP" or comp-code = "TOTEXP"
+
+output f119-doctor-ytd-history  alias f119-upd  update at doc-nbr
+  item amt-mtd of f119-upd  final  mtd-incexp if comp-code = 'INCEXP'
+  item amt-ytd of f119-upd  final  ytd-incexp if comp-code = 'INCEXP'
+
+build $pb_obj/update94
+  

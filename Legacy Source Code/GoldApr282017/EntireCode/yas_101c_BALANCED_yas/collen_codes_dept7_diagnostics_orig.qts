@@ -1,0 +1,266 @@
+;doc     : colleen.qts
+;purpose : report totals for cardiology division - procedures ECG and ECHO's
+;          clinic 60's professional fees will be picked up in 22 agent T995
+;who     : Ken McFarlen
+
+
+;Date           Who             Description
+;2006/08/22     Yasemin                    
+;2007/05/03     Yasemin         add neurology docs take out Dr. Roman as per 
+;                               Pat Haslettes email and modify select codes
+;2007/11/27     yas             orig colleen_codes.qts                      
+;2007/12/03     MC		modify to select claim type only and exclude 60's & 70's clinics
+;				separate request for clilnic 70's only
+;2007/12/04     MC              include Misc payment type as well
+;2007/12/04     MC              include 'A' & 'B' adjustment as well
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr             &
+        link clmhdr-claim-id[3:3]   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr,  &
+                    key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+select f002-claims-mstr if                                   &
+             (      (x-clinic <  "61" or  x-clinic >  "75")  &
+                and (x-clinic <>  "98")			     &
+                and (   (   (clmhdr-batch-type = 'C')           &
+			and (clmhdr-serv-date    >= 20070701	     &
+			and  clmhdr-serv-date    <= 20080630)        &
+			)					     &
+                     or ( clmhdr-batch-type = 'P' and clmhdr-adj-cd = 'M')  &
+                     or ( clmhdr-batch-type = 'A' and clmhdr-adj-cd <>'R')  &
+           	    )                                        &
+                and (    clmhdr-doc-dept = 7                 &
+                      or clmhdr-doc-dept = 71                &
+                      or clmhdr-doc-dept = 72                &
+                      or clmhdr-doc-dept = 73                &
+                      or clmhdr-doc-dept = 74                &
+                      or clmhdr-doc-dept = 75)               &
+             )
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+
+subfile colleen       keep at key-clm-claim-nbr include             &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+doc-dept                     of f020-doctor-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request two                             &
+        on edit        errors report    &
+       on calculation errors report
+
+access *colleen                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+
+select f002-claims-mstr if                     &
+	      (    clmdtl-sv-date  >= '20070701'	&
+	       and clmdtl-sv-date  <= '20080630'	&
+	      )						&	
+          and (    clmdtl-oma-cd      =  "E450"    & ; details only
+                or clmdtl-oma-cd      =  "E451"    & ; details only
+                or clmdtl-oma-cd      =  "G310"    & ; details only
+                or clmdtl-oma-cd      =  "G313"    & ; details only
+                or clmdtl-oma-cd      =  "G414"    & ; details only
+                or clmdtl-oma-cd      =  "G416"    & ; details only
+                or clmdtl-oma-cd      =  "G418"    & ; details only
+                or clmdtl-oma-cd      =  "G544"    & ; details only
+                or clmdtl-oma-cd      =  "G554"    & ; details only
+                or clmdtl-oma-cd      =  "G555"    & ; details only
+                or clmdtl-oma-cd      =  "G566"    & ; details only
+                or clmdtl-oma-cd      =  "G567"    & ; details only
+                or clmdtl-oma-cd      =  "G570"    & ; details only
+                or clmdtl-oma-cd      =  "G571"    & ; details only
+                or clmdtl-oma-cd      =  "G577"    & ; details only
+                or clmdtl-oma-cd      =  "G578"    & ; details only
+                or clmdtl-oma-cd      =  "G579"    & ; details only
+                or clmdtl-oma-cd      =  "G581"    & ; details only
+                or clmdtl-oma-cd      =  "G650"    & ; details only
+                or clmdtl-oma-cd      =  "G651"    & ; details only
+                or clmdtl-oma-cd      =  "G652"    & ; details only
+                or clmdtl-oma-cd      =  "G658"    & ; details only
+                or clmdtl-oma-cd      =  "J301"    & ; details only
+                or clmdtl-oma-cd      =  "J304"    & ; details only
+                or clmdtl-oma-cd      =  "J310"    & ; details only
+                or clmdtl-oma-cd      =  "J315"    & ; details only
+                or clmdtl-oma-cd      =  "J322"    & ; details only
+                or clmdtl-oma-cd      =  "J330"    & ; details only
+                or clmdtl-oma-cd      =  "J340"    & ; details only
+                or clmdtl-oma-cd      =  "AGEP"    & ; details only
+                or clmdtl-oma-cd      =  "T995")   &
+	and  key-clm-adj-nbr = '0'                    
+
+sort on doc-nbr
+
+
+temp x-clms zoned*9 signed
+item x-clms  = x-clms + clmdtl-fee-ohip                  &
+              	if clmdtl-oma-cd <> "AGEP"             &
+              reset at doc-nbr
+
+temp x-agep zoned*9 signed
+item x-agep  = x-agep + clmdtl-fee-ohip                  &
+                 if  clmdtl-oma-cd = "AGEP"              &
+              reset at doc-nbr
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + clmdtl-fee-ohip                  &
+              reset at doc-nbr
+
+
+subfile colleen2 keep at doc-nbr include      &
+  doc-dept,                     &
+  doc-nbr,                      &
+  doc-name,                     &
+  doc-inits,                    &
+  x-clms,                       &
+  x-agep,                       &
+  x-tot
+
+;2007/12/03     MC		pick clinic 70's with prof fee only with all oma code
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr             &
+        link clmhdr-claim-id[3:3]   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr '7@', key-clm-claim-nbr,  &
+                    key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+
+
+select f002-claims-mstr if                          &
+           (   (    clmhdr-batch-type = 'C'           &
+                and clmhdr-serv-date    >=  20070701    &
+                and clmhdr-serv-date    <=  20080630 	& 
+	       )					&
+            or ( clmhdr-batch-type = 'P' and clmhdr-adj-cd = 'M')  &
+            or ( clmhdr-batch-type = 'A' and clmhdr-adj-cd <>'R')  &
+           )                                        &
+      and  (    clmhdr-doc-dept = 7                 &
+             or clmhdr-doc-dept = 71                &
+             or clmhdr-doc-dept = 72                &
+             or clmhdr-doc-dept = 73                &
+             or clmhdr-doc-dept = 74                &
+             or clmhdr-doc-dept = 75                &
+           )
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+
+subfile colleen_70    keep at key-clm-claim-nbr include             &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+doc-dept                     of f020-doctor-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request four                            &
+        on edit        errors report    &
+        on calculation errors report
+
+access *colleen_70                                                     &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+
+sort on doc-nbr
+
+select if key-clm-adj-nbr = '0'				&
+	 and  (    clmdtl-sv-date  >= '20070701'	&
+	       and clmdtl-sv-date  <= '20080630'	&
+	      )					
+
+define x-prof-amt zoned*9 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed 
+
+temp x-clms zoned*9 signed
+item x-clms  = x-clms + x-prof-amt                 &
+                 if  clmdtl-oma-cd <> "AGEP"             &
+              reset at doc-nbr
+
+temp x-agep zoned*9 signed
+item x-agep  = x-agep + x-prof-amt                &
+                 if  clmdtl-oma-cd = "AGEP"              &
+              reset at doc-nbr
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + x-prof-amt    		 & 
+              reset at doc-nbr
+
+
+subfile colleen2 keep append  at doc-nbr include      &
+  doc-dept,                     &
+  doc-nbr,                      &
+  doc-name,                     &
+  doc-inits,                    &
+  x-clms,                       &
+  x-agep,                       &
+  x-tot
+
+request five                            &
+        on edit        errors report    &
+        on calculation errors report
+
+access *colleen2
+
+def x-comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+sort on doc-nbr
+
+
+temp x-clms-amt zoned*9 signed
+item x-clms-amt  = x-clms-amt + x-clms                  &
+              reset at doc-nbr
+
+temp x-agep-amt zoned*9 signed
+item x-agep-amt  = x-agep-amt + x-agep                    &
+              reset at doc-nbr
+
+temp x-tot-amt  zoned*9 signed
+item x-tot-amt   = x-tot-amt  + x-tot 			  & 
+              reset at doc-nbr
+
+subfile colleen3 portable keep at doc-nbr include      &
+  doc-dept,                     &
+  x-comma,                      &
+  doc-nbr,                      &
+  x-comma,                      &
+  doc-name,                     &
+  x-comma,                      &
+  doc-inits,                    &
+  x-comma,                      &
+  x-clms-amt,                   &
+  x-comma,                      &
+  x-agep-amt,                   &
+  x-comma,                      &
+  x-tot-amt,                    &
+  x-cr
+
+build $obj/colleen_codes_dept7_diagnostics

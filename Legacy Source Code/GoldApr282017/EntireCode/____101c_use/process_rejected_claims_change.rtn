@@ -1,0 +1,62 @@
+* file: process_rejected_claims_change.rtn
+*
+*   (OHIP eligibility data was changed so call routine to:
+*       - update f085_rejected_claims file to set logically-deleted-flag to 'Y' if records exist
+*       - this copybook is used in d001.cbl & d003.cbl
+
+* modification history
+* --------------------
+* 2010/jun/10 MC1   - set logically-deleted-flag field of f085 - rejected claims file to "Y" when elegibility info changed
+*            
+
+* brad1/MC1
+*   (if there are existing rejected claims for this patient then set them to 'logically' deleted)
+yy3-update-rejected-claim.
+
+    move clmhdr-pat-ohip-id-or-chart of claim-header-rec
+ 				        to clmhdr-pat-id of rejected-claims-rec.
+
+    read rejected-claims into rejected-claims-rec  key is clmhdr-pat-id
+        invalid key
+           go to yy3-99-exit.
+
+    add 1                               to ctr-read-rejected-claims.
+ 
+    perform yy3a-update-matching-pat-recs thru yy3a-99-exit.
+*       until clmhdr-pat-ohip-id-or-chart of claim-header-rec <>  clmhdr-pat-id.
+
+yy3-99-exit.
+    exit.
+
+yy3a-update-matching-pat-recs.
+
+    if clmhdr-pat-ohip-id-or-chart of claim-header-rec = clmhdr-pat-id of rejected-claims-rec
+    then
+        move "Y"                        to logically-deleted-flag
+        rewrite rejected-claims-rec
+            invalid key
+*                move 25                     to err-ind
+*                perform za0-common-error    thru za0-99-exit
+                go to yy3a-99-exit.  
+*    end if
+   
+     add 1				to ctr-updated-rejected-claims.
+ 
+     read rejected-claims next  into rejected-claims-rec
+        at end
+            go to yy3a-99-exit.
+     
+     add 1                              to ctr-read-rejected-claims.
+    
+     if clmhdr-pat-ohip-id-or-chart of claim-header-rec not = clmhdr-pat-id of rejected-claims-rec
+     then
+	 go to yy3a-99-exit
+     else
+         go to yy3a-update-matching-pat-recs.
+*    endif
+
+
+yy3a-99-exit.
+   exit.
+*brad1 end
+

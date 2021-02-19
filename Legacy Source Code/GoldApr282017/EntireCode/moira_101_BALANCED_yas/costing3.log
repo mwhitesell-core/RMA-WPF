@@ -1,0 +1,150 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Tue Mar 10 16:38:55 EST 2015
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/costing3.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ; Program: costing3.qts
+> ; Purpose: determine doctor's that bill only in non-22 clinics
+> ; Method: access f050 revenue history for appropriate ped and select
+> ;	  any doctor with non-zero YTD values for clinic 22. Write
+> ;	  these doctor numbers to doc-tmp-totals file. Program costing4
+> ;	  will later check the doc-tmp-totals to determine if the doctor
+> ;	  has billed in 22 and will then ignore other non-22 billings
+> ;	  (which were re-entered into 22 and therefore shouldn't be
+> ;	  counted twice)
+> ;	  YTD values
+> 
+> ;DATE       BY WHOM      DESCRIPTION
+> ;99/mar/28   YASEMIN      ORIGINAL
+> ;00/jun/30  B.E.	 - re-organized code
+> ;03/dec/17  A.A.	 - alpha doctor nbr
+> ;05/jul/13  b.e.	 - changed sorted to sort so that only 1 doctor rec
+> ;			   is written to output file regardless of the nbr
+> ;			   of clinics the doctor has records for.
+> ;12/jan/18  MC1		- include clinic 23 & 24 in the selection to be the same as clinic 22
+> ;12/jun/20  MC2		- include clinic 25 in the selection to be the same as clinic 22
+> ;15/mar/10  MC3		- include clinic 26 in the selection to be the same as clinic 22
+> 
+> cancel clear
+> 
+> run costing3
+> 
+> set default
+WORKSPACE and STACKSIZE can't be reset within a QTP run.
+> set process nolimit
+> set lock record update
+> 
+> 
+> ;-------------------------------------------------------------------------------
+> ; obtain current costing "constants" and pass to subsequent requests
+> ;
+> use $use/get_const_rec_7_values_globals.qts
+> ; File: globals_get_const_rec_7_values.qts
+> 
+> ;-------------------------------------------------------------------------------
+> ; obtain current costing "constants" and pass to subsequent requests
+> ;
+> global temp w-current-fiscal-start-yymmdd   date
+> global temp w-current-fiscal-end-yymmdd     date
+> global temp w-current-costing-cutoff-yymmdd date
+> global temp w-current-costing-ped	    date
+> global temp w-current-costing-ped-yymm	    zoned*6
+> 
+> global temp w-previous-fiscal-start-yymmdd  date
+> global temp w-previous-fiscal-end-yymmdd    date
+> 
+> global temp w-ep-yr num*2
+> 
+> use $use/get_const_rec_7_values.qts
+> ; File: get_const_rec_7_values.qts
+> 
+> ;-------------------------------------------------------------------------------
+> ; obtain current costing "constants" and pass to subsequent requests
+> ;
+> 
+> request costing1_get_rec_7              &
+>                 on edit        errors report    &
+>                 on calculation errors report
+> access constants-mstr-rec-7
+> choose const-rec-nbr 7
+*W* Item (CONST-REC-NBR) is stored by the file system as a character type.
+Choose viaindex CONSTANTS-MSTR-REC-7.
+> 
+> item w-current-fiscal-start-yymmdd   = current-fiscal-start-yymmdd
+> item w-current-fiscal-end-yymmdd     = current-fiscal-end-yymmdd
+> item w-current-costing-cutoff-yymmdd = current-costing-cutoff-yymmdd
+> item w-current-costing-ped	     = current-costing-ped
+> item w-current-costing-ped-yymm      = current-costing-ped / 100
+> 
+> item w-previous-fiscal-start-yymmdd  = previous-fiscal-start-yymmdd
+> item w-previous-fiscal-end-yymmdd    = previous-fiscal-end-yymmdd
+> item w-ep-yr			     = ep-yr
+> 
+> 
+> request costing3_1     &
+>         on calculation errors report    &
+>         on edit errors report
+> 
+> ; obtain all revenue for appropriate period
+> access f050-doc-revenue-mstr-history		&
+>   link docrev-doc-nbr				&
+>     to doc-nbr of f020-doctor-mstr opt
+> 
+> ;y2k
+> ;select if ep-yr = 1999 ;and docrev-key[1:1] <> "6"
+> ;select if    ep-yr of f050-doc-revenue-mstr-history  = w-ep-yr 	&
+> select if    iconst-date-period-end = w-current-costing-ped 	&
+> ; 2012/01/18 - MC1
+> ;        and docrev-clinic-1-2 =  '22'
+>          and (     docrev-clinic-1-2 =  '22'			&
+> 		or docrev-clinic-1-2 =  '23'			&
+> 		or docrev-clinic-1-2 =  '24'			&
+> ; 2012/06/20 - MC2
+> 		or docrev-clinic-1-2 =  '25'			&
+> ; 2012/06/20 - end
+> ; MC3
+> 		or docrev-clinic-1-2 =  '26'			&
+> ; MC3 - end
+> 	     )
+> ; 2012/01/18 - end
+> 
+> ; (select doctor who  was 'active' anytime within the costing
+> ;  analysis period - ie. start of fiscal year to current costing
+> ;  analysis ped's yymm)
+> use $use/select_f020_active_for_costing_analysis_period.use
+> ; File: select_f020_active_for_costing_analysis_period.use
+> ; Purpose:
+> ;  select doctor who  was 'active' anytime within the costing
+> ;  analysis period - ie. start of fiscal year to current costing
+> ;  analysis ped's yymm
+> 
+> def doc-start-yymm zoned*6 = doc-date-fac-start / 100
+> select   f020-doctor-mstr                                               &
+>      if    (   doc-date-fac-start  = 0000000                            &
+>             or doc-start-yymm     <= w-current-costing-ped-yymm &
+>            )                                                            &
+>        and (  doc-date-fac-term   = 00000000                            &
+>             or doc-date-fac-term >= w-current-fiscal-start-yymmdd       &
+>            )
+> 
+> 
+> 
+> sort   on docrev-doc-nbr ;	&
+> ;sorted on docrev-doc-nbr ;	&
+> ;; no sort needed on clinic- only clinic 22 selected
+> ;;     on docrev-clinic-1-2 ;      d ; DESCENDING
+> 
+> subfile costing3_debug keep include &
+>  docrev-doc-nbr of f050-doc-revenue-mstr-history
+> 
+> output doc-totals-tmp add at docrev-doc-nbr
+>   item doc-nbr final docrev-doc-nbr of f050-doc-revenue-mstr-history
+> 
+> build $obj/costing3
+0 ERRORS  1 WARNINGS.
+The file /alpha/rmabill/rmabill101/obj/costing3.qtc already exists. Ok to 
+delete?
+Tue Mar 10 16:38:56 EST 2015

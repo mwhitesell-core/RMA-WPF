@@ -1,0 +1,852 @@
+;#> program-id.     u115a.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    purpose: sub-process within "earnings generation" process.
+;             calculate required 'tot'al / 'ytd' transactions as of current eP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/jan/01  ____   B.E.     - original
+;     92/may/01  ____   B.E.     - Added YTDGUC logic
+;     92/may/11  ____   B.E.     - YTDGUC logic changed from 1C to 1B (YTDGUC)
+;     92/aug/11  ____   b.e.     - moved ytd logic into 2nd request
+;     92/sep/14  ----   b.e.     - comment out output of YTDGUx transaction
+;                                  since GTYPEx is now calculated as ytd not
+;                                  current ep.  If GTYPEx changed re-activatE
+;                                  the TYDGUx code.
+;     92/oct/26  ----   B.E.     - Updated F020 with YTDINC value
+;     92/nov/10         B.E.     - updated F020 within this run with OUTPUT stmt
+;                                  rather than using U115 SUBFILE.
+;     93/apr/10         B.E.     - YTDCEA/CEX use values in DOCTOR-MSTR rather
+;                                  than calculated ones.
+;     93/may/06         B.E.     - Added SUBFILE F119
+;     93/may/11         B.E.     - Added ACCESS of F119-DOCTOR-YTD to preset
+;     93/may/18         B.E.     - INTEGER*4 for zoned*8, F119/F119 SUBFILE changes
+;                                  YTD values
+;     93/may/27         B.E.     - *F119 exclude records added to F119
+;                                - add/subtract F110 "M"anual type recs to 
+;				   F020's YTDEAR (ytd earnings)
+;                                - changed YTDxxx to use = not < current-ep-nbr
+;                       ?????? WITH ABOVE = VS < CHANGE IS THIS CODE NOW NOT REQUIRED ????????????????
+;     93/JUN/01         B.E.     - removed ADD of recs to F119-DOCTOR-YTD, all records
+;                                 now added to *F119 and then U122 adds them to F119-YTD
+;     93/JUN/22         B.E.     - added Part timer Expense logic
+;     93/AUG/09         B.E.     - GST/AMT EXPENSE now calculated by
+;                                  separating these two amounts from the
+;                                  the amount of the difference between
+;                                  GROSS and NET amounts.
+;     93/SEP/14         B.E.     - added RMA+GST and DEPT MISC/REG Expense Logic
+;                                  and rounding of result
+;     93/SEP/20         B.E.     - added separate expenses for RMA MISC/REG.
+;                                  now using RMAEXR(RMA  Regular expense),
+;                                            RMAEXM(RMA  Misc.   expense),
+;                                            DEPEXR(DEPT Regular expense),
+;                                            DEPEXM(DEPT Misc.   expense)
+;                                  OUTPUT RMA and DEPT expense only if > 0
+;     93/SEP/24         B.E.     - added DOCTOR'S CEIEXP to TOTEXP amount
+;     93/SEP/28         B.E.     - changed update of *F119 from GROSS to NET values
+;     93/OCT/02         B.E.     - OUTPUT TOTxxx records to *F119 only if > 0
+;     93/OCT/05         B.E.     - RMA-EXPENSE calc. as diff between GROSS and NET
+;                                  minus DEPT-EXPENSE even if doctor's RMA
+;                                  EXPENSE PERCENTAGES are zero.
+;     93/OCT/26         B.E.     - changed IF > 0  to IF <> 0 on all OUTPUT stmnts
+;     93/OCT/30         B.E.     - AMT-INCOME-MINUS-EXPENSES-G now allowed  to go
+;                                  negative (otherwise negative income
+;                                  wasn't reported correctly)
+;     93/NOV/26         B.E.     - Reversed GROSS/NET fields on CEIEXP output to *F119
+;     93/DEC/03         B.E.     - for CEIEXP used AMT-NET not 0 in calc.
+;     93/DEC/24         B.E.     - put YTDEAR into *F119 for update into F119-DOCTOR-YTD
+;
+;     94/MAR/07         M.C.     - ADD THE CONDITIONAL COMPILE FOR 'INCEXP'
+;                                  LOGIC
+;     94/MAR/16         M.C.     - INCLUDE COMP-TYPE 'P' IN THE SUBFILE,
+;                                - CHANGE THE FORMULA FOR CALCULATING
+;                                  DEPT AND RMA EXPENSE
+;     95/MAY/02		M.C.	 - ADD THE BACKHOLD AS PART OF THE
+;				   EXPENSE
+;     95/MAY/08         M.C.     - COMMENT OUT THE SUBFILE DEBUGU115A,
+;				   MESSAGE 'VIRTUAL MEMORY HAS EXCEEDED'
+;				   OCCURRED WHEN EXECUTING PROGRAM EVEN
+;				   THE STACKSIZE HAS INCREASED FROM 1500
+;				   TO 10000. NOTE:  KEEP IN MIND THAT
+;				   SIMILIAR PROBLEM MAY OCCUR IF THERE
+;				   ARE MORE ITEMS, SUBFILES OR RECORDS
+;				   TO BE ADDED IN THE REQUESTS
+;     95/MAY/09		M.C.	 - CALCULATE THE RMA EXPENSE BY THE
+;				   DOCTOR RMA EXPENSE PERCENTAGE RATHER
+;				   THAN THE REMAINING VALUE BETWEEN
+;				   GROSS - NET - DEPT
+;     95/JUL/05         M.C.     - IF HOLDBACK < 10 CENTS, ADD TO RMA
+;				   EXPENSE IF RMA-EXPENSE IS NON-ZERO;
+;				   OTHERWISE, ADD TO DEPT EXPENSE
+;     95/JUL/14 	M.C.	 - DUE TO VIRTUAL MEMORY HAS EXCEEDED
+;				   SPLIT THE LAST REQUEST INTO A NEW
+;				   PROGRAM(U115B.QTS).  IF CHANGES ARE
+;				   REQUIRED IN THE LAST REQUEST, ALSO
+;				   MAKE THE SAME CHANGE IN U115B.QTS
+;     95/SEP/15		M.C.	 - INCLUDE 'E'XPENSE RECORDS AS PART OF
+;				   FINAL-ALL-EXPENSES
+;     95/NOV/07		M.C.	 - PDR 634 - INCLUDE NEW CONDITION FOR
+;				   TOT-REVHBK DEFINITION
+;     95/NOV/22  	M.C.	 - OPTIMIZE THE PROGRAM BY DELETING ALL
+;				   THE UNUSED TEMP & DEFINE ITEMS
+;     96/APR/19		M.C.	 - INCLUDE 'REVCLA' IN TOT-REVHBK
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/Jun/07		S.B.	 - Altered the call to gst.use to call 
+;				   from $use instead of src.
+; 00/nov/23.B.E.	- HOLDBK calculation has some rounding problems whereby
+;			  hold backs in the amount of a few cents occur. The
+;			  original logic ignored values less than 10 cents.
+;			  Changed to ignore anything less than $1.00
+; 00/mar/01 B.E.	- added debug subfiles and cosmetic alignment
+;			  of calculations
+; 03/jan/21 B.E.	- added doc-nbr to debug file debugu115a_at_doc_nbr
+; 2014/May/05 MC1     - added select so that this program doesn't run if paycode is 7 (this paycd doesn't need the usual
+;                       calculated comp codes such as TOTINC, INCEXP etc.
+;		      - add f112 to access to determine doc-pay-code
+; 2014/May/12 MC2     - change fields(tot-, doc-) to allow 1M from integer*8 to integer* 10 to be the same as in 101c  
+;		        particular the one used in f119 subfile
+
+cancel clear
+set stacksize 10000
+run u115
+
+set default
+set process 50000
+set lock record update
+
+global temp ytdear-group   char*1
+global temp ytdear-seq-rpt zoned*2 unsigned
+
+global temp rmaexr-group   char*1
+global temp rmaexr-seq-rpt zoned*2 unsigned
+
+global temp rmaexm-group   char*1
+global temp rmaexm-seq-rpt zoned*2 unsigned
+
+global temp incexp-group   char*1
+global temp incexp-seq-rpt zoned*2 unsigned
+
+global temp totinc-group   char*1
+global temp totinc-seq-rpt zoned*2 unsigned
+
+global temp totexp-group   char*1
+global temp totexp-seq-rpt zoned*2 unsigned
+
+global temp depexr-group   char*1
+global temp depexr-seq-rpt zoned*2 unsigned
+
+global temp depexm-group   char*1
+global temp depexm-seq-rpt zoned*2 unsigned
+
+global temp gst-group   char*1
+global temp gst-seq-rpt zoned*2 unsigned
+
+global temp holdback-group   char*1
+global temp holdback-seq-rpt zoned*2 unsigned
+
+;-------------------------------------------------------------------------------
+
+;
+; DETERMINE THE 'REPORTING-SEQ' AND 'COMP CODE GROUP'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u115_a_get_ytdear                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDEAR"
+item ytdear-group   = comp-code-group
+item ytdear-seq-rpt = reporting-seq
+
+request u115_a_get_rmaexr                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "RMAEXR"
+item rmaexr-group   = comp-code-group
+item rmaexr-seq-rpt = reporting-seq
+
+request u115_a_get_rmaexm                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "RMAEXM"
+item rmaexm-group   = comp-code-group
+item rmaexm-seq-rpt = reporting-seq
+
+request u115_a_get_incexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "INCEXP"
+item incexp-seq-rpt  = reporting-seq
+item incexp-group    = comp-code-group
+
+request u115_a_get_totinc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTINC"
+item totinc-seq-rpt  = reporting-seq
+item totinc-group    = comp-code-group
+
+request u115_a_get_totexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "TOTEXP"
+item totexp-seq-rpt  = reporting-seq
+item totexp-group    = comp-code-group
+
+request u115_a_get_depexr                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPEXR"
+item depexr-group   = comp-code-group
+item depexr-seq-rpt = reporting-seq
+
+request u115_a_get_depexm                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "DEPEXM"
+item depexm-group   = comp-code-group
+item depexm-seq-rpt = reporting-seq
+
+request u115_a_get_gst                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "GST"
+item gst-group   = comp-code-group
+item gst-seq-rpt = reporting-seq
+
+request u115_a_get_holdback                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "HOLDBK"
+item holdback-group   = comp-code-group
+item holdback-seq-rpt = reporting-seq
+
+;-------------------------------------------------------------------------------
+
+request u115_run_0                              &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                                           &
+        link current-ep-nbr viaindex compensation-key2                &
+        to   ep-nbr  of f110-compensation                             &
+        link doc-nbr of f110-compensation                             &
+        to   doc-nbr of f020-doctor-mstr   opt                        &
+        link comp-code of f110-compensation                           &
+        to   comp-code of f190-comp-codes			      &
+;MC1    
+	link current-ep-nbr, doc-nbr of f110-compensation	      &
+	 to  ep-nbr, doc-nbr of f112-pycdceilings opt
+;MC1 - end
+
+choose const-rec-nbr 6
+sorted on doc-nbr   of f110-compensation                        &
+       on ep-nbr    of f110-compensation                        &
+       on comp-code of f110-compensation  ; CHANGED TO SORTED WHEN CHOOSE ADDED !!!!
+
+; MC1  pay code 7 uses different comp code and this program not needed
+select if doc-pay-code of f112-pycdceilings <> "7"
+; MC1 - end
+
+;use $pb_src/gst.use
+use $use/gst.use
+
+; ----------- CALCULATIONS PERFORMED AT COMP-CODE LEVEL ------------
+
+; (Determine Expenses charged (difference between GROSS and NET) using
+;  FACTOR or non-zero Expense Percentages as indicators as to type of charges
+;  applied)
+
+
+def x-income-gross-minus-net       int*8 signed size 4           &
+   =  amt-gross  of f110-compensation                            &
+    - amt-net    of f110-compensation
+
+def x-amt-dept-expense-pot-g   int*8 signed size 4                    &
+      = round ( (  amt-gross of f110-compensation                     &
+; MC1
+;                * doc-dept-expense-percent-reg   ) / 1000000,0,near) &
+                 * doc-dept-expense-percent-reg of f020-doctor-mstr  ) / 1000000,0,near) &
+; MC1 - end
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "R"               &
+   else round ( (  amt-gross of f110-compensation                     &
+; MC1
+;                * doc-dept-expense-percent-misc  ) / 1000000,0,near) &
+                 * doc-dept-expense-percent-misc of f020-doctor-mstr  ) / 1000000,0,near) &
+; MC1 - end
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "M"               &
+   else 0
+
+; (check for inconsistent data where calc'd expense greater than
+;  difference between gross and net)
+def x-amt-dept-expense-g   int*8 signed size 4                         &
+     = x-amt-dept-expense-pot-g                                        &
+     if       (x-amt-dept-expense-pot-g <  x-income-gross-minus-net    &
+           and amt-gross of f110-compensation > 0)                     &
+        or    (x-amt-dept-expense-pot-g >  x-income-gross-minus-net    &
+           and amt-gross of f110-compensation < 0)                     &
+  else x-income-gross-minus-net
+
+
+def x-amt-rma-expense-pot-g   int*8 signed size 4                    &
+      = round ( (  amt-gross of f110-compensation                     &
+; MC1            * doc-rma-expense-percent-reg   ) / 1000000,0,near) &
+                 * doc-rma-expense-percent-reg of f020-doctor-mstr  ) / 1000000,0,near) &
+; MC1 - end
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "R"               &
+   else round ( (  amt-gross of f110-compensation                     &
+; MC1            * doc-rma-expense-percent-misc  ) / 1000000,0,near) &
+                 * doc-rma-expense-percent-misc of f020-doctor-mstr  ) / 1000000,0,near) &
+; MC1 - end
+           if    comp-type     of f190-comp-codes = "I"               &
+             and comp-sub-type of f190-comp-codes = "M"               &
+   else 0
+
+def x-amt-rma-expense-only       int*8 signed size 4    &
+    =  x-amt-rma-expense-pot-g                          &
+  if 	(x-income-gross-minus-net > (x-amt-dept-expense-g &
+                              + x-amt-rma-expense-pot-g)  &
+          and  amt-gross of f110-compensation > 0)      &
+     or (x-income-gross-minus-net < (x-amt-dept-expense-g &
+                              + x-amt-rma-expense-pot-g)  &
+          and  amt-gross of f110-compensation < 0)      &
+ else (x-income-gross-minus-net - x-amt-dept-expense-g)
+
+def x-amt-gst-pot-g     int*8 signed size 4       &
+     =  x-amt-rma-expense-only                       &
+      * gst-percent / 100                         &
+           if doc-ind-pays-gst = "Y"              &
+  else 0
+
+def x-amt-gst-only      int*8 signed size 4       &
+     =  x-amt-gst-pot-g                           &
+  if   (x-income-gross-minus-net > (x-amt-dept-expense-g  &
+           + x-amt-rma-expense-only +  x-amt-gst-pot-g)      &
+          and amt-gross of f110-compensation > 0) &
+    or (x-income-gross-minus-net < (x-amt-dept-expense-g  &
+	   + x-amt-rma-expense-only +  x-amt-gst-pot-g)      &
+         and amt-gross of f110-compensation < 0)            &
+  else (x-income-gross-minus-net - x-amt-dept-expense-g   &
+	   - x-amt-rma-expense-only)
+
+def x-amt-rma-expense-plus-gst-g    int*8 signed size 4         &
+         =  x-amt-rma-expense-only                              &
+          + x-amt-gst-only
+
+; (RMA 'Holdback ' calculated as difference between 'GROSS and NET'
+;  minus 'DEPT Expense + RMA Expense + GST')
+def x-amt-holdback-g             int*8 signed size 4    &
+    =  x-income-gross-minus-net                         &
+     - x-amt-dept-expense-g                             &
+     - x-amt-rma-expense-plus-gst-g                     &
+   if         (x-income-gross-minus-net > (x-amt-dept-expense-g &
+		+  x-amt-rma-expense-plus-gst-g)	&
+          and  amt-gross of f110-compensation > 0)      &
+      or      (x-income-gross-minus-net < (x-amt-dept-expense-g &
+		+  x-amt-rma-expense-plus-gst-g)	&
+          and  amt-gross of f110-compensation < 0)      &
+ else 0
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;(IF HOLDBACK IS LESS THAN OR = 10 CENTS AND THERE WAS PREVIOUS
+; NON-ZERO EXPENSE CALCULATIONS, THEN IGNORE THE CALCULATED HOLDBACK
+; AND ADD THE AMOUNT OF THE LEFT OVER "HOLDBACK" BACK INTO THE
+; LAST NON-ZERO EXPENSE CALCUATION)
+; 2000/nov/23 B.E. changed limit from 10 cents to a dollar
+def  x-amt-holdback-final					&
+    = x-amt-holdback-g						&
+;	if   x-amt-holdback-g > 10				&
+	if   x-amt-holdback-g > 100				&
+          or (    x-amt-rma-expense-only = 0			&
+              and x-amt-dept-expense-g   = 0			&
+	     )							&
+ else 0
+
+def x-amt-rma-expense-final					&
+    =   x-amt-rma-expense-only					&
+      + x-amt-holdback-g					&
+     	if     x-amt-holdback-g < 10				&
+           and x-amt-rma-expense-only <> 0			&
+   else   x-amt-rma-expense-only
+
+def x-amt-dept-expense-final					&
+        =   x-amt-dept-expense-g				&
+	  + x-amt-holdback-g					&
+     if     x-amt-holdback-g < 10				&
+ 	and x-amt-dept-expense-g <>  0				&
+   else   x-amt-dept-expense-g
+
+def x-amt-rma-expense-plusgst-final int*8 signed size 4            &
+         =  x-amt-rma-expense-final                                &
+          + x-amt-gst-only
+
+; ----------- CALCULATIONS SUMMED TO DOC-NBR LEVEL ------------
+
+; MC2
+;temp    tot-income-gross-reg  int*8 signed size 4
+temp    tot-income-gross-reg  int*10 signed 
+; MC2 -  end
+item    tot-income-gross-reg                            &
+     =  tot-income-gross-reg                            &
+      + amt-gross of f110-compensation                  &
+            if comp-sub-type = "R"                      &
+  else tot-income-gross-reg                             &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-income-gross-misc int*8 signed size 4
+temp    tot-income-gross-misc int*10 signed
+; MC2 - end
+item    tot-income-gross-misc                           &
+     =  tot-income-gross-misc                           &
+      + amt-gross of f110-compensation                  &
+            if comp-sub-type = "M"                      &
+  else tot-income-gross-misc                            &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-income-net-reg  int*8 signed size 4
+temp    tot-income-net-reg  int*10 signed
+; MC2 - end
+item    tot-income-net-reg                              &
+     =  tot-income-net-reg                              &
+      + amt-net of f110-compensation                    &
+            if comp-sub-type = "R"                      &
+  else tot-income-net-reg                               &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-income-net-misc int*8 signed size 4
+temp    tot-income-net-misc int*10 signed 
+; MC2 - end
+item    tot-income-net-misc                             &
+     =  tot-income-net-misc                             &
+      + amt-net of f110-compensation                    &
+            if comp-sub-type = "M"                      &
+  else tot-income-net-misc                              &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-dept-expense-reg         int*8 signed size 4
+temp    tot-dept-expense-reg         int*10 signed 
+; MC2 - end
+item    tot-dept-expense-reg                            &
+     =  tot-dept-expense-reg                            &
+      + x-amt-dept-expense-final                            &
+          if comp-sub-type = "R"                        &
+  else  tot-dept-expense-reg                            &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-dept-expense-misc        int*8 signed size 4
+temp    tot-dept-expense-misc        int*10 signed
+; MC2 - end
+item    tot-dept-expense-misc                           &
+     =  tot-dept-expense-misc                           &
+      + x-amt-dept-expense-final                            &
+          if comp-sub-type = "M"                        &
+  else  tot-dept-expense-misc                           &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-rma-expense-plus-gst-reg        int*8 signed size 4
+temp    tot-rma-expense-plus-gst-reg        int*10 signed
+; MC2 - end
+item    tot-rma-expense-plus-gst-reg                            &
+     =  tot-rma-expense-plus-gst-reg                            &
+      + x-amt-rma-expense-plusgst-final                 &
+          if comp-sub-type = "R"                        &
+  else  tot-rma-expense-plus-gst-reg                            &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-rma-expense-plus-gst-misc       int*8 signed size 4
+temp    tot-rma-expense-plus-gst-misc       int*10 signed
+; MC2 - end
+item    tot-rma-expense-plus-gst-misc                           &
+     =  tot-rma-expense-plus-gst-misc                           &
+      + x-amt-rma-expense-plusgst-final                        &
+          if comp-sub-type = "M"                                &
+  else  tot-rma-expense-plus-gst-misc                           &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-rma-expense-only-reg        int*8 signed size 4
+temp    tot-rma-expense-only-reg        int*10 signed 
+; MC2 - end
+item    tot-rma-expense-only-reg                                &
+     =  tot-rma-expense-only-reg                                &
+      + x-amt-rma-expense-final                                  &
+          if comp-sub-type = "R"                                &
+  else  tot-rma-expense-only-reg                                &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-rma-expense-only-misc       int*8 signed size 4
+temp    tot-rma-expense-only-misc       int*10 signed 
+; MC2 - end
+item    tot-rma-expense-only-misc                               &
+     =  tot-rma-expense-only-misc                               &
+      + x-amt-rma-expense-final                                  &
+          if comp-sub-type = "M"                                &
+  else  tot-rma-expense-only-misc                               &
+  reset at doc-nbr
+
+; MC2 
+;temp    tot-gst-only-reg        int*8 signed size 4
+temp    tot-gst-only-reg        int*10 signed 
+; MC2 - end
+item    tot-gst-only-reg                                &
+     =  tot-gst-only-reg                                &
+      + x-amt-gst-only                                  &
+          if comp-sub-type = "R"                        &
+  else  tot-gst-only-reg                                &
+  reset at doc-nbr
+
+
+; MC2 
+;temp    tot-gst-only-misc       int*8 signed size 4
+temp    tot-gst-only-misc       int*10 signed 
+; MC2 - end
+item    tot-gst-only-misc                               &
+     =  tot-gst-only-misc                               &
+      + x-amt-gst-only                                  &
+          if comp-sub-type = "M"                        &
+  else  tot-gst-only-misc                       &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-holdback-only-reg   int*8 signed size 4
+temp    tot-holdback-only-reg   int*10 signed 
+; MC2 - end
+item    tot-holdback-only-reg                           &
+     =  tot-holdback-only-reg                           &
+      + x-amt-holdback-final                                &
+          if comp-sub-type = "R"                        &
+  else  tot-holdback-only-reg                           &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-holdback-only-misc  int*8 signed size 4
+temp    tot-holdback-only-misc  int*10 signed
+; MC2 - end
+item    tot-holdback-only-misc                          &
+     =  tot-holdback-only-misc                          &
+      + x-amt-holdback-final                                &
+          if comp-sub-type = "M"                        &
+  else  tot-holdback-only-misc                  &
+  reset at doc-nbr
+
+; MC2
+;temp    tot-revhbk	int*8 signed size 4
+temp    tot-revhbk	int*10 signed 
+; MC2 - end
+item    tot-revhbk = tot-revhbk + amt-net of f110-compensation &
+	if  comp-type of f110-compensation = 'E'		&
+	and (comp-code of f110-compensation = 'REVHBK'		&
+	 or  comp-code of f110-compensation = 'REVCLA')		&
+   else tot-revhbk    reset at doc-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; current EP Manual Payments affect the YTD Earnings (YTDEAR)
+temp amt-manpay   integer*8 signed size 4
+item amt-manpay   = amt-manpay   + amt-net of f110-compensation    &
+                        if    comp-type of f110-compensation="M"   &
+               else amt-manpay                                     &
+                        reset at doc-nbr
+
+
+; if new record, initial YTD record in F119.  (required only for
+; "I"ncome, AND "E"xpense records - .ie calc rec types like CEICEA are
+;  needed AND the "D"eduction records are handled in the tax/eft processing)
+
+define x-rec-type  char*1 = "A"
+
+
+; MC2 
+;def x-not-needed integer*8 signed size 4 = 0
+def x-not-needed integer*10  signed       = 0
+; MC2 - end
+
+
+; (GROSS VALUES ARE USUALLY PUT INTO F119 HOWEVER FOR CEIEXP THE NET VALUE IS REQUIRED)
+
+; MC2 
+;def x-amt-net int*8 signed size 4                                      &
+def x-amt-net int*10 signed 					       &
+; MC2 - end	
+        = amt-gross of f110-compensation                               &
+                 if comp-code of f110-compensation = "CEIEXP"          &
+     else amt-net   of f110-compensation
+
+; MC2
+;def x-amt-gross int*8 signed size 4                                    &
+def x-amt-gross int*10 signed                                          &
+; MC2 - end
+        = amt-net   of f110-compensation                               &
+                 if comp-code of f110-compensation = "CEIEXP"          &
+     else amt-gross of f110-compensation
+
+subfile f119 keep                                                     &
+  if    (   comp-type of f190-comp-codes = "I"                        &
+         or comp-type of f190-comp-codes = "E"                        &
+         or comp-type of f190-comp-codes = "A"                        &
+         or comp-type of f190-comp-codes = "M"                        &
+         or comp-type of f190-comp-codes = "P" )                      &
+      include                                                        &
+         doc-nbr   of f110-compensation         , &
+         comp-code of f110-compensation         , &
+         reporting-seq   of f190-comp-codes     , &
+         comp-code-group of f190-comp-codes     , &
+         x-rec-type                             , &
+         x-amt-net                              , &
+         x-amt-gross
+
+def x-comp-code char*6 = "RMAEXR"
+subfile f119 alias f119-rmaexr   append     at doc-nbr          &
+   if tot-rma-expense-only-reg <> 0    include                  &
+         doc-nbr of f110-compensation   , &
+         x-comp-code                    , &
+         rmaexr-seq-rpt                 , &
+         rmaexr-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         tot-rma-expense-only-reg
+
+def x-comp-code-rmaexm char*6 = "RMAEXM"
+subfile f119 alias f119-rmaexm   append     at doc-nbr      &
+  if tot-rma-expense-only-misc <> 0    include              &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-rmaexm             , &
+         rmaexm-seq-rpt                 , &
+         rmaexm-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         tot-rma-expense-only-misc
+
+def x-comp-code-gst char*6 = "GST"
+; MC2
+;def tot-gst-only integer*8 signed size 4        &
+def tot-gst-only integer*10 signed               &
+; MC2 - end
+    =  tot-gst-only-reg                         &
+     + tot-gst-only-misc
+subfile f119 alias f119-gst      append     at doc-nbr     &
+  if tot-gst-only  <> 0  include                                  &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-gst                , &
+         gst-seq-rpt                    , &
+         gst-group                      , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         tot-gst-only
+
+def x-comp-code-holdback char*6 = "HOLDBK"
+; MC2
+;def tot-holdback-only integer*8 signed size 4        &
+def tot-holdback-only integer*10 signed               &
+; MC2 - end
+    =  tot-holdback-only-reg                         &
+     + tot-holdback-only-misc
+subfile f119 alias f119-holdback      append     at doc-nbr     &
+  if tot-holdback-only  <> 0  include                                  &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-holdback                , &
+         holdback-seq-rpt                    , &
+         holdback-group                      , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         tot-holdback-only
+
+def x-comp-code-totinc char*6 = "TOTINC"
+; MC2
+;def tot-income-gross   integer*8 signed size 4  &
+def tot-income-gross   integer*10 signed         &
+; MC2 - end
+    =  tot-income-gross-reg                     &
+     + tot-income-gross-misc
+
+; MC2
+;def tot-income-net     integer*8 signed size 4  &
+def tot-income-net     integer*10 signed         &
+; MC2 - end
+    =  tot-income-net-reg                       &
+     + tot-income-net-misc
+subfile f119 alias f119-totinc   append     at doc-nbr      &
+  if tot-income-net <> 0           include                          &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-totinc             , &
+         totinc-seq-rpt                 , &
+         totinc-group                   , &
+         x-rec-type                     , &
+         tot-income-net                 , &
+         tot-income-gross
+
+; ('Total Expense" = all "E"xpense trans found in file PLUS the
+;  expense transactions calculated by the pgm IE. 'RMA EXPENSE', 'GST'
+;  and 'DEPARTMENT EXPENSE' and 'HOLDBACK')
+def x-comp-code-depexr char*6 = "DEPEXR"
+subfile f119 alias f119-depexr   append     at doc-nbr    &
+   if tot-dept-expense-reg  <> 0           &
+      include                             &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-depexr             , &
+         depexr-seq-rpt                 , &
+         depexr-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         tot-dept-expense-reg
+def x-comp-code-depexm char*6 = "DEPEXM"
+subfile f119 alias f119-depexm   append     at doc-nbr    &
+   if tot-dept-expense-misc <> 0           &
+      include                             &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-depexm             , &
+         depexm-seq-rpt                 , &
+         depexm-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         tot-dept-expense-misc
+
+; MC2
+;temp final-all-expenses integer*8 size 4
+temp final-all-expenses integer*10 
+; MC2 - end
+item final-all-expenses                                    &
+     =  tot-dept-expense-reg                               &
+      + tot-dept-expense-misc                              &
+      + tot-rma-expense-only-reg                           &
+      + tot-rma-expense-only-misc                          &
+      + tot-gst-only                                       &
+      + tot-holdback-only                                  &
+      + tot-revhbk					   &
+      + doc-ceicex        ; 93/SEP/24
+
+def x-comp-code-totexp char*6 = "TOTEXP"
+subfile f119 alias f119-totexp   append     at doc-nbr         &
+   if final-all-expenses  <> 0         include                  &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-totexp             , &
+         totexp-seq-rpt                 , &
+         totexp-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         final-all-expenses
+
+; MC2 
+;temp amt-income-minus-expenses-g integer*8 signed size 4
+temp amt-income-minus-expenses-g integer*10 signed 
+; MC2 - end
+item amt-income-minus-expenses-g                        &
+       =  tot-income-gross                              &
+        - final-all-expenses
+
+def x-comp-code-incexp char*6 = "INCEXP"
+subfile f119 alias u115-incexp   append     at doc-nbr         &
+@if dg and hsc
+   if amt-income-minus-expenses-g <> 0    &
+@endif
+     include                              &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-incexp             , &
+         incexp-seq-rpt                 , &
+         incexp-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         amt-income-minus-expenses-g
+
+; MC2
+;temp doc-ytdear-plus-amt-manpay  integer*8 signed size 4
+temp doc-ytdear-plus-amt-manpay  integer*10 signed
+; MC2 - end
+item doc-ytdear-plus-amt-manpay                                 &
+ =   doc-ytdear of f020-doctor-mstr                             &
+   + amt-manpay
+def x-comp-code-ytdear char*6 = "YTDEAR"
+subfile f119 alias f119-ytdear   append     at doc-nbr          &
+   include                                                      &
+         doc-nbr of f110-compensation   , &
+         x-comp-code-ytdear             , &
+         ytdear-seq-rpt                 , &
+         ytdear-group                   , &
+         x-rec-type                     , &
+         x-not-needed                   , &
+         doc-ytdear-plus-amt-manpay
+
+subfile debugu115a_at_comp_code keep include &
+amt-gross  of f110-compensation, 			&
+amt-net    of f110-compensation,			&
+comp-code of f110-compensation,				&
+comp-type     of f190-comp-codes,			&
+comp-sub-type of f190-comp-codes,			&
+current-ep-nbr ,					&
+doc-nbr of f110-compensation ,				&
+; MC1
+;doc-dept-expense-percent-reg,				&
+;doc-dept-expense-percent-misc,				&
+doc-dept-expense-percent-reg of f020-doctor-mstr,	&
+doc-dept-expense-percent-misc of f020-doctor-mstr,	&
+; MC1 - end
+doc-ind-pays-gst,					&
+; MC1
+;doc-rma-expense-percent-misc,				&
+;doc-rma-expense-percent-reg,				&
+doc-rma-expense-percent-misc of f020-doctor-mstr,	&
+doc-rma-expense-percent-reg of f020-doctor-mstr,	&
+; MC1 - end
+ep-nbr    of f110-compensation,				&
+gst-percent,						&
+x-income-gross-minus-net,				&
+x-amt-dept-expense-pot-g,				&
+x-amt-dept-expense-g,					&
+x-amt-gst-pot-g,					&
+x-amt-gst-only,						&
+x-amt-rma-expense-only,					&	
+x-amt-rma-expense-pot-g,				&
+x-amt-rma-expense-plus-gst-g,				&
+x-amt-holdback-g,					&
+x-amt-holdback-final,					&
+x-amt-rma-expense-final,				&
+x-amt-rma-expense-plusgst-final
+
+subfile debugu115a_at_doc_nbr keep at doc-nbr include &
+doc-nbr of f110-compensation,		&
+tot-income-gross-reg,			&
+tot-income-gross-misc,			&
+tot-income-gross-misc,			&
+tot-income-net-reg,			&
+tot-income-net-misc,			&
+tot-dept-expense-reg,			&
+tot-dept-expense-misc,			&
+tot-rma-expense-plus-gst-reg,		&
+tot-rma-expense-plus-gst-misc,		&
+tot-rma-expense-only-reg,		&
+tot-rma-expense-only-misc,		&
+tot-gst-only-reg,			&
+tot-gst-only-misc,			&
+tot-holdback-only-reg,			&
+tot-holdback-only-misc,			&
+tot-revhbk,				&
+amt-manpay,				&
+final-all-expenses,			&	; not reset at doctor mstr?
+amt-income-minus-expenses-g,		&	; not reset
+doc-ytdear-plus-amt-manpay,		&	; not reset
+doc-ytdear of f020-doctor-mstr
+
+build $pb_obj/u115a

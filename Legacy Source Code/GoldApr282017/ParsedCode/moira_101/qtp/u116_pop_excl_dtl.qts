@@ -1,0 +1,41 @@
+; 2016/Feb/08 - u116_pop_excl_dtl.qts        
+;	      - this program will be called from m116.qks when user activates the designer 
+;		procedure 'excl' to populate f116-dtl  records
+
+cancel clear
+set process nolimit
+set lock record update
+
+; select all doctors that are excluded tithe in selected dept and group
+request one
+access f116-dept-expense-rules-hdr
+choose dept-expense-calc-code 'FLAT+3_TITHE_LEVELS',	&
+       dept-nbr parm prompt 'Enter dept: ' 1 time, 	&
+       doc-afp-paym-group parm prompt 'Enter group: ' 1 time
+
+sel if tithe-in-ex-clude-flag = 'E'  and doc-nbr <> '000'
+
+subfile temp1 keep include f116-dept-expense-rules-hdr
+
+; link to the general doctor '000' to populate corresponding detail for the excluded doctors
+request two
+access *temp1 					&
+	link dept-expense-calc-code,		&
+	     dept-nbr, doc-afp-paym-group,	&
+	     '000'				&
+	 to  dept-expense-calc-code,		&
+	     dept-nbr, doc-afp-paym-group,	&
+	     doc-nbr of f116-dept-expense-rules-dtl &
+	link dept-expense-calc-code,		&
+	     dept-nbr, doc-afp-paym-group,	&
+	     doc-nbr of temp1			&
+	 to  dept-expense-calc-code,		&
+	     dept-nbr, doc-afp-paym-group,	&
+	     doc-nbr of f116-dept-expense-rules-dtl alias f116-doc opt
+	   
+output f116-dept-expense-rules-dtl alias f116-add add  &
+		if not record f116-doc exist on errors report
+	item doc-nbr final doc-nbr of temp1
+        item tithe-in-ex-clude-flag final 'E'
+
+build $obj/u116_pop_excl_dtl

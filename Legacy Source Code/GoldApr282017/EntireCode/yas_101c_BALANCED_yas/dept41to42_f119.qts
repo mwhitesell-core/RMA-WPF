@@ -1,0 +1,61 @@
+; *************************************************************
+
+;Date		Who		Description
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history                        &
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     
+
+select if                              &
+            (   comp-code = "BILL"     &
+             or comp-code = "DHSC"     & 
+             or comp-code = "TOTINC")  & 
+        and     ep-nbr    = 200803     &
+        and (   doc-dept  = 42)        
+;             or doc-dept  = 42)        
+
+sort on doc-dept on doc-nbr 
+
+temp x-bill    zoned*9 signed
+item x-bill    = x-bill    + amt-ytd/100      &
+               if comp-code = "BILL"          &
+               reset at doc-nbr
+
+temp x-dhsc    zoned*9 signed
+item x-dhsc    = x-dhsc    + amt-ytd/100      &
+               if comp-code = "DHSC"          &
+               reset at doc-nbr
+
+temp x-totinc  zoned*9 signed
+item x-totinc  = x-totinc  + amt-ytd/100      &
+               if comp-code = "TOTINC"        &
+               reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile dept4142 portable keep at doc-nbr include    &
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr             of f119-doctor-ytd-history      ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-bill                                              ,&
+comma                                               ,&
+x-dhsc                                              ,&
+comma                                               ,&
+x-totinc                                            ,&
+x-cr
+

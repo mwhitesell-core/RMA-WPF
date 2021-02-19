@@ -1,0 +1,333 @@
+;#> PROGRAM-ID.     U020A.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : READ F001-BATCH-CONTROL-FILE AND SELECT
+;                      BALANCED BATCHES WITHING PED AND CYCLE #,
+;                  LINK TO CLAIMS, PATIENTS, AND DOCTOR FILES
+;                     AND EXTRACT DATA NEEDED FOR OHIP TAPE OR
+;                       CLAIM SHADOW
+;                   IF CHANGES REQUIRED FOR HOSPITAL CODES, MAKE
+;                   SURE TO CHANGE IN HOSPITAL_CODE.DEF
+;
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/12 D.B.         - ORIGINAL (SMS 138)
+;     93/MAR/17 M.C.         - SMS 140
+;                            - CONVERT THE FIRST PASS R020A1 INTO
+;                                 HERE U020A.QTS
+;     93/MAY/06 M.C.            - SMS 141
+;                      - ADD PAT-MESS-CODE IN EACH SUBFILE
+;     96/JAN/16 M.C.         - PDR 636
+;                            - SELECT BATCTRL-STATUS = '2' INSTEAD OF
+;                           '1' (BATCHES HAVE GONE THROUGH U010DAILY)
+;     97/JUN/04 K.M.         - LINKED RECORD STRUCTURE TO
+;                             F020-DOCTOR-MSTR TO DETERMINE WHICH
+;                            GROUP NUMBER TO USE FOR EACH RECORD AND
+;                        SORTED THE DATASET ON THAT NUMBER
+;     97/AUG/08 B.E.         - MADE LINK TO DOCTOR MSTR OPTIONAL
+;                              SO THAT ADJUSTMENT/PAYMENT BATCHES
+;                             COULD BE PROCESSED IN THIS PROGRAM.
+;                            SEE COMMENTS BEFORE ACCESS STATEMENT
+;                           FOR MORE DETAILS.
+;
+;     98/JAN/18 M.C.        - ADD REQUEST STATEMENT WITH EXCEPTIONAL
+;                         ERRORS REPORT
+; 99/feb/09 B.E         - no y2k changes needed 
+; 99/may/05 B.E.	- clmhdr-hosp field no longer contains actual hospital
+;			  code.
+;			  if this field contains "Y" then use clmhdr-loc to
+;			  access location master to obtain correct hospital code
+;			- also pickup new moh location code from the f030 file
+;			- u020a1 now contains new moh location code
+; 1999/May/21 S.B.      - Added the use file
+;                         def_batctrl_batch_status.def to 
+;                         prevent hardcoding of batctrl-batch-status.
+; 1999/Jun/03 S.B.	- Altered the call for def_group_nbr.use to call
+;
+; 1999/jul/21 B.E.      - fixed bug that caused 'zero' hospital to go on tape 
+;                       - now blank if not a valid hospital.
+; 99/aug/25 B.E.        - calculation of hospital nbr now based solely on
+;                         existance of location code and not patient i/o ind.
+
+
+can clear
+set process nolimit
+
+request extract on calculation errors report    &
+               on edit errors report
+
+; NOTE THAT LINK TO DOCTOR MSTR IS OPTIONAL. ACCESS TO DOCTOR MSTR IS
+; IS TO PICKUP THE DOCTOR'S 'GROUP NBR' FOR SUBMITTING CLAIMS TO OHIP.
+; THIS PROGRAM MUST ALSO PROCESS ADJUSMENT AND PAYMENT BATCHES WHICH
+; DON'T GO TO OHIP AND DON'T HAVE A DOCTOR NUMBER IN THE BATCH-BATCH-NBR
+; SETTING LINK TO OPTIONAL LETS THESES BATCHES BE PROCESSED.
+
+access f001-batch-control-file &
+	link floor(batctrl-batch-nbr / 10000000), batctrl-agent-cd      &
+	to   clinic-nbr, agent-cd of contract-dtl                       &
+	link "B"          , batctrl-batch-nbr                          &
+	to    key-clm-type, key-clm-batch-nbr of f002-claims-mstr      &
+	link clmhdr-pat-ohip-id-or-chart                                &
+	to   key-pat-mstr of f010-pat-mstr optional                     &
+	link floor(batctrl-batch-nbr / 10000000)                       &
+	to   iconst-clinic-nbr-1-2 of iconst-mstr-rec                  &
+; 	(K.M. 97/jun/04 - added this link)			        &
+	link nconvert(ascii(batctrl-batch-nbr of f001-batch-control-file,9)[4:3]) &
+	to   doc-nbr of f020-doctor-mstr optional			&
+;       (B.E. added link to pickup hospital code)
+	link clmhdr-loc							&
+	to   loc-nbr	of f030-locations-mstr optional
+
+;S.B.
+use $use/def_batctrl_batch_status.def
+
+
+;select f001-batch-control-file if batctrl-batch-status =  	&
+;	batctrl-batch-status-rev-updated
+select f001-batch-control-file if batctrl-date-batch-entered >= "20000118"
+
+
+select f002-claims-mstr if clmhdr-adj-oma-cd = '0000'
+
+; b.e.
+def w-moh-location-code char*4   			&
+    = "    "		 				&
+	   if not record f030-locations-mstr exists	&
+ else ascii(loc-ministry-loc-code,4)
+
+; Location now used to determine if hospital nbr is needed
+; regardless of patient's in/out indicator!!!
+; (hospital blank unless 'I'n patient and location code found
+;  that can be used to obtain hospital nbr)
+;use $pb_src/hospital_code.def nolist
+def w-clmhdr-hosp char*4                                        &
+    = "    "                                                    &
+;       if   clmhdr-i-o-pat-ind of f002-claims-mstr <> "I"      &
+;         or not record f030-locations-mstr exists              &
+        if   not record f030-locations-mstr exists              &
+ else ascii(loc-hospital-nbr,4)
+
+define w-pat-ohip-mmyy char*15 	&
+     = pat-ohip-mmyy &
+		if    pat-health-nbr = 0 	&
+		  and pat-ohip-mmyy <> ' ' 	&
+  else ' '
+
+define w-pat-sex char*1		&
+     = '1' if pat-sex = 'M' 	&
+  else '2' if pat-sex = 'F'
+
+define doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[3:4])
+
+;1997/JUN/12 - KEVIN MILES - ADDED THIS USE FILE TO DETERMINE THE
+;'TRANSLATED-GROUP-NBR'
+use $use/def_group_nbr.use            nolist nodetail
+
+;1997/JUN/12 - KEVIN MILES - ADDED THIS SORT ON THE NEW GROUP NBR
+;SORT ON D_GROUP_NBR
+sort on translated-group-nbr
+
+;NOTE if changes made to u020a1 - also change subfile definition in r022a.qzs
+subfile u020a1_a keep if contract-code = 'A'                    &
+include                                                        &
+  batctrl-batch-nbr of f001-batch-control-file,                &
+  batctrl-batch-type of f001-batch-control-file,               &
+  batctrl-clinic-nbr of f001-batch-control-file,               &
+  batctrl-doc-nbr-ohip of f001-batch-control-file,             &
+  batctrl-loc of f001-batch-control-file,                      &
+  batctrl-agent-cd of f001-batch-control-file,                 &
+  batctrl-date-batch-entered of f001-batch-control-file,       &
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,                    &
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,                  &
+  iconst-date-period-end of iconst-mstr-rec,                   &
+  clmhdr-claim-id of f002-claims-mstr,                         &
+  clmhdr-claim-nbr of f002-claims-mstr,                        &
+  w-clmhdr-hosp,                                               &
+  w-moh-location-code,					       &
+  clmhdr-date-admit of f002-claims-mstr,                       &
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,             &
+  clmhdr-refer-doc-nbr of f002-claims-mstr,                    &
+  clmhdr-loc of f002-claims-mstr,                              &
+  clmhdr-i-o-pat-ind of f002-claims-mstr,                      &
+  clmhdr-agent-cd of f002-claims-mstr,                         &
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,                 &
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,                &
+  clmhdr-status-ohip of f002-claims-mstr,                      &
+  clmhdr-sub-nbr of f002-claims-mstr,                          &
+  clmhdr-manual-review of f002-claims-mstr,                    &
+  doc-nbr,                                                     &
+  clmhdr-doc-dept of f002-claims-mstr,                         &
+  clmhdr-doc-spec-cd of f002-claims-mstr,                      &
+  pat-health-nbr of f010-pat-mstr,                             &
+  pat-version-cd of f010-pat-mstr,                             &
+  w-pat-ohip-mmyy,                                             &
+  pat-chart-nbr of f010-pat-mstr,                              &
+  pat-surname of f010-pat-mstr,                                        &
+  pat-given-name of f010-pat-mstr,                             &
+  pat-acronym of f010-pat-mstr,                                        &
+  pat-birth-date of f010-pat-mstr,                             &
+  w-pat-sex,                                                   &
+  pat-prov-cd of f010-pat-mstr,                                        &
+  subscr-addr1 of f010-pat-mstr,                               &
+  subscr-addr2 of f010-pat-mstr,                               &
+  subscr-addr3 of f010-pat-mstr,                               &
+  subscr-postal-cd of f010-pat-mstr,                           &
+  moh-flag of contract-dtl,                                    &
+  dollar-flag of contract-dtl,                                 &
+  pat-mess-code of f010-pat-mstr,                              &
+;1997/JUN/12 - KEVIN MILES - ADDED THE TRANSLATED-GROUP-NBR
+  translated-group-nbr
+
+subfile u020a1_b keep if contract-code = 'B'                  &
+include                                                        &
+  batctrl-batch-nbr of f001-batch-control-file,                &
+  batctrl-batch-type of f001-batch-control-file,               &
+  batctrl-clinic-nbr of f001-batch-control-file,               &
+  batctrl-doc-nbr-ohip of f001-batch-control-file,             &
+  batctrl-loc of f001-batch-control-file,                      &
+  batctrl-agent-cd of f001-batch-control-file,                 &
+  batctrl-date-batch-entered of f001-batch-control-file,       &
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,                    &
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,                  &
+  iconst-date-period-end of iconst-mstr-rec,                   &
+  clmhdr-claim-id of f002-claims-mstr,                         &
+  clmhdr-claim-nbr of f002-claims-mstr,                        &
+  w-clmhdr-hosp,                                               &
+  w-moh-location-code,					       &
+  clmhdr-date-admit of f002-claims-mstr,                       &
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,             &
+  clmhdr-refer-doc-nbr of f002-claims-mstr,                    &
+  clmhdr-loc of f002-claims-mstr,                              &
+  clmhdr-i-o-pat-ind of f002-claims-mstr,                      &
+  clmhdr-agent-cd of f002-claims-mstr,                         &
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,                 &
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,                &
+  clmhdr-status-ohip of f002-claims-mstr,                      &
+  clmhdr-sub-nbr of f002-claims-mstr,                          &
+  clmhdr-manual-review of f002-claims-mstr,                    &
+  doc-nbr,                                                     &
+  clmhdr-doc-dept of f002-claims-mstr,                         &
+  clmhdr-doc-spec-cd of f002-claims-mstr,                      &
+  pat-health-nbr of f010-pat-mstr,                             &
+  pat-version-cd of f010-pat-mstr,                             &
+  w-pat-ohip-mmyy,                                             &
+  pat-chart-nbr of f010-pat-mstr,                              &
+  pat-surname of f010-pat-mstr,                                        &
+  pat-given-name of f010-pat-mstr,                             &
+  pat-acronym of f010-pat-mstr,                                        &
+  pat-birth-date of f010-pat-mstr,                             &
+  w-pat-sex,                                                   &
+  pat-prov-cd of f010-pat-mstr,                                        &
+  subscr-addr1 of f010-pat-mstr,                               &
+  subscr-addr2 of f010-pat-mstr,                               &
+  subscr-addr3 of f010-pat-mstr,                               &
+  subscr-postal-cd of f010-pat-mstr,                           &
+  moh-flag of contract-dtl,                                    &
+  dollar-flag of contract-dtl,                                 &
+  pat-mess-code of f010-pat-mstr,                              &
+;1997/JUN/12 - KEVIN MILES - ADDED THE TRANSLATED-GROUP-NBR
+  translated-group-nbr
+
+subfile u020a1_c keep if contract-code = 'C'                  &
+include                                                        &
+  batctrl-batch-nbr of f001-batch-control-file,                &
+  batctrl-batch-type of f001-batch-control-file,               &
+  batctrl-clinic-nbr of f001-batch-control-file,               &
+  batctrl-doc-nbr-ohip of f001-batch-control-file,             &
+  batctrl-loc of f001-batch-control-file,                      &
+  batctrl-agent-cd of f001-batch-control-file,                 &
+  batctrl-date-batch-entered of f001-batch-control-file,       &
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,                    &
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,                  &
+  iconst-date-period-end of iconst-mstr-rec,                   &
+  clmhdr-claim-id of f002-claims-mstr,                         &
+  clmhdr-claim-nbr of f002-claims-mstr,                        &
+  w-clmhdr-hosp,                                               &
+  w-moh-location-code,					       &
+  clmhdr-date-admit of f002-claims-mstr,                       &
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,             &
+  clmhdr-refer-doc-nbr of f002-claims-mstr,                    &
+  clmhdr-loc of f002-claims-mstr,                              &
+  clmhdr-i-o-pat-ind of f002-claims-mstr,                      &
+  clmhdr-agent-cd of f002-claims-mstr,                         &
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,                 &
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,                &
+  clmhdr-status-ohip of f002-claims-mstr,                      &
+  clmhdr-sub-nbr of f002-claims-mstr,                          &
+  clmhdr-manual-review of f002-claims-mstr,                    &
+  doc-nbr,                                                     &
+  clmhdr-doc-dept of f002-claims-mstr,                         &
+  clmhdr-doc-spec-cd of f002-claims-mstr,                      &
+  pat-health-nbr of f010-pat-mstr,                             &
+  pat-version-cd of f010-pat-mstr,                             &
+  w-pat-ohip-mmyy,                                             &
+  pat-chart-nbr of f010-pat-mstr,                              &
+  pat-surname of f010-pat-mstr,                                &
+  pat-given-name of f010-pat-mstr,                             &
+  pat-acronym of f010-pat-mstr,                                &
+  pat-birth-date of f010-pat-mstr,                             &
+  w-pat-sex,                                                   &
+  pat-prov-cd of f010-pat-mstr,                                &
+  subscr-addr1 of f010-pat-mstr,                               &
+  subscr-addr2 of f010-pat-mstr,                               &
+  subscr-addr3 of f010-pat-mstr,                               &
+  subscr-postal-cd of f010-pat-mstr,                           &
+  moh-flag of contract-dtl,                                    &
+  dollar-flag of contract-dtl,                                 &
+  pat-mess-code of f010-pat-mstr,                              &
+;1997/JUN/12 - KEVIN MILES - ADDED THE TRANSLATED-GROUP-NBR
+  translated-group-nbr
+
+subfile u020a1_d keep if contract-code = 'D'                  &
+include                                                        &
+  batctrl-batch-nbr of f001-batch-control-file,                &
+  batctrl-batch-type of f001-batch-control-file,               &
+  batctrl-clinic-nbr of f001-batch-control-file,               &
+  batctrl-doc-nbr-ohip of f001-batch-control-file,             &
+  batctrl-loc of f001-batch-control-file,                      &
+  batctrl-agent-cd of f001-batch-control-file,                 &
+  batctrl-date-batch-entered of f001-batch-control-file,       &
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,                    &
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,                  &
+  iconst-date-period-end of iconst-mstr-rec,                   &
+  clmhdr-claim-id of f002-claims-mstr,                         &
+  clmhdr-claim-nbr of f002-claims-mstr,                        &
+  w-clmhdr-hosp,                                               &
+  w-moh-location-code,					       &
+  clmhdr-date-admit of f002-claims-mstr,                       &
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,             &
+  clmhdr-refer-doc-nbr of f002-claims-mstr,                    &
+  clmhdr-loc of f002-claims-mstr,                              &
+  clmhdr-i-o-pat-ind of f002-claims-mstr,                      &
+  clmhdr-agent-cd of f002-claims-mstr,                         &
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,                 &
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,                &
+  clmhdr-status-ohip of f002-claims-mstr,                      &
+  clmhdr-sub-nbr of f002-claims-mstr,                          &
+  clmhdr-manual-review of f002-claims-mstr,                    &
+  doc-nbr,                                                     &
+  clmhdr-doc-dept of f002-claims-mstr,                         &
+  clmhdr-doc-spec-cd of f002-claims-mstr,                      &
+  pat-health-nbr of f010-pat-mstr,                             &
+  pat-version-cd of f010-pat-mstr,                             &
+  w-pat-ohip-mmyy,                                             &
+  pat-chart-nbr of f010-pat-mstr,                              &
+  pat-surname of f010-pat-mstr,                                &
+  pat-given-name of f010-pat-mstr,                             &
+  pat-acronym of f010-pat-mstr,                                &
+  pat-birth-date of f010-pat-mstr,                             &
+  w-pat-sex,                                                   &
+  pat-prov-cd of f010-pat-mstr,                                &
+  subscr-addr1 of f010-pat-mstr,                               &
+  subscr-addr2 of f010-pat-mstr,                               &
+  subscr-addr3 of f010-pat-mstr,                               &
+  subscr-postal-cd of f010-pat-mstr,                           &
+  moh-flag of contract-dtl,                                    &
+  dollar-flag of contract-dtl,                                 &
+  pat-mess-code of f010-pat-mstr,                              &
+;1997/JUN/12 - KEVIN MILES - ADDED THE TRANSLATED-GROUP-NBR
+  translated-group-nbr
+
+build $pb_obj/u020a

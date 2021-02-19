@@ -1,0 +1,85 @@
+; DOC:u084a.qts
+;
+;PROGRAM PURPOSE : download claims statistics to data warehouse
+;                  RECEIVED DATE
+;
+;    DATE    BY WHOM    DESCRIPTION
+; 00/jul/10 B.E.	- original
+; 00/jul/20 B.E.	- replaced current-ip-nbr with iconst-date-period-end
+;
+;can clear
+;set process limit 1
+;request u084a_1     &
+;        on calculation errors report    &
+;        on edit errors report
+;
+;access constants-mstr-rec-6 link current-ep-nbr   &
+;       to ep-nbr of f191-earnings-period
+;
+;choose const-rec-nbr 6
+;
+;;def x-ep-nbr num = current-ep-nbr - 1 if ep-fiscal-nbr <> 1   &
+;;         else current-ep-nbr - 89
+;def x-ep-nbr num = current-ep-nbr 
+;
+;subfile cur-er-nbr keep include &
+;	x-ep-nbr
+;
+set process nolimit
+set lock file update
+
+request u084a_1        &
+        on calculation errors report    &
+        on edit errors report
+
+;access *cur-er-nbr link x-ep-nbr                                        &
+;                     to current-ep-nbr of f084-claims-inventory         &
+;                   link doc-nbr of f084-claims-inventory                &
+;                     to doc-nbr of f020-doctor-mstr                     &
+;                   link billing-clerk-initials of f084-claims-inventory &
+;                     to billing-clerk-initials of f083-user-mstr 	&
+;                   link current-ep-nbr of f084-claims-inventory         &
+;                     to ep-nbr of f191-earnings-period
+access f084-claims-inventory                                    &
+   link doc-nbr of f084-claims-inventory                        &
+     to doc-nbr of f020-doctor-mstr    opt                      &
+   link billing-clerk-initials of f084-claims-inventory 	&
+     to billing-clerk-initials of f083-user-mstr  opt		&
+   link clmhdr-clinic-nbr-1-2                                   &
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt       
+
+;def x-selected-clinic-1-2 num*2 = parm prompt "Enter 2 digit clinic number: "
+
+;select if    clmhdr-clinic-nbr-1-2 = x-selected-clinic-1-2              &
+;         and (  iconst-date-period-end of f084-claims-inventory         &
+;              = iconst-date-period-end of iconst-mstr-rec               &
+;             )
+
+;sort on clmhdr-clinic-nbr-1-2 &
+sort 				&
+     on doc-name              	&
+     on batch-received-date
+
+define  d-received-claims     =   nbr-claims-batches     &
+                               +  nbr-claims-queried
+define  d-unregistered-claims = nbr-claims-batches       &
+        if doc-ohip-nbr = 0
+
+define d-doc-name-nbr char*30                           &
+  =   pack(truncate(doc-name))                          &
+    + " ("                                              &
+    + ascii(doc-nbr of f084-claims-inventory,3)         &
+    + ")"
+define d-doc-nbr-name char*30                           &
+  = ascii(doc-nbr of f084-claims-inventory,3) + " - "  + pack(doc-name)
+
+subfile f084 keep portable include                      &
+  f084-claims-inventory,                                &
+  d-doc-nbr-name,                                       &
+  d-doc-name-nbr,                                       &
+  doc-dept of f020-doctor-mstr ,                        &
+  full-name ,                                           &
+  d-received-claims,                                    &
+  d-unregistered-claims
+
+build $obj/u084a

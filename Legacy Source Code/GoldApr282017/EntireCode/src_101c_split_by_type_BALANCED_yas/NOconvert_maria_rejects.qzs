@@ -1,0 +1,133 @@
+; Program: maria_rejects.qzs
+; Purpose: total manual rejections stored in the f087 manual rejects
+;	   history file
+; Mod Hist
+; 2000/may/06 Y.B.
+; 2003/jul/31 Y.B.   if physician has 10 claims same patient same error code
+;                    counts as 1. It will never match costing because doctor
+;                    might have the same patient in different months, costings
+;                    is just by doctor not month
+cancel clear
+
+set rep nolimit
+set page length 0
+set page width 254
+set rep nohead
+set rep device disc name maria_rejects
+
+access manual-rejected-claims-hist                                            &
+  link clmhdr-doc-nbr							      &
+   to  doc-nbr of f020-doctor-mstr opt					      &
+  link ohip-err-code                                                          &
+    to f093-ohip-error-msg-mstr opt			                      & 
+  link ('B', clmhdr-batch-nbr, clmhdr-claim-nbr, '00000', '0')                & 
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, &
+       key-clm-adj-nbr  of f002-claims-mstr  opt
+
+select if    ohip-err-cat-code = "E"    &
+         and ped > 20040630 and ped < 20050701
+
+and sel                                                                 &
+     if    (   doc-date-fac-start  = 0000000                            &
+            or doc-date-fac-start < 20050701                            &
+           )                                                            &
+       and (  doc-date-fac-term   = 00000000                            &
+            or doc-date-fac-term >  20040630                            &
+           )
+
+def x-ped   cha*8 = ascii(ped,8)
+
+def x-mm    cha*2 = x-ped[5:2]
+
+def x-dd    cha*2 = x-ped[7:2]
+
+def x-yyyy   = nconvert(x-ped[1:4])
+
+def x-mmm   cha*9 = "January"   if x-mm  = "01"      &
+               else "February"  if x-mm  = "02"      &
+               else "March"     if x-mm  = "03"      &
+               else "April"     if x-mm  = "04"      &
+               else "May"       if x-mm  = "05"      &
+               else "June"      if x-mm  = "06"      &
+               else "July"      if x-mm  = "07"      &
+               else "August"    if x-mm  = "08"      &
+               else "September" if x-mm  = "09"      &
+               else "October"   if x-mm  = "10"      &
+               else "November"  if x-mm  = "11"      &
+               else "December"  if x-mm  = "12"
+
+def x-sort-key cha*1 =       "a" if x-mm = "07"  &
+                       else  "b" if x-mm = "08"  &
+                       else  "c" if x-mm = "09"  &
+                       else  "d" if x-mm = "10"  &
+                       else  "e" if x-mm = "11"  &
+                       else  "f" if x-mm = "12"  &
+                       else  "g" if x-mm = "01"  &
+                       else  "h" if x-mm = "02"  &
+                       else  "i" if x-mm = "03"  &
+                       else  "j" if x-mm = "04"  &
+                       else  "k" if x-mm = "05"  &
+                       else  "l" if x-mm = "06"  
+
+;sort on x-sort-key		 &
+;     on ohip-err-code 		&
+;     on clmhdr-doc-nbr of manual-rejected-claims-hist  &
+;     on clmhdr-pat-ohip-id-or-chart
+
+sort on x-sort-key		 &
+     on clmhdr-doc-nbr of manual-rejected-claims-hist  &
+     on clmhdr-pat-ohip-id-or-chart		&
+     on ohip-err-code 		
+
+;heading at x-sort-key				&
+;tab 1   x-mmm					&
+;skip 2
+
+;footing at clmhdr-doc-nbr			&
+;tab 5   clmhdr-doc-nbr of manual-rejected-claims-hist &
+;tab 15 count at clmhdr-pat-ohip-id-or-chart	&
+;skip 2
+
+;footing at clmhdr-doc-nbr			&
+;tab 5   clmhdr-doc-nbr of manual-rejected-claims-hist &
+;tab 15 count at ohip-err-code              	&
+;skip 2
+
+;footing at ohip-err-code			&
+;tab 1  ohip-err-code 				&
+;tab 15 count at clmhdr-pat-ohip-id-or-chart	&
+;skip 2
+
+;footing at x-sort-key                            &
+;tab 1   x-mmm                         		 &
+;tab 15  'Totals: '				 &
+;tab 25  count at clmhdr-pat-ohip-id-or-chart pic "^^^,^^^"			 &
+;skip 3 
+
+;footing at x-sort-key                            &
+;tab 1   x-mmm                         		 &
+;tab 15  'Totals: '				 &
+;tab 25  count at ohip-err-code        pic "^^^,^^^"			 &
+;skip 3 
+
+; 2003/10/08 - MC - Yas wants to report once per error code per patient per doctor per month
+;footing at x-sort-key                            &
+;tab 1   x-mmm print at x-sort-key                &
+;tab 15  count pic "^^^,^^^"                      &
+;skip 1
+
+footing at x-sort-key                            &
+tab 1   x-mmm                         		 &
+tab 15  'Totals: '				 &
+tab 25  count at ohip-err-code        pic "^^^,^^^"			 &
+skip 2
+; 2003/10/08 - end
+
+final footing						&
+skip 3							&
+tab 1 'Grand Totals:'					&
+;tab 25 count at clmhdr-pat-ohip-id-or-chart pic "^^^,^^^"            
+tab 25 count at ohip-err-code        pic "^^^,^^^"            
+
+
+build $obj/maria_rejects

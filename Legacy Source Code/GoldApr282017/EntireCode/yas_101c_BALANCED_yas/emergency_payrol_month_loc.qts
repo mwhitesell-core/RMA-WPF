@@ -1,0 +1,118 @@
+;doc     : emergency_payroll_month_loc.qts     
+;purpose : report by doc Value in payroll field in f002 for dept 41, 42, 43 or 75
+;        ; THIS report is by month by loc - there are two other programs one by claim-id and one by doc dept           
+;who     : department head
+
+;
+; *************************************************************
+
+;Date           Who            Description
+;2010/10/28     Yasemin
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'             &
+                          and (    clmhdr-doc-dept = 41                &
+                                or clmhdr-doc-dept = 42                &
+                                or clmhdr-doc-dept = 43                &
+                                or clmhdr-doc-dept = 75)
+;;;;;;;;;;;;;;             and (      clmhdr-serv-date   >= 20100701  &
+;;;;;;;;;;;;;;                   and  clmhdr-serv-date   <= 20110630)
+
+def x-claim cha*10 = clmhdr-claim-id[1:10]
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile payroll     keep include      &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+x-claim                              ,&
+x-clinic                             ,&
+clmhdr-payroll                       ,&
+clmhdr-doc-dept                      ,&
+clmhdr-loc                           ,&
+clmhdr-serv-date                     ,&
+doc-nbr                              ,&
+doc-name                             ,&
+doc-inits
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *payroll
+
+select if      clmhdr-serv-date   >= 20100701  &
+          and  clmhdr-serv-date   <= 20110630
+
+def x-month char*6 = ascii(clmhdr-serv-date)[1:6]
+
+sort on x-month on clmhdr-loc        
+
+temp ctas1-count  num*6
+item ctas1-count  = ctas1-count + 1 if clmhdr-payroll = "1"     &
+                  reset at clmhdr-loc      
+
+temp ctas2-count  num*6
+item ctas2-count  = ctas2-count + 1 if clmhdr-payroll = "2"     &
+                  reset at clmhdr-loc       
+
+temp ctas3-count  num*6
+item ctas3-count  = ctas3-count + 1 if clmhdr-payroll = "3"     &
+                  reset at clmhdr-loc      
+
+temp ctas4-count  num*6
+item ctas4-count  = ctas4-count + 1 if clmhdr-payroll = "4"     &
+                  reset at clmhdr-loc       
+
+temp ctas5-count  num*6
+item ctas5-count  = ctas5-count + 1 if clmhdr-payroll = "5"     &
+                  reset at clmhdr-loc     
+
+temp ctas0-count  num*6
+item ctas0-count  = ctas0-count + 1 if clmhdr-payroll = " "     &
+				    or clmhdr-payroll = "0"	&
+				    or clmhdr-payroll > "5"	&
+                  reset at clmhdr-loc      
+
+;temp ctas6-count  num*6
+;item ctas6-count  = ctas6-count + 1 if clmhdr-payroll > "5"     &
+;                  reset at clmhdr-loc         
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile payroll2_month_loc portable keep at clmhdr-loc      include    &
+x-month                                             ,&
+comma                                               ,&
+clmhdr-loc                                          ,&
+comma                                               ,&
+ctas1-count                                         ,&
+comma                                               ,&
+ctas2-count                                         ,&
+comma                                               ,&
+ctas3-count                                         ,&
+comma                                               ,&
+ctas4-count                                         ,&
+comma                                               ,&
+ctas5-count                                         ,&
+comma                                               ,&
+ctas0-count                                         ,&
+comma                                               ,&
+;ctas6-count                                         ,&
+;comma                                               ,&
+x-cr

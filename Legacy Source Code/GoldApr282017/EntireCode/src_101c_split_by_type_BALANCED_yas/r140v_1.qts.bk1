@@ -1,0 +1,56 @@
+; 2005/03/10 - MC	- include doc-afp-paym-group in the tmp file
+; 2005/03/16 - MC	- add doc-afp-paym-group in the sort statement
+
+cancel clear
+set process nolimit
+set lock record update ; for testing only 
+;set lock file update
+
+; get 1 record for each unique doc-ohip-nbr
+request u140v_put_1_rec_in_tmp_file_for_each_doc	&
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access afp-a2s-file
+
+;def doc-ohip-nbr zoned*6 	&
+; = nconvert(doc-afp-paym-solo) 	
+
+; 2005/03/16 - MC
+;sort on doc-afp-paym-solo
+sort on doc-afp-paym-group on doc-afp-paym-solo
+; 2005/03/16 - end
+
+
+temp  afp-payment-amt
+item  afp-payment-amt							&
+    = afp-payment-amt - afp-conversion-amt if afp-submission-sign = "-"	&
+else  afp-payment-amt + afp-conversion-amt 				&
+		reset at doc-afp-paym-solo
+
+;subfile r140v_1 keep at doc-afp-paym-solo	&
+;  include					&	
+;    doc-ohip-nbr,				&
+;    afp-payment-amt,				&
+;    afp-a2s-file
+;
+;; for eaching incoming OHIP doctor number put record in tmp file
+;request r140v_put_1_rec_in_tmp_file_for_each_doc	&
+;                on edit        errors report   	 	&
+;                on calculation errors report
+;
+;access *r140v_1
+
+output tmp-governance-payments-file alias tmp-add	add	&
+	at doc-afp-paym-solo 
+  item doc-ohip-nbr		final nconvert(doc-afp-paym-solo) 
+  item afp-solo-name		final afp-solo-name   of afp-a2s-file
+  item afp-payment-amt of tmp-add		final afp-payment-amt 
+;  item doc-ohip-nbr		final nconvert(doc-afp-paym-solo) 
+;  item afp-solo-name		final afp-solo-name   of f140v_1 
+;  item afp-payment-amt		final afp-payment-amt of r140v_1
+; 2005/03/10 - MC
+   item doc-afp-paym-group	final doc-afp-paym-group of afp-a2s-file
+; 2005/03/10 - end
+
+build $obj/r140v_1

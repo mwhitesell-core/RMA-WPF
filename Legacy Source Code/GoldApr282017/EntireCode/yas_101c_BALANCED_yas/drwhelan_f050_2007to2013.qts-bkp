@@ -1,0 +1,54 @@
+;for Dr. Whelan 03-G30 clinic 33  report dollar amount by month since Jan 2007 to December 2012 
+; 2 columns mtd and ytd amounts  DO NOT include payments just ohip billilngs
+;    Jan 2007 is EP 200607
+;    Dec 2012 is EP 201206
+
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-code  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+choose ep-yr 2006 to 2012, iconst-date-period-end 20060701 to 20121231, docrev-key '3303G30@'
+
+select if ???? 
+
+sort on docrev-doc-nbr 
+
+temp jan2007mtd  zoned*9 signed
+item jan2007mtd  = jan2007mtd  + (docrev-mtd-in-rec +docrev-mtd-out-rec)   &
+                   if iconst-date-period-end = 20070101                    &
+                   reset at docrev-doc-nbr
+
+temp jan2007ytd  zoned*9 signed
+item jan2007ytd  = jan2007ytd  + (docrev-ytd-in-rec +docrev-ytd-out-rec)   &
+                   if iconst-date-period-end = 20070101                    &
+                   reset at docrev-doc-nbr
+
+
+temp totalmtd zoned*9 signed
+item totalmtd  = totalmtd + (docrev-mtd-in-rec + docrev-mtd-out-rec)
+
+temp totalytd zoned*9 signed
+item totalytd  = xtotal-ytd + (docrev-ytd-in-rec + docrev-ytd-out-rec)
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f050whelan keep at final portable include		&
+docrev-doc-nbr       , &
+comma                , &
+jan2007mtd           , &
+comma                , &
+jan2007ytd           , &
+comma                , &
+totalmtd             , &
+comma                , &
+totalytd             , &
+x-cr                
+
+build $pb_obj/drwhelan_f050_2007to2013
+

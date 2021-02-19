@@ -1,0 +1,89 @@
+;doc     : costing_f119hist
+;purpose : report yearend TOTINC  (report name on share staff Total Revenue payroll yearend 2012.xls)
+;        :  put it in \\Rmaham-dc\share staff\Ross Reports\Yearend yyyy
+;        : (report name on share staff Total Revenue payroll yearend 2012.xls)
+;who     : Leena     Ross   
+
+;
+; *************************************************************
+
+;Date		Who		Description
+;2006/08/08	Yasemin	        original
+;2010/07/22     Yasemin	        take items afpin afpadj afpcon leave totinc
+;2013/07/11     Yasemin	        add RMAEXR (percent charge) and RMAEXM     
+;2014/12/15     Yasemin         add start date  and change date to 2015 yearend
+;2016/04/13     Yasemin         add start date  and change date to 2015 yearend (ross wanted one run in March monthend)
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history                        &
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     
+
+;;;choose doc-nbr, ep-nbr 201413, rec-type 'A'
+
+choose doc-nbr, ep-nbr 201513, rec-type 'A'
+
+select if    (   comp-code = "TOTINC"    &
+              or comp-code = "RMACHR"    &
+              or comp-code = "RMAEXR"    &
+              or comp-code = "RMAEXM")   &
+         and     ep-nbr = 201513
+
+sort on doc-nbr 
+
+temp x-totinc  zoned*9 signed
+item x-totinc  = x-totinc  + amt-ytd          &
+               if comp-code = "TOTINC"        &
+               reset at doc-nbr
+
+temp x-rmachr  zoned*9 signed
+item x-rmachr  = x-rmachr  + amt-ytd          &
+               if comp-code = "RMACHR"        &
+               reset at doc-nbr
+
+temp x-rmaexr  zoned*9 signed
+item x-rmaexr  = x-rmaexr  + amt-ytd          &
+               if comp-code = "RMAEXR"        &
+               reset at doc-nbr
+
+temp x-rmaexm  zoned*9 signed
+item x-rmaexm  = x-rmaexm  + amt-ytd          &
+               if comp-code = "RMAEXM"        &
+               reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile costingf119 portable keep at doc-nbr include &
+doc-clinic-nbr                                      ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr             of f119-doctor-ytd-history      ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-totinc                                            ,&
+comma                                               ,&
+x-rmachr                                            ,&
+comma                                               ,&
+x-rmaexr                                            ,&
+comma                                               ,&
+x-rmaexm                                            ,&
+comma                                               ,&
+doc-date-fac-start                                  ,&
+comma                                               ,&
+doc-date-fac-term                                   ,&
+x-cr
+
+build $obj/costing_f119hist

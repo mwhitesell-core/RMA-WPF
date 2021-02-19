@@ -1,0 +1,83 @@
+;doc     : drlevis.qts
+;purpose : create report tracking patients who have had diag code "728"
+;          report patient name and Health number
+;who     : Dr. Carolyn Levis
+
+
+;Date		Who		Description
+;2001/11/19	Yasemin		Original
+;2002/02/05	Yasemin		select if diag 706 and 728
+
+
+cancel clear
+set rep nolimit
+
+access f002-claims-mstr                           
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220925000 to 220925999,   &
+        key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+select f002-claims-mstr if (   clmdtl-diag-cd =  706         & 
+                            or clmdtl-diag-cd =  728)        & 
+                        and    clmdtl-sv-date ge '20010801'  &
+                        and    clmdtl-oma-cd  <> '0000'      &
+                        and    clmdtl-oma-cd  <> 'ZZZZ'
+
+set subfile name drlevis_diag keep
+rep summ key-clm-type  key-clm-batch-nbr  key-clm-claim-nbr clmdtl-diag-cd 
+
+build $obj/drlevis_diag_1
+
+access *drlevis_diag					&
+	link (key-clm-type, key-clm-batch-nbr,		&
+	     key-clm-claim-nbr, '00000')	 	&	
+	 to key-clm-type, key-clm-batch-nbr,		&
+	     key-clm-claim-nbr, key-clm-serv-code	&
+		of f002-claims-mstr			&
+       link clmhdr-pat-ohip-id-or-chart                 &
+        to key-pat-mstr of  f010-pat-mstr  opt
+
+sort on pat-surname                   &
+     on pat-given-name                &
+     on clmhdr-pat-ohip-id-or-chart
+
+def x-sys-yy zoned*4 unsigned = ncon(ascii(sysdate,8)[1:4])
+def x-sys-mm char*2 = ascii(sysdate,8)[5:2]
+def x-sys-dd char*2 = ascii(sysdate,8)[7:2]
+
+def pat-birth-yy zoned*4 unsigned = ncon(ascii(pat-birth-date,8)[1:4])
+def pat-birth-mm char*2 = ascii(pat-birth-date,8)[5:2]
+def pat-birth-dd char*2 = ascii(pat-birth-date,8)[7:2]
+
+def x-age zoned*4 unsigned  = x-sys-yy - pat-birth-yy             &
+        if   (x-sys-mm  > pat-birth-mm)                   &
+          or ((x-sys-mm = pat-birth-mm) and               &
+              (x-sys-dd >= pat-birth-dd))                 &
+        else x-sys-yy - pat-birth-yy - 1
+
+def comma cha*1 = "~"
+
+set rep dev disc name drlevis_diag
+set nohead
+set rep page widt 150
+
+footing at clmhdr-pat-ohip-id-or-chart   &
+pat-surname                              &
+comma                                    &
+pat-given-name                           &
+comma                                    &
+pat-init                                 &
+comma                                    &
+pat-health-nbr                           &
+comma                                    &
+pat-version-cd                           &
+comma                                    &
+x-age                                    &
+comma                                    &
+pat-birth-date                           &
+comma                                    &
+clmdtl-diag-cd                           &
+comma                                    &
+pat-chart-nbr                            
+
+build $obj/drlevis_diag_2

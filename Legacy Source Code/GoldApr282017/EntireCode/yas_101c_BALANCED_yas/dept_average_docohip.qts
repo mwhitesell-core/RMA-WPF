@@ -1,0 +1,118 @@
+;doc     : dept_average_ohip.qts
+;purpose : create report by doctor and report doc# name and ohip amount date-entered vs service-date
+;          ie. if claim entered on July 22 and service day is July 5  then average time to enter billings is 17 days
+;          for department 4  select service date from July 1, 2010 to June 30, 2011
+;who     : Leena and Annette Rosati
+
+;
+; *************************************************************
+
+;Date           Who             Description
+;2011/06/07     Yasemin       
+;2011/06/13     Yasemin        As per Leena to run for dept 2 to 7,  
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if        clmhdr-batch-type = 'C'    &
+                         and (    clmhdr-doc-dept = 2        &
+                               or clmhdr-doc-dept = 3        &
+                               or clmhdr-doc-dept = 4        &
+                               or clmhdr-doc-dept = 5        &
+                               or clmhdr-doc-dept = 6        &
+                               or clmhdr-doc-dept = 7        &
+                               or clmhdr-doc-dept = 70       &
+                               or clmhdr-doc-dept = 71       &
+                               or clmhdr-doc-dept = 72       &
+                               or clmhdr-doc-dept = 73       &
+                               or clmhdr-doc-dept = 74       &
+                               or clmhdr-doc-dept = 76       &
+                             )                               &
+		         and  clmhdr-serv-date   >= 20160701 &
+          	         and  clmhdr-serv-date   <= 20170630
+
+def x-claim cha*10 = clmhdr-claim-id[1:10]
+def x-days zoned*4 unsigned = days(nconvert(clmhdr-date-sys)) - days(clmhdr-serv-date)
+
+subfile deptohip     keep include      &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+x-claim                              ,&
+clmhdr-doc-dept                      ,&
+clmhdr-serv-date                     ,&
+clmhdr-date-sys                      ,&
+x-days				     ,&
+doc-ohip-nbr                         ,&
+doc-nbr                              ,&
+doc-name                             ,&
+doc-inits
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *deptohip
+
+sort on doc-ohip-nbr on clmhdr-serv-date 
+
+temp x-tot-days   zoned*8 unsigned
+item x-tot-days = x-tot-days + x-days 	&
+		reset at doc-ohip-nbr
+
+temp claim-count  zoned*6 unsigned
+item claim-count  = claim-count + 1   &
+                  reset at doc-ohip-nbr    
+
+subfile deptohip1 keep at doc-ohip-nbr include    	     &
+clmhdr-doc-dept                                     ,&
+doc-nbr                                             ,&
+doc-name                                            ,&
+doc-inits                                           ,&
+x-tot-days                                          ,&
+claim-count                                         ,&
+doc-ohip-nbr                                        ,&
+clmhdr-serv-date                                   
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *deptohip1
+
+temp x-average  zoned*6 unsigned 
+item x-average  = x-tot-days / claim-count * 100             
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile deptohip2 portable keep include                  &
+clmhdr-doc-dept                                     ,&
+comma                                               ,&
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+claim-count                                         ,&
+comma                                               ,&
+x-average                                           ,&
+comma                                               ,&
+clmhdr-serv-date                                    ,&
+x-cr
+
+build $obj/dept_average_docohip

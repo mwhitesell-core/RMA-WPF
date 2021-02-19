@@ -1,0 +1,164 @@
+; Program: claims_updt.qts
+; Purpose: One time conversion of rat rejects taken from f002 and
+;          update into f088 hdr/dtl.
+;          run claims_hdr_dtl.qts before this pgm to create subfile.
+set lock update
+set process nolimit
+
+;This request extracts all claims hdr that have reject code for regular claims
+;that have a period end date greater than June 99
+;The f088hdr/dtl records are essentially identical except that the charge-status
+;of the hdr rec is set to 'C' for charge and the clmhdr-adj-oma-cd of the dtl
+;rec is set to 'MISC' 
+
+request add_all_errors on calculation errors report
+
+access f002-claims-mstr link nconv(ascii(key-clm-batch-nbr,9)[1:2]), & 
+                             clmhdr-agent-cd &
+                          to clinic-nbr, agent-cd of contract-dtl
+
+choose key-clm-type 'B',          &
+       key-clm-batch-nbr,         &
+       key-clm-claim-nbr,         &
+       key-clm-serv-code '00000', &
+       key-clm-adj-nbr '0'
+
+select f002-claims-mstr 			&
+   if    clmhdr-batch-type = 'C' 	        &
+     and clmhdr-status-ohip <> ' ' 		&
+     and clmhdr-status-ohip <> '00' 		& 
+     and clmhdr-date-period-end >= 19990701	&
+     and clmhdr-date-period-end <= 20000131
+
+; (extract only claims submitted to ohip (Ministry Of Health))
+select contract-dtl if moh-flag = 'Y'
+
+def x-clmhdr-ped char*8 		&
+    = ascii(clmhdr-date-period-end of f002-claims-mstr,8)
+def x-clmhdr-sv-date char*8		&
+    = ascii(clmhdr-serv-date of f002-claims-mstr,8)
+
+
+output f088-rat-rejected-claims-hist-hdr add on errors report
+
+item clmhdr-batch-nbr final key-clm-batch-nbr
+item clmhdr-claim-nbr final key-clm-claim-nbr
+item ped final nconv(clmhdr-date-cash-tape-payment) &
+         if matchpattern (    clmhdr-date-cash-tape-payment,'########') &
+			  and clmhdr-date-cash-tape-payment <> ' '	&
+			 else 0
+; 2000/jan/29 B.E.
+item clmhdr-date-period-end final clmhdr-date-period-end of f002-claims-mstr
+item clmhdr-serv-date	    final clmhdr-serv-date	 of f002-claims-mstr
+
+item ohip-err-code	    final clmhdr-status-ohip
+item charge-status	    = 'C'
+item clmhdr-doc-nbr 	    final nconv(ascii(key-clm-batch-nbr,9)[4:3])
+item entry-date final SYSDATE
+item entry-time-long final SYSTIME
+item entry-user-id final LOGONID
+
+output f088-rat-rejected-claims-hist-dtl add on errors report
+item clmhdr-batch-nbr final key-clm-batch-nbr
+item clmhdr-claim-nbr final key-clm-claim-nbr
+item clmhdr-adj-oma-cd = 'MISC'
+item clmhdr-adj-oma-suff final ' '
+item clmhdr-adj-adj-nbr = '0'
+item ped final nconv(clmhdr-date-cash-tape-payment) &
+         if matchpattern (    clmhdr-date-cash-tape-payment,'########')  &
+	                  and clmhdr-date-cash-tape-payment <> ' ' 	 &
+			 else 0
+; 2000/jan/29 B.E.
+item clmdtl-date-period-end final x-clmhdr-ped	
+item clmdtl-sv-date         final x-clmhdr-sv-date 
+
+item ohip-err-code final clmhdr-status-ohip
+item clmhdr-doc-nbr final nconv(ascii(key-clm-batch-nbr,9)[4:3])
+item entry-date final SYSDATE
+item entry-time-long final SYSTIME
+item entry-user-id final LOGONID
+
+;subfile bradl keep include x-clmhdr-ped, &
+;clmhdr-date-period-end of f002-claims-mstr,&
+; x-clmhdr-sv-date , &
+;clmhdr-serv-date of f002-claims-mstr
+
+
+; (the first request placed claims that weren't fully paid into
+; (the first request placed claims that weren't fully paid into
+;  f088 hdr/dtl. This pass reads all automatic adjustment and
+;  looks for the corresponding claim in the f088 hdr/dtl files.
+;  If a matching claim is found, then the claim is DELETED from 
+;  f088 since no work was performed by RMA (adjustment taken care
+;  of by the auto-adjust logic) and therefore no charge is to be
+;  made against the doctor)
+request automatic_adjustment_deletes on calculation errors report	&
+				     on edit        errors report	&
+				     on exception 
+
+access *claim-hdr                                       &
+   link (clmhdr-claim-id[1:11]),  			&
+        nconv(clmhdr-date-cash-tape-payment)            &
+   to   rat-rejected-claim,                             &
+        ped   of f088-rat-rejected-claims-hist-hdr opt  &
+   link nconvert(clmhdr-claim-id of claim-hdr[1:9]),			&
+        nconvert(clmhdr-claim-id of claim-hdr[10:2]), 'MISC 0',  	&
+        nconv(clmhdr-date-cash-tape-payment of claim-hdr)            &
+;	ascii(clmhdr-serv-date of claim-hdr,8)			&
+    to  clmhdr-batch-nbr,  clmhdr-claim-nbr,  		&
+;	clmhdr-oma-suff-adj, ped, clmdtl-sv-date	&
+	clmhdr-oma-suff-adj, ped                   	& 
+                of f088-rat-rejected-claims-hist-dtl opt
+
+sort on clmhdr-claim-id on clmhdr-date-cash-tape-payment
+
+output f088-rat-rejected-claims-hist-dtl   delete 	&
+	at clmhdr-date-cash-tape-payment	&
+  if record f088-rat-rejected-claims-hist-dtl exists 	&
+	on errors report
+
+output f088-rat-rejected-claims-hist-hdr   delete 	&
+	at clmhdr-date-cash-tape-payment	&
+    if record  f088-rat-rejected-claims-hist-hdr exists   &
+	on errors report
+
+
+;output f088-rat-rejected-claims-hist-hdr update                        &
+;  if record f088-rat-rejected-claims-hist-hdr   exists noitems
+;item charge-status final ' '
+;
+;
+;output f088-rat-rejected-claims-hist-hdr alias f088-rat-hist-add add   &
+;  if not record f088-rat-rejected-claims-hist-hdr exists noitems
+;
+;item clmhdr-batch-nbr final key-clm-batch-nbr
+;item clmhdr-claim-nbr final key-clm-claim-nbr
+;item ped final nconv(clmhdr-date-cash-tape-payment) &
+;         if matchpattern (clmhdr-date-cash-tape-payment,'########') and &
+;         clmhdr-date-cash-tape-payment <> ' ' else 0
+;item ohip-err-code final clmhdr-status-ohip
+;item charge-status = ' '
+;item clmhdr-doc-nbr final nconv(ascii(key-clm-batch-nbr,9)[4:3])
+;item entry-date final SYSDATE
+;item entry-time-long final SYSTIME
+;item entry-user-id final LOGONID
+;
+
+
+;output f088-rat-rejected-claims-hist-dtl add           &
+;  if not record f088-rat-rejected-claims-hist-hdr exists noitems
+;item clmhdr-batch-nbr final key-clm-batch-nbr
+;item clmhdr-claim-nbr final key-clm-claim-nbr
+;item clmhdr-adj-oma-cd final 'MISC'
+;item clmhdr-adj-oma-suff final ' '
+;item clmhdr-adj-adj-nbr final '0'
+;item ped final nconv(clmhdr-date-cash-tape-payment) &
+;         if matchpattern (clmhdr-date-cash-tape-payment,'########') and &
+;         clmhdr-date-cash-tape-payment <> ' ' else 0
+;item ohip-err-code final clmhdr-status-ohip
+;item clmhdr-doc-nbr final nconv(ascii(key-clm-batch-nbr,9)[4:3])
+;item entry-date final SYSDATE
+;item entry-time-long final SYSTIME
+;item entry-user-id final LOGONID
+
+build $obj/claims_updt

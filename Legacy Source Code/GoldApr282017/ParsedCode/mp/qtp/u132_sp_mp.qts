@@ -1,0 +1,122 @@
+;#> PROGRAM-ID.     u132_sp.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Uploads transactions from a 'text' file into the special
+;		payments file (F114) so payment will be created 
+;	        during the current EP payroll run 
+;
+;  MODIFICATION HISTORY
+;    DATE     WHO     DESCRIPTION
+; 2007/jan/09 brad    - cloned from u132.qts when that program was split
+;			into u132_dc.qts and this one u132_sp.qts
+; 2008/sep/26 brad1   - added rec-type = "A" in f114 update so that upload into f119 goes into '94' screen
+; 2008/oct/15 brad2   - this is MP version of pgm - remove added rec-type = "A"
+;
+
+cancel clear
+run u132_sp
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u132_sp_const_mstr_get_ep_nbr              &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        final  current-ep-nbr
+item w-current-ep-nbr-minus1 final  current-ep-nbr - 1
+;
+;-------------------------------------------------------------------------------
+;
+; verify transaction contain valid data
+;
+request u132_sp_process_verify_data             &
+                on edit        errors report    &
+                on calculation errors report
+set lock record update
+
+access u132dat							&
+	link comp-code 						&
+	  to comp-code of f190-comp-codes     opt		&
+	link doc-nbr,						&
+	     comp-code,						&
+	     w-current-ep-nbr 					&
+	  to doc-nbr,						&
+	     comp-code,						&
+	     ep-nbr-from of f114-special-payments  opt		&
+	link doc-nbr						&
+	to   doc-nbr     of f020-doctor-mstr  opt
+
+use $use/def_compensation_status.def
+
+; (error if invalid doctor or invalid comp code)
+select if  not record f190-comp-codes  exists		&
+	or not record f020-doctor-mstr exists
+
+subfile u132_errors keep include 			&
+  w-current-ep-nbr,                                     &
+  doc-nbr               of u132dat,                     &
+  doc-name              of u132dat,                     &
+  doc-inits             of u132dat,                     &
+  doc-given-names       of u132dat,                     &
+  comp-code             of u132dat,                     &
+  signed-amt-net        of u132dat
+
+
+request u132_sp_process                           &
+                on edit        errors report    &
+                on calculation errors report
+set lock record update
+
+access u132dat							&
+	link comp-code 						&
+	  to comp-code of f190-comp-codes     opt		&
+	link doc-nbr,						&
+	     comp-code,						&
+	     w-current-ep-nbr 					&
+	  to doc-nbr,						&
+	     comp-code,						&
+	     ep-nbr-from of f114-special-payments  opt		&
+;	(don't process record unless valid doctor)
+	link doc-nbr						&
+	to   doc-nbr     of f020-doctor-mstr  
+
+use $use/def_compensation_status.def
+
+subfile u132_sp_audit keep include 			&
+  w-current-ep-nbr,					&
+  doc-nbr        	of u132dat,			&
+  comp-code      	of u132dat,			&
+  signed-amt-net 	of u132dat,			&
+  doc-name       	of u132dat,    			&
+  doc-given-names	of u132dat,    			&
+  doc-inits	 	of u132dat
+  
+
+output f114-special-payments add alias f114-add			&
+    if     not record f114-special-payments exists            	&
+	and 1=1 
+  item doc-nbr                  final doc-nbr           of u132dat
+  item comp-code                final comp-code		of u132dat
+;brad1
+;brad2
+;  item rec-type			final "A"
+  item ep-nbr-from              final w-current-ep-nbr   
+  item ep-nbr-to                final w-current-ep-nbr   
+  item comp-units		final 0
+  item amt-gross		final signed-amt-net	of u132dat
+  item amt-net			final signed-amt-net	of u132dat
+  item last-mod-date            final sysdate
+  item last-mod-time            final systime / 10000
+  item last-mod-user-id		final  "u132_sp Gen'd"
+  
+build $pb_obj/u132_sp_mp

@@ -1,0 +1,282 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Wed Oct 16 12:15:00 EDT 2013
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/m010_ins.qks]
+Q D E S I G N   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-DEVELOPMENT for customer: 0057360001 DYAD Systems Inc. UNIX
+
+> ;#>  PROGRAM-ID.      M010_ins.QKS
+> ;
+> ;              ((C)) DYAD TECHNOLOGIES
+> ;
+> ;	PROGRAM PURPOSE : patient's claims that are possible paid by the insurance company
+> ;			  this program is called from m010.qks from designer 'ins'  or
+> ;			  is called from d003.cbl from option 'I'
+> ;
+> ;	MODIFICATION HISTORY
+> ;    DATE          WHO           DESCRIPTION
+> ;  2013/May/29    M.C.     original
+> 
+> 
+> screen $pb_obj/m010_ins receiving w-pat-ikey, w-batch-nbr, w-claim-nbr, w-call-pgm
+> 
+> description of screen                                                    &
+> "                                                                      " &
+> "       This screen allows user to enter patients's claims that are    " &
+> "       possible paid by the insurance company.                        " &
+> "                                                                      " &
+> "       This screen is called either from m010.qks from designer 'ins' " &
+> "       or is called from d003.cbl from option 'I'.                    " &
+> "                                                                      " &
+> "       If entered from patient screen, then clalim-nbr will be blank. " &
+> "       If entered from claim query screen, then claim nbr should be   " &
+> "       the same as the claim nbr from d003.  			       " &
+> "                                             	 		       " &
+> "       User can enter '.' under ins acronym to find the insurance     " &
+> "       company lookup.                                                " &
+> "                                                                      "
+> 
+> temp w-pat-ikey    char*15
+> temp w-batch-nbr   char*8
+> temp w-claim-nbr   zoned*2 unsigned
+> temp w-call-pgm	   char*4
+> 
+> temp w-ins-ikey    zoned*5 unsigned
+> temp w-percentage-total zoned*3 unsigned
+> temp w-pat-name char*30
+> 
+> file f010-ins      occurs  6
+> ;  access viaindex f010-priority-key via  key-pat-mstr using w-pat-ikey
+>   access viaindex f010-ins-key    via  key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr  &
+> 				  using  w-pat-ikey, w-batch-nbr, w-claim-nbr
+>   item key-pat-mstr      initial  w-pat-ikey
+>   item clmhdr-batch-nbr  initial  w-batch-nbr
+>   item clmhdr-claim-nbr  initial  w-claim-nbr
+>   item percentage-to-pay sum into w-percentage-total
+> 
+> ;temp w-ins-acronym char*10 occurs with f010-ins
+> temp w-ins-acronym char*5  occurs with f010-ins
+> temp w-ins-name    char*30 occurs with f010-ins
+> 
+> file f010-ins alias f010-ins-find designer open 1
+>    access via key-pat-mstr using w-pat-ikey
+> 
+> file f076-insurance-mstr reference
+>   access via ins-acronym using w-ins-acronym
+> 
+> file f076-insurance-mstr alias f076-find designer occurs with f010-ins open 1
+> ;  access via ins-ikey using ins-ikey of f010-ins
+>   access via ins-acronym  using ins-acronym of f010-ins
+> 
+> file f010-pat-mstr designer  open 1
+>   access via key-pat-mstr using w-pat-ikey
+> 
+> 
+> title 'Patient Insurance Company'	at 1,30
+> 
+> skip 1
+> align (,4,15)  (,,35)
+> field w-pat-ikey label "PATIENT:" display
+> field w-pat-name  display
+> 
+> ;title "Ins Acronym  Priority Seq  % to pay  Policy Nbr " at 5,4
+> ;title "Claim Nbr   Ins Acronym  Priority Seq  % to pay  Policy Nbr " at 5,4
+> title "Claim Nbr   Ins Acronym   % to pay  Policy Nbr " at 5,4
+> 
+> ;align (1,,4) (,,20)  (,,33) (,,41)
+> ;align (1,,4) (,,12) (,,16) (,,32)  (,,45) (,,53)
+> align (1,,4) (,,12) (,,16) (,,32) (,,40)
+> cluster occurs with f010-ins
+> field clmhdr-batch-nbr display
+> field clmhdr-claim-nbr display fill '0'  bwz
+> ;field w-ins-acronym lookup on f076-insurance-mstr,		&
+> field ins-acronym lookup on f076-insurance-mstr,		&
+> 	noton f010-ins            			 	&
+> ;	via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr, ins-ikey  &
+> ;	using w-pat-ikey, w-batch-nbr, w-claim-nbr, ins-ikey of f076-insurance-mstr upshift
+> 	via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr, ins-acronym  &
+> 	using w-pat-ikey, w-batch-nbr, w-claim-nbr, ins-acronym of f076-insurance-mstr upshift
+> ;field priority-seq required default 1  predisplay value 1 to 3	&
+> ;field priority-seq required default 1                          	&
+> ;      lookup noton f010-ins 					&
+> ;	via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr, priority-seq	&
+> ;	using w-pat-ikey, w-batch-nbr, w-claim-nbr, priority-seq of f010-ins
+> field percentage-to-pay required default 100  predisplay
+> field policy-nbr required
+> align (,,4)
+> field w-ins-name  display
+> skip 1
+> 
+> 
+> ;procedure input  w-ins-acronym
+> procedure input  ins-acronym
+> begin
+>    if fieldtext  = "."
+>    then begin
+>           let w-ins-acronym = ' '
+>           run screen $pb_obj/m010_ins_f mode f passing w-ins-acronym
+> 	  let fieldtext = w-ins-acronym
+>         end
+> end
+> 
+> 
+> ;procedure process w-ins-acronym
+> procedure process ins-acronym
+> begin
+> ;     let  ins-ikey of f010-ins = ins-ikey of f076-insurance-mstr
+>      let  w-ins-name = ins-full-name of f076-insurance-mstr
+>      display w-ins-name
+> end
+> 
+> procedure process percentage-to-pay
+> begin
+> ;    info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay) + ',' + ascii(w-percentage-total)  now response
+>     if w-percentage-total > 100
+>     then error 'Total percentage to pay cannot be greater than 100%'
+> end
+> 
+> ;procedure initialize
+> ;begin
+> ;     get f010-pat-mstr opt via key-pat-mstr using w-pat-ikey
+> ;     let w-pat-name = truncate(pack(pat-given-name)) + ' ' + pack(pat-surname)
+> ;     display w-pat-name
+> ;     display w-pat-ikey
+> ;end
+> 
+> procedure internal get_display_name
+> begin
+>      get f076-find opt
+> ;     let w-ins-acronym = ins-acronym of f076-find
+>      let w-ins-name    = ins-full-name of f076-find
+> ;     display w-ins-acronym
+>      display w-ins-name
+>      let w-percentage-total = w-percentage-total + percentage-to-pay
+> ;    info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay) + ',' + ascii(w-percentage-total)  now response
+> end
+> 
+> 
+> procedure find
+> begin
+>      get f010-pat-mstr opt via key-pat-mstr using w-pat-ikey
+>      let w-pat-name = truncate(pack(pat-given-name)) + ' ' + pack(pat-surname)
+>      display w-pat-name
+>      display w-pat-ikey
+> 
+>      if w-call-pgm = 'M010'
+>      then begin
+>        for missing f010-ins
+>        begin
+> ;         get f010-ins viaindex f010-priority-key via key-pat-mstr using w-pat-ikey
+>          get f010-ins viaindex f010-ins-key   via key-pat-mstr using w-pat-ikey
+>          do get_display_name
+> 	 end
+>        end
+> 
+>      if w-call-pgm = 'D003'
+>      then begin
+>        for missing f010-ins
+>        begin
+>          get f010-ins viaindex f010-ins-key    via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr &
+> 						using w-pat-ikey, w-batch-nbr, w-claim-nbr
+>          do get_display_name
+> 	 end
+>        end
+> 
+> end
+> 
+> procedure preentry
+> begin
+>      get f010-pat-mstr opt via key-pat-mstr using w-pat-ikey
+>      let w-pat-name = truncate(pack(pat-given-name)) + ' ' + pack(pat-surname)
+>      display w-pat-name
+>      display w-pat-ikey
+>      while retrieving f010-ins-find
+>        let w-percentage-total = w-percentage-total + percentage-to-pay of f010-ins-find
+> ;    info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay of f010-ins-find) + ',' + ascii(w-percentage-total)  now response
+> end
+> 
+> procedure preupdate
+> begin
+> ; not deletedrecord means delete all lines, then below if condition will not execute
+> ; otherwise, if delete one line only, then below if condition will execute - not sure why??
+>       let w-percentage-total = 0
+> ;     while retrieving f010-ins-find
+> ;     begin
+> ;        let w-percentage-total = w-percentage-total + percentage-to-pay of f010-ins-find
+> ;        info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay of f010-ins-find) + ',' + ascii(w-percentage-total)  now response
+>       for f010-ins
+>       begin
+>         if not deletedrecord
+>         then begin
+>           let w-percentage-total = w-percentage-total + percentage-to-pay of f010-ins
+> ;         info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay of f010-ins) + ',' + ascii(w-percentage-total)  now response
+>         end
+>       if w-percentage-total > 100
+>       then error 'Error-Total percentage to pay cannot be greater than 100%'
+>       end
+> end
+> 
+> build detail list
+*W* Update on linked screen may bypass PREUPDATE/UPDATE/POSTUPDATE procedures.
+> PROCEDURE APPEND
+>   BEGIN
+>     DISPLAY CLMHDR-BATCH-NBR OF F010-INS
+>     DISPLAY CLMHDR-CLAIM-NBR OF F010-INS
+>     ACCEPT INS-ACRONYM OF F010-INS
+>     ACCEPT PERCENTAGE-TO-PAY OF F010-INS
+>     ACCEPT POLICY-NBR OF F010-INS
+>     DISPLAY W-INS-NAME
+>     END
+> PROCEDURE ENTRY
+>   BEGIN
+>     DISPLAY W-PAT-IKEY
+>     DISPLAY W-PAT-NAME
+>     FOR F010-INS
+>       BEGIN
+>         PERFORM APPEND
+>         END
+>     END
+> PROCEDURE PATH
+>   BEGIN
+>     LET PATH = 1
+>     END
+> PROCEDURE UPDATE
+>   BEGIN
+>     FOR F010-INS
+>       BEGIN
+>         PUT F010-INS
+>         END
+>     END
+> PROCEDURE DELETE
+>   BEGIN
+>     DELETE F010-INS
+>     END
+> ALLDONE
+MODE:x ACTION:xxxxxxxxx      Patient Insurance Company
+ 
+   PATIENT:   xxxxxxxxxxxxxxx     xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+   Claim Nbr   Ins Acronym   % to pay  Policy Nbr
+01 xxxxxxxxxx  xxxxx           xxx     xxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+02 xxxxxxxxxx  xxxxx           xxx     xxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+03 xxxxxxxxxx  xxxxx           xxx     xxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+04 xxxxxxxxxx  xxxxx           xxx     xxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+05 xxxxxxxxxx  xxxxx           xxx     xxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+06 xxxxxxxxxx  xxxxx           xxx     xxxxxxxxxxxxxxxxxxxxxxxxx
+   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+0 ERRORS  1 WARNINGS. Delete old screen 
+/alpha/rmabill/rmabill101/obj/m010_ins.qkc?
+> 
+Wed Oct 16 12:15:01 EDT 2013

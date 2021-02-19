@@ -1,0 +1,194 @@
+;#> PROGRAM-ID.     u022a1.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : TO WORK WITH R022A.QZS - BY CREATING A AUDIT SUBFILE
+;		       THIS USED TO BE THE FIRST RUN OF THAT PROGRAM
+;
+;  MODIFICATION HISTORY
+;    DATE   WHO   DESCRIPTION
+; 00/MAY/08 B.A.  - ORIGINAL (transformed from r022a.qzs to 
+;		    u022a.qts so that multiple subfiles (audit)
+;		    could be generated in 1 pass
+; 00/may/08 B.E.  - added selection of "X" status claims to force
+;		    resubmit of claims regardless of other conditions
+; 00/may/29 B.E.  - don't select for resubmission claims that haven't 
+;		    been submitted to ohip yet (ie. have blank
+;		    submission date)
+; 00/may/31 B.E.  - clmhdr-date-cash-tape-payment is character field
+;		    and selection added to select if date is "  00" 
+; 00/jun/01 B.E.  - changed test to use submit-date rather than entry-date
+;			     
+
+can clear
+set default
+set input nolimit
+set process nolimit
+set lock record update
+
+; (99/aug/25 B.E. added link to pickup hospital code)
+access f002-claims-mstr                                        		&
+  link floor(key-clm-batch-nbr / 10000000), clmhdr-agent-cd    		&
+    to clinic-nbr, agent-cd of contract-dtl                             &
+  link nconvert(ascii(key-clm-batch-nbr of f002-claims-mstr,9)[4:3]) 	&
+    to doc-nbr of f020-doctor-mstr       				&
+  link clmhdr-loc                                                 	&
+    to loc-nbr    of f030-locations-mstr opt
+
+use $use/def_group_nbr.use             nolist nodetail
+
+def w-date-from date = parm prompt "ENTER DATE FROM (YYYYMMDD) "
+def w-date-to   date = parm prompt "ENTER DATE TO   (YYYYMMDD) "
+
+;choose key-clm-type "B"
+def x-clinic-nbr-1-2 char*2 = clmhdr-claim-id[1:2]
+
+def balance-due num                            &
+     =  clmhdr-tot-claim-ar-ohip               &
+      - clmhdr-manual-and-tape-payments        &
+       if clmhdr-adj-oma-cd = "0000"           & ; perform calc only for
+  else 0                                         ; claim header recs
+
+; (if two rats have been processed since claim entered, then resubmit -
+;  if the claim was entered before the 18th cut off, then the 2nd rat
+;  that could contain payment is found within 75 day, however claims entered
+;  on or after the 18th have to wait for the 3rd tape to be processed
+;  ie. up to 90 days after entry)
+;
+; --entry mth-|--1st mth----|---2nd mth---|--3rd mth----|
+; 1   18   30 | 1   18   30 | 1   18   30 | 1   18   30 |
+; --x-           1st          2nd                      (claim entry vs rat)
+;     ---x---                 1st           2nd                (claim entry vs 
+;rat)
+;
+
+; (00/jun/01 B.E. - changed test to use submit-date rather than entry-date)
+def x-test-date char*8  		&
+     = ascii(clmhdr-submit-date,8)	&
+	   if clmhdr-submit-date <> 0	&
+ else  clmhdr-date-sys
+
+def x-test-day char*2			&
+     = x-test-date[7:2]
+
+def w-days-since-entry num                     &
+     =  days(sysdate)                          &
+      - days(nconvert(x-test-date))	       &
+       if clmhdr-adj-oma-cd = "0000"           & ; perform calc only for
+  else 0                                         ; claim header recs
+
+def two-rats-processed char*1                &
+     = "Y" if   x-test-day         <= "18"   &
+            and w-days-since-entry >= 75     &
+  else "Y" if   x-test-day         >  "18"   &
+            and w-days-since-entry >= 90     &
+  else "N"
+
+def x-days-since-ped 			&
+     = days(sysdate) - days(clmhdr-date-period-end)
+
+; SELECT FOR RE-SUBMISSION -
+; IF         (claim header rec going to OHIP)                  
+;    AND     (not fully paid or not 'I2' payment received)	
+;    AND     (not alternative payment clinic (80-83)(ie. I2 'zero' payment) 
+;					      or temporarily '35'
+;    AND     (no cash date found ie. not previously paid)          
+;    AND     (has been submitted to ohip - ie. ignore current cycle claims)
+;    AND     (claim is not fully paid)                            
+;    AND     (claim's PED within 1 year of current system date)
+; AND EITHER                                                     
+;         (an unheld/non-manual claim with 2 rats processed)              
+;       OR (someone has manually requested resubmit)          
+; OR REGARDLESS OF ABOVE if 'X' then resubmit regardless of other variables
+
+select if   (                                                           &
+                      clmhdr-batch-type = "C"                           &
+;                  and clmhdr-adj-oma-cd = "0000"                        &
+;		  and x-clinic-nbr-1-2  = "81"		& 
+		  and clmhdr-serv-date >= 20010801	&
+		  and clmhdr-serv-date <= 20010831	&
+            )
+
+;choose  key-clm-type 'B' ,  key-clm-batch-nbr parm, &
+;	 key-clm-claim-nbr parm,       &
+;        key-clm-serv-code parm, key-clm-adj-nbr  "0"
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 810001000 to 819999999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000' , key-clm-adj-nbr '0' 
+
+; 99/jul/22 B.E.
+def w-moh-location-code char*4                          &
+    = "    "                                            &
+           if not record f030-locations-mstr exists     &
+ else ascii(loc-ministry-loc-code,4)
+
+; Location now used to determine if hospital nbr is needed
+; regardless of patient's in/out indicator!!!
+; (hospital blank unless 'I'n patient and location code found
+;  that can be used to obtain hospital nbr)
+def w-clmhdr-hosp char*4                                        &
+    = "    "                                                    &
+;       if   clmhdr-i-o-pat-ind of f002-claims-mstr <> "I"      &
+;         or not record f030-locations-mstr exists              &
+        if   not record f030-locations-mstr exists              &
+ else ascii(loc-hospital-nbr,4)
+
+def d-sysdate date = sysdate
+
+subfile u022a1_brad  keep include    &
+  key-clm-type,                 &
+  key-clm-batch-nbr,             &
+  key-clm-claim-nbr,            &
+  clmhdr-batch-type,            &
+  clmhdr-doc-nbr-ohip,          &
+;y2k
+  clmhdr-date-sys,              &
+  clmhdr-claim-id,              &
+  clmhdr-claim-nbr,             &
+  w-clmhdr-hosp,                        &
+;y2k
+  clmhdr-date-admit,            &
+  clmhdr-pat-ohip-id-or-chart,  &
+  clmhdr-refer-doc-nbr,         &
+  clmhdr-loc,                   &
+  clmhdr-i-o-pat-ind,           &
+  clmhdr-agent-cd,              &
+  clmhdr-tot-claim-ar-oma,      &
+  clmhdr-tot-claim-ar-ohip,     &
+  clmhdr-status-ohip,           &
+  clmhdr-doc-dept,              &
+  clmhdr-doc-spec-cd,           &
+  clmhdr-sub-nbr,               &
+  clmhdr-manual-review,         &
+  dollar-flag,                  &
+  moh-flag,                     &
+;1997/JUN/12 - KEVIN MILES - ADDED THIS FIELD TO SUBFILE
+  translated-group-nbr,         &
+; 99/11/17 - MC - include w-moh-location-code
+  w-moh-location-code
+
+;2000/05/02 - B.A. added audit subfile to capture criteria for resubmitting
+;		   a claim. In case of dispute as to why a claim was resubmitted
+;		   this file can be dumped out
+
+subfile u022a1_audit_brad keep include                               &
+clmhdr-serv-date, &
+               clmhdr-tape-submit-ind of f002-claims-mstr,	&
+               key-clm-type of f002-claims-mstr,                &
+               key-clm-batch-nbr of f002-claims-mstr,           &
+               key-clm-claim-nbr of f002-claims-mstr,           &
+               clmhdr-batch-type of f002-claims-mstr,           &
+               clmhdr-adj-oma-cd of f002-claims-mstr,           &
+               moh-flag of contract-dtl,                        &
+               balance-due,                                     &
+               clmhdr-tot-claim-ar-ohip of f002-claims-mstr,    &
+               clmhdr-manual-and-tape-payments of f002-claims-mstr, &
+               clmhdr-status-ohip of f002-claims-mstr,          &
+	       x-test-date,					&
+	       x-test-day,					&
+               two-rats-processed,                              &
+               clmhdr-date-cash-tape-payment of f002-claims-mstr,   &
+               clmhdr-date-sys  of f002-claims-mstr,            &
+               w-days-since-entry,                              &
+               d-sysdate,                                       &
+               clmhdr-submit-date of f002-claims-mstr
+

@@ -1,0 +1,518 @@
+; unlof002_me_claim.qts
+; 2015/Jul/14 MC	- extract monthend claims/payment/adjustment for the selected monthend
+;			- this program will be run as part of the monthend report macro before u210.qts
+; 2015/Jul/28 MC1	- comment out the redundant x-delimiter after clmhdr-pat-ohip-id-or-chart
+; 2015/Aug/06 MC2 	- create subfile in /foxtrot/bi instead of working directory (production) as Brad suggested
+
+cancel clear
+set process nolimit
+set lock record update
+
+request unlof002 on calculation errors report on edit errors report
+
+access f001-batch-control-file 		&
+	link 'B', batctrl-batch-nbr	&
+	 to  key-clm-type, key-clm-batch-nbr of f002-claims-mstr &
+	link (nconvert(batctrl-batch-nbr[1:2])) &
+	 to  iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+def x-monthend char*1 = parm prompt 'Enter monthend (1,2,3) : '
+
+select iconst-mstr-rec if iconst-monthend = x-monthend
+
+sel if batctrl-date-period-end = ascii(iconst-date-period-end)
+
+def billed-amt zoned*7 numeric = clmhdr-tot-claim-ar-ohip of f002-claims-mstr	&
+	if clmhdr-batch-type of f002-claims-mstr = 'C' 
+
+def adjust-amt zoned*7 numeric = clmhdr-tot-claim-ar-ohip of f002-claims-mstr 	&
+	if clmhdr-batch-type of f002-claims-mstr = 'A'
+
+def payment-amt zoned*7 numeric = clmhdr-manual-and-tape-payments of f002-claims-mstr 	&
+	if clmhdr-batch-type of f002-claims-mstr = 'P'
+
+def flag char*1 = 'N'
+
+def x-delimiter char*1 = "~"
+; if running on INTEL    chip use [1:1]
+def x-cr int*2 unsigned = 13
+def cr   char*1 = char(x-cr)[1:1]
+def x-lf int*2 unsigned = 10
+def lf   char*1 = char(x-lf)[1:1]
+
+; MC2
+;subfile unlof002hdr_bi_sel keep portable 	&
+subfile   /foxtrot/bi/unlof002hdr_bi_sel keep portable 	&
+    if     clmhdr-adj-oma-cd of f002-claims-mstr = '0000' &
+include &
+;clmhdr-claim-id,                       	&
+        clmhdr-batch-nbr,                       &
+	x-delimiter,				&
+        clmhdr-claim-nbr,                       &
+	x-delimiter,				&
+        clmhdr-adj-oma-cd,                      &
+	x-delimiter,				&
+        clmhdr-adj-oma-suff,                    &
+	x-delimiter,				&
+        clmhdr-batch-type,                      &
+	x-delimiter,				&
+        clmhdr-adj-cd-sub-type,                 &
+	x-delimiter,				&
+        clmhdr-doc-nbr-ohip,                    &
+	x-delimiter,				&
+        clmhdr-doc-spec-cd,                     &
+	x-delimiter,				&
+        clmhdr-refer-doc-nbr,                   &
+	x-delimiter,				&
+        clmhdr-diag-cd,                         &
+	x-delimiter,				&
+        clmhdr-loc,                             &
+	x-delimiter,				&
+;clmhdr-hosp,                           	&
+        clmhdr-payroll,                         &
+	x-delimiter,				&
+        clmhdr-agent-cd,                        &
+	x-delimiter,				&
+        clmhdr-adj-cd,                          &
+	x-delimiter,				&
+;       clmhdr-tape-submit-ind,                 &
+        clmhdr-i-o-pat-ind,                     &
+	x-delimiter,				&
+        clmhdr-pat-ohip-id-or-chart,            &
+	x-delimiter,				&
+;clmhdr-pat-acronym,                    	&
+;clmhdr-reference,                      	&
+;       clmhdr-date-admit,                      &
+; MC1
+;	x-delimiter,				&
+        clmhdr-doc-dept,                        &
+	x-delimiter,				&
+        clmhdr-date-cash-tape-payment,          &
+ 	x-delimiter,				&
+
+        clmhdr-msg-nbr,                         &
+	x-delimiter,				&
+        clmhdr-reprint-flag,                    &
+	x-delimiter,				&
+        clmhdr-sub-nbr,                         &
+	x-delimiter,				&
+        clmhdr-auto-logout,                     &
+	x-delimiter,				&
+        clmhdr-fee-complex,                     &
+	x-delimiter,				&
+
+;clmhdr-curr-payment,                   	&
+        clmhdr-date-period-end,                 &
+	x-delimiter,				&
+;       clmhdr-cycle-nbr,                       &
+;	x-delimiter,				&
+;       clmhdr-date-sys,                        &
+;	x-delimiter,				&
+        clmhdr-amt-tech-billed,                 &
+	x-delimiter,				&
+        clmhdr-amt-tech-paid,                   &
+	x-delimiter,				&
+        clmhdr-tot-claim-ar-oma,                &
+	x-delimiter,				&
+        clmhdr-tot-claim-ar-ohip,               &
+	x-delimiter,				& 
+        clmhdr-manual-and-tape-payments,        &
+	x-delimiter,				& 
+        billed-amt,                             &     
+	x-delimiter,				&
+        adjust-amt,                             &     
+	x-delimiter,				&
+        payment-amt,                            &     
+	x-delimiter,				&
+        clmhdr-status-ohip,                     &
+	x-delimiter,				&
+        clmhdr-manual-review,                   &
+	x-delimiter,				&
+;       clmhdr-submit-date,                     &
+;	x-delimiter,				&
+;       clmhdr-confidential-flag,               &       
+;	x-delimiter,				&
+        clmhdr-serv-date,                       &      
+	x-delimiter,				&
+        clmhdr-elig-error,                      &
+	x-delimiter,				&
+        clmhdr-elig-status,                     &
+	x-delimiter,				&
+        clmhdr-serv-error,                      &
+	x-delimiter,				&
+        clmhdr-serv-status,                     &
+	x-delimiter,				&
+        clmhdr-orig-batch-id,                   &
+	x-delimiter,				&
+        key-clm-type of f002-claims-mstr,       &
+	x-delimiter,				&
+        key-clm-batch-nbr of f002-claims-mstr,  &
+	x-delimiter,				&
+        key-clm-claim-nbr of f002-claims-mstr,  &
+	x-delimiter,				&
+        key-clm-serv-code of f002-claims-mstr,  &
+	x-delimiter,				&
+        key-clm-adj-nbr of f002-claims-mstr,    &
+	x-delimiter,				&
+        key-p-claims-mstr of f002-claims-mstr,  &
+	x-delimiter,				&
+        flag,                                   &
+	cr,lf
+
+; clmdtl-consec-dates can be one of the below choices
+;	'         '
+;	'000000000'
+;	'0  0  0  '
+;	'0BI0  0  '
+;	'0OP0  0  '
+;	'0  000000'
+;	'0BI000000'
+;	'0OP000000'
+
+def x-clmdtl-consec-dates-srv2 char*1 = clmdtl-consec-dates-r of f002-claims-mstr[1:1] 
+def x-clmdtl-consec-dates-srv3 char*1 = clmdtl-consec-dates-r of f002-claims-mstr[4:1] 
+def x-clmdtl-consec-dates-srv4 char*1 = clmdtl-consec-dates-r of f002-claims-mstr[7:1] 
+
+def x-clmdtl-consec-dates-day2 char*2 ="00" if          clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "00"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "0 "       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[2:2] = " 0"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "  "       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "BI"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "OP"       &
+                                 else   clmdtl-consec-dates-r of f002-claims-mstr[2:2] 
+
+def x-clmdtl-consec-dates-day3 char*2 ="00" if          clmdtl-consec-dates-r of f002-claims-mstr[5:2] = "00"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[5:2] = "0 "       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[5:2] = " 0"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[5:2] = "  "       &
+                                 else   clmdtl-consec-dates-r of f002-claims-mstr[5:2] 
+
+def x-clmdtl-consec-dates-day4 char*2 ="00" if          clmdtl-consec-dates-r of f002-claims-mstr[8:2] = "00"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[8:2] = "0 "       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[8:2] = " 0"       &
+                                                or      clmdtl-consec-dates-r of f002-claims-mstr[8:2] = "  "       &
+                                 else   clmdtl-consec-dates-r of f002-claims-mstr[8:2] 
+
+def clmdtl-nbr-serv-1 zoned*2 = clmdtl-nbr-serv of f002-claims-mstr                     
+
+def clmdtl-nbr-serv-2 zoned*2 = 0 if     x-clmdtl-consec-dates-srv2 = "0"       &
+                      else  nconvert(x-clmdtl-consec-dates-srv2) 
+
+def clmdtl-nbr-serv-3 zoned*2  = 0 if    x-clmdtl-consec-dates-srv3 = "0"       &
+                      else  nconvert(x-clmdtl-consec-dates-srv3) 
+
+def clmdtl-nbr-serv-4 zoned*2 = 0 if     x-clmdtl-consec-dates-srv4 = "0"       &
+                      else  nconvert(x-clmdtl-consec-dates-srv4) 
+
+def clmdtl-sv-date-2 char*8  = '19000101' 						    &
+					if 	x-clmdtl-consec-dates-day2 ="00" 	    &
+                        else clmdtl-sv-date of f002-claims-mstr[1:6] + x-clmdtl-consec-dates-day2
+
+def clmdtl-sv-date-3 char*8  = '19000101' 						    &
+					if 	x-clmdtl-consec-dates-day3 ="00" 	    &
+                        else clmdtl-sv-date of f002-claims-mstr[1:6] + x-clmdtl-consec-dates-day3
+
+def clmdtl-sv-date-4 char*8  = '19000101' 						    &
+					if 	x-clmdtl-consec-dates-day4 ="00" 	    &
+                        else clmdtl-sv-date of f002-claims-mstr[1:6] + x-clmdtl-consec-dates-day4
+
+;-------------
+
+def x-nbr-svcs zoned*2 unsigned =    clmdtl-nbr-serv-1  &
+                                   + clmdtl-nbr-serv-2  &
+                                   + clmdtl-nbr-serv-3  &
+                                   + clmdtl-nbr-serv-4  
+
+; regular claim detail (clmdtl-adj-nbr = 0) should have non-zero nbr-of-serv
+; but for adjustment claim and misc payment  detail(clmdtl-adj-nbr = 1) nbr-serv and consecutive date are always ZERO
+
+def x-ohip-fee zoned*7 numeric = clmdtl-fee-ohip / x-nbr-svcs if clmdtl-adj-nbr = 0 &
+        else clmdtl-fee-ohip
+
+def clmdtl-fee-ohip-1 zoned*7 numeric = clmdtl-nbr-serv-1 * x-ohip-fee if clmdtl-adj-nbr = 0 &
+	else clmdtl-fee-ohip
+def clmdtl-fee-ohip-2 zoned*7 numeric = clmdtl-nbr-serv-2 * x-ohip-fee
+def clmdtl-fee-ohip-3 zoned*7 numeric = clmdtl-nbr-serv-3 * x-ohip-fee
+def clmdtl-fee-ohip-4 zoned*7 numeric = clmdtl-nbr-serv-4 * x-ohip-fee
+
+def x-oma-fee zoned*7 numeric = clmdtl-fee-oma / x-nbr-svcs if clmdtl-adj-nbr = 0 &
+        else clmdtl-fee-oma
+
+def clmdtl-fee-oma-1 zoned*7 numeric = clmdtl-nbr-serv-1 * x-oma-fee if clmdtl-adj-nbr = 0	&
+	else clmdtl-fee-oma
+def clmdtl-fee-oma-2 zoned*7 numeric = clmdtl-nbr-serv-2 * x-oma-fee
+def clmdtl-fee-oma-3 zoned*7 numeric = clmdtl-nbr-serv-3 * x-oma-fee
+def clmdtl-fee-oma-4 zoned*7 numeric = clmdtl-nbr-serv-4 * x-oma-fee
+
+def x-tech-fee zoned*7 numeric = clmdtl-amt-tech-billed / x-nbr-svcs if clmdtl-adj-nbr = 0 &
+        else clmdtl-amt-tech-billed
+
+def clmdtl-amt-tech-billed-1 zoned*7 numeric = clmdtl-nbr-serv-1 * x-tech-fee	if clmdtl-adj-nbr = 0	&
+	else clmdtl-amt-tech-billed
+def clmdtl-amt-tech-billed-2 zoned*7 numeric = clmdtl-nbr-serv-2 * x-tech-fee
+def clmdtl-amt-tech-billed-3 zoned*7 numeric = clmdtl-nbr-serv-3 * x-tech-fee
+def clmdtl-amt-tech-billed-4 zoned*7 numeric = clmdtl-nbr-serv-4 * x-tech-fee
+;-------------
+def clmdtl-flag-op char*2 = "OP" if clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "OP" else " "
+def clmdtl-flag-bi char*2 = "BI" if clmdtl-consec-dates-r of f002-claims-mstr[2:2] = "BI" else " "
+
+;store 'original' service
+; MC2
+;subfile unlof002dtl_bi_sel keep portable if        clmhdr-adj-oma-cd of f002-claims-mstr <> '0000'     &
+subfile /foxtrot/bi/unlof002dtl_bi_sel keep portable if        clmhdr-adj-oma-cd of f002-claims-mstr <> '0000'     &
+                                        and        clmhdr-adj-oma-cd of f002-claims-mstr <> 'ZZZZ'     &
+   include &
+        clmdtl-id of f002-claims-mstr,                      &
+	x-delimiter,				&
+        clmdtl-rev-group-cd of f002-claims-mstr,            &
+	x-delimiter,				&
+        clmdtl-agent-cd of f002-claims-mstr,                &       
+	x-delimiter,				&
+        clmdtl-adj-cd of f002-claims-mstr,                  &
+	x-delimiter,				&
+
+        clmdtl-nbr-serv of f002-claims-mstr,                &
+	x-delimiter,				&
+        clmdtl-sv-date of f002-claims-mstr,                 &
+	x-delimiter,				&
+        
+        clmdtl-flag-op,                 		    &
+	x-delimiter,				&
+        clmdtl-flag-bi,                 		    &
+	x-delimiter,				&
+
+        clmdtl-consec-dates-r of f002-claims-mstr,          &
+	x-delimiter,				&
+
+;       clmdtl-amt-tech-billed of f002-claims-mstr,         &
+;       clmdtl-fee-oma of f002-claims-mstr,                 &
+;       clmdtl-fee-ohip of f002-claims-mstr,                &
+        clmdtl-amt-tech-billed-1,    			    &
+	x-delimiter,				&
+        clmdtl-fee-oma-1,                                   &
+	x-delimiter,				&
+        clmdtl-fee-ohip-1,                                  &
+	x-delimiter,				&
+        clmdtl-date-period-end of f002-claims-mstr,         &
+	x-delimiter,				&
+        clmdtl-cycle-nbr of f002-claims-mstr,               &
+	x-delimiter,				&
+        clmdtl-diag-cd of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-line-no of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-resubmit-flag of f002-claims-mstr,           &
+	x-delimiter,				&
+        clmdtl-orig-batch-id of f002-claims-mstr,           & 
+	x-delimiter,				&
+        key-clm-type of f002-claims-mstr,  		    &
+	x-delimiter,				&
+        key-clm-batch-nbr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-claim-nbr of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-serv-code of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-adj-nbr of f002-claims-mstr,    	    &
+	x-delimiter,				&
+        key-p-claims-mstr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        flag,                                        	    &
+	cr,lf
+
+;keep 1st repetitive service
+; MC2
+;subfile unlof002dtl_bi_sel alias unlof002dtl_2 append portable 					    &
+subfile /foxtrot/bi/unlof002dtl_bi_sel alias unlof002dtl_2 append portable 					    &
+				if          	clmhdr-adj-oma-cd of f002-claims-mstr <> '0000'     &
+                                     and        clmhdr-adj-oma-cd of f002-claims-mstr <> 'ZZZZ'     &
+                                     and        clmdtl-nbr-serv-2 > 0           		    &
+   include &
+        clmdtl-id of f002-claims-mstr,                      &
+	x-delimiter,				&
+        clmdtl-rev-group-cd of f002-claims-mstr,            &
+	x-delimiter,				&
+        clmdtl-agent-cd of f002-claims-mstr,                &       
+	x-delimiter,				&
+        clmdtl-adj-cd of f002-claims-mstr,                  &
+	x-delimiter,				&
+        clmdtl-nbr-serv-2 ,				    &
+	x-delimiter,				&
+	clmdtl-sv-date-2,        		   	    &
+	x-delimiter,				&
+        
+        clmdtl-flag-op,          			    &
+	x-delimiter,				&
+        clmdtl-flag-bi,                 		    &
+	x-delimiter,				&
+
+        clmdtl-consec-dates-r of f002-claims-mstr,          &
+	x-delimiter,				&
+
+;       clmdtl-amt-tech-billed of f002-claims-mstr,         &
+;       clmdtl-fee-oma of f002-claims-mstr,                 &
+;       clmdtl-fee-ohip of f002-claims-mstr,                &
+        clmdtl-amt-tech-billed-2,    			    &
+	x-delimiter,				&
+        clmdtl-fee-oma-2,                                   &
+	x-delimiter,				&
+        clmdtl-fee-ohip-2,                                  &
+	x-delimiter,				&
+        clmdtl-date-period-end of f002-claims-mstr,         &
+	x-delimiter,				&
+        clmdtl-cycle-nbr of f002-claims-mstr,               &
+	x-delimiter,				&
+        clmdtl-diag-cd of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-line-no of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-resubmit-flag of f002-claims-mstr,           &
+	x-delimiter,				&
+        clmdtl-orig-batch-id of f002-claims-mstr,           &
+	x-delimiter,				&
+        key-clm-type of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-batch-nbr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-claim-nbr of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-serv-code of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-adj-nbr of f002-claims-mstr,    	    &
+	x-delimiter,				&
+        key-p-claims-mstr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        flag,                                          	    & 
+	cr,lf
+
+;keep 2nd repetitive service
+; MC2
+;subfile unlof002dtl_bi_sel alias unlof002dtl_3 append portable 		    			    &
+subfile  /foxtrot/bi/unlof002dtl_bi_sel alias unlof002dtl_3 append portable 		    			    &
+				if          	clmhdr-adj-oma-cd of f002-claims-mstr <> '0000'     &
+                                     and        clmhdr-adj-oma-cd of f002-claims-mstr <> 'ZZZZ'     &
+                                     and        clmdtl-nbr-serv-3 > 0           		    &
+   include &
+        clmdtl-id of f002-claims-mstr,                      &
+	x-delimiter,				&
+        clmdtl-rev-group-cd of f002-claims-mstr,            &
+	x-delimiter,				&
+        clmdtl-agent-cd of f002-claims-mstr,                &       
+	x-delimiter,				&
+        clmdtl-adj-cd of f002-claims-mstr,                  &
+	x-delimiter,				&
+        clmdtl-nbr-serv-3 ,				    &
+	x-delimiter,				&
+	clmdtl-sv-date-3,        		   	    &
+	x-delimiter,				&
+        
+        clmdtl-flag-op,                 	 	    &
+	x-delimiter,				&
+        clmdtl-flag-bi,                 		    &
+	x-delimiter,				&
+
+        clmdtl-consec-dates-r of f002-claims-mstr,          &
+	x-delimiter,				&
+
+;       clmdtl-amt-tech-billed of f002-claims-mstr,         &
+;       clmdtl-fee-oma of f002-claims-mstr,                 &
+;       clmdtl-fee-ohip of f002-claims-mstr,                &
+        clmdtl-amt-tech-billed-3,    			    &
+	x-delimiter,				&
+        clmdtl-fee-oma-3,                                   &
+	x-delimiter,				&
+        clmdtl-fee-ohip-3,                                  &
+	x-delimiter,				&
+        clmdtl-date-period-end of f002-claims-mstr,         &
+	x-delimiter,				&
+        clmdtl-cycle-nbr of f002-claims-mstr,               &
+	x-delimiter,				&
+        clmdtl-diag-cd of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-line-no of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-resubmit-flag of f002-claims-mstr,           &
+	x-delimiter,				&
+        clmdtl-orig-batch-id of f002-claims-mstr,           &
+	x-delimiter,				&
+        key-clm-type of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-batch-nbr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-claim-nbr of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-serv-code of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-adj-nbr of f002-claims-mstr,    	    &
+	x-delimiter,				&
+        key-p-claims-mstr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        flag,                                               & 
+	cr,lf
+
+;keep 3rd repetitive service
+; MC2
+;subfile unlof002dtl_bi_sel alias unlof002dtl_4 append portable 					    &
+subfile  /foxtrot/bi/unlof002dtl_bi_sel alias unlof002dtl_4 append portable 					    &
+				if          	clmhdr-adj-oma-cd of f002-claims-mstr <> '0000'     &
+                                     and        clmhdr-adj-oma-cd of f002-claims-mstr <> 'ZZZZ'     &
+                                     and        clmdtl-nbr-serv-4 > 0           		    &
+   include &
+        clmdtl-id of f002-claims-mstr,                      &
+	x-delimiter,				&
+        clmdtl-rev-group-cd of f002-claims-mstr,            &
+	x-delimiter,				&
+        clmdtl-agent-cd of f002-claims-mstr,                &       
+	x-delimiter,				&
+        clmdtl-adj-cd of f002-claims-mstr,                  &
+	x-delimiter,				&
+        clmdtl-nbr-serv-4 ,				    &
+	x-delimiter,				&
+	clmdtl-sv-date-4,        		   	    &
+	x-delimiter,				&
+        
+        clmdtl-flag-op,              			    &
+	x-delimiter,				&
+        clmdtl-flag-bi,                 		    &
+	x-delimiter,				&
+
+        clmdtl-consec-dates-r of f002-claims-mstr,          &
+	x-delimiter,				&
+
+;       clmdtl-amt-tech-billed of f002-claims-mstr,         &
+;       clmdtl-fee-oma of f002-claims-mstr,                 &
+;       clmdtl-fee-ohip of f002-claims-mstr,                &
+        clmdtl-amt-tech-billed-4,    			    &
+	x-delimiter,				&
+        clmdtl-fee-oma-4,                                   &
+	x-delimiter,				&
+        clmdtl-fee-ohip-4,                                  &
+	x-delimiter,				&
+        clmdtl-date-period-end of f002-claims-mstr,         &
+	x-delimiter,				&
+        clmdtl-cycle-nbr of f002-claims-mstr,               &
+	x-delimiter,				&
+        clmdtl-diag-cd of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-line-no of f002-claims-mstr,                 &
+	x-delimiter,				&
+        clmdtl-resubmit-flag of f002-claims-mstr,           &
+	x-delimiter,				&
+        clmdtl-orig-batch-id of f002-claims-mstr,           &
+	x-delimiter,				&
+        key-clm-type of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-batch-nbr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        key-clm-claim-nbr of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-serv-code of f002-claims-mstr,  	    &
+	x-delimiter,				&
+        key-clm-adj-nbr of f002-claims-mstr,    	    &
+	x-delimiter,				&
+        key-p-claims-mstr of f002-claims-mstr, 		    &
+	x-delimiter,				&
+        flag,                                         	    & 
+	cr,lf
+
+build $obj/unlof002_me_claim

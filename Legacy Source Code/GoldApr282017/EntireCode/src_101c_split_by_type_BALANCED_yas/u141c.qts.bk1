@@ -1,0 +1,254 @@
+;#> PROGRAM-ID.     u141c.qts
+;
+;       ((C)) Dyad Infosys LTD   
+;
+;    PURPOSE:   Create miscellaneous payment  batches/claims from a 'text' file.
+;		Third pass to create the data from u141a_valid subfile which is created from u141a.qts
+
+;  MODIFICATION HISTORY
+;    DATE     WHO     DESCRIPTION
+; 2015/Nov/10 MC      - original   (clone from u030b_part3_a/b.qts)
+; 2016/Mar/28 MC1     - modify to update next batch nbr properly; Yasemin agrees to change from W01 to WW0
+;			for next payment batch nbr and reserve for WW0 to WW2 so that there are 3000 batches
+;			allowed before rest (WW0000 to WW2999)
+; 2016/Jul/05 MC2     - do not need to check with x-check-amt (highest amt)
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+;-------------------------------------------------------------------------------
+
+request calculate_running_amt  on calculation errors report on edit errors report
+
+access *u141a_valid  
+
+sort  on clinic-nbr 	&
+      on hdr-agent-cd           
+
+temp x-amt zoned*9 signed
+item x-amt = x-amt + signed-amt-net   reset at hdr-agent-cd
+
+subfile u141c_running_amt keep include u141a_valid, x-amt
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+request determine_highest_amt   on calculation errors report on edit errors report
+
+access *u141a_valid   
+
+def x-abs-amt = abs(signed-amt-net)
+
+sort on x-abs-amt  
+
+subfile u141c_highest_amt keep at final include u141a_valid, x-abs-amt
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request calculate_batch_nbr  on calculation errors report on edit errors report
+
+access *u141c_running_amt link to record 0 of *u141c_highest_amt
+
+sorted on clinic-nbr on hdr-agent-cd
+
+;     - assuming the highest amount for the doctor  > $45000.00, round up to the next 5K ($50,000.00)
+;       define x-check-amt = 100000 - the round up amount (50000) = 50000 * 100
+define x-check-amt zoned*7 numeric 						&
+	= 	 500000 if x-abs-amt of u141c_highest_amt > 9000000	&
+	else    1000000 if x-abs-amt of u141c_highest_amt > 8500000	&
+	else    1500000 if x-abs-amt of u141c_highest_amt > 8000000	&
+	else    2000000 if x-abs-amt of u141c_highest_amt > 7500000	&
+	else	2500000	if x-abs-amt of u141c_highest_amt > 7000000	&
+	else	3000000	if x-abs-amt of u141c_highest_amt > 6500000	&
+	else	3500000	if x-abs-amt of u141c_highest_amt > 6000000	&
+	else	4000000	if x-abs-amt of u141c_highest_amt > 5500000	&
+	else	4500000	if x-abs-amt of u141c_highest_amt > 5000000	&
+	else	5000000	if x-abs-amt of u141c_highest_amt > 4500000	&
+	else	5500000	if x-abs-amt of u141c_highest_amt > 4000000	&
+	else	6000000	if x-abs-amt of u141c_highest_amt > 3500000	&
+	else	6500000	if x-abs-amt of u141c_highest_amt > 3000000	&
+	else	7000000	if x-abs-amt of u141c_highest_amt > 2500000	&
+	else	7500000	if x-abs-amt of u141c_highest_amt > 2000000	&
+	else	8000000	if x-abs-amt of u141c_highest_amt > 1500000	&
+	else	8500000	if x-abs-amt of u141c_highest_amt > 1000000	&
+	else	9000000	if x-abs-amt of u141c_highest_amt >  500000	&
+	else	9500000	if x-abs-amt of u141c_highest_amt >       0	
+
+temp x-batch-count-before
+temp x-batch-count-after
+temp x-count
+temp x-claim-count
+temp x-batch-count
+temp x-batch-amount zoned*7 numeric
+temp x-agent-before char*1
+temp x-agent-after  char*1
+temp change-batch-flag char*1
+
+item x-batch-count-before  = x-batch-count
+
+item x-agent-before = x-agent-after
+
+def x-abs-batch-amt = abs(x-batch-amount)
+
+; MC2
+;item change-batch-flag = "N" if x-abs-batch-amt <= x-check-amt 	&
+;				and x-claim-count < 99		&
+item change-batch-flag = "N" if     x-claim-count < 99		&
+; MC2 - end
+				and x-batch-count <> 0		&
+   			and hdr-agent-cd = x-agent-before  	&
+                else	"Y" 
+
+item x-batch-amount = x-batch-amount + signed-amt-net 		&
+			if change-batch-flag = "N"		&
+		 else signed-amt-net  				&		
+			reset at hdr-agent-cd  
+
+item x-claim-count = x-claim-count + 1 			&
+			if change-batch-flag = "N"	&	
+                 else 1
+
+item x-batch-count = 					&
+        x-batch-count + 1 if change-batch-flag = "Y"	&
+   else x-batch-count-before 				&
+        reset at clinic-nbr    
+
+item x-count  count reset at hdr-agent-cd
+
+item x-batch-count-after  = x-batch-count
+
+item x-agent-after = hdr-agent-cd
+
+subfile u141c_batch_nbr keep include            &
+        u141c_running_amt, x-count, x-batch-count, x-claim-count
+
+subfile u141c_debug_batch_nbr keep include		&
+	u141c_running_amt, x-count, x-batch-count-before , x-batch-count, x-claim-count, x-batch-amount, x-batch-count-after, &
+	change-batch-flag, x-agent-before, x-agent-after
+
+;---------------------------------------------------------------------
+; USING THE "NEXT AVAILABLE PAYMENT BATCH NUMBER" FROM F090 FILE, 
+; GENERATE BATCH/CLAIM ID"S FOR EACH CLAIM.  THE PROGRAM WILL ASSIGN UP TO 99
+; CLAIMS INTO 1 BATCH BEFORE INCREASING THE BATCH NUMBER BY 1.  
+; THE NEW "NEXT AVAILABLE PAYMENT BATCH NBR" IS CALCULATED AND UPDATED BACK 
+; INTO F090 FILE  
+
+request u141_gen_batch_nbrs on calculation errors report	&
+			     on edit errors report
+
+access *u141c_batch_nbr    					&
+	link clinic-nbr          	 			&
+          to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+sorted on  clinic-nbr  on hdr-agent-cd on  x-batch-count
+
+; use the correct next available payment batch nbr based on clinic nbr
+; iconst-clinic-pay-batch-nbr is x(6)
+
+; MC1 - assume batch nbr start with WW0000
+;def x-pay-batch-nbr zoned*3 unsigned = nconv(iconst-clinic-pay-batch-nbr[4:3])
+def x-pay-batch-nbr zoned*4 unsigned = nconv(iconst-clinic-pay-batch-nbr[3:4])
+
+;temp x-batch-nbr zoned*3 unsigned
+temp x-batch-nbr zoned*4 unsigned
+; MC1 - end
+item x-batch-nbr = x-pay-batch-nbr + x-batch-count   &
+        	at x-batch-count                     &
+               reset at clinic-nbr to  x-pay-batch-nbr
+
+; MC1
+;def x-clinic-batch-nbr char*8 = ascii(clinic-nbr,2) + iconst-clinic-pay-batch-nbr[1:3] + ascii(x-batch-nbr,3)
+def x-clinic-batch-nbr char*8 = ascii(clinic-nbr,2) + iconst-clinic-pay-batch-nbr[1:2] + ascii(x-batch-nbr,4)
+; MC1 - end
+
+def x-claim-nbr = x-claim-count 
+
+;def x-tech-amt zoned*8 signed = x-total-paid-amt * tmp-counter-1 / tmp-counter-3        &
+;        if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 75
+
+def x-total-paid-amt zoned*9 numeric =  signed-amt-net
+
+output f001-batch-control-file add at x-batch-count on errors report
+   item batctrl-batch-nbr          initial x-clinic-batch-nbr
+   item batctrl-batch-type         initial 'P'
+   item batctrl-adj-cd             initial 'M'
+;  item batctrl-adj-cd-sub-type    initial '0'
+   item batctrl-adj-cd-sub-type    initial 'A'
+   item batctrl-last-claim-nbr     final x-claim-nbr
+   item batctrl-clinic-nbr         initial iconst-clinic-nbr 
+   item batctrl-date-batch-entered initial ascii(sysdate,8)
+   item batctrl-date-period-end    initial ascii(iconst-date-period-end,8)
+   item batctrl-loc		   initial 'MISC'
+   item batctrl-agent-cd           initial nconvert(hdr-agent-cd)
+   item batctrl-cycle-nbr          initial iconst-clinic-cycle-nbr
+   item batctrl-amt-act            subtotal x-total-paid-amt 
+   item batctrl-amt-est            subtotal x-total-paid-amt 
+   item batctrl-ar-yy-mm           initial '000000'
+   item batctrl-calc-tot-rev       subtotal x-total-paid-amt 
+   item batctrl-manual-pay-tot     subtotal x-total-paid-amt
+   item batctrl-batch-status        initial '1'
+   item batctrl-nbr-claims-in-batch final x-claim-nbr
+
+output f002-claims-mstr alias f002-hdr add noitems on errors report
+;Preset claim header data from batctrl record
+   item key-clm-type                 initial 'B'
+   item key-clm-batch-nbr            initial batctrl-batch-nbr  
+   item key-clm-claim-nbr     	     initial x-claim-nbr
+   item key-clm-serv-code            initial '00000'
+   item key-clm-adj-nbr              initial '0'
+   item clmhdr-loc                   initial "MISC" 
+   item clmhdr-doc-dept		     initial doc-dept
+   item clmhdr-batch-type            initial batctrl-batch-type
+   item clmhdr-adj-cd-sub-type       initial batctrl-adj-cd-sub-type
+   item clmhdr-adj-cd                initial batctrl-adj-cd
+   item clmhdr-date-period-end       initial nconvert(batctrl-date-period-end)
+   item clmhdr-cycle-nbr             initial batctrl-cycle-nbr
+   item clmhdr-batch-nbr             initial ascii(clinic-nbr,2) + doc-nbr of u141c_batch_nbr + batctrl-batch-nbr[3:3]
+   item clmhdr-claim-nbr	     initial 01
+   item clmhdr-oma-suff-adj 	     initial '000000'
+   item clmhdr-i-o-pat-ind           initial 'O'  
+   item clmhdr-agent-cd              initial batctrl-agent-cd   
+   item clmhdr-date-admit            initial '00000000'
+   item clmhdr-date-cash-tape-payment initial ascii(sysdate,8)
+   item clmhdr-date-sys            initial ascii(sysdate,8)
+   item clmhdr-tape-submit-ind     initial 'N'
+   item clmhdr-manual-and-tape-payments initial x-total-paid-amt
+;  item clmhdr-amt-tech-paid	   initial x-tech-amt
+   item clmhdr-orig-batch-nbr      initial batctrl-batch-nbr
+   item clmhdr-orig-claim-nbr      initial x-claim-nbr
+   item key-p-clm-type             initial 'Z'
+   item clmhdr-reference	   initial clmhdr-reference of u141c_batch_nbr 
+
+output f002-claims-mstr alias f002-dtl add noitems on errors report
+   item key-clm-type               initial 'B'
+   item key-clm-batch-nbr          initial batctrl-batch-nbr 
+   item key-clm-claim-nbr          initial x-claim-nbr
+   item key-clm-serv-code          initial clmdtl-oma-cd of u141c_batch_nbr
+   item key-clm-adj-nbr            initial '0'
+   item clmdtl-batch-nbr           initial clmhdr-batch-nbr of f002-hdr
+   item clmdtl-claim-nbr           initial clmhdr-claim-nbr of f002-hdr
+   item clmdtl-oma-cd              initial clmdtl-oma-cd of u141c_batch_nbr
+   item clmdtl-oma-suff            initial ' ' 
+   item clmdtl-adj-nbr             initial 1
+   item clmdtl-agent-cd        	   initial clmhdr-agent-cd of f002-hdr
+   item clmdtl-adj-cd              initial clmhdr-adj-cd of f002-hdr
+   item clmdtl-sv-date             initial ascii(sysdate,8)
+   item clmdtl-nbr-serv            initial 0
+   item clmdtl-consec-dates        initial 0
+   item clmdtl-date-period-end     initial ascii(clmhdr-date-period-end of f002-hdr,8)
+   item clmdtl-cycle-nbr           initial clmhdr-cycle-nbr of f002-hdr
+   item clmdtl-fee-oma             initial x-total-paid-amt 
+   item clmdtl-fee-ohip            initial x-total-paid-amt 
+;  item clmdtl-amt-tech-billed     initial x-tech-amt
+   item clmdtl-orig-batch-id 	   initial clmhdr-orig-batch-id of f002-hdr
+   item key-p-clm-type             initial 'Z'
+
+output iconst-mstr-rec update at clinic-nbr on errors report
+; MC1
+;   item iconst-clinic-pay-batch-nbr     final iconst-clinic-pay-batch-nbr[1:3] + ascii(x-batch-nbr,3)
+   item iconst-clinic-pay-batch-nbr     final iconst-clinic-pay-batch-nbr[1:2] + ascii(x-batch-nbr,4)
+; MC1 - end
+
+subfile u141c_pay_batches keep at x-batch-count     &
+       include batctrl-batch-nbr, batctrl-manual-pay-tot
+
+build $obj/u141c

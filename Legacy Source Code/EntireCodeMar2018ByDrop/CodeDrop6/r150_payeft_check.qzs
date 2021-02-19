@@ -1,0 +1,41 @@
+; 2017/Jan/24  MC  	- Brad requested to check for difference in PAYEFT between f110 & f119 if applied
+;			- this program should be run first before other programs r150*
+;			- user should change the ep-nbr annually
+;			- this program should be run for each environment (101c, solo, MP)
+
+cancel clear
+set rep nolimit
+
+access f110-compensation-history		&
+	link (doc-nbr, ep-nbr, 'A')             &
+	 to  doc-nbr, ep-nbr, rec-type of f119-doctor-ytd-history opt
+
+choose doc-nbr, ep-nbr 201507 to 201513     
+
+sel f110-compensation-history if comp-code = 'PAYEFT'
+sel f119-doctor-ytd-history   if comp-code = 'PAYEFT'
+
+set subfile name savef110f119 keep 
+rep summ doc-nbr ep-nbr comp-code amt-net amt-mtd 
+go
+
+access f110-compensation          		&
+	link (doc-nbr, ep-nbr, 'A')             &
+	 to  doc-nbr, ep-nbr, rec-type of f119-doctor-ytd-history opt
+
+choose doc-nbr, ep-nbr 201601 to 201606     
+
+sel f110-compensation         if comp-code = 'PAYEFT'
+sel f119-doctor-ytd-history   if comp-code = 'PAYEFT'
+
+set subfile name savef110f119 keep append
+rep summ doc-nbr ep-nbr comp-code amt-net amt-mtd 
+go
+
+access *savef110f119
+set report device disc name r150_payeft
+set rep page length 60 width 132
+
+sel if amt-net <> amt-mtd
+rep all
+go

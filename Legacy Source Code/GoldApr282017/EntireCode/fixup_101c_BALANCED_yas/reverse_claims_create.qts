@@ -1,0 +1,141 @@
+; 2015/Mar/02	MC	- reverse claims created from web10 on Thursday Feb 27 due to disconnected from Yas home PC
+; 2015/Mar/02	MC 	- check what has created from u706a_claims_keys in web10, Yasemin was trying to create claims 
+;			  from web10 but she got disconnected half way, need to undo (delete records created in f001, f002, f071) 
+;                       - Yasemin asked to make a copy of this program into fixup directory, note that you must copy from fixup
+;                         to the appropriate web/disk directory before running this program as it is using u706a_claims_key
+;                         as the driver file from the local directory
+
+cancel clear
+set process nolimit
+set lock record update
+
+
+; reverse/delete records created in f071 & f002 & f001
+
+request one
+
+access *u706a_claims_keys  			&
+ 	link nconvert(w-key-claims-mstr[2:2]),  &
+	      w-key-claims-mstr[4:8]		&
+	 to  clinic-nbr, claim-nbr-rma of f071-client-rma-claim-nbr &
+	link 'B', w-key-claims-mstr[2:8],	&
+	      ncon(w-key-claims-mstr[10:2])	&
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr of f002-claims-mstr &
+	link key-clm-batch-nbr			&
+	 to  batctrl-batch-nbr of f001-batch-control-file opt
+
+sorted on key-clm-batch-nbr 
+
+subfile savef071_del keep			&
+	include  f071-client-rma-claim-nbr   
+
+subfile savef002hdr_del keep if clmdtl-oma-cd  of f002-claims-mstr = '0000'			&
+include clmhdr-claim-id,                        &
+        clmhdr-batch-type,                      &
+        clmhdr-adj-cd-sub-type,                 &
+        clmhdr-doc-nbr-ohip,                    &
+        clmhdr-doc-spec-cd,                     &
+        clmhdr-refer-doc-nbr,                   &
+        clmhdr-diag-cd,                         &
+        clmhdr-loc,                             &
+        clmhdr-hosp,                            &
+        clmhdr-agent-cd,                        &
+        clmhdr-adj-cd,                          &
+        clmhdr-tape-submit-ind,                 &
+        clmhdr-i-o-pat-ind,                     &
+        clmhdr-pat-ohip-id-or-chart,            &
+        clmhdr-pat-acronym,                     &
+        clmhdr-reference,                       &
+        clmhdr-date-admit,                      &
+        clmhdr-doc-dept,                        &
+        clmhdr-date-cash-tape-payment,          &
+        clmhdr-curr-payment,                    &
+        clmhdr-date-period-end,                 &
+        clmhdr-cycle-nbr,                       &
+        clmhdr-date-sys,                        &
+        clmhdr-amt-tech-billed,                 &
+        clmhdr-amt-tech-paid,                   &
+        clmhdr-tot-claim-ar-oma,                &
+        clmhdr-tot-claim-ar-ohip,               &
+        clmhdr-manual-and-tape-payments,        &
+        clmhdr-status-ohip,                     &
+        clmhdr-orig-batch-id,                   &
+        clmhdr-manual-review,                   &
+        clmhdr-submit-date,                     &
+        clmhdr-confidential-flag,               & 
+        clmhdr-serv-date,                       &
+        key-clm-type of f002-claims-mstr,       &
+        key-clm-batch-nbr of f002-claims-mstr,  &
+        key-clm-claim-nbr of f002-claims-mstr,  &
+        key-clm-serv-code of f002-claims-mstr,  &
+        key-clm-adj-nbr of f002-claims-mstr,    &
+        key-p-clm-type of f002-claims-mstr,     &
+        key-p-clm-data of f002-claims-mstr
+
+
+subfile savef002dtl_del keep if clmdtl-oma-cd of f002-claims-mstr <> '0000'			&
+			and     clmdtl-oma-cd of f002-claims-mstr <> 'ZZZZ'			&
+include clmdtl-id,                      &
+        clmdtl-rev-group-cd,            &
+        clmdtl-agent-cd,                &
+        clmdtl-adj-cd,                  &
+        clmdtl-nbr-serv,                &
+        clmdtl-sv-date,                 &
+        clmdtl-consec-dates-r,          &
+        clmdtl-amt-tech-billed,         &
+        clmdtl-fee-oma,                 &
+        clmdtl-fee-ohip,                &
+        clmdtl-date-period-end,         &
+        clmdtl-cycle-nbr,               &
+        clmdtl-diag-cd,                 &
+        clmdtl-line-no,                 &
+        clmdtl-orig-batch-id of f002-claims-mstr,               &
+        key-clm-type of f002-claims-mstr, &
+        key-clm-batch-nbr of f002-claims-mstr, &
+        key-clm-claim-nbr of f002-claims-mstr,  &
+        key-clm-serv-code of f002-claims-mstr,  &
+        key-clm-adj-nbr of f002-claims-mstr,    &
+        key-p-clm-type of f002-claims-mstr, &
+        key-p-clm-data of f002-claims-mstr
+
+
+
+subfile savef002des_del keep if clmdtl-oma-cd  of f002-claims-mstr = 'ZZZZ'			&
+include clmdtl-id of f002-claims-mstr,  &
+        clmdtl-desc-rec,                &
+        clmdtl-orig-batch-id of f002-claims-mstr,               &
+        key-clm-type of f002-claims-mstr, &
+        key-clm-batch-nbr of f002-claims-mstr, &
+        key-clm-claim-nbr of f002-claims-mstr,  &
+        key-clm-serv-code of f002-claims-mstr,  &
+        key-clm-adj-nbr of f002-claims-mstr,&
+        key-p-clm-type of f002-claims-mstr, &
+        key-p-clm-data of f002-claims-mstr
+
+
+subfile savef001_del keep at key-clm-batch-nbr	&
+	include f001-batch-control-file
+
+output f071-client-rma-claim-nbr delete on errors report
+
+output f002-claims-mstr delete on errors report
+
+output f001-batch-control-file delete at key-clm-batch-nbr &
+	if record f001-batch-control-file exists on errors report
+
+;------------------------
+
+; reverse/delete records created in f002-claim-shadow
+
+request two
+
+access *savef071 		&
+	link 'B', w-key-claims-mstr[2:8], nconv(w-key-claims-mstr[10:2]), '00000', '0'	&
+	to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr  of f002-claims-mstr &
+	link (key-clm-batch-nbr[1:2]+clmhdr-sub-nbr+clmhdr-pat-ohip-id-or-chart+w-key-claims-mstr[2:10])	&
+	 to clm-shadow-key of f002-claim-shadow
+
+subfile savef002shdw_del keep 			&
+	include f002-claim-shadow
+
+output f002-claim-shadow delete on errors report

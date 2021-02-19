@@ -1,0 +1,1549 @@
+identification division. 
+program-id. u093. 
+author. dyad computer systems inc. 
+installation. rma. 
+date-written. 80/01/31. 
+date-compiled. 
+security. 
+* 
+*    files      : f001   - batch control file 
+*		: f002   - claims master file 
+*		: f090   - iconstants master 
+ 
+*    program purpose :	delete the adjustment and payment batch control 
+*			records from the batch control file (f001) and 
+*			the associated records for these batchs in the 
+*			claims master file (f002). batches are selected 
+*			by p.e.d. falling within operator input cut-off date. 
+*			an audit report is printed of all batches deleted, 
+*			with totals by batch type. 
+* 
+* 
+* 
+*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++* 
+*  yy/mm/dd  whom          what/why (include pdr/sms if possible) 
+*  --------  ----          ----/--- 
+* 
+*  83/01/03  b. elliott    reversed order of 'T10-A-R-DEL' and 'T10-REV-DEL' in print 
+*                          line after balancing for the just completed purge uncovered errors 
+* 
+*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+* 
+*    revised may/87 (s.b.) - coversion from aos to aos/vs. 
+*                            change field size for 
+*                            status clause to 2 and 
+*                            feedback clause to 4. 
+* 
+*    revised mar/89 (s.f.) - sms 115 
+*		       	   - make sure file status is pic xx ,feedback 
+*			     is pic x(4) and infos status is pic x(11). 
+* 
+*    revised jun/92 (m.c.) - sms 139 
+*			   - change the logic to include the new clinic 
+*			     60'S 
+* 
+*    revised may/94 (m.c.) - pdr 592 
+*			   - change  the logic to include the new clinic 
+*		             80'S 
+* 
+*    revised jul/95 (m.c.) - swap the heading of oma and ohip for the 
+*			     final page 
+* 
+*    revised apr/97 (yas.) - pdr 656 change logic to include new cl 8200 
+*			 
+*    revised aug/97 (yas.) - pdr 664 change logic to include new cl 8300 
+*			 
+*    revised feb/98 (j.c.) - s149 unix conversion
+* 
+environment division. 
+input-output section. 
+file-control. 
+* 
+*   place your file select statements here 
+* 
+    copy "f002_claims_mstr.slr". 
+* 
+    copy "f001_batch_control_file.slr". 
+* 
+    copy "f090_constants_mstr.slr". 
+* 
+* 
+    select print-file 
+	assign to printer print-file-name 
+	file status is status-prt-file. 
+data division. 
+file section. 
+* 
+    copy "f002_claims_mstr.fd". 
+* 
+    copy "f002_claims_mstr_rec1_2.ws". 
+* 
+    copy "f001_batch_control_file.fd". 
+* 
+    copy "f090_constants_mstr.fd". 
+* 
+fd  print-file 
+	record contains 132 characters. 
+01  print-record			pic x(132). 
+* 
+working-storage section. 
+ 
+77  err-ind					pic 99 	value zero. 
+ 
+77  print-file-name				pic x(5) value "r093". 
+77  max-nbr-lines				pic 99	 value 55. 
+77  ctr-page					pic 9(4) value zero. 
+77  ctr-line					pic 99   value 65. 
+77  agent-cd-ws					pic 9. 
+77  prt-sw					pic x. 
+ 
+77  feedback-claims-mstr			pic x(4). 
+77  feedback-iconst-mstr			pic x(4). 
+77  feedback-batctrl-file			pic x(4). 
+ 
+77  claims-occur				pic 9(12). 
+77  ws-reply					pic x. 
+77  ws-reply2					pic x. 
+ 
+77  hold-clmhdr-batch-nbr			pic 9(9).     
+77  hold-clmhdr-claim-nbr			pic 99. 
+ 
+77  hold-batch-nbr				pic 9(9).     
+77  hold-claim-nbr				pic 99. 
+ 
+77  sel-month					pic 99. 
+77  blank-line					pic x(132) value spaces.   
+ 
+*  eof indicators 
+* 
+77  eof-batctrl-file				pic x	value "N". 
+77  eof-claims-mstr				pic x   value "N". 
+ 
+* 
+*  status file indicators 
+* 
+*mf 77  common-status-file			pic x(11). 
+*mf 77  status-iconst-mstr			pic x(11) value zero. 
+*mf 77  status-batctrl-file			pic x(11) value zero. 
+*mf 77  status-claims-mstr			pic x(11) value zero. 
+
+77  common-status-file				pic x(2). 
+77  status-cobol-iconst-mstr			pic x(2) value zero. 
+77  status-cobol-batctrl-file			pic x(2) value zero. 
+77  status-cobol-claims-mstr			pic xx	  value zero. 
+77  status-prt-file				pic xx    value zero. 
+ 
+*mf copy "f002_key_claims_mstr.ws". 
+ 
+ 
+ 
+01  flag-rec					pic x. 
+    88  valid-rec				value "Y". 
+    88  invalid-rec				value "N". 
+ 
+01  sel-clinic-nbr 				pic xx. 
+ 
+* (y2k)
+01  input-date. 
+* (y2k)
+    05  input-yy				pic 99. 
+* (y2k - auto fix)
+*   05  input-yy-r redefines input-yy		pic xx. 
+    05  input-yy-r redefines input-yy		pic x(4). 
+    05  input-mm				pic 99. 
+    05  input-dd				pic 99.             
+ 
+ 
+*mf copy "f001_key_batctrl_file.ws". 
+ 
+01  batch-table-totals. 
+    10  batch-totals occurs 2 times. 
+***		(1=batches retained, 2= batches deleted) 
+	15  batch-totals-type occurs 19 times. 
+***		(index 1 - 10: claims, ag.cd 0 - 9 
+***		       11:     sum of 1 - 10 
+***	    	       12 -14: adj, adj cd - a, b, r 
+***		       15:     sum of 12 - 14 
+***                    16 -17: paym'T, ADJ CD - M, C 
+***		       18:     sum of 16 - 17 
+***		       18:     sum of 11, 15, 18 
+	    20 batch-totals-item occurs 4 times 
+					pic s9(9)v99. 
+***		(1=a/r, 2=rev, 3=cash, 4=total nbr) 
+ 
+01  claims-table-totals. 
+    10 claims-totals-type occurs 8 times. 
+***		(index 1 - 3: adj, adj cd  a, b, r 
+***		       4:     sum of 1 -3 
+***		       5 - 6: paym'T, ADJ CD M, C 
+***                    7:     sum of 5 -6 
+***     	       8:     sum of 4 and 7 
+	    15 claims-totals-item occurs 3 times 
+					pic s9(9)v99. 
+***		(1=ohip, 2=oma, 3=total number) 
+ 
+***subscripts for batch-table-totals and claims-table-totals tables 
+01  batch-table-totals-ss. 
+    05  ss-r-d				pic 9. 
+    05  ss-type				pic 99. 
+    05  ss-item				pic 9. 
+01  batch-type-table. 
+    05  batch-type-heading. 
+        10  filler			pic x(20)  value 
+		" ADJUSTMENTS- 'A'". 
+	10  filler			pic x(20)  value 
+		"            - 'B'". 
+	10  filler			pic x(20)  value     
+		"            - 'R'". 
+	10  filler			pic x(20)  value    
+		"     TOTALS".   
+	10  filler			pic x(20)  value    
+		" PAYMENTS   - 'M'". 
+	10  filler			pic x(20)  value           
+		"            - 'C'". 
+	10  filler			pic x(20)  value   
+		"     TOTALS".   
+	10  filler			pic x(20)  value 
+		"     GRAND TOTALS". 
+    05  batch-type-heading-r redefines batch-type-heading. 
+        10  batch-type occurs 8 times  pic x(20). 
+ 
+*   counters for records read/written for all input/output files 
+ 
+01  counters. 
+    05  ctr-batctrl-file-reads			pic 9(7).  
+    05  ctr-claims-mstr-reads			pic 9(7).  
+    05  ctr-pay-adjust-deleted			pic 9(7). 
+    05  ctr-batches-deleted			pic 9(7).    
+    05  ctr-batch-deleted-amt-ar		pic 9(7)v99. 
+    05  ctr-batch-deleted-amt-rev		pic 9(7)v99. 
+    05  ctr-batch-deleted-amt-pay		pic 9(7)v99. 
+01  error-message-table. 
+ 
+    05  error-messages. 
+	10  filler				pic x(60)   value 
+			"INVALID REPLY". 
+	10  filler				pic x(60)   value 
+			"INVALID CLINIC NBR OR NO CONSTANTS MASTER SUPPLIED". 
+	10  filler				pic x(60)   value 
+			"INVALID KEY FOUND ON   DELETE ". 
+	10  filler				pic x(60)   value 
+			"NO BATCTRL FILE SUPPLIED FOR THIS CLINIC".    
+	10  filler				pic x(60)   value 
+			"NO MORE BATCH CONTROL RECORDS FOR THIS CLINIC NUMBER". 
+	10  filler				pic x(60)   value 
+			"NO APPROPRIATE RECORDS IN BATCTRL FILE". 
+	10  filler				pic x(60)   value 
+			"NO CLAIMS FOR THIS CLINIC". 
+	10  filler				pic x(60)   value 
+			"NO HEADER FOR CURRENT BATCH". 
+	10  filler				pic x(60)    value 
+		"INVALID MONTH". 
+	10  filler				pic x(60)    value 
+	"ORIGINAL CLMHDR RECORD FOR ADJUSTMENT DETAIL IS MISSING". 
+	10  filler				pic x(60)     value 
+		"INVALID BATCH TYPE". 
+	10  filler				pic x(60)	value 
+		"WORK FILE EMPTY". 
+	10  filler				pic x(60)	value	 
+		"INVALID READ ON DOCTOR MASTER FILE". 
+	10  filler				pic x(60)	value	 
+		"ERROR WHILE DELETING BATCH RECORD". 
+	10  filler				pic x(60)	value	 
+		"INVALID DAY". 
+ 
+    05  error-messages-r redefines error-messages. 
+	10  err-msg				pic x(60) 
+			occurs 15 times. 
+ 
+01  err-msg-comment				pic x(60). 
+ 
+01  e1-error-line. 
+ 
+    05  e1-error-word				pic x(13)    value 
+			"***  ERROR - ". 
+    05  e1-error-msg				pic x(119). 
+ 
+ 
+ 
+ 
+    copy "sysdatetime.ws". 
+ 
+01  h10-head. 
+    05  h10-prg-nbr			pic x(4). 
+    05  filler				pic x(36) value spaces. 
+    05  filler				pic x(65) value 
+		"BATCH CONTROL FILE DELETIONS". 
+    05  filler				pic x(9)  value 
+		"RUN DATE". 
+* (y2k)
+    05  h10-run-date-yy			pic 99. 
+    05  filler				pic x     value "/". 
+* (y2k)
+    05  h10-run-date-mm			pic 99. 
+    05  filler				pic x	  value "/". 
+* (y2k)
+    05  h10-run-date-dd			pic 99. 
+    05  filler				pic xx     value spaces. 
+    05  filler				pic x(4)   value 
+		"PAGE". 
+    05  h10-page			pic zzz9. 
+ 
+01  h20-head. 
+    05  filler				pic x(39)  value spaces. 
+    05  h20-batch-type			pic x(31). 
+    05  filler				pic x(62)  value spaces. 
+ 
+01  h30-head. 
+    05  filler				pic x(8)   value 
+		"CLINIC". 
+    05  h30-clinic-nbr			pic 99.  
+    05  filler				pic x(5)   value spaces. 
+    05  filler				pic x(17)  value 
+		"PERIOD END DATE". 
+* (y2k)
+    05  h30-prd-end-yy			pic 99. 
+    05  filler				pic x	   value "/". 
+    05  h30-prd-end-mm			pic 99. 
+    05  filler				pic x	   value "/". 
+    05  h30-prd-end-dd			pic 99. 
+    05  filler				pic x(4)   value spaces. 
+    05  filler				pic x(6)   value 
+		"CYCLE". 
+    05  h30-cycle-nbr			pic zz9. 
+    05  filler				pic x(4)    value spaces. 
+    05  filler				pic x(14)   value 
+		"CUT-OFF DATE". 
+* (y2k)
+    05  h30-cut-off-yy			pic 99. 
+    05  filler				pic x	   value "/". 
+    05  h30-cut-off-mm			pic 99. 
+    05  filler				pic x	   value "/". 
+    05  h30-cut-off-dd			pic 99. 
+    05  filler				pic x(53)   value spaces. 
+ 
+01  h40-head. 
+    05  filler				pic x(21)   value spaces. 
+    05  filler				pic x(20)   value 
+    		"--------------------". 
+    05  filler				pic x(15)   value 
+		"R E T A I N E D". 
+    05  filler				pic x(18)   value 
+		"------------------". 
+    05  filler				pic x(4)    value spaces. 
+    05  filler				pic x(20)   value 
+    		"--------------------". 
+    05  filler				pic x(13)   value 
+		"D E L E T E D". 
+    05  filler				pic x(21)   value 
+		"--------------------". 
+ 
+01  h50-head. 
+    05  h50-col1			pic x(21). 
+    05  h50-col2			pic x(15). 
+    05  h50-col3			pic x(15). 
+    05  h50-col4			pic x(16).  
+    05  h50-col5			pic x(11).   
+    05  h50-col6			pic x(15).  
+    05  h50-col7			pic x(15).     
+    05  h50-col8			pic x(16). 
+    05  h50-col9			pic x(8). 
+ 
+01  h3-head. 
+ 
+    05  filler					pic x(30)	value 
+		"CYCLE  BATCH     FORMS       N". 
+    05  filler					pic x(30)	value 
+		"ET            NET". 
+    05  filler					pic x(30)	value 
+		"CASH          ACTUAL". 
+    05  filler					pic x(30)	value 
+		"CONTROL    ACTUAL  CONTROL". 
+    05  filler					pic x(12)	value 
+		"BATCH  AGENT". 
+ 
+ 
+ 
+01  h4-head. 
+ 
+    05  filler					pic x(30)	value 
+		" NBR   NUMBER    COUNT       A". 
+    05  filler					pic x(30)	value 
+		"/R          REVENUE         EN". 
+    05  filler					pic x(30)	value 
+		"TERED          TOTAL". 
+    05  filler					pic x(30)	value 
+		" TOTAL       SVC     SVC". 
+    05  filler					pic x(12)	value 
+		"TYPE   CODE". 
+01  print-line. 
+ 
+    05  l1-print-line. 
+	10  filler				pic x. 
+	10  l1-cycle				pic zzz.    
+	10  filler				pic xx. 
+	10  l1-batch-nbr. 
+	    15  l1-batch-nbr-1-2		pic   99.     
+	    15  l1-doc-nbr			pic  999. 
+	    15  l1-week				pic   99.       
+	    15  l1-day				pic    9.    
+	10  filler				pic x(4).       
+	10  l1-forms-count			pic z9.     
+	10  filler				pic x(5).  
+	10  l1-net-a-r				pic zz,zzz.99-. 
+	10  filler				pic x(6). 
+	10  l1-net-revenue			pic zz,zzz.99-. 
+	10  filler				pic x(6).    
+	10  l1-cash-entered			pic zz,zzz.99-. 
+	10  filler				pic x(5).      
+	10  l1-actual-total			pic zz,zzz.99-. 
+	10  filler				pic x(7).   
+	10  l1-control-total			pic zz,zzz.99-. 
+	10  filler				pic x(4).           
+	10  l1-actual-svc			pic zzz9. 
+	10  filler				pic x(4). 
+	10  l1-control-svc			pic zzz9. 
+	10  filler				pic x(3). 
+	10  l1-batch-type			pic x(8). 
+	10  filler				pic x(3). 
+	10  l1-agent-code			pic 9. 
+	10  filler				pic x(2). 
+    05  t1-print-line redefines l1-print-line. 
+	10  t1-total-titles. 
+	    15  t1-cycle-lit			pic x(7).     
+	    15  t1-cycle			pic zz9. 
+	    15  t1-ttls-lit			pic x(5). 
+	10  t2-total-titles redefines t1-total-titles. 
+* (y2k)
+	    15  t1-mth-to-date			pic x(15). 
+	10  t1-tot-forms-count			pic z(4)9.    
+	10  filler				pic xxx.      
+	10  t1-net-a-r				pic zz,zzz,zzz.99-. 
+	10  filler				pic xx. 
+	10  t1-net-revenue			pic zz,zzz,zzz.99-. 
+	10  filler				pic xx. 
+	10  t1-cash-entered			pic zz,zzz,zzz.99-. 
+	10  filler				pic x. 
+	10  t1-actual-total			pic zz,zzz,zzz.99-. 
+	10  filler				pic x. 
+	10  t1-control-total			pic zz,zzz,zzz.99-. 
+	10  filler				pic x. 
+	10  t1-actual-svc			pic zzz9. 
+	10  filler				pic x(6). 
+	10  t1-control-svc			pic zzz9. 
+	10  filler				pic x(18). 
+ 
+    05  t10-totals-line redefines t1-print-line. 
+        10  t10-type. 
+            15  filler			pic x. 
+	    15  t10-batch-type		pic x(11). 
+  	    15  t10-slash		pic x. 
+            15  filler			pic xx. 
+   	    15  t10-batch-code		pic x(5). 
+	    15  t10-batch-code-r redefines t10-batch-code. 
+		20  t10-agent-code	pic 9. 
+		20  filler		pic x(4). 
+	10  t10-type-r redefines t10-type 
+					pic x(20). 
+    	10  filler			pic x. 
+	10  t10-a-r-ret			pic z,zzz,zz9.99-. 
+ 	10  filler			pic xx. 
+	10  t10-rev-ret			pic z,zzz,zz9.99-. 
+ 	10  filler			pic xx. 
+	10  t10-cash-ret		pic z,zzz,zz9.99-. 
+ 	10  filler			pic xx. 
+	10  t10-nbr-ret			pic zzz,zz9. 
+ 	10  filler			pic x(5). 
+	10  t10-a-r-del			pic z,zzz,zz9.99-. 
+ 	10  filler			pic xx. 
+	10  t10-rev-del			pic z,zzz,zz9.99-. 
+ 	10  filler			pic xx. 
+	10  t10-cash-del		pic z,zzz,zz9.99-. 
+ 	10  filler			pic xx. 
+	10  t10-nbr-del			pic zzz,zz9. 
+	10  filler			pic xx. 
+ 
+screen section. 
+ 
+01  scr-title. 
+ 
+    05  blank screen. 
+    05			line 01 col 01 value is "U093". 
+    05			line 01 col 20 value is "BATCH CONTROL FILE DELETIONS". 
+* (y2k - auto fix)
+*   05			line 01 col 73 pic 99 from sys-yy. 
+    05			line 01 col 73 pic 9(4) from sys-yy. 
+    05			line 01 col 75 value is "/". 
+    05			line 01 col 76 pic 99 from sys-mm. 
+    05			line 01 col 78 value is "/". 
+    05			line 01 col 79 pic 99 from sys-dd. 
+    05			line 02 col 16 value is "FOR PAYMENTS AND ADJUSTMENTS BATCHES". 
+    05			line 06 col 20 value "FOR THE CLINIC AND P.E.D. SELECTED". 
+    05			line 07 col 20 value "ALL BATCHES WITH A STATUS OF '4'". 
+    05			line 08 col 20 value "WILL BE DELETED FROM BATCH CONTROL FILE". 
+    05			line 12 col 30 value is "ENTER CLINIC NBR".  
+    05  scr-clinic-nbr	line 12 col 48 pic x(2) to sel-clinic-nbr auto required. 
+ 
+ 
+* (y2k)
+01  msg-enter-date. 
+ 
+    05			line 15 col 01 value is "ALL BATCHES WITH A PERIOD END DATE < OR = ".             
+    05			line 15 col 44 value is "THE DATE YOU ENTER WILL BE DELETED !!". 
+    05			line 16 col 30 value is "CUT OFF DATE --". 
+* (y2k - auto fix)
+*   05  scr-input-yy	line 16 col 49 pic xx using input-yy-r auto required. 
+    05  scr-input-yy	line 16 col 49 pic x(4) using input-yy-r auto required. 
+    05			line 16 col 51  value is "/". 
+    05  scr-input-mm	line 16 col 52 pic 99 using input-mm auto required. 
+    05			line 16 col 54  value is "/". 
+    05  scr-input-dd	line 16 col 55 pic 99 using input-dd auto required. 
+ 
+* (y2k)
+01  scr-check-date. 
+    05			line 18 col 30 value is "CHANGE DATE (ENTER Y OR N)". 
+    05  reply		line 18 col 58 pic x using ws-reply auto required. 
+ 
+01  scr-continue. 
+    05  line 20 col 30 value is "CONTINUE? (ENTER Y OR N)". 
+    05  scr-cont line 20 col 58 pic x using ws-reply2 auto required. 
+ 
+01  program-in-progress. 
+    05  line 22 col 30 value "PROGRAM U093 IN PROGRESS". 
+ 
+01  msg-line. 
+    05  line 19 col 15 value "*** NO PAYMENT OR ADJUSTMENT BATCHES DELETED ***" bell blink.       
+ 
+ 
+ 
+*                     
+01  file-status-display. 
+    05  line 24 col 56 value "FILE STATUS = ". 
+*mf    05  line 24 col 70 pic x(11) from common-status-file    bell blink. 
+    05  line 24 col 70 pic x(2) from common-status-file    bell blink. 
+* 
+01  err-msg-line. 
+    05  line 24 col 01	value " ERROR -  "	bell blink. 
+    05  line 24 col 11	pic x(60)	from err-msg-comment. 
+ 
+01  blank-line-24. 
+    05  line 24 col 1	blank line. 
+ 
+01  confirm. 
+    05  line 23 col 01 value " ". 
+ 
+01  blank-screen. 
+    05  blank screen. 
+ 
+01  scr-closing-screen. 
+    05  blank screen. 
+    05  line  7 col 20  value "NUMBER OF BATCTRL-FILE ACCESSES = ". 
+    05  line  7 col 60  pic 9(7) using ctr-batctrl-file-reads. 
+    05  line  8 col 20  value "NUMBER OF BATCTRL-FILE DELETED = ". 
+    05  line  8 col 60  pic 9(7) using ctr-batches-deleted. 
+    05  line  9 col 20  value "TOTAL AMOUNT OF F001 A/R DELETES = ". 
+    05  line  9 col 60  pic 9(7).99 from ctr-batch-deleted-amt-ar blink. 
+    05  line 10 col 20  value "TOTAL AMOUNT OF F001 REV DELETES = ". 
+    05  line 10 col 60  pic 9(7).99 from ctr-batch-deleted-amt-rev blink. 
+    05  line 11 col 20  value "TOTAL AMOUNT OF F001 PAY'T DELETES = ". 
+    05  line 11 col 60  pic 9(7).99 from ctr-batch-deleted-amt-pay blink. 
+    05  line 13 col 20  value "NUMBER OF CLAIM MSTR ACCESSES = ". 
+    05  line 13 col 60  pic 9(7) using ctr-claims-mstr-reads. 
+    05  line 14 col 20  value "NUMBER CLAIM PAYM. AND ADJ. DELS = ". 
+    05  line 14 col 60  pic 9(7) using ctr-pay-adjust-deleted. 
+ 
+    05  line 21 col 20	value "PROGRAM U093 ENDING". 
+* (y2k - auto fix)
+*   05  line 21 col 40  pic 99	from sys-yy. 
+    05  line 21 col 40  pic 9(4)	from sys-yy. 
+    05  line 21 col 42	value "/". 
+    05  line 21 col 43	pic 99	from sys-mm. 
+    05  line 21 col 45	value "/". 
+    05  line 21 col 46	pic 99	from sys-dd. 
+    05  line 21 col 50	pic 99	from sys-hrs. 
+    05  line 21 col 52	value ":". 
+    05  line 21 col 53	pic 99	from sys-min.        
+    05  line 23 col 20  value "PRINT REPORT IS IN FILE ". 
+    05  line 23 col 51  pic x(5) from print-file-name. 
+procedure division. 
+declaratives. 
+ 
+err-batctrl-file section. 
+    use after standard error procedure on batch-ctrl-file.    
+err-batctrl. 
+*mf    move status-batctrl-file		to common-status-file. 
+    move status-cobol-batctrl-file	to common-status-file. 
+err-claims-mstr-file section. 
+    use after standard error procedure on claims-mstr. 
+err-claims-mstr. 
+*mf    move status-claims-mstr		to common-status-file. 
+    move status-cobol-claims-mstr	to common-status-file. 
+    display file-status-display. 
+    stop "ERROR IN ACCESSING CLAIMS MASTER". 
+ 
+end declaratives. 
+ 
+main-line section. 
+mainline. 
+ 
+    perform aa0-initialization		thru aa0-99-exit. 
+    perform ab0-processing    		thru ab0-99-exit 
+	until eof-batctrl-file = 'Y'. 
+    perform az0-end-of-job		thru az0-99-exit. 
+* 
+    stop run. 
+aa0-initialization. 
+   
+* (y2k)
+    accept sys-date			from date. 
+    perform y2k-default-sysdate		thru y2k-default-sysdate-exit.
+    move sys-mm				to run-mm.                 
+    move sys-dd				to run-dd. 
+* (y2k)
+    move sys-yy				to run-yy. 
+ 
+    accept sys-time			from time. 
+    move sys-hrs			to run-hrs. 
+    move sys-min			to run-min. 
+    move sys-sec			to run-sec. 
+ 
+*		(delete print file) 
+*    expunge print-file. 
+ 
+    open i-o  	batch-ctrl-file 
+		claims-mstr.         
+    open input 	iconst-mstr.    
+    open output print-file. 
+ 
+ 
+ 
+    move zeros				to counters               
+					   batch-table-totals 
+					   claims-table-totals 
+					   batch-table-totals-ss.  
+ 
+    move spaces				to print-line 
+					   blank-line 
+ 
+*	(display screen title/option) 
+    display scr-title. 
+ 
+aa0-10-enter-clinic-nbr. 
+ 
+    accept scr-clinic-nbr. 
+ 
+    if sel-clinic-nbr =   "**" 
+    then 
+        go to az0-end-of-job 
+    else 
+        move sel-clinic-nbr		to iconst-clinic-nbr-1-2. 
+*   endif 
+ 
+    read iconst-mstr 
+        invalid key 
+         	move 2 to err-ind 
+		perform za0-common-error	thru za0-99-exit 
+		go to aa0-10-enter-clinic-nbr. 
+ 
+* (y2k)
+    move iconst-date-period-end		to input-date. 
+ 
+* (y2k)
+    display msg-enter-date. 
+ 
+*********************************************************************** 
+*	(bypass first override of deletion date) 
+* 
+    go to aa0-50-continue. 
+*********************************************************************** 
+ 
+aa0-20-enter-date. 
+ 
+* (y2k)
+    accept scr-input-yy. 
+  
+* (y2k)
+    if input-yy-r = "**" 
+    then  
+        go to az0-end-of-job. 
+*   (else) 
+*   endif 
+ 
+aa0-30. 
+ 
+    accept scr-input-mm. 
+    if input-mm  > 12 or input-mm  < 1 
+    then 
+	move 9				to	err-ind 
+	perform za0-common-error	thru za0-99-exit 
+	go to aa0-30.             
+*   (else) 
+*   endif 
+ 
+ 
+aa0-40. 
+ 
+ 
+    accept scr-input-dd. 
+ 
+    if input-dd < 1 and input-dd > 31 
+    then 
+        move 15				to err-ind 
+        perform za0-common-error	thru za0-99-exit 
+        go to aa0-40. 
+*   (else) 
+*    endif 
+ 
+aa0-50-continue. 
+* (y2k)
+    display scr-check-date. 
+  
+    accept reply. 
+ 
+    if ws-reply not = "N" 
+    then  
+        go to aa0-20-enter-date. 
+*  (else) 
+*   endif 
+ 
+    display scr-continue. 
+ 
+    accept scr-cont. 
+ 
+    if ws-reply2 not = "Y" 
+    then  
+        go to az0-10. 
+*  (else) 
+*   endif 
+ 
+ 
+    display program-in-progress. 
+ 
+    move "R093"				to	h10-prg-nbr. 
+* (y2k)
+    move run-yy				to	h10-run-date-yy. 
+* (y2k)
+    move run-mm				to	h10-run-date-mm. 
+* (y2k)
+    move run-dd				to	h10-run-date-dd. 
+    move sel-clinic-nbr			to	h30-clinic-nbr. 
+    move iconst-clinic-cycle-nbr	to	h30-cycle-nbr. 
+* (y2k)
+    move iconst-date-period-end-yy	to	h30-prd-end-yy. 
+* (y2k)
+    move iconst-date-period-end-mm	to	h30-prd-end-mm.   
+* (y2k)
+    move iconst-date-period-end-dd	to	h30-prd-end-dd. 
+* (y2k)
+    move input-yy			to	h30-cut-off-yy. 
+    move input-mm			to	h30-cut-off-mm.         
+    move input-dd			to	h30-cut-off-dd. 
+    move "ADJUSTMENT AND PAYMENT BATCHES" 
+					to	h20-batch-type. 
+ 
+*mf move zero				to key-batctrl-file. 
+    move spaces				to key-batctrl-file. 
+ 
+    move sel-clinic-nbr 		to key-batctrl-file.  
+ 
+*mf    read batch-ctrl-file key is key-batctrl-file approximate 
+*mf	invalid key 
+*mf	    move 4			to err-ind 
+*mf	    perform za0-common-error	thru za0-99-exit 
+*mf	    go to aa0-10-enter-clinic-nbr. 
+ 
+    start batch-ctrl-file key is greater than or equal to key-batctrl-file
+	invalid key 
+	    move 4			to err-ind 
+	    perform za0-common-error	thru za0-99-exit 
+	    go to aa0-10-enter-clinic-nbr. 
+    read batch-ctrl-file next.
+ 
+*mf    retrieve batch-ctrl-file key fix position 
+*mf	into key-batctrl-file. 
+ 
+    add 1				to ctr-batctrl-file-reads. 
+ 
+    move "N"				to	flag-rec. 
+    perform ra1-sel-read-next-batctrl	thru ra1-99-exit 
+	until   eof-batctrl-file = "Y" 
+	     or valid-rec. 
+ 
+    if eof-batctrl-file = "Y" 
+    then 
+	perform za0-common-error	thru za0-99-exit 
+	go to az0-end-of-job. 
+*   (else) 
+*   endif 
+ 
+*	( if the current claim header that was read is not the correct 
+*	  batch number then read the header with the new batch number ) 
+    if clmhdr-orig-batch-nbr not = batctrl-batch-nbr 
+    then 
+	perform ra2-read-claim		thru ra2-99-exit. 
+*   (else) 
+*   endif 
+ 
+aa0-99-exit. 
+    exit. 
+ 
+ 
+ab0-processing. 
+ 
+*   (determine if end of batch) 
+    if clmhdr-orig-batch-nbr not = batctrl-batch-nbr 
+    then 
+*	(end of batch) 
+	perform ba0-delete-batch	thru	ba0-99-exit  
+	perform ra4-read-next-batch	thru	ra4-99-exit. 
+*   (else) 
+*   endif 
+ 
+    if eof-batctrl-file = "Y" 
+    then 
+	go to ab0-99-exit. 
+*   (else) 
+*   endif 
+ 
+ 
+    if     (clmhdr-batch-type       =    "P" 
+				      or "A" )       
+* (y2k)
+       and (clmhdr-date-period-end  not > input-date) 
+    then 
+	perform da1-delete-claim	thru da1-99-exit. 
+*   (else) 
+*   endif 
+ 
+ab0-99-exit. 
+    exit. 
+ba0-delete-batch. 
+ 
+    add batctrl-calc-ar-due		to ctr-batch-deleted-amt-ar. 
+    add batctrl-calc-tot-rev		to ctr-batch-deleted-amt-rev. 
+    add batctrl-manual-pay-tot		to ctr-batch-deleted-amt-pay. 
+ 
+*mf     delete batch-ctrl-file record physical 
+    delete batch-ctrl-file record
+ 	invalid key 
+ 	    move 14			to err-ind 
+ 	    perform za0-common-error	thru za0-99-exit 
+ 	    go to az0-end-of-job. 
+ 
+    add 1				to ctr-batches-deleted. 
+ 
+ba0-99-exit. 
+    exit. 
+az0-end-of-job. 
+ 
+    if ctr-pay-adjust-deleted < 1 
+    then 
+ 	display msg-line. 
+*   (else) 
+*   endif 
+ 
+    perform ta0-process-totals	thru	ta0-99-exit. 
+ 
+az0-10. 
+    close batch-ctrl-file 
+	  print-file 
+	  claims-mstr.      
+ 
+ 
+    display blank-screen. 
+    accept sys-time			from time. 
+ 
+    display scr-closing-screen. 
+ 
+ 
+    display blank-line-24. 
+ 
+ 
+*   call program "MENU". 
+ 
+    stop run. 
+ 
+az0-99-exit. 
+    exit. 
+ 
+da1-delete-claim. 
+ 
+    move clmhdr-orig-batch-nbr		to 	hold-batch-nbr. 
+    move clmhdr-orig-claim-nbr		to 	hold-claim-nbr. 
+ 
+    perform sa1-add-claims-totals	thru	sa1-99-exit. 
+ 
+da1-20-delete-records. 
+ 
+*mf    delete claims-mstr record physical        
+    delete claims-mstr record 
+ 		invalid key 
+ 			move 3 to err-ind 
+ 			perform za0-common-error thru za0-99-exit 
+ 			go to az0-end-of-job. 
+ 
+ 
+    add 1				to ctr-pay-adjust-deleted. 
+ 
+    read claims-mstr next  
+	at end  
+*mf		move spaces	to key-clm-batch-nbr 
+*mf		move spaces	to key-clm-claim-nbr 
+		move spaces 	to clmdtl-b-batch-nbr 
+		move zeros 	to clmdtl-b-claim-nbr 
+		go to da1-99-exit. 
+ 
+*mf    retrieve claims-mstr key fix position 
+*mf        into key-claims-mstr. 
+ 
+    add 1				to ctr-claims-mstr-reads. 
+ 
+*mf    if    key-clm-batch-nbr = hold-batch-nbr 
+*mf      and key-clm-claim-nbr = hold-claim-nbr 
+    if    clmdtl-b-batch-nbr = hold-batch-nbr 
+      and clmdtl-b-claim-nbr = hold-claim-nbr 
+    then 
+        go to da1-20-delete-records. 
+*   (else) 
+*   endif 
+ 
+*   (at this point you will have a new claim header) 
+ 
+da1-99-exit. 
+    exit. 
+ 
+ 
+ 
+ra1-sel-read-next-batctrl. 
+ 
+*   if 	  batctrl-clinic-nbr-1-2 not = sel-clinic-nbr 
+*     and ((sel-clinic-nbr < 60 and batctrl-clinic-nbr-1-2 > 59) 
+*      or  (sel-clinic-nbr > 59 and sel-clinic-nbr < 80   and 
+*           batctrl-clinic-nbr-1-2 > 79) 
+*      or  (sel-clinic-nbr = 80 and batctrl-clinic-nbr-1-2 > 80) 
+*      or  (sel-clinic-nbr = 81 and batctrl-clinic-nbr-1-2 > 81)) 
+ 
+    if 	  batctrl-bat-clinic-nbr-1-2 not = sel-clinic-nbr 
+      and (   (sel-clinic-nbr = 22 and batctrl-bat-clinic-nbr-1-2 > 22) 
+           or (    sel-clinic-nbr > 59 
+               and sel-clinic-nbr < 66 
+               and batctrl-bat-clinic-nbr-1-2 > 65) 
+           or (    sel-clinic-nbr = 80 
+               and batctrl-bat-clinic-nbr-1-2 > 80) 
+           or (    sel-clinic-nbr = 81 
+	       and batctrl-bat-clinic-nbr-1-2 > 81) 
+           or (    sel-clinic-nbr = 82 
+	       and batctrl-bat-clinic-nbr-1-2 > 82) 
+           or (    sel-clinic-nbr = 83 
+	       and batctrl-bat-clinic-nbr-1-2 > 83) 
+           ) 
+    then 
+	move 5				to err-ind 
+	move "Y"			to eof-batctrl-file 
+	go to ra1-99-exit. 
+*   (else) 
+*   endif 
+ 
+*    (payments are stored as negative amounts in f001 file but are to 
+*     appear as positive in the report so sign is reversed) 
+ 
+    if   batctrl-batch-type  = "P" 
+     and batctrl-adj-cd      = "C" 
+    then 
+        subtract batctrl-calc-ar-due	from zero 
+					giving batctrl-calc-ar-due 
+        subtract batctrl-calc-tot-rev	from zero 
+					giving batctrl-calc-tot-rev 
+        subtract batctrl-manual-pay-tot	from zero 
+					giving batctrl-manual-pay-tot. 
+*   (else) 
+*   endif 
+ 
+    if    ( batctrl-batch-type          =   "P" 
+					 or "A"		) 
+* (y2k)
+      and ( batctrl-date-period-end not > input-date	) 
+      and ( batctrl-batch-status        = "4"		) 
+    then 
+	move "Y"			to	flag-rec 
+	perform sa4-process-detail-line	thru sa4-99-exit 
+	move 2				to   ss-r-d 
+	perform sa2-add-batch-totals	thru sa2-99-exit 
+	go to ra1-99-exit. 
+*   (else) 
+*   endif 
+ 
+    move 1				to ss-r-d. 
+    perform sa2-add-batch-totals	thru sa2-99-exit. 
+ 
+    read batch-ctrl-file next 
+	at end 
+	    move 6			to err-ind 
+	    move "Y"			to eof-batctrl-file 
+	    go to ra1-99-exit. 
+	 
+*mf    retrieve batch-ctrl-file key fix position 
+*mf	into key-batctrl-file. 
+ 
+    add 1				to ctr-batctrl-file-reads. 
+ 
+ra1-99-exit. 
+    exit. 
+ra2-read-claim. 
+ 
+    perform ra3-read-clmhdr		thru ra3-99-exit. 
+ 
+    if batctrl-batch-nbr not = clmhdr-orig-batch-nbr    
+    then 
+* 	(no claims) 
+	move  7				to err-ind 
+	perform za0-common-error	thru za0-99-exit 
+	go to az0-end-of-job. 
+*   (else) 
+*   endif 
+ 
+ra2-99-exit. 
+    exit. 
+ 
+ 
+ 
+ra3-read-clmhdr. 
+ 
+    move zeros				to 	clmhdr-claim-id. 
+    move batctrl-batch-nbr		to	clmhdr-batch-nbr. 
+    add  1				to	clmhdr-claim-nbr. 
+ 
+*mf    move clmhdr-claim-id		to key-clm-data. 
+*mf    move "B"				to key-clm-key-type. 
+ 
+    move clmhdr-claim-id		to clmdtl-b-data. 
+    move "B"				to clmdtl-b-key-type. 
+ 
+*mf    read claims-mstr key is key-claims-mstr approximate 
+*mf	invalid key 
+*mf	    move  7			to err-ind 
+*mf	    perform za0-common-error	thru za0-99-exit 
+*mf	    go to az0-end-of-job.  
+ 
+    start claims-mstr key is greater than or equal to key-claims-mstr
+	invalid key 
+	    move  7			to err-ind 
+	    perform za0-common-error	thru za0-99-exit 
+	    go to az0-end-of-job.  
+    read claims-mstr next.
+ 
+    if status-cobol-claims-mstr = 23 
+				or 99 
+    then 
+	move 7				to	err-ind 
+	perform za0-common-error	thru	za0-99-exit 
+	go to az0-end-of-job. 
+*   (else) 
+*   endif 
+ 
+*mf    retrieve claims-mstr key fix position 
+*mf	into key-claims-mstr. 
+ 
+*mf    if key-clm-key-type not = "B" 
+    if clmdtl-b-key-type not = "B" 
+    then 
+	move 7				to	err-ind 
+	perform za0-common-error	thru	za0-99-exit 
+	go to az0-end-of-job. 
+*   (else) 
+*   endif 
+    add 1				to ctr-claims-mstr-reads. 
+ 
+    move clmhdr-orig-batch-nbr		to hold-clmhdr-batch-nbr. 
+    move clmhdr-orig-claim-nbr		to hold-clmhdr-claim-nbr. 
+ 
+ra3-99-exit. 
+    exit. 
+ra4-read-next-batch. 
+ 
+    read batch-ctrl-file next 
+	at end 
+	    move "Y"			to eof-batctrl-file 
+	    go to ra4-99-exit. 
+ 
+*mf    retrieve batch-ctrl-file key fix position 
+*mf	into key-batctrl-file. 
+ 
+    add 1				to ctr-batctrl-file-reads. 
+ 
+    move "N"				to	flag-rec. 
+    perform ra1-sel-read-next-batctrl	thru ra1-99-exit 
+	until   eof-batctrl-file = "Y" 
+	     or valid-rec. 
+ 
+    if eof-batctrl-file = "Y" 
+    then 
+	go to ra4-99-exit. 
+*   (else) 
+*   endif 
+ 
+*	if the current claim header that was read is not the correct 
+*	batch number then read the header with the new batch number 
+ 
+    if clmhdr-orig-batch-nbr not = batctrl-batch-nbr 
+    then 
+	perform ra2-read-claim		thru	ra2-99-exit. 
+*   (else) 
+*   endif 
+ 
+ra4-99-exit. 
+    exit. 
+sa1-add-claims-totals. 
+ 
+    perform sa3-find-ss-type		thru sa3-99-exit. 
+ 
+*	(11 has to be subtract from ss-type to adjust for difference 
+*        in dimensions of the two tables) 
+    subtract 11				from ss-type. 
+ 
+    add clmhdr-tot-claim-ar-ohip	to claims-totals-item (ss-type,1).    
+    add clmhdr-tot-claim-ar-oma		to claims-totals-item (ss-type,2).   
+    add clmhdr-manual-and-tape-paymnts	to claims-totals-item (ss-type,1) 
+					   claims-totals-item (ss-type,2). 
+    add 1	                     	to claims-totals-item (ss-type,3). 
+ 
+sa1-99-exit. 
+    exit. 
+ 
+ 
+ 
+sa2-add-batch-totals. 
+ 
+    perform sa3-find-ss-type 		thru	sa3-99-exit. 
+ 
+    add batctrl-calc-ar-due		to 
+					batch-totals-item (ss-r-d, ss-type, 1). 
+    add batctrl-calc-tot-rev		to 
+					batch-totals-item (ss-r-d, ss-type, 2). 
+    add batctrl-manual-pay-tot		to 
+					batch-totals-item (ss-r-d, ss-type, 3).           
+    add 1                  		to 
+					batch-totals-item (ss-r-d, ss-type, 4).      
+ 
+sa2-99-exit. 
+    exit. 
+sa3-find-ss-type. 
+ 
+    if batctrl-batch-type = "C" 
+    then 
+	add 1, batctrl-agent-cd		giving	ss-type 
+    else 
+	if batctrl-batch-type = "A" 
+	then 
+	    if batctrl-adj-cd = "A" 
+	    then 
+		move 12			to	ss-type 
+	    else 
+	        if batctrl-adj-cd = "B" 
+		then 
+		    move 13		to	ss-type 
+		else 
+*		    (batctrl-adj-cd  must = "R")  
+		    move 14		to	ss-type 
+*               endif 
+*           endif 
+	else 
+*	    (batctrl-batch-type must = "P") 
+	    if batctrl-adj-cd = "M" 
+	    then 
+		move 16			to	ss-type 
+	    else 
+*		(batctrl-adj-cd must = "C") 
+		move 17			to	ss-type. 
+*           endif 
+*       endif 
+*    endif 
+ 
+sa3-99-exit. 
+    exit. 
+ 
+ 
+sa4-process-detail-line. 
+ 
+    perform sb1-move-fields		thru	sb1-99-exit. 
+    perform xa3-write-detail-line	thru	xa3-99-exit. 
+ 
+sa4-99-exit. 
+    exit. 
+sb1-move-fields. 
+ 
+    move batctrl-cycle-nbr		to l1-cycle. 
+    move batctrl-bat-clinic-nbr-1-2	to l1-batch-nbr-1-2. 
+    move batctrl-bat-doc-nbr		to l1-doc-nbr. 
+    move batctrl-bat-week		to l1-week. 
+    move batctrl-bat-day		to l1-day. 
+    move batctrl-last-claim-nbr		to l1-forms-count. 
+ 
+ 
+    move batctrl-calc-ar-due		to	l1-net-a-r. 
+    move batctrl-calc-tot-rev		to	l1-net-revenue. 
+    move batctrl-manual-pay-tot		to	l1-cash-entered. 
+ 
+    move batctrl-amt-act		to l1-actual-total. 
+    move batctrl-amt-est		to l1-control-total. 
+    move batctrl-svc-act		to l1-actual-svc. 
+ 
+    move batctrl-svc-est		to l1-control-svc. 
+ 
+    if batctrl-batch-type = "C" 
+    then 
+	move "CLAIMS"			to l1-batch-type 
+    else 
+	if batctrl-batch-type = "P" 
+	then 
+	    move "PAYMENT"		to l1-batch-type 
+	else 
+	    if batctrl-batch-type = "A" 
+	    then 
+		move "ADJSTMNT"		to l1-batch-type 
+	    else 
+		move "UNKNOWN"		to l1-batch-type. 
+*	    endif 
+*	endif 
+*   endif 
+ 
+    move batctrl-agent-cd		to l1-agent-code. 
+ 
+sb1-99-exit. 
+    exit. 
+ta0-process-totals. 
+ 
+    perform ta1-get-grand-totals	thru ta1-99-exit. 
+    perform tb3-print-totals		thru tb3-99-exit. 
+ 
+ta0-99-exit. 
+    exit. 
+ 
+ 
+ 
+ta1-get-grand-totals. 
+ 
+    perform ta2-batch-grand-totals 	thru	ta2-99-exit 
+	varying ss-r-d 
+	from 1 by 1 
+	until   ss-r-d > 2 
+ 
+	after   ss-item  
+	from 1 by 1 
+	until   ss-item > 4. 
+ 
+    perform ta3-claim-grand-totals	thru	ta3-99-exit 
+	varying ss-item 
+	from 1 by 1 
+	until   ss-item > 3. 
+ 
+ta1-99-exit. 
+    exit. 
+ 
+ 
+ta2-batch-grand-totals. 
+ 
+    perform ta4-add-batch-claims-totals	thru	ta4-99-exit 
+	varying ss-type 
+	from 1 by 1 
+	until   ss-type > 10. 
+ 
+    add batch-totals-item (ss-r-d, 12, ss-item) 
+        batch-totals-item (ss-r-d, 13, ss-item)   
+        batch-totals-item (ss-r-d, 14, ss-item)     
+				to 
+  				batch-totals-item (ss-r-d, 15, ss-item) 
+  				batch-totals-item (ss-r-d, 19, ss-item). 
+    add batch-totals-item (ss-r-d, 16, ss-item) 
+        batch-totals-item (ss-r-d, 17, ss-item)    
+         			to 
+				batch-totals-item (ss-r-d, 18,ss-item) 
+				batch-totals-item (ss-r-d, 19,ss-item).     
+ 
+ta2-99-exit. 
+    exit. 
+ta3-claim-grand-totals. 
+ 
+    add claims-totals-item (1, ss-item) 
+        claims-totals-item (2, ss-item)   
+        claims-totals-item (3, ss-item)     
+				to 
+  				claims-totals-item (4, ss-item) 
+  				claims-totals-item (8, ss-item). 
+    add claims-totals-item (5, ss-item) 
+        claims-totals-item (6, ss-item)    
+         			to 
+				claims-totals-item (7,ss-item) 
+				claims-totals-item (8,ss-item).     
+ 
+ta3-99-exit. 
+    exit. 
+ 
+ 
+ 
+ta4-add-batch-claims-totals. 
+ 
+    add batch-totals-item (ss-r-d, ss-type, ss-item) 
+			        to 
+			        batch-totals-item (ss-r-d, 11, ss-item) 
+     				batch-totals-item (ss-r-d, 19, ss-item). 
+ 
+ta4-99-exit. 
+    exit. 
+ 
+ 
+tb3-print-totals. 
+ 
+    perform xa1-headings		thru	xa1-99-exit. 
+    perform tb4-move-prt-batch-totals	thru	tb4-99-exit. 
+ 
+*	(if no deletions don'T PRINT CLAIMS DELETION TOTALS) 
+    if ctr-pay-adjust-deleted < 1 
+	go to tb3-99-exit. 
+*   (else) 
+*   endif 
+     
+    perform xa2-headings			thru	xa2-99-exit. 
+ 
+    perform tc1-move-prt-claims-totals		thru	tc1-99-exit. 
+ 
+tb3-99-exit. 
+    exit. 
+tb4-move-prt-batch-totals. 
+ 
+    move "N"					to	prt-sw. 
+    perform tb5-print-batch-claims-totals	thru	tb5-99-exit 
+		varying ss-type from 1 by 1 until ss-type > 10. 
+ 
+*	(check whether any claims printed) 
+    if prt-sw = "Y" 
+	move "     TOTALS"			to	t10-type-r 
+	move 11					to	ss-type 
+	perform tb7-move-batch-totals		thru	tb7-99-exit 
+	write print-record from t1-print-line after advancing 1 line 
+	move spaces				to	print-line 
+	write print-record from blank-line after advancing 1 line 
+	add 2					to	ctr-line. 
+*   (else) 
+*   endif 
+ 
+    perform tb6-print-batch-adj-totals		thru	tb6-99-exit 
+	varying ss-type 
+	from 12 by 1 
+	until ss-type > 15. 
+ 
+    write print-record from blank-line after advancing 1 line. 
+    add 1					to	ctr-line. 
+ 
+    perform tb6-print-batch-adj-totals		thru	tb6-99-exit  
+	varying ss-type 
+	from 16 by 1 
+	until ss-type > 18. 
+ 
+    write print-record from blank-line after advancing 1 lines. 
+    add 1					to	ctr-line. 
+ 
+    move 19					to	ss-type. 
+    perform tb6-print-batch-adj-totals		thru	tb6-99-exit. 
+ 
+tb4-99-exit. 
+    exit. 
+tb5-print-batch-claims-totals. 
+ 
+*	(if no totals for agent don'T PRINT LINE) 
+    if   batch-totals-item (1, ss-type,4) = 0 
+     and batch-totals-item (2, ss-type,4) = 0 
+    then 
+	go to tb5-99-exit. 
+*   (else) 
+*   endif 
+ 
+    subtract 1				from ss-type 
+					giving agent-cd-ws. 
+ 
+    move agent-cd-ws			to	t10-agent-code.       
+    move "-"				to	t10-slash. 
+ 
+* 	(if this the first agent printed, print "claims") 
+    if prt-sw = "Y" 
+    then 
+	move spaces			to	t10-batch-type 
+    else 
+	move "CLAIMS"			to	t10-batch-type        
+	move "Y"			to	prt-sw. 
+ 
+    perform tb7-move-batch-totals	thru	tb7-99-exit. 
+    write print-record from t1-print-line after advancing 1 line. 
+    add 1				to 	ctr-line. 
+    move spaces				to	t1-print-line. 
+ 
+tb5-99-exit. 
+    exit. 
+tb6-print-batch-adj-totals. 
+ 
+    move batch-type (ss-type - 11)	to t10-type-r. 
+    perform tb7-move-batch-totals	thru	tb7-99-exit. 
+    write print-record from t1-print-line after advancing 1 line. 
+    move spaces				to	print-line. 
+    add 1				to 	ctr-line. 
+ 
+tb6-99-exit. 
+    exit. 
+ 
+ 
+ 
+tb7-move-batch-totals. 
+ 
+    move batch-totals-item (1,ss-type,1)	to t10-a-r-ret. 
+    move batch-totals-item (1,ss-type,2)	to t10-rev-ret. 
+    move batch-totals-item (1,ss-type,3)	to t10-cash-ret.      
+    move batch-totals-item (1,ss-type,4)	to t10-nbr-ret.         
+    move batch-totals-item (2,ss-type,1)	to t10-a-r-del. 
+    move batch-totals-item (2,ss-type,2)	to t10-rev-del. 
+    move batch-totals-item (2,ss-type,3)	to t10-cash-del.      
+    move batch-totals-item (2,ss-type,4)	to t10-nbr-del.         
+ 
+ 
+tb7-99-exit. 
+    exit. 
+tc1-move-prt-claims-totals. 
+ 
+    move spaces					to	print-line. 
+ 
+    perform tc2-move-print-claim-totals		thru	tc2-99-exit 
+	varying ss-type 
+	from 1 by 1 
+	until   ss-type > 4. 
+ 
+    write print-record from blank-line after advancing 1 line. 
+ 
+    perform tc2-move-print-claim-totals		thru	tc2-99-exit 
+	varying ss-type 
+	from 5 by 1 
+	until   ss-type > 7.   
+ 
+    write print-record from blank-line after advancing 2 lines. 
+    move 8					to	ss-type. 
+    perform tc2-move-print-claim-totals		thru	tc2-99-exit. 
+ 
+tc1-99-exit. 
+    exit. 
+ 
+ 
+ 
+tc2-move-print-claim-totals. 
+ 
+    move batch-type (ss-type)			to t10-type. 
+    move claims-totals-item (ss-type,1)		to t10-rev-del. 
+    move claims-totals-item (ss-type,2)		to t10-cash-del.   
+    move claims-totals-item (ss-type,3)		to t10-nbr-del.      
+ 
+    write print-record from t1-print-line after advancing 1 line. 
+    move spaces					to	t1-print-line. 
+ 
+tc2-99-exit. 
+    exit. 
+ 
+ 
+xa0-headings. 
+ 
+    add 1				to ctr-page. 
+    move ctr-page			to h10-page.   
+    write print-record from h10-head after advancing page. 
+    write print-record from h20-head after advancing 1 line. 
+    write print-record from h30-head after advancing 3 lines. 
+    move 4				to ctr-line. 
+ 
+xa0-99-exit. 
+    exit. 
+ 
+ 
+ 
+xa1-headings. 
+ 
+*	(if no deletes have occurred, no detail lines have been  
+*        printed, set ctr-page to 0) 
+    if ctr-pay-adjust-deleted < 1 
+	move 0				to ctr-page. 
+*   (else) 
+*   endif 
+ 
+    perform xa0-headings		thru	xa0-99-exit. 
+    write print-record from h40-head after advancing 2 lines. 
+    move "BATCH-CONTROL FILE"		to	h50-col1. 
+    move "EFFECT ON A/R"		to	h50-col2 
+						h50-col6. 
+    move "EFFECT ON REV"		to	h50-col3 
+    						h50-col7.            
+    move "EFFECT ON CASH"		to	h50-col4 
+						h50-col8. 
+    move "NUMBER"			to	h50-col5 
+						h50-col9. 
+    write print-record from h50-head after advancing 2 lines. 
+    move spaces				to h50-head. 
+    write print-record from blank-line after advancing 1 line. 
+    add 5				to 	ctr-line. 
+ 
+xa1-99-exit. 
+    exit. 
+ 
+ 
+ 
+xa2-headings. 
+ 
+    if ctr-line > 40 
+    then 
+        perform xa0-headings		thru	xa0-99-exit 
+        write print-record from h40-head after advancing 3 lines. 
+*   (else) 
+*   endif 
+ 
+    move "CLAIMS MASTER"		to	h50-col1. 
+*   move "AMOUNT OMA"			to	h50-col7. 
+*   move "AMOUNT OHIP"			to	h50-col8. 
+    move "AMOUNT OHIP"			to	h50-col7. 
+    move "AMOUNT OMA" 			to	h50-col8. 
+    move "NUMBER"			to	h50-col9. 
+    write print-record from h50-head after advancing 2 lines. 
+    write print-record from blank-line after advancing 1 line. 
+ 
+xa2-99-exit. 
+    exit. 
+xa3-write-detail-line. 
+ 
+    add 1				to ctr-line. 
+    if ctr-line > max-nbr-lines 
+    then 
+	perform xa4-headings		thru xa4-99-exit. 
+*   (else) 
+*   endif 
+ 
+    write print-record    from print-line after advancing 1 line. 
+    move spaces				to print-line. 
+ 
+xa3-99-exit. 
+    exit. 
+ 
+ 
+xa4-headings. 
+    perform xa0-headings		thru	xa0-99-exit. 
+    write print-record from h3-head after advancing 2 lines. 
+    write print-record from h4-head after advancing 1 line. 
+    write print-record from blank-line after advancing 1 line. 
+    add 5				to	ctr-line. 
+ 
+xa4-99-exit. 
+    exit. 
+za0-common-error. 
+ 
+    move err-msg (err-ind)		to	err-msg-comment. 
+    display err-msg-line. 
+    display confirm. 
+    stop " ". 
+    display blank-line-24. 
+ 
+za0-99-exit. 
+    exit. 
+ 
+
+    copy "y2k_default_sysdate_century.rtn".

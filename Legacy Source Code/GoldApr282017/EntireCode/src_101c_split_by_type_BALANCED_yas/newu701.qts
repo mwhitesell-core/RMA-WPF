@@ -1,0 +1,132 @@
+;#> PROGRAM-ID.    newu701.qts
+;
+;       ((C)) Dyad Technologies
+;
+; program purpose : transfer the manual review text records from the incoming
+;		    flat file (transferred from the web) into the f002
+;		    suspend description file
+;
+;  MODIFICATION HISTORY
+;  DATE      WHO   DESCRIPTION
+; 00/sep/15  B.E.  - original
+; 00/sep/20  B.E.  - set manual review flag to "Y'es if any desc recs found
+; 00/oct/02  B.E.  - ensured that accounting-nbr is a left justified, zero 
+;		     filled field
+; 01/mar/01  M.C.  - add a new request to select if clmhdr-status = 'I', then
+;		     set clmdtl-status in description record to be the same
+; 07/Jun/20  M.C.  - change the definition with file qualifier and output with 
+;		     the proper alias name for desc 2 to 5
+; 11/Feb/14  MC1   - Yasemin requests not to set manual review flag to "Y'es if any desc recs found
+; 12/Sep/26  MC2   - add 'on errors report  ' on output statement in first request
+
+cancel clear
+set process nolimit
+set lock file update
+
+;------------------------------------------------
+request newu701_1			     &
+                on edit        errors report &
+                on calculation errors report
+
+access submit-disk-desc
+
+; (split incoming 255 characters into up to 4  70 byte records)
+
+define x-rec-1 char*70 = clmdtl-suspend-desc-255[  1: 70]
+define x-rec-2 char*70 = clmdtl-suspend-desc-255[ 71:140]
+define x-rec-3 char*70 = clmdtl-suspend-desc-255[141:210]
+define x-rec-4 char*70 = clmdtl-suspend-desc-255[211:255]
+define x-nbr-desc-recs zoned*2	&	 
+     = 4 if x-rec-4 <> " "	&
+  else 3 if x-rec-3 <> " "	&
+  else 2 if x-rec-2 <> " "	&
+  else 1 if x-rec-1 <> " "	&
+  else 0
+		
+; 2007/06/20 - MC
+;def x-zero-fill-accounting-nbr char*10 = zerofill(rj(clmdtl-accounting-nbr))
+def x-zero-fill-accounting-nbr char*10 = zerofill(rj(clmdtl-accounting-nbr of submit-disk-desc))
+; 2007/06/20 - end
+
+;  2012/09/26 - MC2
+;output f002-suspend-desc add if x-nbr-desc-recs > 0
+output f002-suspend-desc add if x-nbr-desc-recs > 0  on errors report
+; 2012/09/26 - end
+   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+			     final clmdtl-doc-ohip-nbr of submit-disk-desc 
+   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+			     final x-zero-fill-accounting-nbr
+
+   item  clmdtl-line-no 	final 1 
+   item clmdtl-suspend-desc	final x-rec-1
+
+; 2012/09/26 - MC2
+;output f002-suspend-desc add if x-nbr-desc-recs > 1 alias f002-desc-2
+output f002-suspend-desc add if x-nbr-desc-recs > 1 alias f002-desc-2 on errors report
+; 2012/09/26  - end
+; 2006/06/20 - MC
+;   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+   item clmdtl-doc-ohip-nbr	of f002-desc-2          &
+			     final clmdtl-doc-ohip-nbr of submit-disk-desc 
+;   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+   item clmdtl-accounting-nbr	of f002-desc-2          &
+			     final x-zero-fill-accounting-nbr
+   item  clmdtl-line-no 	final 2 
+   item clmdtl-suspend-desc	final x-rec-2
+
+; 2012/09/26 - MC2
+;output f002-suspend-desc add if x-nbr-desc-recs > 2 alias f002-desc-3
+output f002-suspend-desc add if x-nbr-desc-recs > 2 alias f002-desc-3 on errors report
+; 2012/09/26 - end
+; 2007/06/20 - MC
+;   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+   item clmdtl-doc-ohip-nbr	of f002-desc-3       	&
+			     final clmdtl-doc-ohip-nbr of submit-disk-desc 
+;   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+   item clmdtl-accounting-nbr	of f002-desc-3          &
+			     final x-zero-fill-accounting-nbr
+   item  clmdtl-line-no 	final 3 
+   item clmdtl-suspend-desc	final x-rec-3
+
+; 2012/09/26 - MC2
+;output f002-suspend-desc add if x-nbr-desc-recs > 3 alias f002-desc-4
+output f002-suspend-desc add if x-nbr-desc-recs > 3 alias f002-desc-4 on errors report
+; 2012/09/26 - end
+; 2007/06/20 - MC
+;   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+   item clmdtl-doc-ohip-nbr	of f002-desc-4      	&
+			     final clmdtl-doc-ohip-nbr of submit-disk-desc 
+;   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+   item clmdtl-accounting-nbr	of f002-desc-4          &
+			     final x-zero-fill-accounting-nbr
+   item  clmdtl-line-no 	final 4 
+   item clmdtl-suspend-desc	final x-rec-4
+
+output f002-suspend-hdr update  		 &
+	viaindex suspend-hdr-id using   	 &
+		 clmdtl-doc-ohip-nbr		,&
+; 2012/09/26 - MC2
+;	 	 x-zero-fill-accounting-nbr
+	 	 x-zero-fill-accounting-nbr on errors report
+; 2012/09/26 - end
+
+   item clmhdr-nbr-suspend-desc-recs of f002-suspend-hdr 	&
+		final  x-nbr-desc-recs
+;  (00/sep/20 B.E.)
+; 2011/02/14 - MC1
+;   item clmhdr-manual-review	final "Y"
+; 2011/02/14 - end
+
+;2001/03/01 - MC - add the following new request newu701_2
+request newu701_2
+
+access f002-suspend-desc			&
+   link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr &
+    to  clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr of f002-suspend-hdr
+
+sel if clmhdr-status = 'I'
+
+output f002-suspend-desc update on errors report
+   item clmdtl-status final 'I'
+   
+build $obj/newu701

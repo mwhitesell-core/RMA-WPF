@@ -1,0 +1,68 @@
+; 2016/Dec/01	MC	utl0013.qts
+;
+; Helena made the below rule:
+;     If the doctor has a Dept 13 and Dept 14 RMA #, Dept 14 should be credited with the OHIP discounts (MOHD) 
+;     and the OHIP premiums (AGEP).
+; This program should be run before running for MOHD and/or AGEP macros
+; This program will set 'Y' to pay-this-doctor-ohip-premium for dept 14 if doctor has both dept 13 and 14
+; This is the first pass of utl0013
+
+cancel clear
+set process nolimit
+set lock record update
+
+request one
+access f020-doctor-mstr
+
+choose doc-ohip-nbr
+
+sel if (    (doc-dept = 13 or doc-dept =14)			    &
+        and (doc-date-fac-term = 0 or doc-date-fac-term > sysdate)  &
+       )
+
+sorted on doc-ohip-nbr
+
+temp xcount     
+item xcount = xcount + 1  reset at doc-ohip-nbr
+
+subfile utl0013_a  keep at doc-ohip-nbr	&
+	include  doc-ohip-nbr,		&
+		 xcount 
+
+request two
+access *utl0013_a 			&
+	link doc-ohip-nbr to doc-ohip-nbr of f020-doctor-mstr  &
+	link doc-nbr to doc-nbr of f020-doctor-extra opt
+
+sel if 	(    	xcount > 1		&
+         and   (doc-dept = 13 or doc-dept = 14)	&
+	)
+
+temp rec-ind char*6 
+item rec-ind = 'Before'
+
+subfile utl0013_b keep	include		&
+	 rec-ind,			&
+	 doc-ohip-nbr of f020-doctor-mstr, &
+	 doc-nbr of f020-doctor-mstr,	&
+	 doc-dept of f020-doctor-mstr,	&
+	 doc-date-fac-term of f020-doctor-mstr,	&
+	 pay-this-doctor-ohip-premium of f020-doctor-extra
+
+
+output f020-doctor-extra update on errors report
+   item	 pay-this-doctor-ohip-premium final 'Y'  &
+         if doc-dept of f020-doctor-mstr = 14    &
+   else  ' ' 					
+
+item rec-ind = 'After'
+
+subfile utl0013_b alias after append include &
+	 rec-ind,			&
+	 doc-ohip-nbr of f020-doctor-mstr, &
+	 doc-nbr of f020-doctor-mstr,	&
+	 doc-dept of f020-doctor-mstr,	&
+	 doc-date-fac-term of f020-doctor-mstr,	&
+	 pay-this-doctor-ohip-premium of f020-doctor-extra
+
+build $obj/utl0013

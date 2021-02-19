@@ -1,0 +1,139 @@
+; 2013/Aug/28 - MC - original  
+;		fixed the records for difference that are generated from check_f001_f002_all.qzs
+; 2014/Aug/18 - MC1 - add on calculation and edit on errors report in 3 requests
+;		    - correct accordingly 
+
+cancel clear
+set process nolimit
+set lock record update
+
+
+; MC1
+;request one		
+request one		on calculation errors report			&
+			on edit errors report
+
+access *extf002hdr
+
+select if 								&
+      batctrl-nbr-claims-in-batch <> xcount    				&
+   or batctrl-last-claim-nbr <> key-clm-claim-nbr  			&
+   or (     batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip 		&
+	and batctrl-batch-type = 'C')					&
+   or (     batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip 	        &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      	&
+   or (     batctrl-calc-ar-due  <> clmhdr-tot-claim-ar-ohip 		&
+	and batctrl-batch-type = 'C')					&
+   or (     batctrl-calc-ar-due  <> clmhdr-tot-claim-ar-ohip 	       	&
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      	&
+   or (     batctrl-manual-pay-tot  <> clmhdr-manual-and-tape-payments 	&
+	and batctrl-batch-type = 'P')					&
+   or batctrl-amt-act <> batctrl-amt-est
+
+output f001-batch-control-file update 					&
+	via batctrl-batch-nbr using batctrl-batch-nbr of extf002hdr  on errors report
+  item    batctrl-last-claim-nbr final key-clm-claim-nbr          	&
+       if batctrl-last-claim-nbr <> key-clm-claim-nbr  	
+  item    batctrl-nbr-claims-in-batch  final xcount    			&
+       if batctrl-nbr-claims-in-batch <> xcount    		
+  item    batctrl-amt-est final batctrl-amt-act		                &
+       if batctrl-amt-act <> batctrl-amt-est
+  item    batctrl-calc-tot-rev final  clmhdr-tot-claim-ar-ohip          &
+       if   (     batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip	& 
+	      and batctrl-batch-type = 'C')				&
+         or (     batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip      &
+	      and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))   
+  item    batctrl-calc-ar-due  final  clmhdr-tot-claim-ar-ohip          &
+       if   (     batctrl-calc-ar-due  <> clmhdr-tot-claim-ar-ohip	& 
+	      and batctrl-batch-type = 'C')				&
+         or (     batctrl-calc-ar-due  <> clmhdr-tot-claim-ar-ohip 	&
+	      and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      
+  item   batctrl-manual-pay-tot final clmhdr-manual-and-tape-payments   &
+       if (     batctrl-manual-pay-tot  <> clmhdr-manual-and-tape-payments &
+	    and batctrl-batch-type = 'P')			
+
+  item batctrl-amt-act final clmhdr-tot-claim-ar-ohip			&
+	if batctrl-amt-act <> clmhdr-tot-claim-ar-ohip
+  item batctrl-amt-est final clmhdr-tot-claim-ar-ohip			&
+	if batctrl-amt-est <> clmhdr-tot-claim-ar-ohip
+;----------------------------------
+
+;MC1
+;request two
+request two		on calculation errors report			&
+			on edit errors report
+
+
+access *extf002dtl
+
+sel if (     batctrl-calc-tot-rev <> clmdtl-fee-ohip          		&
+	and  batctrl-batch-type = 'C')					&
+    or (     batctrl-calc-tot-rev <> clmdtl-fee-ohip          	       	&
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      	&
+    or (     batctrl-calc-ar-due  <> clmdtl-fee-ohip          		&
+	and  batctrl-batch-type = 'C')					&
+    or (     batctrl-calc-ar-due  <> clmdtl-fee-ohip          	       	&
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      	&
+    or (     batctrl-manual-pay-tot  <> clmdtl-fee-ohip                 &
+	and  batctrl-batch-type = 'P')					&
+    or batctrl-svc-act <> tot-svc
+
+output f001-batch-control-file update  					&
+	via batctrl-batch-nbr using batctrl-batch-nbr of extf002dtl on errors report
+   item    batctrl-svc-act  final tot-svc   				&
+        if batctrl-svc-act <> tot-svc
+   item    batctrl-svc-est  final tot-svc   				&
+        if batctrl-svc-est <> tot-svc
+   item    batctrl-calc-tot-rev final clmdtl-fee-ohip             	&
+       if   (     batctrl-calc-tot-rev <> clmdtl-fee-ohip          	&
+             and  batctrl-batch-type = 'C')				&
+         or (     batctrl-calc-tot-rev <> clmdtl-fee-ohip          	&
+	     and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))  
+   item    batctrl-calc-ar-due  final clmdtl-fee-ohip             	&
+       if   (     batctrl-calc-ar-due  <> clmdtl-fee-ohip          	&
+             and  batctrl-batch-type = 'C')				&
+         or (     batctrl-calc-ar-due  <> clmdtl-fee-ohip          	&
+	     and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A')) 
+   item    batctrl-manual-pay-tot final clmdtl-fee-ohip		        &
+       if (     batctrl-manual-pay-tot  <> clmdtl-fee-ohip              &
+	   and  batctrl-batch-type = 'P')			
+
+  item batctrl-amt-act final clmdtl-fee-ohip           	&
+	if batctrl-amt-act <> clmdtl-fee-ohip           
+  item batctrl-amt-est final clmdtl-fee-ohip           	&
+	if batctrl-amt-est <> clmdtl-fee-ohip
+;----------------------------------
+
+;MC1
+;request three  
+request three		on calculation errors report			&
+			on edit errors report
+
+access *extf002hdrdtl					   		 	&	
+  link "B", key-clm-batch-nbr, key-clm-claim-nbr, "00000", "0"			& 
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, 			&
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr  
+
+sel if (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip of extf002hdrdtl       &
+	and  batctrl-batch-type = 'C')						&
+    or (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip of extf002hdrdtl       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      		&
+    or (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip of extf002hdrdtl       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      		&
+    or (     clmhdr-manual-and-tape-payments  <> clmdtl-fee-ohip of extf002hdrdtl   &
+	and  batctrl-batch-type = 'P')			
+
+output f002-claims-mstr update on errors report 
+   item    clmhdr-tot-claim-ar-ohip final clmdtl-fee-ohip of extf002hdrdtl      &
+       if (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip  of extf002hdrdtl	&
+	   and  batctrl-batch-type = 'C')					&
+       or (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip of extf002hdrdtl    &
+	   and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      	&
+       or (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip of extf002hdrdtl    &
+	   and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      
+   item   clmhdr-manual-and-tape-payments final clmdtl-fee-ohip	of extf002hdrdtl &
+       if (     clmhdr-manual-and-tape-payments  <> clmdtl-fee-ohip of extf002hdrdtl  &
+	   and  batctrl-batch-type = 'P')			
+   item    clmhdr-tot-claim-ar-oma  final clmhdr-tot-claim-ar-ohip of f002-claims-mstr
+
+build $obj/fix_f001_f002_all

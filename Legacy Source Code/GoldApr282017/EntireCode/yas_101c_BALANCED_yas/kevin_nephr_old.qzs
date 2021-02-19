@@ -1,0 +1,167 @@
+set default
+set rep nolimit
+
+
+access f002-claims-mstr         &
+        link (nconvert(clmhdr-claim-id[4:3]))   &
+        to doc-nbr of f020-doctor-mstr          &
+        link clmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220188000 to 220188999,   &
+                                              220403000 to 220403999,   &
+                                              220425000 to 220425999,   &
+                                              220448000 to 220448999,   &
+                                              220455000 to 220455999,   &
+                                              220459000 to 220459999,   &
+                                              220481000 to 220481999,   &
+                                              220662000 to 220662999,   &
+                                              220839000 to 220839999,   &
+                                              220879000 to 220879999,   &
+        key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                      &
+                clmdtl-sv-date >= '19990401'    &
+           and  clmdtl-sv-date <= '20000131'    &
+           and  clmdtl-oma-cd      <> "0000"    & ; details only
+           and  clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+           and  clmdtl-oma-cd      <> "PAID"    & ; details only
+           and  clmdtl-oma-cd      <> "MICM"    & ; details only
+           and  clmdtl-oma-cd      <> "MISJ"    & ; details only
+           and  clmdtl-oma-cd      <> "MISC"    & ; details only
+           and  clmdtl-oma-cd      <> "MICV"    & ; details only
+           and  clmdtl-oma-cd      <> "MISP"    & ; details only
+           and  clmdtl-oma-cd      <> "MOHR"    & ; "  "
+           and  clmdtl-oma-cd      <> "MICB"    & ; "  "
+           and  clmdtl-oma-cd      <> "MIBR"    & ; "  "
+           and  clmdtl-oma-cd      <> "MINH"    & ; "  "
+           and  clmdtl-oma-cd      <> "MHSC"    & ; "  "
+           and  clmdtl-oma-cd      <> "NHSC"    & ; "  "
+           and  clmdtl-adj-nbr     = 0            ; regular details only
+
+def x-doc-name char*27 = pack(doc-name +" "+ doc-inits)
+
+def x-yyyy cha*4 = clmdtl-sv-date[1:4]
+
+def x-mm cha*2 = clmdtl-sv-date[5:2]
+
+def x-dd cha*2 = clmdtl-sv-date[7:2]
+
+
+def x-mmm   cha*9 = "JANUARY"   if x-mm  = "01"      &
+               else "FEBRUARY"  if x-mm  = "02"      &
+               else "MARCH"     if x-mm  = "03"      &
+               else "APRIL"     if x-mm  = "04"      &
+               else "MAY"       if x-mm  = "05"      &
+               else "JUNE"      if x-mm  = "06"      &
+               else "JULY"      if x-mm  = "07"      &
+               else "AUGUST"    if x-mm  = "08"      &
+               else "SEPTEMBER" if x-mm  = "09"      &
+               else "OCTOBER"   if x-mm  = "10"      &
+               else "NOVEMBER"  if x-mm  = "11"      &
+               else "DECEMBER"  if x-mm  = "12"
+
+def x-apr num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='04')   &
+                else 0
+
+def x-may num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='05')   &
+                else 0
+
+def x-jun num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='06')   &
+                else 0
+
+def x-jul num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='07')   &
+                else 0
+
+def x-aug num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='08')   &
+                else 0
+
+def x-sep num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='09')   &
+                else 0
+
+def x-oct num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='10')   &
+                else 0
+
+def x-nov num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='11')   &
+                else 0
+
+def x-dec num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '1999' and x-mm ='12')   &
+                else 0
+
+def x-jan num*7 =     clmdtl-fee-ohip                   &
+                  if (x-yyyy = '2000' and x-mm ='01')   &
+                else 0
+
+
+sort on doc-nbr on x-yyyy on x-mm
+
+set subfile name nephr keep at x-mm
+
+report summary                  &
+  doc-nbr                       &
+  x-doc-name                    &
+  x-mm                          &
+  x-apr  subtotal               &
+  x-may  subtotal               &
+  x-jun  subtotal               &
+  x-jul  subtotal               &
+  x-aug  subtotal               &
+  x-sep  subtotal               &
+  x-oct  subtotal               &
+  x-nov  subtotal               &
+  x-dec  subtotal               &
+  x-jan  subtotal
+
+
+build $pb_obj/kevin_nephr1
+
+set report nolimit
+set rep page length 0
+set rep dev  disc name kevin_nephr
+set nohead
+set noformfee
+
+access *nephr
+
+
+sort on doc-nbr   &
+     on x-mm
+
+def x-comma cha*1 = ","
+
+footing at doc-nbr             &
+doc-nbr                        &
+x-comma                        &
+x-doc-name                     &
+x-comma                        &
+x-apr sub                      &
+x-comma                        &
+x-may sub                      &
+x-comma                        &
+x-jun sub                      &
+x-comma                        &
+x-jul sub                      &
+x-comma                        &
+x-aug sub                      &
+x-comma                        & 
+x-sep sub                      &
+x-comma                        &
+x-oct sub                      &
+x-comma                        & 
+x-nov sub                      &
+x-comma                        &
+x-dec sub                      &
+x-comma                        &
+x-jan sub 
+
+build $obj/kevin_nephr2
+

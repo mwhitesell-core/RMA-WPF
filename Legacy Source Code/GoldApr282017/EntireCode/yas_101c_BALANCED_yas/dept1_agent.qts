@@ -1,0 +1,124 @@
+;doc     : dept1_agent.qts
+;purpose : ohip billings from July 1,2003                              
+;          total billing amount by doctor include "B" adjustments
+;          then write dept1_misc.qts and misc amount by doctor
+;          report misc oma code then clmhdr-reference for each code
+;who     : Leena      
+;
+; *************************************************************
+
+;Date		Who		Description
+;2004/04150	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one
+
+access f002-claims-mstr     
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220000000 to 220999999,  &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if      clmhdr-doc-dept = 1                     &
+                           and  clmhdr-batch-type  = 'C'
+                
+
+subfile dept1   keep include                     &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-agent-cd              of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dept1                                                            &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+
+select f002-claims-mstr if                   &
+            clmdtl-date-period-end >= '20030701' & 
+;       and  clmdtl-date-period-end <= '20040324' & 
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     
+
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+sort on x-doc-nbr    
+
+temp x-agent-0   zoned*7 signed
+item x-agent-0   =   x-agent-0  + clmdtl-fee-ohip   &
+	if clmhdr-agent-cd = 0 reset at x-doc-nbr 
+
+temp x-agent-1   zoned*7 signed
+item x-agent-1   =   x-agent-1  + clmdtl-fee-ohip   &
+        if clmhdr-agent-cd = 1 reset at x-doc-nbr
+
+temp x-agent-2   zoned*7 signed
+item x-agent-2   =   x-agent-2  + clmdtl-fee-ohip   &
+        if clmhdr-agent-cd = 2 reset at x-doc-nbr
+
+temp x-agent-4   zoned*7 signed
+item x-agent-4   =   x-agent-4  + clmdtl-fee-ohip   &
+        if clmhdr-agent-cd = 4 reset at x-doc-nbr
+
+temp x-agent-6   zoned*7 signed
+item x-agent-6   =   x-agent-6  + clmdtl-fee-ohip   &
+        if clmhdr-agent-cd = 6 reset at x-doc-nbr
+
+temp x-agent-7   zoned*7 signed
+item x-agent-7   =   x-agent-7  + clmdtl-fee-ohip   &
+        if clmhdr-agent-cd = 7 reset at x-doc-nbr
+
+temp x-agent-9   zoned*7 signed
+item x-agent-9   =   x-agent-9  + clmdtl-fee-ohip   &
+        if clmhdr-agent-cd = 9 reset at x-doc-nbr
+
+temp x-tot       zoned*7 signed
+item x-tot       =   x-tot      + clmdtl-fee-ohip   &
+                 reset at x-doc-nbr
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+
+subfile dept11  portable keep at x-doc-nbr include  &
+x-doc-nbr                                          ,&
+x-agent-0                                          ,&
+comma                                              ,&
+x-agent-1                                          ,&
+comma                                              ,&
+x-agent-2                                          ,&
+comma                                              ,&
+x-agent-4                                          ,&
+comma                                              ,&
+x-agent-6                                          ,&
+comma                                              ,&
+x-agent-7                                          ,&
+comma                                              ,&
+x-agent-9                                          ,&
+comma                                              ,&
+x-tot                                              ,&
+x-cr
+
+build $obj/dept1_agent

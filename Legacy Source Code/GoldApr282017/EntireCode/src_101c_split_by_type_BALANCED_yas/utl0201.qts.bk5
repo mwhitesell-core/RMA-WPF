@@ -1,0 +1,156 @@
+;#> PROGRAM-ID.   utl0201.qts
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :
+;	- extract data from all 'doctor changes audit' files into csv file so that it can be loaded into SQL
+;
+;  MODIFICATION HISTORY
+;    DATE   WHO   DESCRIPTION
+; 2015/mar/03 b.e - original
+;
+cancel clear
+
+set stacksize 15000
+run utl0201
+
+set default
+set verify errors
+set process nolimit
+set lock record update
+
+global temp w-current-ep-nbr            integer*8 signed size 4
+global temp w-first-ep-nbr-of-fiscal-yr integer*8 signed size 4
+global temp w-iconst-date-period-end    char*8
+
+global temp w-flag-run-download-ytd-payments char*1 
+
+;-------------------------------------------------------------------------------
+; OBTAIN CONSTANTS VALUES FOR PASSING TO SUBSEQUENT REQUESTS
+;
+request utl0201_a_constants_values_ep_nbr       &
+                on edit        errors report &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+item w-current-ep-nbr            = current-ep-nbr
+item w-first-ep-nbr-of-fiscal-yr = first-ep-nbr-of-fiscal-yr
+
+request utl0201_b_get_ped_date                  &
+                on edit        errors report &
+                on calculation errors report
+access f191-earnings-period 
+choose ep-nbr
+select if ep-nbr = w-current-ep-nbr
+item w-iconst-date-period-end    = ascii(iconst-date-period-end)[1:8]
+
+;-------------------------------------------------------------------------------
+request utl0201_1 on edit        errors report &
+                  on calculation errors report
+;
+;-------------------------------------------------------------------------------
+access f119-doctor-ytd				&
+	link doc-nbr 				&
+	to   doc-nbr of f020-doctor-mstr opt	&
+	link comp-code 				&
+	to   comp-code of f190-comp-codes opt
+;
+; select 'payments' for download
+select if     rec-type = "A"			&
+	  and comp-type of f190-comp-codes = "P"
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+def x-ped      char*6 = ascii(w-current-ep-nbr)[1:6]
+def x-last-mod-date-time char*14 = ascii(last-mod-date of f119-doctor-ytd) + ascii(LAST-MOD-TIME  of f119-doctor-ytd)
+
+subfile utl0201_f119_payments portable keep include	&
+  DOC-NBR of f119-doctor-ytd                  ,&
+  x-delimiter  						 ,&
+  doc-dept          ,&
+  x-delimiter  						 ,&
+  doc-ohip-nbr of f119-doctor-ytd        ,&
+  x-delimiter  						 ,&
+  x-ped                					 ,&
+  x-delimiter  						 ,&
+  w-iconst-date-period-end                               ,&
+  x-delimiter  						 ,&
+  COMP-CODE  of f119-doctor-ytd              ,&
+  x-delimiter  						 ,&
+  PROCESS-SEQ of f119-doctor-ytd             ,&
+  x-delimiter  						 ,&
+  COMP-CODE-GROUP of f119-doctor-ytd         ,&
+  x-delimiter  						 ,&
+  REC-TYPE                 ,&
+  x-delimiter  						 ,&
+  AMT-MTD                  ,&
+  x-delimiter  						 ,&
+  AMT-YTD                  ,&
+  x-delimiter  						 ,&
+  LAST-MOD-DATE of  f119-doctor-ytd          ,&
+  x-delimiter  						 ,&
+  LAST-MOD-TIME of f119-doctor-ytd          ,&
+  x-delimiter  						 ,&
+  LAST-MOD-USER-ID of f119-doctor-ytd       		 ,&
+  x-lf
+  
+;-------------------------------------------------------------------------------
+request utl0201_1 on edit        errors report &
+                  on calculation errors report
+;
+access f119-doctor-ytd-history			&
+	link doc-nbr 				&
+	to   doc-nbr of f020-doctor-mstr opt	&
+	link comp-code 				&
+	to   comp-code of f190-comp-codes opt	&
+	link ep-nbr of f119-doctor-ytd-history	&
+        to   ep-nbr of f191-earnings-period opt
+item w-iconst-date-period-end    = ascii(iconst-date-period-end)[1:8]
+;
+; select 'payments' for download
+select if     rec-type = "A"			&
+	  and comp-type of f190-comp-codes = "P"
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+def x-ped      char*6 = ascii(w-current-ep-nbr)[1:6]
+def x-blank-last-mod-date char*8 = " "
+def x-blank-last-mod-time char*5 = "  "
+def x-blank-last-mod-user-id  char*15 = " "
+
+subfile utl0201_f119_payments portable keep append include	&
+  DOC-NBR of f119-doctor-ytd-history          ,&
+  x-delimiter  						 ,&
+  doc-dept          ,&
+  x-delimiter  						 ,&
+  doc-ohip-nbr of  f020-doctor-mstr       ,&
+  x-delimiter  						 ,&
+  ep-nbr of f119-doctor-ytd-history			,&
+  x-delimiter  						 ,&
+  w-iconst-date-period-end                               ,&
+  x-delimiter  						 ,&
+  COMP-CODE  of f119-doctor-ytd-history      ,&
+  x-delimiter  						 ,&
+  PROCESS-SEQ of f119-doctor-ytd-history    ,&
+  x-delimiter  						 ,&
+  COMP-CODE-GROUP of f119-doctor-ytd-history ,&
+  x-delimiter  						 ,&
+  REC-TYPE                 ,&
+  x-delimiter  						 ,&
+  AMT-MTD                  ,&
+  x-delimiter  						 ,&
+  AMT-YTD                  ,&
+  x-delimiter  						 ,&
+  x-blank-last-mod-date                              ,&
+  x-delimiter  						 ,&
+  x-blank-last-mod-time                             ,&
+  x-delimiter  						 ,&
+  x-blank-last-mod-user-id                          		 ,&
+  x-lf
+  
+build $obj/utl0201
+

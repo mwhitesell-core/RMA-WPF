@@ -1,0 +1,147 @@
+;#> PROGRAM-ID.     D020A.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Display of YTD system maintained values
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/JAN/01  ____   B.E.     - original
+;     93/DEC/29  ____   B.E.     - added FIX designer routine to allow
+;				   user to adjust any field
+;     95/MAY/30  ----   M.C.     - when user changes the ytd expense,
+;				   also change the transactions in
+;				   f119-doctor-ytd
+;     95/NOV/15  ----   M.C.	 - include new items on the screen
+;     98/dec/08  ----   B.E.     - automatically calculate monthly
+;				   required amount when computed 
+;				   ie. yearly is entered
+;   1999/jan/29         B.E.	 - y2k
+;   1999/Jun/07 S.B.      	 - Altered the call to scrtitle.use and
+;                       	   stdhilite.use to be called from $use
+;               	           instead of src.
+;       	                 - Removed the call to secfile.use because
+;	                           it was not doing anything.
+; 2003/nov/10 b.e.	- alpha doctor nbr
+;
+; !!!!!!!!!!!!!!!!!!!!!
+; !!!!!!!!!!!!!!!!!!!!!
+;   must change all FIELD statements below to DISPLAY when finished testing
+; !!!!!!!!!!!!!!!!!!!!!
+;
+
+can clear
+screen $pb_obj/d020a.qkc slave  on line 7 for 17 message on line 24	&
+	receiving f020-doctor-mstr, f020-doctor-extra
+
+file f020-doctor-mstr     master
+
+file f020-doctor-extra    master
+
+file f119-doctor-ytd      designer
+
+temp t-ytdcex-diff
+
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows DISPLAY of System defined and maintained    "&
+"	Year-to-Date values required by the system to perform payroll  "&
+"	calculations."
+
+;use $pb_src/secfile.use   nol nod
+
+
+define x-screen-name char*55 = "EARNINGS - System TOTAL Values"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+align (1,4,29)
+field doc-ytdear                label "YTD Earnings ........:"
+align (1,4,29) (,43,68)
+field doc-ytdinc                label "YTD Income (Net).....:"
+field doc-ytdinc-g              label "YTD Income (Gross)...:"
+skip 1
+field doc-ytdcea                label "YTD Ceiling -EARNINGS:"
+field doc-ceicea                label "EP  Ceiling -EARNINGS:"
+field doc-ytdcex                label ' "     "    -EXPENSES:'
+field doc-ceicex                label ' "     "    -EXPENSES:'
+align (1,4,31) (,43,68)
+field doc-yrly-ceiling-computed label "Computed Ceil-EARNINGS:" 
+field doc-totinc                label "TOTINC ..............:" 
+align (1,4,30) (,43,68)
+field doc-yrly-expense-computed label '   "        "-EXPENSES:' 
+field doc-totinc-g              label "TOTINC-Gross ........:" 	
+skip 1
+align (1,4,29) (,43,68)
+field doc-ytdgua                label "Guaranteed Inc type A:"
+field doc-ytdguc                label "Guaranteed Inc type C:"
+field doc-ytdgub                label '    "      "    "   B:'
+field doc-ytdgud                label '    "      "    "   D:'
+skip 1
+field doc-yrly-require-revenue  label "Computed Required Rev:"
+field doc-yrly-target-revenue   label "Computed Target Rev  :"
+field doc-ytdreq                label 'YTD         "      " :'
+field doc-ytdtar                label 'YTD        "     "   :'
+align (1,4,31) (,43,68)
+field doc-ceireq display        label 'Monthly     "      " :'
+field doc-ceitar display        label 'Monthly    "     "   :'
+skip 1
+align (1,4,29) (,43,68)
+field doc-payeft                label "EP  EFT Payments ....:" ; NOID
+field doc-ep-date-deposit       label "EFT DEPOSIT Date ....:"
+
+procedure edit doc-ytdcex
+begin
+   if oldvalue(doc-ytdcex) <> doc-ytdcex
+   then
+	let t-ytdcex-diff = doc-ytdcex - oldvalue(doc-ytdcex)
+	
+end
+
+procedure process doc-yrly-target-revenue
+begin
+   let doc-ceitar = round(doc-yrly-target-revenue / 12)
+   display doc-ceitar
+end
+
+;98/dec/08 
+procedure process doc-yrly-require-revenue
+begin
+   let doc-ceireq = round(doc-yrly-require-revenue / 12)
+   display doc-ceireq
+end
+
+procedure preupdate
+begin
+   if t-ytdcex-diff <> 0
+   then begin
+	get f119-doctor-ytd optional via doc-nbr, comp-code   &
+	   using doc-nbr of f020-doctor-mstr, "CEIEXP"
+	if accessok
+	then begin
+	   let amt-ytd = amt-ytd + t-ytdcex-diff
+	   put f119-doctor-ytd
+	end
+	get f119-doctor-ytd optional via doc-nbr, comp-code   &
+	   using doc-nbr of f020-doctor-mstr, "TOTEXP"
+	if accessok
+	then begin
+	   let amt-ytd = amt-ytd + t-ytdcex-diff
+	   put f119-doctor-ytd
+	end
+	get f119-doctor-ytd optional via doc-nbr, comp-code   &
+	   using doc-nbr of f020-doctor-mstr, "INCEXP"
+	if accessok
+	then begin
+	   let amt-ytd = amt-ytd - t-ytdcex-diff
+	   put f119-doctor-ytd
+	end
+   end
+end
+
+build
+  

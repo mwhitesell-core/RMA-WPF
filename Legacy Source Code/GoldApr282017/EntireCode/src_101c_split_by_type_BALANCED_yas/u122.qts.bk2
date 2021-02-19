@@ -1,0 +1,181 @@
+;#V PROGRAM-ID.     U122.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             - Update F119-DOCTOR-YTD with values from current EP
+;		run (that were placed into *F119)
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/Apr/19  ____   B.E.     - original
+;     93/SEP/15  ____   B.E.     - added access to F190 so that GROSS amts
+;                                  are updated into F119-YTD for INCOME based
+;                                  based transactions and NET for NON-INCOME
+;     93/NOV/26  ____   B.E.     - STATUS updated into YTD only, MTD zeroed
+;     93/DEC/24  ____   B.E.     - YTDEAR updated into YTD only, MTD zeroed
+;     93/DEC/28  ____   B.E.     - variables renamed to reflect change in
+;				   in *F119 from AMT-GROSS to X-AMT-GROSS
+;     93/DEC/31  ____   B.E.     - changed f119_tithe to unique keys
+;
+;     96/JAN/19  ____   M.C.     - INCREQ & INCTAR updated into YTD
+;                                  only, MTD zeroed. (SMS 147)
+;     96/APR/18  ____   Y.B.     - ADD "REVCLA" TO TMP-AMT-MTD AND
+;                                  TO TMP-AMT-YTD (to pick up net-amt)
+;                                  REVCLA ONE TIME ONLY. MAKE TMPMTD
+;                                  AND TMPYTD THE SAME YTD DOES NOT
+;                                  UPDATE OTHERWISE.
+;     98/oct/22         B.E.	  - f119_tithe database fields defined as 'numeric
+;				    size 8' as part of unix conversion.
+;				    tmp-amt fields changed to match.
+;  1999/Feb/18		S.B.	 - Checked for Y2K.
+;  2003/dec/24          A.A.	 - alpha doctor nbr
+;  2004/mar/01          b.e.	 - BILADJ coded to use net amount instead of gross
+; 2005/mar/21		b.e.	- change x-amt-gross and x-amt-net to 
+;				  to w- variable names to match u119
+;				- and change x-rec-type to w-rec-type
+;				- and change reporting-seq to payeft-seq and
+;				  comp-code-group to payeft-group to match u122 
+; 2005/apr/21		b.e 	- reverse above change ??
+;
+; 2008/may/27		M.C.    - add rec-type to indexes and change the access
+;			          linkage to include rec-type
+;				- include f020-doctor-mstr to the access 
+;				  statement
+; 2008/jun/10 		M.C.    - add a new request to add/update 
+;			          f119-doctor-ytd from f119_tithe subfile which
+;				  is created from u115a.qts
+; 				- also add 'on errors report' on output 
+;				  statement in the first request
+; 2008/jul/02 brad1  - calculations were using gross amount from f119. This
+;		       doesn't take into consideration the factor which could
+;		       have reduced the net amount. changing it for 'I'ncome
+;		       type comp codes to use net not gross amount.
+; 2008/oct/25 brad2  - undo above change
+; 2008/oct/25 brad3  - putback change - write all INCOME records to f119 as unfactored amounts
+; 2008/nov/18 M.C.   - for comp-code 'TITTHE1/2/3' or 'TITHD1/2/3', use tmp-amt-ytd = amt-ytd + x-amt-net 
+;			and tmp-amt-mtd = x-amt-net of f119
+;                    - delete the new request u122_run_1_update_f119_tithe that was created on 2008/jun/10
+;		       is not needed
+; 2008/dec/01 MC1    - for comp-code  'TITHD1/2/3', use tmp-amt-ytd = amt-ytd + x-amt-gross
+;			and tmp-amt-mtd = x-amt-gross of f119
+cancel clear
+set default
+set process limit 100000
+run u122
+
+request u122_run_0_update_f119_tithe          &
+        on edit        errors report    &
+        on calculation errors report
+
+access *f119                                     &
+        link doc-nbr,                            &
+             comp-code,                           &
+; 2008/05/27 - MC - include rec-type	
+	     rec-type				 &
+        to   doc-nbr,                            &
+;            comp-code of f119-doctor-ytd opt    &
+             comp-code,				 &
+	     rec-type  of f119-doctor-ytd opt    &
+	link doc-nbr to doc-nbr of f020-doctor-mstr opt &
+; 2008/05/27 - end
+        link comp-code                           &
+        to   comp-code of f190-comp-codes  opt
+
+
+
+
+; (98/oct/22 B.E.
+;  Certain comp-codes are calculated only as YTD values, therefore the
+;  YTD should be moved into, not added to the current YTD values.)
+; brad1 - use amt-net if 'I'ncome comp code
+ def tmp-amt-ytd zoned numeric size 10				&
+        =   amt-ytd   of f119-doctor-ytd                        &
+          + x-amt-net   of f119					&
+      		       if    comp-code of f119 = "BILADJ"     	&
+; 2008/11/18 - MC - TOTIT1 not used, include TITHE1/2/3 and TITHD1/2/3
+;      		          or comp-code of f119 = "TOTIT1"     	&
+      		          or comp-code of f119 = "TITHE1"     	&
+      		          or comp-code of f119 = "TITHE2"     	&
+      		          or comp-code of f119 = "TITHE3"     	&
+; 2008/12/01 - MC1 - comment out for TITHD1/2/3 - they will use amt-gross as before
+;      		          or comp-code of f119 = "TITHD1"     	&
+;      		          or comp-code of f119 = "TITHD2"     	&
+;      		          or comp-code of f119 = "TITHD3"     	&
+; 2008/12/01 - end
+; 2008/11/18 - end
+     else x-amt-gross of f119                                   &
+                       if       comp-code of f119 = "STATUS"    &
+                         or     comp-code of f119 = "YTDEAR"    &
+                         or     comp-code of f119 = "INCREQ"    &
+                         or     comp-code of f119 = "INCTAR"    &
+                         or not record f119-doctor-ytd exists   &
+     else x-amt-net of f119           				&
+      		       if comp-code of f119 = "REVCLA"     	&
+;brad2								&
+;     else  amt-ytd   of f119-doctor-ytd                         &
+;         + x-amt-net   of f119					&
+;		if comp-type = "I"				&
+;brad3 - income goes unfactored -ie gross
+     else  amt-ytd   of f119-doctor-ytd                         &
+         + x-amt-gross of f119
+
+; (98/oct/22 B.E.
+;  For certain codes the calculations are based upon YTD criteria and
+;  therefore no MTD is calculated -- it is thus set to zero)
+;def tmp-amt-mtd integer signed size 4		            	&
+; 99/apr/30 B.E. 8 to 10
+;def tmp-amt-mtd zoned numeric size  8				&
+; brad1 - use amt-net if comp-code is 'I'ncome type code
+ def tmp-amt-mtd zoned numeric size 10				&
+        = 0                                                     &
+                       if    comp-code of f119 = "STATUS"       &
+                          or comp-code of f119 = "YTDEAR"       &
+                          or comp-code of f119 = "INCREQ"       &
+                          or comp-code of f119 = "INCTAR"       &
+    else x-amt-net of f119					&
+    		       if   comp-code of f119 = "REVCLA" 	&
+    		         or comp-code of f119 = "BILADJ" 	&
+; 2008/11/18 - MC - include TITHE1/2/3 and TITHD1/2/3
+      		          or comp-code of f119 = "TITHE1"     	&
+      		          or comp-code of f119 = "TITHE2"     	&
+      		          or comp-code of f119 = "TITHE3"     	&
+; 2008/12/01 - MC1 - comment out for TITHD1/2/3 - they will use amt-gross as before
+;      		          or comp-code of f119 = "TITHD1"     	&
+;      		          or comp-code of f119 = "TITHD2"     	&
+;      		          or comp-code of f119 = "TITHD3"     	&
+; 2008/12/01 - end
+; 2008/11/18 - end
+;brad2      		 or comp-code of f119 = "TOTIT1"     	&
+;brad2      		 or comp-code of f119 = "TOTINC"     	&
+;brad2			 or comp-type = "I"			&
+;brad3 - use gross for above records
+    else x-amt-gross of f119
+
+
+;OUTPUT F119-DOCTOR-YTD ALIAS F119-UPDATE UPDATE                 &
+ output f119-doctor-ytd                   update                 &
+    if     record f119-doctor-ytd exists on errors report
+  item amt-mtd final tmp-amt-mtd
+  item amt-ytd final tmp-amt-ytd
+
+output f119-doctor-ytd  alias f119-add  add                     &
+    if not record f119-doctor-ytd exists on errors report
+  item doc-nbr         final doc-nbr          of f119
+  item comp-code       final comp-code        of f119
+
+  item process-seq     final reporting-seq    of f119
+  item comp-code-group final comp-code-group  of f119
+;  item process-seq     final payeft-seq    of f119
+;  item comp-code-group final payeft-group  of f119
+
+  item rec-type        final rec-type       of f119
+;  item rec-type        final w-rec-type       of f119
+  item amt-mtd         final tmp-amt-mtd
+  item amt-ytd         final tmp-amt-ytd
+; 2008/05/27 - MC - include doc-ohip-nbr
+  item doc-ohip-nbr    final doc-ohip-nbr of f020-doctor-mstr
+; 2008/05/27 - end
+
+
+build $pb_obj/u122

@@ -1,0 +1,64 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE UTL0201.QZS
+COMMENT "#> PROGRAM-ID.   utl0201.qzs"
+COMMENT "((C)) Dyad Infosys LTD "
+COMMENT "PROGRAM PURPOSE :"
+COMMENT "- generate 2 reports     requested by Brad"
+COMMENT "the purpose of the 1st report is to list the PAYMENTS for doctors by dept, sorted by highest payment."
+COMMENT "the purpose of the 2nd report is to list the PAYMENTS for doctors by dept, sorted by highest different in payment from LAST MONTH."
+COMMENT "-----------------------------------------------------------------------------------"
+COMMENT "report1 will access the utl0201_f119_all.ps"
+COMMENT "and link to comp code table and only select transactions if comp-code-type field is 'P'ayment"
+COMMENT "it will only select those from the .ps with EP_nbr matching current EP_NBR"
+COMMENT "sort on dept, docnbr, amt DESC"
+COMMENT "rep dept page heading, and on line doc nbr, doc name, mtd  ytd"
+COMMENT "-------------------------------------------------------------------------------------"
+CANCEL CLEAR
+SET REP NOLIMIT
+ACCESS *UTL0201_F119 LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR OPT LINK COMP-CODE TO COMP-CODE OF F190-COMP-CODES OPT
+COMMENT "select if comp-type is Payment"
+COMMENT "As per Helena, for now, select dept 42 only"
+SELECT IF COMP-TYPE OF F190-COMP-CODES = "P" AND DOC-DEPT = 42
+COMMENT "note: to determine previous month, must subtract 2 instead of 1 because current-ep-nbr would not be completed"
+COMMENT "until actual payroll has run"
+COMMENT "according to Yasemin, 101c always has 13 ep nbr, solo has 12 ep nbr, MP has minimum 12 ep nbr and"
+COMMENT "sometime can be 13 ep nbr"
+COMMENT "not sure what to do at the beginning of the year (yyyy01)"
+DEF PREV-EP-NBR CHAR*6 = ASCII(NCONVERT(X-PED) - 2) IF X-PED[5:2] > '02' ELSE ASCII(NCONVERT(X-PED[1:4]) - 1) + '13' IF X-PED[5:2] = '02' AND ENVIRONMENT = '101C' ELSE ASCII(NCONVERT(X-PED[1:4]) - 1) + '12' IF X-PED[5:2] = '02' AND ENVIRONMENT <> '101C' ELSE ASCII(NCONVERT(X-PED[1:4]) - 1) + '13' IF X-PED[5:2] = '01' AND ENVIRONMENT = '101C' ELSE ASCII(NCONVERT(X-PED[1:4]) - 1) + '12' IF X-PED[5:2] = '01' AND ENVIRONMENT <> '101C'
+SET SUBFILE NAME UTL0201 KEEP
+REP SUMM DOC-DEPT DOC-NBR DOC-NAME X-PED PREV-EP-NBR COMP-CODE AMT-MTD AMT-YTD
+BUILD $OBJ/UTL0201_1
+SET REP DEV DISC NAME UTL0201_A
+SET REP PAGE WIDTH 132 LENGTH 60
+SET FORMFEED
+ACCESS *UTL0201
+SORT ON DOC-DEPT ON AMT-MTD D ON DOC-NBR
+PAGE HEADING TAB 1 'utl0201_A' TAB 40 'Highest MTD Payment Amount by Dept' TAB 80 'Run date: ' TAB 90 SYSDATE TAB 105 'Page: ' TAB 110 SYSPAGE SKIP 1 TAB 55 'For : ' TAB 62 X-PED SKIP 2 TAB 10 'Dept : ' TAB 18 DOC-DEPT SKIP 2 KEEP COLUMN HEADING
+REPORT DOC-NBR DOC-NAME COMP-CODE AMT-MTD AMT-YTD
+FOOTING AT DOC-DEPT SKIP PAGE
+BUILD $OBJ/UTL0201_2
+COMMENT "-------------------------------------------------------------------------------------"
+COMMENT "report2 is the same as report 1 except it will also:"
+COMMENT "and link to ep-NBR -1 in f119-doctor-ytd- history(?) to get the 'last months value' for that transactions based upon "
+COMMENT "matching doc-nbr, comp-code and ep_nbr being 1 smaller (realize this won't work on 1st EP of year but we can address later)"
+COMMENT "calc amt-diff as mtd of transaction in .ps file - mtd of matching last months transaction found in f119-ytd-history"
+COMMENT "sort on dept, docnbr,  DESC on amt-diff"
+COMMENT "rep dept page heading, and on line doc nbr, doc name, amt-diff, mtd, ytd;"
+SET REP DEV DISC NAME UTL0201_B
+SET REP PAGE WIDTH 132 LENGTH 60
+SET FORMFEED
+ACCESS *UTL0201 LINK (DOC-NBR, NCON(PREV-EP-NBR), 'A') TO DOC-NBR, EP-NBR, REC-TYPE OF F119-DOCTOR-YTD-HISTORY OPT
+SELECT IF COMP-CODE OF UTL0201 = COMP-CODE OF F119-DOCTOR-YTD-HISTORY
+DEF AMT-DIFF ZONED*7 NUMERIC = AMT-MTD OF UTL0201 - AMT-MTD OF F119-DOCTOR-YTD-HISTORY
+SORT ON DOC-DEPT ON AMT-DIFF D ON DOC-NBR
+PAGE HEADING TAB 1 'utl0201_B' TAB 40 'Highest different MTD in Payment' TAB 80 'Run date: ' TAB 90 SYSDATE TAB 105 'Page: ' TAB 110 SYSPAGE SKIP 1 TAB 40 'Amount from LAST MONTH  by Dept' SKIP 1 TAB 50 'For : ' TAB 62 X-PED SKIP 2 TAB 10 'Dept : ' TAB 18 DOC-DEPT SKIP 2 KEEP COLUMN HEADING
+REPORT DOC-NBR DOC-NAME COMP-CODE AMT-DIFF PIC '^^^,^^^.^^ ' TRAIL '-' AMT-MTD AMT-YTD
+FOOTING AT DOC-DEPT SKIP PAGE
+BUILD $OBJ/UTL0201_3
+ENDMODULE UTL0201.QZS

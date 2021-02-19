@@ -1,0 +1,92 @@
+;#> PROGRAM-ID.     U030B_REVERSE.QTS
+;
+; ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : REVERSE the update to the associated  files
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2000/AUG/17 M.C.         - ORIGINAL 
+
+cancel clear
+set process nolimit
+set lock record update
+
+
+request delete_part_adj_batch	&
+		on calculation errors report on edit errors report
+
+access *u030_adj_batches 				&
+	link 'B', batctrl-batch-nbr		&
+	 to key-clm-type, key-clm-batch-nbr of f002-claims-mstr &
+	link clmhdr-claim-id[1:10]		&
+	 to part-adj-claim-id of part-adj-batch
+
+sel if clmhdr-oma-suff-adj = '000000'
+
+sort on part-adj-claim-id
+
+subfile bkp_part_adj_batch keep at part-adj-claim-id include part-adj-batch
+
+output part-adj-batch delete at part-adj-claim-id on errors report
+
+;------------------------------------------------------------------------------
+
+request delete_adj_dtl   on calculation errors report on edit errors report
+
+access *u030_dtl_key link to f002-claims-mstr        &
+   link  'B', clmhdr-claim-id[1:8],        &
+        nconvert(clmhdr-claim-id[9:2]), 	     &
+	key-clm-serv-code of u030_dtl_key, '1' &
+    to   key-clm-type, key-clm-batch-nbr,             &
+        key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr &
+         of f002-claims-mstr alias f002-adj-dtl      &
+   link nconvert(clmhdr-claim-id of f002-adj-dtl[1:2]) to iconst-mstr-rec
+
+sel if clmdtl-date-period-end of f002-adj-dtl = ascii(iconst-date-period-end,8)
+
+subfile savef002dtl keep include f002-adj-dtl
+ 
+output f002-adj-dtl delete  on errors report
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_claim_bal on calculation errors report on edit errors report
+                    ;  Reverse the original balance to the
+                    ;  original claim header
+
+access *u030brad                                     &
+   link  'B', part-hdr-claim-id[1:8],        &
+        nconvert(part-hdr-claim-id[9:2]), '00000', '0' &
+    to   key-clm-type, key-clm-batch-nbr,             &
+        key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr &
+         of f002-claims-mstr
+
+subfile bkpf002hdr keep include f002-claims-mstr
+ 
+output f002-claims-mstr  update on errors report
+   item clmhdr-tot-claim-ar-oma    final clmhdr-tot-claim-ar-oma of u030brad
+   item clmhdr-tot-claim-ar-ohip   final clmhdr-tot-claim-ar-ohip of u030brad
+   item clmhdr-amt-tech-billed     final clmhdr-amt-tech-billed of u030brad
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request delete_adj_batch_clm		&
+		on calculation errors report on edit errors report
+
+access *u030_adj_batches link to f001-batch-control-file  &
+	link 'B', batctrl-batch-nbr		&
+	 to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sorted on batctrl-batch-nbr
+
+subfile savef002 keep include f002-claims-mstr
+subfile savef001 keep include f001-batch-control-file
+
+output f002-claims-mstr delete on errors report
+output f001-batch-control-file delete at batctrl-batch-nbr on errors report
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+build $pb_obj/u030b_reverse
+

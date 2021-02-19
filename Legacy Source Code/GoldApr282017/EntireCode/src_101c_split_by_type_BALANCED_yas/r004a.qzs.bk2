@@ -1,0 +1,85 @@
+; doc: r004a.qzs
+; doc: monthly claims & adjustments transaction summary (detail report)
+; doc: sort by clinic/dept/doc #/patient/svcs/claim #/oma code
+; doc: run for: clinic 22/80/81
+;
+;program purpose : transaction summary (detail report)
+;                  this is the first of a series of programs to create
+;		   the r004a.txt report (r004b.txt  and r004c.txt
+;		   are concatenated to r004a.txt for final report).
+;
+
+;date       by whom   description
+;95/10/12   yasemin   original
+;
+;
+can clear
+set default
+set rep nolimit
+
+
+access f001-batch-control-file	&
+  link ("B" , batctrl-batch-nbr)				&
+  to   key-clm-type, key-clm-batch-nbr of f002-claims-mstr	&
+  link clmhdr-pat-ohip-id-or-chart 				&
+  to   key-pat-mstr of  f010-pat-mstr  opt			&
+  link (nconvert(batctrl-batch-nbr[1:2]))			&
+  to   iconst-clinic-nbr-1-2 of  iconst-mstr-rec  opt           &
+  link (clmhdr-claim-id[3:3]) 					&
+  to   doc-nbr of f020-doctor-mstr  opt
+
+
+choose batctrl-batch-nbr                                          &
+ parm range prompt "ENTER from batch nbr (22@) :              "  &
+          toprompt "ENTER  to  batch nbr (48@) :              "  1 time
+
+
+select f001-batch-control-file if				      &
+           (   (    batctrl-batch-type = "C")			      &
+           or (     batctrl-batch-type = "A"		              &
+                and (   batctrl-adj-cd = "B"	 	              &
+                     or batctrl-adj-cd = "R"))                        &
+           or (     batctrl-batch-type = "P"			      &
+                and batctrl-adj-cd     = "M") )
+
+select f002-claims-mstr					 	     &
+   if     clmhdr-oma-suff-adj = "000000" ; pick header rec'S ONLY
+
+select if  batctrl-date-period-end = ascii(iconst-date-period-end,8)	&
+;2002/02/04 - MC
+	and batctrl-batch-nbr = clmhdr-orig-batch-nbr
+;2002/02/04 -end
+
+def x-pat-id-info char*12 = PAT-OHIP-MMYY		 	     &
+	if  record f010-pat-mstr exists and  pat-health-nbr =  0     &
+		       else ascii(pat-health-nbr,10)		     &
+	if  record f010-pat-mstr exists and  pat-health-nbr ne 0     &
+		       else " "
+
+def x-doc-name char*27 = pack(doc-name +" "+ doc-inits)
+
+def x-pat-name char*10 = pat-surname-first6 + " " + pat-given-name-first3
+
+def x-doc-nbr char*3  = clmhdr-claim-id[3:3]
+
+set subfile name  r004a  keep
+
+report summary							&
+	iconst-date-period-end					&
+        iconst-clinic-nbr-1-2  					&
+	iconst-clinic-nbr					&
+        iconst-clinic-name                                      &
+        clmhdr-doc-dept						&
+        x-doc-nbr 						&
+	x-doc-name						&
+        x-pat-name   						&
+	x-pat-id-info						&
+	clmhdr-date-sys						&
+	clmhdr-reference					&
+	key-clm-batch-nbr					&
+	key-clm-claim-nbr                                       &
+        clmhdr-adj-cd-sub-type                                  &
+        clmhdr-batch-type
+
+
+build $obj/r004a

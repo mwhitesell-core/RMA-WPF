@@ -1,0 +1,90 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE DETAIL_PEDS_BILLINGS_PED.QTS
+COMMENT "doc     : detail_peds_billings_ped.qts   "
+COMMENT "purpose : create a detail claims report for all claims all clinics for         "
+COMMENT "department of pediatrics docs                                        "
+COMMENT "clinic 60 prof amount is recorded in 22 for under code T995 but T995"
+COMMENT "does not include the #services or what code it is   "
+COMMENT "included just clinic 61-65 prof fee and took out T995 "
+COMMENT "******* INCLUDE ADJUSTMENTS *******"
+COMMENT "***  ADJUSTMENT is included for if you select service date otherwise you have to change it for the PED selection"
+COMMENT "who     : For Pediatric manager and Vanessa Pauli"
+COMMENT "*************************************************************"
+COMMENT "Date  Who        Description"
+COMMENT "2006/10/18 Yasemin        cardio_codes_adjust_payment.qts"
+COMMENT "2010/01/07     MC        to extract regular claim detail, adjustment detail "
+COMMENT "2010/02/04     MC        Regular claim detail will have 0 in clmdtl-adj-nbr and key-clm-adj-nbr"
+COMMENT "Adjustment claim detail will have 1 in clmdtl-adj-nbr and key-clm-adj-nbr"
+COMMENT "Original adjustment claim detail will have 1 in clmdtl-adj-nbr and 0 in key-clm-adj-nbr"
+COMMENT "All Adjustment claim detail will have the same service date as the original claim detail"
+COMMENT "but the period date will be different (usaully later than the original claim detail one)"
+COMMENT "Note:  It is okay to select regular or adjustment claim details by either service date or PED from the second pass below"
+COMMENT "2010/03/02                   copied from pediatric_total_billing_ped.qts  detail_peds_billings_ped.qts"
+COMMENT "change ped and run it every month (prompt for PED) "
+COMMENT "2012/07/25 yas       add department 76 "
+COMMENT "2015/03/02 yas       add location code "
+CANCEL CLEAR
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+REQUEST ONE ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F002-CLAIMS-MSTR
+CHOOSE KEY-CLM-TYPE 'B' , KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE '00000', KEY-CLM-ADJ-NBR '0'
+SELECT F002-CLAIMS-MSTR IF ( CLMHDR-BATCH-TYPE = 'C' ) AND ( CLMHDR-DOC-DEPT = 7 OR CLMHDR-DOC-DEPT = 70 OR CLMHDR-DOC-DEPT = 71 OR CLMHDR-DOC-DEPT = 72 OR CLMHDR-DOC-DEPT = 73 OR CLMHDR-DOC-DEPT = 74 OR CLMHDR-DOC-DEPT = 75 OR CLMHDR-DOC-DEPT = 76 )
+SUBFILE PEDIATRIC_PED KEEP INCLUDE CLMHDR-CLAIM-ID , KEY-CLM-BATCH-NBR , KEY-CLM-CLAIM-NBR , CLMHDR-LOC
+REQUEST TWO ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *PEDIATRIC_PED LINK 'B', KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR
+DEF X-YYYYMM CHAR*6 = PARM PROMPT 'Enter PED (YYYYMM): '
+COMMENT "clmdtl-date-period-end =  20110630           &"
+COMMENT "regular claim detail only "
+SELECT F002-CLAIMS-MSTR IF CLMDTL-DATE-PERIOD-END[1:6] = X-YYYYMM AND CLMDTL-OMA-CD <> "0000" AND CLMDTL-OMA-CD <> "ZZZZ" AND CLMDTL-OMA-CD <> "PAID" AND CLMDTL-OMA-CD <> "MICM" AND CLMDTL-OMA-CD <> "MISJ" AND CLMDTL-OMA-CD <> "MISC" AND CLMDTL-OMA-CD <> "MICV" AND CLMDTL-OMA-CD <> "MISP" AND CLMDTL-OMA-CD <> "MICB" AND CLMDTL-OMA-CD <> "MIBR" AND CLMDTL-OMA-CD <> "MINH" AND CLMDTL-OMA-CD <> "MHSC" AND CLMDTL-OMA-CD <> "NHSC" AND CLMDTL-OMA-CD <> "DHSC" AND CLMDTL-OMA-CD <> "MICA" AND CLMDTL-OMA-CD <> "MICC" AND CLMDTL-OMA-CD <> "MICD" AND CLMDTL-OMA-CD <> "MICE" AND CLMDTL-OMA-CD <> "MICF" AND CLMDTL-OMA-CD <> "MICG" AND CLMDTL-OMA-CD <> "MICH" AND CLMDTL-OMA-CD <> "MICJ" AND CLMDTL-OMA-CD <> "MICK" AND CLMDTL-OMA-CD <> "MICL" AND CLMDTL-OMA-CD <> "MOHR" AND CLMDTL-OMA-CD <> "AGEP" AND CLMDTL-OMA-CD <> "T995" AND CLMDTL-ADJ-NBR = 0
+COMMENT "and  clmdtl-adj-nbr     =  1        ; adjustment or miscellaneous payment detail only"
+DEF CONSEC-FLAG CHAR*1 = "Y" IF CLMDTL-CONSEC-DATES-R[1:3] NE "0OP" AND CLMDTL-CONSEC-DATES-R[1:3] NE "0MR" AND CLMDTL-CONSEC-DATES-R[1:3] NE "0BI" AND CLMDTL-CONSEC-DATES-R[1:3] NE "0  " AND CLMDTL-CONSEC-DATES-R[1:3] NE " 00" AND CLMDTL-CONSEC-DATES-R[1:3] NE "000" AND CLMDTL-CONSEC-DATES-R[1:3] NE "00 " AND CLMDTL-CONSEC-DATES-R[1:3] NE "   "
+COMMENT "regular claim detail (clmdtl-adj-nbr = 0) should have non-zero nbr-of-serv"
+COMMENT "but for adjustment claim and misc payment  detail(clmdtl-adj-nbr = 1) nbr-serv and consecute date are always ZERO"
+DEFINE X-SV-NBR1 ZONED*2 UNSIGNED = CLMDTL-NBR-SERV
+DEF X-SV-NBR2 ZONED*2 UNSIGNED = NCONVERT(ASCII(CLMDTL-CONSEC-DATES,9)[1:1]) IF CONSEC-FLAG = "Y" ELSE 0
+DEF X-SV-NBR3 ZONED*2 UNSIGNED = NCONVERT(ASCII(CLMDTL-CONSEC-DATES,9)[4:1]) IF CONSEC-FLAG = "Y" ELSE 0
+DEF X-SV-NBR4 ZONED*2 UNSIGNED = NCONVERT(ASCII(CLMDTL-CONSEC-DATES,9)[7:1]) IF CONSEC-FLAG = "Y" ELSE 0
+DEF X-NBR-SVCS ZONED*2 UNSIGNED = X-SV-NBR1 + X-SV-NBR2 + X-SV-NBR3 + X-SV-NBR4
+COMMENT "def x-prof-fee = clmdtl-fee-ohip - clmdtl-amt-tech-billed & "
+COMMENT "if key-clm-batch-nbr[1:2] > '60' and key-clm-batch-nbr[1:2] < '66'  &"
+COMMENT "else clmdtl-fee-ohip"
+DEF X-PROF-FEE = CLMDTL-FEE-OHIP - CLMDTL-AMT-TECH-BILLED IF ( KEY-CLM-BATCH-NBR[1:2] >= '61' AND KEY-CLM-BATCH-NBR[1:2] <= '66') OR ( KEY-CLM-BATCH-NBR[1:2] >= '71' AND KEY-CLM-BATCH-NBR[1:2] <= '75') ELSE CLMDTL-FEE-OHIP
+COMMENT "def x-fee = x-prof-fee  / x-nbr-svcs"
+DEF X-FEE = X-PROF-FEE / X-NBR-SVCS IF CLMDTL-ADJ-NBR = 0 ELSE X-PROF-FEE
+COMMENT "regular claim detail (clmdtl-adj-nbr = 0) should have non-zero nbr-of-serv"
+COMMENT "but for adjustment claim and misc payment  detail(clmdtl-adj-nbr = 1) nbr-serv and consecute date are always ZERO"
+COMMENT "else    clmdtl-fee-ohip  - this may give wrong result"
+DEF X-CLMDTL-FEE-OHIP-1 ZONED*7 = X-SV-NBR1 * X-FEE IF CLMDTL-ADJ-NBR = 0 ELSE X-PROF-FEE
+DEF X-CLMDTL-FEE-OHIP-2 ZONED*7 = X-SV-NBR2 * X-FEE
+DEF X-CLMDTL-FEE-OHIP-3 ZONED*7 = X-SV-NBR3 * X-FEE
+DEF X-CLMDTL-FEE-OHIP-4 ZONED*7 = X-SV-NBR4 * X-FEE
+DEF X-SV-DATE-1 CHAR*8 = CLMDTL-SV-DATE
+DEF X-SV-DATE-2 CHAR*8 = CLMDTL-SV-DATE[1:6] + CLMDTL-CONSEC-DATES-R[2:2] IF CONSEC-FLAG = "Y" ELSE " "
+DEF X-SV-DATE-3 CHAR*8 = CLMDTL-SV-DATE[1:6] + CLMDTL-CONSEC-DATES-R[5:2] IF CONSEC-FLAG = "Y" ELSE " "
+DEF X-SV-DATE-4 CHAR*8 = CLMDTL-SV-DATE[1:6] + CLMDTL-CONSEC-DATES-R[8:2] IF CONSEC-FLAG = "Y" ELSE " "
+SUBFILE PEDIATRIC1_PED KEEP INCLUDE CLMDTL-ID OF F002-CLAIMS-MSTR, KEY-CLM-BATCH-NBR OF F002-CLAIMS-MSTR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR, X-CLMDTL-FEE-OHIP-1 , X-SV-DATE-1 , X-SV-NBR1 , CLMDTL-DIAG-CD OF F002-CLAIMS-MSTR, CLMDTL-OMA-CD OF F002-CLAIMS-MSTR, CLMHDR-LOC OF PEDIATRIC_PED
+SUBFILE PEDIATRIC1_PED ALIAS PEDIATRIC_SVC2 APPEND KEEP IF X-SV-NBR2 <> 0 INCLUDE CLMDTL-ID OF F002-CLAIMS-MSTR, KEY-CLM-BATCH-NBR OF F002-CLAIMS-MSTR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR, X-CLMDTL-FEE-OHIP-2 , X-SV-DATE-2 , X-SV-NBR2 , CLMDTL-DIAG-CD OF F002-CLAIMS-MSTR, CLMDTL-OMA-CD OF F002-CLAIMS-MSTR, CLMHDR-LOC OF PEDIATRIC_PED
+SUBFILE PEDIATRIC1_PED ALIAS PEDIATRIC_SVC3 APPEND KEEP IF X-SV-NBR3 <> 0 INCLUDE CLMDTL-ID OF F002-CLAIMS-MSTR, KEY-CLM-BATCH-NBR OF F002-CLAIMS-MSTR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR, X-CLMDTL-FEE-OHIP-3 , X-SV-DATE-3 , X-SV-NBR3 , CLMDTL-DIAG-CD OF F002-CLAIMS-MSTR, CLMDTL-OMA-CD OF F002-CLAIMS-MSTR, CLMHDR-LOC OF PEDIATRIC_PED
+SUBFILE PEDIATRIC1_PED ALIAS PEDIATRIC_SVC4 APPEND KEEP IF X-SV-NBR4 <> 0 INCLUDE CLMDTL-ID OF F002-CLAIMS-MSTR, KEY-CLM-BATCH-NBR OF F002-CLAIMS-MSTR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR, X-CLMDTL-FEE-OHIP-4 , X-SV-DATE-4 , X-SV-NBR4 , CLMDTL-DIAG-CD OF F002-CLAIMS-MSTR, CLMDTL-OMA-CD OF F002-CLAIMS-MSTR, CLMHDR-LOC OF PEDIATRIC_PED
+REQUEST THREE ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *PEDIATRIC1_PED LINK CLMDTL-OMA-CD TO FEE-OMA-CD OF F040-OMA-FEE-MSTR OPT LINK CLMDTL-ID[3:3] TO DOC-NBR OF F020-DOCTOR-MSTR OPT LINK (ASCII(CLMDTL-DIAG-CD,3)) TO DIAG-CD OF F091-DIAG-CODES-MSTR OPT
+DEF X-CLINIC CHA*2 = CLMDTL-ID[1:2]
+DEF X-DOC CHA*3 = CLMDTL-ID[3:3]
+DEF COMMA CHA*1 = "~"
+DEF X-NUM-CR INTEGER UNSIGNED SIZE 2 = 13
+DEF X-CR CHAR*2 = CHAR(X-NUM-CR)
+COMMENT "clmdtl-id                                           ,&"
+COMMENT "comma                                               ,&"
+COMMENT "clmdtl-diag-cd                                      ,&"
+COMMENT "diag-cd-desc                                        ,&"
+SUBFILE PEDIATRIC2_PED PORTABLE KEEP INCLUDE X-CLINIC , COMMA , X-DOC , COMMA , DOC-NAME , COMMA , DOC-INITS , COMMA , X-SV-DATE-1 , COMMA , X-CLMDTL-FEE-OHIP-1 , COMMA , X-SV-NBR1 , COMMA , CLMDTL-OMA-CD , COMMA , FEE-DESC , COMMA , CLMHDR-LOC , X-CR
+BUILD $OBJ/DETAIL_PEDS_BILLINGS_PED
+ENDMODULE DETAIL_PEDS_BILLINGS_PED.QTS

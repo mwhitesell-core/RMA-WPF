@@ -1,0 +1,68 @@
+;#> PROGRAM-ID.     u910.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;  1999/Jan/31  B.E.    - y2k
+;  1999/Jun/02  S.B.    - Added the use file
+;                         def_doc_status.def to 
+;                         prevent hard coding of doc-status.
+;  1999/Oct/07  M.C.    - add two new request delete_active_doctors * update_termination_date
+
+
+can clear
+
+set lock file update
+run u910
+request createdoc1
+;
+; Create the subfile with doc no 001 to 999
+;
+access f010-pat-mstr
+set input limit 999
+temp doc-no zoned*3 unsigned
+   item doc-no = doc-no + 1
+subfile sfdocno include doc-no
+
+request createdoc2
+;
+; Create the unused doctor no record into next available doctor no file
+; Ignore doctor no 700, 800 and 900.  These doctor numbers are reserved
+; for adjustment batches.
+;
+access *sfdocno link doc-no to doc-nbr of f020-doctor-mstr opt
+;S.B.
+use $use/def_doc_status.def
+
+sel if not record f020-doctor-mstr exist   and			&
+       doc-no <> 700 and doc-no <> 800 and doc-no <> 900
+output f021-avail-doctor-mstr add on errors report
+   item date-added   final sysdate
+   item doc-no   final doc-no of sfdocno
+   item doc-dept-no     final 0
+   item doc-full-name   final " "
+   item date-taken      final 0
+;S.B.
+;   item doc-status      final " "
+   item doc-status      final doc-status-active
+;------------------------------------------------------------------------
+;99/10/07 M.C. add the following 2 requests
+
+request delete_active_doctors
+
+access f020-doctor-mstr link doc-nbr to doc-no of f021-avail-doctor-mstr
+sel if doc-date-fac-term = 0
+output f021-avail-doctor-mstr delete on errors report
+
+request update_termination_date
+
+access f020-doctor-mstr link doc-nbr to doc-no of f021-avail-doctor-mstr
+sel if doc-date-fac-term  <> 0
+output f021-avail-doctor-mstr update on errors report
+   item date-added final doc-date-fac-term
+
+build $pb_obj/u910
+  

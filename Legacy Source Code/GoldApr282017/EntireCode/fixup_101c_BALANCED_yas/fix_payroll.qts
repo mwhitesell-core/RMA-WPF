@@ -1,0 +1,173 @@
+; fix_payroll.qts
+; purpose:	Used when a batch is entered into the wrong payroll.
+; 		Make sure the SELECT statment is correct and matches
+;		the batches you want to fix. Running this program
+;		will update f001/f002 (remove comments on output statements)
+;	 	After running this program follow it with
+;			$src/dump_extractf001f002dtl to confirm $
+;		  and   $src/u010daily_reverse_from_subfile.qts which extracts $
+;		from f050 
+;		Finally run ???? which removes the $ from the doctor's
+;		"BILL" compensation code in f110
+;
+;
+;		Overview step required:
+; 		LIVE				TEST
+;	f001	fix "B" payroll value		Link to live fixed file
+;
+;	f002 	fix "B" payroll value		Link to live fixed file
+;
+;						Reload f050 before 
+;							ME rollover
+;	f050	backup '22' YTD values		Back out '22' MTD/YTD
+; 	f050	add back as '85' YTD values	Add back as '85 MTD/YTD
+;
+;						Reload live payroll
+;					 	before ME started
+;						Re-run a u010_daily
+;						that get all of f001/f02
+;						record for the PED and
+;						use the created
+;						u010daily_payroll_feed
+;						subfile to re-run 
+;						payroll
+;						If MaryB has not
+;						updated payroll files
+;						then copy payroll files
+;						back to live - otherwise
+;						just transfer records
+;						for the doctors affected
+;
+;
+;	Details:
+;	These series of requests will change the payroll field
+;	in f001 and all associated records in f002.
+;	It will then use the same logic as 'normal' daily revenue
+;	update process which uses f??? to determine if the
+;	f002 records should be translated to another clinic as
+;	they are placed into f050.
+;	The process will take these translated records and perform
+;	2 udpates: first it 'backs out' the values from f050 using
+;	the original clinic and then it 'adds into' f050 using
+;	the translated clinic number.
+;	Since both MTD and YTD f050 values are affected this program
+;	MUST be run before the PED's rollover - otherwise the files
+;	must be loaded into test to update the MTD values and then
+;	run in live to fix the YTD values.
+;	Also, apply the same update for f050/f051tp history files
+;	if applicable
+
+
+can clear
+set process nolimit
+set lock record update
+
+request one-fix-f001
+
+access f001-batch-control-file
+
+select if    (   batctrl-batch-nbr = 220669160)   
+
+output f001-batch-control-file update
+   item batctrl-payroll   final "B"
+
+subfile fix_payroll_f001 keep include f001-batch-control-file
+
+
+request two-fix-f002-headers
+
+access *fix_payroll_f001 				&
+   link  'B',                                           &
+        batctrl-batch-nbr                               &
+    to  key-clm-type,                                   &
+        key-clm-batch-nbr of f002-claims-mstr  opt
+
+select if    clmhdr-adj-oma-cd    = '0000' 
+
+def clmhdr-clinic-nbr char*2 = clmhdr-claim-id[1:2]
+def clmhdr-doc-nbr char*3 = clmhdr-claim-id[4:3]
+
+
+output f002-claims-mstr update
+   item clmhdr-payroll  final "B"
+
+subfile fix_payroll_f002 keep include 		&
+	batctrl-batch-nbr,			&
+	batctrl-agent-cd,			&
+	batctrl-adj-cd,				&
+	batctrl-cycle-nbr,			&
+	batctrl-date-period-end,		&
+	batctrl-batch-type,			&
+	batctrl-manual-pay-tot,			&
+	batctrl-calc-ar-due,			&
+	batctrl-calc-tot-rev,			&
+	clmhdr-doc-dept,			&
+	clmhdr-manual-and-tape-payments,	&
+	clmhdr-amt-tech-paid,           	&
+	clmhdr-i-o-pat-ind,			&
+	clmhdr-agent-cd,			&
+	clmhdr-adj-cd,				&
+	clmhdr-adj-cd-sub-type,			&
+	clmhdr-loc,   				&
+	clmhdr-orig-batch-nbr,			&
+	clmhdr-orig-claim-nbr,			&
+	clmhdr-clinic-nbr,			&
+	clmhdr-doc-nbr,				&
+	key-clm-claim-nbr,			&
+	clmhdr-payroll
+
+request fix-f002-details
+
+access *fix_payroll_f002                                &
+   link  'B',                                           &
+        batctrl-batch-nbr,                              &
+	key-clm-claim-nbr				&
+    to  key-clm-type,                                   &
+	key-clm-batch-nbr,				&
+        key-clm-claim-nbr of f002-claims-mstr opt
+
+select if    clmdtl-oma-cd <> '0000'                               &
+      	 and clmdtl-oma-cd <> 'ZZZZ'                               &
+       	 and clmdtl-orig-batch-nbr = clmhdr-orig-batch-nbr         &
+         and clmdtl-orig-claim-nbr-in-batch = clmhdr-orig-claim-nbr
+
+;def x-clinic char*2 = ascii(clmhdr-batch-nbr)[1:2]
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)              &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+def x-nbr-serv zoned*2 unsigned                                 &
+        =  clmdtl-nbr-serv                                      &
+         + x-sv-nbr2                                            &
+         + x-sv-nbr3                                            &
+         + x-sv-nbr4
+
+subfile extractf001f002dtl keep include                 &
+	fix_payroll_f002,				&
+        clmdtl-fee-ohip		of f002-claims-mstr,    &
+        clmdtl-amt-tech-billed	of f002-claims-mstr,    &
+        clmdtl-oma-cd		of f002-claims-mstr,    &
+        clmdtl-oma-suff		of f002-claims-mstr,    &
+        X-nbr-serv
+
+;
+; Use program $src/dump_extractf001f002dtl to confirm that the total
+; detail records sum of fees matches what is to be taken out of f050 
+;
+; Use program $src/u010daily_reverse_from_subfile.qts to update f050
+; Use program $src/updatef050hist.qts to update f050/f050tp history files
+;
+; Use program ??? to extract $ from BILL code in f110
+;

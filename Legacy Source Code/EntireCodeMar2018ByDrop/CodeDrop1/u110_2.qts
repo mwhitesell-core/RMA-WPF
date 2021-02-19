@@ -1,0 +1,320 @@
+;#> PROGRAM-ID.     U110_2.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             Create EARNINGS transactions in F110-COMPENSATION for
+;             the current EP-NBR using MTD values taken from F050-REVENUE-MSTR
+;
+;             STAGE 1 - create subfile of values from F050-REVENUE-MSTR
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/JUN/01  ____   B.E.     - original
+;     93/AUG/02  ____   B.E.     - criteria for output of a transaction
+;				   changed from > 0 to <> 0 to allow
+;				   negative only transactions
+;     93/OCT/07  ____   B.E.     - change summing from YTD to MTD amounts
+;     93/OCT/11  ____   B.E.     - criteria for output of transactions changed
+;				   to force creation if any record found in
+;				   in F050
+;     94/FEB/17  ____   M.C.     - MODIFY PGM TO INCLUDE HSC LOCATION
+;     95/OCT/19  ----   M.C.     - PDR 631 - INCLUDE OMA CD 'MICV',
+;				   'MICM', 'MISJ', 'MISP', 'MOHR'
+;     99/feb/24  ----   B.E.     - add new miscellaneous payment codes of
+;				   'MICB', MIBR' and 'MINH'
+;     99/dec/20  ----   B.E.	 - added MHSC (also allow DHSC which was
+;				   mistakenly entered - s/b MHSC
+;     06/jul/11  ----   B.E.	 - added DHSC and then changed to DHSC
+;     06/sep/07  ----   b.e. 	 - added AGEP	
+;     07/jul/03  ----   b.e.     - added MICA - MICL
+;     08/may/26  ----   M.C.     - original u110.qts has been splitted into u110_1 & u110_2
+;                                  as per Brad's request, it only allows 30 subfiles
+;     08/nov/20  ----   MC1      - set the value for factor, seq & type for MICF to MICL   
+;                                  from f190-comp-codes  
+;     13/may/22  ----   MC2	 - add MOHD and cleanup all redundants which are already defined in u110_1.qts
+;     15/Dec/07  ----   MC3	 - add MACC, MIBD, MPAP, MSLP, MMDU, MBRT 
+;
+; -------------------------------------------------------
+;       IF UPDATING THIS FILE ALSO UPDATE THE FOLLOWING FILES:
+;       costing_billing_codes_?.q?s 
+;
+;       This program has an include:
+;	either - u110_rma.qts or u110_hsc.qts
+;   NOTE:  in the future, if new codes to be included, please add to U110_2.qts &
+;          and/or u110_rma.qts for RMA
+; -------------------------------------------------------
+
+cancel clear
+set stacksize 10000
+run u110
+
+set default
+set process nolimit
+
+global temp  micf-seq     zoned*2
+global temp  micf-type    char*1
+global temp  micf-factor  zoned*6
+global temp  micg-seq     zoned*2
+global temp  micg-type    char*1
+global temp  micg-factor  zoned*6
+global temp  mich-seq     zoned*2
+global temp  mich-type    char*1
+global temp  mich-factor  zoned*6
+global temp  micj-seq     zoned*2
+global temp  micj-type    char*1
+global temp  micj-factor  zoned*6
+global temp  mick-seq     zoned*2
+global temp  mick-type    char*1
+global temp  mick-factor  zoned*6
+global temp  micl-seq     zoned*2
+global temp  micl-type    char*1
+global temp  micl-factor  zoned*6
+
+; 2013/05/22 - MC2
+global temp  mohd-seq     zoned*2
+global temp  mohd-type    char*1
+global temp  mohd-factor  zoned*6
+; 2013/05/22 - end
+
+; MC3
+global temp  macc-seq     zoned*2
+global temp  macc-type    char*1
+global temp  macc-factor  zoned*6
+global temp  mibd-seq     zoned*2
+global temp  mibd-type    char*1
+global temp  mibd-factor  zoned*6
+global temp  mpap-seq     zoned*2
+global temp  mpap-type    char*1
+global temp  mpap-factor  zoned*6
+global temp  mslp-seq     zoned*2
+global temp  mslp-type    char*1
+global temp  mslp-factor  zoned*6
+global temp  mmdu-seq     zoned*2
+global temp  mmdu-type    char*1
+global temp  mmdu-factor  zoned*6
+global temp  mbrt-seq     zoned*2
+global temp  mbrt-type    char*1
+global temp  mbrt-factor  zoned*6
+; MC3 - end
+
+request u111_a_get_micf                     &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MICF"
+item  micf-seq   final  process-seq
+item  micf-type  final  comp-type
+item  micf-factor final  factor
+
+request u111_a_get_micg                     &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MICG"
+item  micg-seq   final  process-seq
+item  micg-type  final  comp-type
+item  micg-factor final  factor
+
+request u111_a_get_mich                     &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MICH"
+item  mich-seq   final  process-seq
+item  mich-type  final  comp-type
+item  mich-factor final  factor
+
+request u111_a_get_micj                     &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MICJ"
+item  micj-seq   final  process-seq
+item  micj-type  final  comp-type
+item  micj-factor final  factor
+
+request u111_a_get_mick                     &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MICK"
+item  mick-seq   final  process-seq
+item  mick-type  final  comp-type
+item  mick-factor final  factor
+
+request u111_a_get_micl                     &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MICL"
+item  micl-seq   final  process-seq
+item  micl-type  final  comp-type
+item  micl-factor final  factor
+; 2008/11/20 - end
+
+; 2013/05/22 - MC2
+request u111_a_get_mohd                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MOHD"
+item  mohd-seq   final  process-seq
+item  mohd-type  final  comp-type
+item  mohd-factor final  factor
+; 2013/05/22 - end
+
+; MC3
+request u111_a_get_macc                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MACC"
+item  macc-seq   final  process-seq
+item  macc-type  final  comp-type
+item  macc-factor final  factor
+
+request u111_a_get_mibd                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MIBD"
+item  mibd-seq   final  process-seq
+item  mibd-type  final  comp-type
+item  mibd-factor final  factor
+
+request u111_a_get_mpap                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MPAP"
+item  mpap-seq   final  process-seq
+item  mpap-type  final  comp-type
+item  mpap-factor final  factor
+
+request u111_a_get_mslp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MSLP"
+item  mslp-seq   final  process-seq
+item  mslp-type  final  comp-type
+item  mslp-factor final  factor
+
+request u111_a_get_mmdu                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MMDU"
+item  mmdu-seq   final  process-seq
+item  mmdu-type  final  comp-type
+item  mmdu-factor final  factor
+
+request u111_a_get_mbrt                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "MBRT"
+item  mbrt-seq   final  process-seq
+item  mbrt-type  final  comp-type
+item  mbrt-factor final  factor
+; MC3 - end
+;-------------------------------------------------------------------------------
+;
+request u110_process                            &
+                on edit        errors report    &
+                on calculation errors report
+
+@if dg and hsc
+  use $pb_src/u110_hsc
+@elseif dg and rma
+  use $pb_src/u110_rma_2
+@else
+  error - program must be compiled using conditional statements
+@endif
+
+
+temp x-comp-code-micf char*6
+item x-comp-code-micf                    = "MICF"
+subfile u110 alias u110_micf   append  at docrev-doc-nbr            &
+  if mtd-micf <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micf,micf-type,micf-seq,micf-factor,mtd-micf
+
+temp x-comp-code-micg char*6
+item x-comp-code-micg                    = "MICG"
+subfile u110 alias u110_micg   append  at docrev-doc-nbr            &
+  if mtd-micg <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micg,micg-type,micg-seq,micg-factor,mtd-micg
+
+temp x-comp-code-mich char*6
+item x-comp-code-mich                    = "MICH"
+subfile u110 alias u110_mich   append  at docrev-doc-nbr            &
+  if mtd-mich <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mich,mich-type,mich-seq,mich-factor,mtd-mich
+
+temp x-comp-code-micj char*6
+item x-comp-code-micj                    = "MICJ"
+subfile u110 alias u110_micj   append  at docrev-doc-nbr            &
+  if mtd-micj <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micj,micj-type,micj-seq,micj-factor,mtd-micj
+
+temp x-comp-code-mick char*6
+item x-comp-code-mick                    = "MICK"
+subfile u110 alias u110_mick   append  at docrev-doc-nbr            &
+  if mtd-mick <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mick,mick-type,mick-seq,mick-factor,mtd-mick
+
+temp x-comp-code-micl char*6
+item x-comp-code-micl                    = "MICL"
+subfile u110 alias u110_micl   append  at docrev-doc-nbr            &
+  if mtd-micl <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micl,micl-type,micl-seq,micl-factor,mtd-micl
+
+; 2013/05/22 - MC2
+temp x-comp-code-mohd char*6
+item x-comp-code-mohd                    = "MOHD"
+subfile u110 alias u110_mohd   append  at docrev-doc-nbr            &
+  if mtd-mohd <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mohd,mohd-type,mohd-seq,mohd-factor,mtd-mohd
+; 2013/05/22 - end
+
+; MC3
+temp x-comp-code-macc char*6
+item x-comp-code-macc                    = "MACC"
+subfile u110 alias u110_macc   append  at docrev-doc-nbr            &
+  if mtd-macc <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-macc,macc-type,macc-seq,macc-factor,mtd-macc
+
+temp x-comp-code-mibd char*6
+item x-comp-code-mibd                    = "MIBD"
+subfile u110 alias u110_mibd   append  at docrev-doc-nbr            &
+  if mtd-mibd <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mibd,mibd-type,mibd-seq,mibd-factor,mtd-mibd
+
+temp x-comp-code-mpap char*6
+item x-comp-code-mpap                    = "MPAP"
+subfile u110 alias u110_mpap   append  at docrev-doc-nbr            &
+  if mtd-mpap <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mpap,mpap-type,mpap-seq,mpap-factor,mtd-mpap
+
+temp x-comp-code-mslp char*6
+item x-comp-code-mslp                    = "MSLP"
+subfile u110 alias u110_mslp   append  at docrev-doc-nbr            &
+  if mtd-mslp <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mslp,mslp-type,mslp-seq,mslp-factor,mtd-mslp
+
+temp x-comp-code-mmdu char*6
+item x-comp-code-mmdu                    = "MMDU"
+subfile u110 alias u110_mmdu   append  at docrev-doc-nbr            &
+  if mtd-mmdu <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mmdu,mmdu-type,mmdu-seq,mmdu-factor,mtd-mmdu
+
+temp x-comp-code-mbrt char*6
+item x-comp-code-mbrt                    = "MBRT"
+subfile u110 alias u110_mbrt   append  at docrev-doc-nbr            &
+  if mtd-mbrt <> 0                                                   &
+     include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mbrt,mbrt-type,mbrt-seq,mbrt-factor,mtd-mbrt
+; MC3 - end
+
+build $pb_obj/u110_2
+  

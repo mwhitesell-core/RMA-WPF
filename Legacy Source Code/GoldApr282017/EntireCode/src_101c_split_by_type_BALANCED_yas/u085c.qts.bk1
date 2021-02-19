@@ -1,0 +1,64 @@
+; Program: u085c 
+; Purpose: create letters to patients requesting update of health card 
+;	   eligibility information. All claims  of the patient are
+;	   listed in the body of the letter along with doctor's
+;		   name
+;		 - NOTE: only claims that have NOT be flagged as confidential
+;		        ("Y" for ministry, "R" for rma flagged) will be 
+;			printed.
+;		 - If ALL claims are confidential NO letter is genereated
+;
+;  00/sep/14    B.E.    - reduce to a max of 5 the number of doctors reported 
+;                         on any individual letter to a patient. This is 
+;			  accomplished by outputing a doc-nbr-count field
+;			  that is reset at the start of each patient.
+
+cancel clear
+
+set def
+set process nolimit
+set lock file update
+
+access *u085b							&
+  link  "B",							&
+        (nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6])), &
+        (nconvert(ascii(claim-nbr,10)[9:2])),                   &
+        "00000", "0"                                            &
+    to key-clm-type,						&
+       key-clm-batch-nbr,					&
+       key-clm-claim-nbr,				        &
+       key-clm-serv-code,  key-clm-adj-nbr of f002-claims-mstr opt
+
+
+select if    clmhdr-confidential-flag <> "R" 	&
+	 and clmhdr-confidential-flag <> "Y"
+
+sort on clmhdr-pat-ohip-id-or-chart	&
+     on doc-nbr	
+
+temp x-old-doc-nbr zoned*3
+temp x-old-pat-id  char*16
+temp x-doc-changed char*1
+temp x-doc-nbr-count zoned*7
+item x-doc-changed = "Y" if    clmhdr-pat-ohip-id-or-chart <> x-old-pat-id  &
+			    or doc-nbr <> x-old-doc-nbr 	     	    &
+		else "N"
+
+item x-doc-nbr-count 					&
+	= x-doc-nbr-count + 1	if x-doc-changed = "Y"	&
+     else x-doc-nbr-count				&
+		reset at clmhdr-pat-ohip-id-or-chart
+
+item x-old-doc-nbr = doc-nbr
+item x-old-pat-id  = clmhdr-pat-ohip-id-or-chart
+
+subfile u085c keep include		&
+  u085b,				&
+x-old-doc-nbr, &
+x-doc-changed, &
+  x-doc-nbr-count
+
+
+build $pb_obj/u085c
+
+

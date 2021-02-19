@@ -1,0 +1,80 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE PRODTITHE.QTS
+COMMENT "doc     : prodtithe.qts           "
+COMMENT "purpose : create a excel file for dept 4 or group H111                      "
+COMMENT "sort by doc-name  "
+COMMENT "who     : For Dwayne Martins                                    "
+COMMENT "*************************************************************"
+COMMENT "Date  Who  Description"
+COMMENT "2008/10/07 Yasemin         original"
+COMMENT "2008/10/30 MC  - exclude terminated doctors, only pick the summarized TOTITE from rec-type 'D'"
+COMMENT "2008/12/02 MC  - include terminated doctors"
+COMMENT "2009/05/28     MC  - modify the selection criteria in the second request"
+COMMENT "2016/Aug/04   MC1             - add a new column for term date as requested by Yasemin"
+COMMENT "2016/Sep/08     - Yasemin agreed to include new column primary-flag"
+COMMENT "2017/Mar/01  MC2  - replace INCEXP with totded as Yasemin requested"
+CANCEL CLEAR
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+REQUEST ONE ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "MC1"
+ACCESS F119-DOCTOR-YTD LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-EXTRA OPT
+CHOOSE DOC-NBR, COMP-CODE, REC-TYPE 'A'
+COMMENT "and   doc-date-fac-term = 0      &"
+SELECT IF ( ( (DOC-DEPT = 04 OR DOC-DEPT = 42 OR DOC-DEPT = 79) OR ( DOC-AFP-PAYM-GROUP = "H111" AND (DOC-DEPT = 14 OR DOC-DEPT = 15) ) ) )
+SORTED ON DOC-NBR
+TEMP TITHE1 ZONED*9 NUMERIC
+ITEM TITHE1 = TITHE1 + AMT-YTD/100 IF COMP-CODE = "TITHE1" RESET AT DOC-NBR
+TEMP TITHE2 ZONED*9 NUMERIC
+ITEM TITHE2 = TITHE2 + AMT-YTD/100 IF COMP-CODE = "TITHE2" RESET AT DOC-NBR
+TEMP TITHE3 ZONED*9 NUMERIC
+ITEM TITHE3 = TITHE3 + AMT-YTD/100 IF COMP-CODE = "TITHE3" RESET AT DOC-NBR
+TEMP TOTITE ZONED*9 NUMERIC
+ITEM TOTITE = TOTITE + AMT-YTD/100 IF COMP-CODE = "TOTITE" RESET AT DOC-NBR
+COMMENT "temp nonrbp     zoned*9 numeric"
+COMMENT "item nonrbp    = nonrbp + amt-ytd/100     &"
+COMMENT "if comp-code =   NONRBP   &"
+COMMENT "reset at doc-nbr"
+TEMP DEPMEM ZONED*9 NUMERIC
+ITEM DEPMEM = DEPMEM + AMT-YTD/100 IF COMP-CODE = "DEPMEM" RESET AT DOC-NBR
+TEMP PAYEFT ZONED*9 NUMERIC
+ITEM PAYEFT = PAYEFT + AMT-YTD/100 IF COMP-CODE = "PAYEFT" RESET AT DOC-NBR
+COMMENT ";;;; As per Mary print incexp ytd for deficit column intead of advout - advout is for solo incexp for 101c"
+TEMP INCEXP ZONED*9 NUMERIC
+ITEM INCEXP = INCEXP + AMT-YTD/100 IF COMP-CODE = "INCEXP" RESET AT DOC-NBR
+COMMENT "MC1"
+COMMENT "MC1 - end"
+COMMENT "nonrbp                                            ,&"
+SUBFILE PRODTITHE_DTL KEEP AT DOC-NBR INCLUDE DOC-OHIP-NBR OF F119-DOCTOR-YTD , DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR , DOC-NBR OF F020-DOCTOR-MSTR , DOC-DEPT , DOC-NAME , DOC-INITS , DOC-FLAG-PRIMARY , DOC-DATE-FAC-TERM , TOTITE , TITHE1 , TITHE2 , TITHE3 , DEPMEM , PAYEFT , INCEXP
+REQUEST TWO ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *PRODTITHE_DTL LINK DOC-OHIP-NBR, '000', 'TOTITE', 'D' TO DOC-OHIP-NBR, DOC-NBR, COMP-CODE, REC-TYPE OF F119-DOCTOR-YTD OPT
+COMMENT "each selected record must have DEPMEM"
+COMMENT "2009/05/28 - MC  - or either tithe1/2/3 has non-zero amt"
+SELECT IF DEPMEM <> 0 OR (TITHE1 <> 0 OR TITHE2 <> 0 OR TITHE3 <> 0)
+COMMENT "2009/05/28 - end"
+COMMENT "MC1 "
+DEF TERM-DATE CHAR*8 = ASCII(DOC-DATE-FAC-TERM) IF DOC-DATE-FAC-TERM <> 0
+DEF TOTITE ZONED*9 NUMERIC = AMT-YTD/100
+COMMENT "MC2"
+DEF TOTDED ZONED*9 NUMERIC = TITHE1 + TITHE2 + TITHE3 + DEPMEM
+COMMENT "MC2 - end"
+DEF COMMA CHA*1 = "~"
+DEF NUM-CR INTEGER UNSIGNED SIZE 2 = 13
+DEF CR CHAR*2 = CHAR(NUM-CR)
+COMMENT "nonrbp                                            ,&"
+COMMENT "comma                                               ,&"
+COMMENT "MC2"
+COMMENT "incexp                                            ,&"
+COMMENT "MC2 - end"
+COMMENT "MC1"
+COMMENT "MC1 - end"
+SUBFILE PRODTITHE PORTABLE KEEP INCLUDE DOC-AFP-PAYM-GROUP , COMMA , DOC-NBR OF PRODTITHE_DTL , COMMA , DOC-DEPT , COMMA , DOC-NAME , COMMA , DOC-INITS , COMMA , TOTITE , COMMA , TITHE1 , COMMA , TITHE2 , COMMA , TITHE3 , COMMA , DEPMEM , COMMA , TOTDED , COMMA , TERM-DATE , COMMA , DOC-FLAG-PRIMARY , CR
+BUILD $OBJ/PRODTITHE
+ENDMODULE PRODTITHE.QTS

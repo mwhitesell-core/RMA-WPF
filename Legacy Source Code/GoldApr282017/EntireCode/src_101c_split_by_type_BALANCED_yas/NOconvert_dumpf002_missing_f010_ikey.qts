@@ -1,0 +1,51 @@
+; reads claims master and uses "I" key to access corresponding
+; patient in f010. A subfile is the claims is created for all
+; claims with "i" keys not in f010
+; 99/feb/08 B.E. - modified to select claims is the patient acronym
+;                  in the claim <> the corresponding f010 acronym
+cancel clear
+set process nolimit
+set lock file update
+
+access f002-claims-mstr			&
+  link clmhdr-pat-ohip-id-or-chart      &
+  to   key-pat-mstr of  f010-pat-mstr  opt
+
+;(SELECT HEADER REC'S ONLY)
+choose key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, &
+	key-clm-serv-code '00000'
+
+;(SELECT 'C'LAIM BATCH ONLY)
+;select f002-claims-mstr            		&
+;          if    clmhdr-batch-type = "C"		
+
+def c-1 char*6 = CLMHDR-PAT-ACRONYM[1:6]
+def c-2 char*3 = CLMHDR-PAT-ACRONYM[7:3]
+def p-1 char*6 = PAT-ACRONYM[1:6]
+def p-2 char*3 = PAT-ACRONYM[7:3]
+
+
+select if      clmhdr-batch-type = "C"			&
+	  and  c-1 <> p-1 and c-2 <> p-2   
+;          or key-p-clm-data <> clmhdr-pat-key-data)
+
+;select f010-pat-mstr if not record f010-pat-mstr exists
+
+subfile f002_missing_f010 keep			&
+;    if    not record f010-pat-mstr exists		&
+;	or key-clm-batch-nbr = 0			&
+    include 					&
+      clmhdr-claim-id,				&
+      key-claims-mstr,				&
+      key-p-claims-mstr,			&
+      clmhdr-manual-and-tape-payments,		&
+      clmhdr-tot-claim-ar-ohip,			&
+      clmhdr-adj-cd-sub-type,			&
+      clmhdr-date-period-end,			&
+      clmhdr-pat-acronym,			&
+      pat-acronym,				&
+      clmhdr-date-sys,				&
+      clmhdr-pat-ohip-id-or-chart,		&
+      key-pat-mstr,				&
+      pat-health-nbr
+

@@ -1,0 +1,253 @@
+;#> PROGRAM-ID.     D110.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician NOTES
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;   1999/Jan/21  ____   S.B.     - Fixed date sizes and alignment for Y2K
+;				   compliance.  
+;				 - Removed the display field 'process-seq' 
+;				   to create space.
+; 1999/Jun/07 S.B.      - Altered the call to scrtitle.use and
+;                         stdhilite.use to be called from $use
+;                         instead of src.
+;                       - Removed the call to secfile.use because
+;                         it was not doing anything.
+; 2003/nov/10 b.e.      - alpha doctor nbr
+;
+
+screen $pb_obj/d110.qkc on line 6 for 18 message on line 24		&
+	receiving w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,	&
+		  constants-mstr-rec-6, f020-doctor-mstr
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 master
+
+temp w-doc-nbr char*3
+temp w-ep-nbr-from
+temp w-ep-nbr-to
+temp x-srch-code char*6
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query Physician Earnings history  " &
+"       transactions and to entry/modify transactions for the current  " &
+"       or any future Earnings Period.                                 " &
+"                                                                      "
+
+;use $pb_src/secfile.use   nol nod
+
+file  f110-compensation  primary  occurs 15
+	access viaindex compensation-key via doc-nbr, ep-nbr &
+	       using w-doc-nbr, w-ep-nbr-from
+
+file f190-comp-codes      reference
+     access viaindex comp-code using comp-code of f110-compensation
+
+file f191-earnings-period reference
+     access viaindex ep-nbr using ep-nbr of f110-compensation
+
+;DEFINE D-CHANGED        CHAR*1  = "Y"                                      &
+;  IF NOT NEWRECORD     OF POSITION                                     AND &
+;     NOT DELETEDRECORD OF POSITION                                     AND &
+;         ALTEREDRECORD OF POSITION                                         &
+;                          ELSE    "N"
+
+define x-screen-name char*55 = "EARNINGS - PAY PERIOD"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+;Y2K changes.
+"   E/P     T                                      -------AMOUNT---------   ENTRY" &
+	at ,1
+skip
+title &
+;Y2K changes.
+ "   NBR    Y CODE   DESCRIPTION      FACTOR   UNITS     GROSS         NET *   E/P" &
+	at ,1
+
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 YYMM 99 x xxxxxx-xxxxxxxxxxxxxxx99.9999*99,999- 999,999.99- 999,999.99- *9101
+;Y2K changes.
+;align (1,,4)(,,9)(,,12)(,,14) (,20,21)(,,37)(,,44)(,,45)(,,53)(,,65)(,,76) (,,77)
+align (1,,4)(,,11)(,,13)(,19,20)(,,36)(,,43)(,,44)(,,51)(,,63)(,,74) (,,75)
+cluster occurs with f110-compensation
+field ep-nbr		of f110-compensation 			      &
+			lookup on f191-earnings-period		      &
+			message "Invalid Earnings Period."      &
+ 			default current-ep-nbr
+;Y2K changes.  Removed the 'process-seq' field.
+field comp-type 	of f110-compensation display
+field comp-code         of f110-compensation	required	&
+      lookup on f190-comp-codes                                 &
+      message "Invalid COMPENSATION Code."
+field desc-short	of f190-comp-codes label "-" display
+field factor		of f110-compensation  ; !!! BWZ
+field factor-override	of f110-compensation display
+;Y2K changes.
+field comp-units	of f110-compensation if units-dollars-flag &
+			of f190-comp-codes = "U" bwz pic "^^^^^^"
+field amt-gross		of f110-compensation if units-dollars-flag of f190-comp-codes = "D" bwz
+field amt-net		  of f110-compensation ;display
+field compensation-status of f110-compensation display
+field ep-nbr-entry        of f110-compensation display
+
+;FIELD LAST-MOD-DATE         OF F190-COMP-CODES
+;FIELD LAST-MOD-TIME         OF F190-COMP-CODES
+;FIELD LAST-MOD-USER-ID      OF F190-COMP-CODES
+
+
+procedure internal calc-display
+begin
+  if units-dollars-flag of f190-comp-codes = "D"
+  then
+     let amt-net   of f110-compensation                         &
+              = round(  (  amt-gross  of f110-compensation      &
+                         * factor of f110-compensation)         &
+                       / 10000 , 0, near)
+  else
+    begin
+      let amt-gross of f110-compensation                        &
+              = round(  (  comp-units of f110-compensation      &
+                         * amt-per-unit of f190-comp-codes)     &
+                       / 100   , 0, near)
+      let amt-net   of f110-compensation                        &
+              = round(  (  amt-gross  of f110-compensation      &
+                         * factor     of f110-compensation)     &
+                       / 10000 , 0, near)
+    end
+  display amt-net      of f110-compensation
+  display ep-nbr-entry of f110-compensation
+end
+
+
+procedure edit ep-nbr
+begin
+   if ep-nbr > last-ep-nbr-of-fiscal-yr
+   then warning "*W* This Earnings Period is NOT within the Current Fiscal Year."
+   if ep-nbr < current-ep-nbr
+   then error   "Error-This Earnings Period is PRIOR to the Current Earnings Period."
+end
+
+procedure input comp-code
+begin
+  if fieldtext = "."
+  then begin
+    let x-srch-code = " "
+    run screen $pb_obj/sy033.qkc clear lines 13 to 23 passing x-srch-code mode f
+    if x-srch-code ne " "
+    then let fieldtext = x-srch-code
+    else error "Error -  A Compensation Code is required."
+  end
+end
+
+procedure edit comp-code
+begin
+  if comp-owner of f190-comp-codes ne "U"
+  then error "Error - This Compensation Code can't be input by a USER."
+end
+
+procedure process comp-code
+begin
+;  LET DOC-NBR OF F110-COMPENSATION = DOC-NBR OF F020-DOCTOR-MSTR @@
+  let doc-nbr of f110-compensation = w-doc-nbr
+  let     process-seq	of f110-compensation = process-seq of f190-comp-codes
+;Y2K changes.
+;  display process-seq	of f110-compensation
+  let comp-type         of f110-compensation = comp-type   of f190-comp-codes
+  display comp-type	of f110-compensation
+  display desc-short	of f190-comp-codes
+  let     factor	of f110-compensation = factor of f190-comp-codes
+  display factor	of f110-compensation
+  let     ep-nbr-entry of f110-compensation = current-ep-nbr
+  display ep-nbr-entry of f110-compensation
+end
+
+
+;PROCEDURE PROCESS FACTOR
+;BEGIN
+;  DO CALC-DISPLAY
+;END
+;PROCEDURE PROCESS AMT-GROSS
+;BEGIN
+;  DO CALC-DISPLAY
+;END
+;PROCEDURE PROCESS COMP-UNITS
+;BEGIN
+;  DO CALC-DISPLAY
+;END
+
+procedure internal accept-values
+  begin
+    accept ep-nbr    of f110-compensation
+    accept comp-code of f110-compensation
+    accept factor    of f110-compensation
+    if units-dollars-flag of f190-comp-codes = "U"
+      then accept comp-units of f110-compensation
+      else
+        begin
+           let comp-units of f110-compensation = 0
+           display comp-units of f110-compensation
+        end
+    if units-dollars-flag of f190-comp-codes = "D"
+      then accept amt-gross  of f110-compensation
+    do calc-display
+    end
+
+procedure append
+  begin
+    do accept-values
+  end
+
+procedure designer fix
+  begin
+    do accept-values
+    accept amt-net
+  end
+
+procedure entry
+  begin
+    for f110-compensation
+      begin
+        perform append
+      end
+    end
+
+procedure update
+  begin
+;;    PUT F020-DOCTOR-MSTR
+    for f110-compensation
+      begin
+        put f110-compensation
+        end
+    end
+
+
+
+procedure path
+  begin
+    let path = 1
+    end
+procedure find
+  begin
+    for f110-compensation
+      begin
+        get f110-compensation viaindex compensation-key via doc-nbr, &
+              ep-nbr using w-doc-nbr, w-ep-nbr-from
+        end
+    end
+procedure delete
+  begin
+    delete f110-compensation
+    end
+build
+  

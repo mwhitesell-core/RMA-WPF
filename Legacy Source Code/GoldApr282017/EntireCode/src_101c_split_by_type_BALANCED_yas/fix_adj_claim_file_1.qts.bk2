@@ -1,0 +1,72 @@
+; program: fix_adj_claim_file_1.qts
+;	   (1 of 2 programs in a series)
+
+; Purpose: This program can be used to correct records in the adj-claim-file
+;	   that is used to create automatic adjustment. 
+;	   The program can be used to either DELETE a record or to MODIFY
+;	   the contents of a record.
+;	   The program works by reading the input file and modifying the data
+;	   before it's written to the output file. The original adjustment
+;	   file is then deleted and the outfile file is copied back to the
+;	   original file by the 2nd program in this series.
+; Procedures:
+; modify this file as needed and run it
+; then delete adj_claim_file.dat
+; then qutil to re-create file adj-claim-file
+; then run fix_adj_claim_file_2.qtc to update adj-claim file with subfile
+;      created by this program
+
+; 2004/jan/05 b.e. - alpha doctor number
+
+
+
+cancel clear
+set process nolimit
+set lock file update
+
+access adj-claim-file
+
+;********************************************************
+; (use the below define if you want to CHANGE a record)
+;********************************************************
+define fix-flag char*1						&
+   = "1" if adj-batch-nbr = "22147336" and adj-claim-nbr  = 11	&
+else "2" if adj-batch-nbr = "99999999" and adj-claim-nbr  = 99	&
+else "0"
+
+
+;********************************************************
+; (use the below select if you want to DELETE an record)
+;********************************************************
+def delete-flag char*1        	&
+   =  "Y" if   (    adj-batch-nbr = "99999999" 	&
+                and adj-claim-nbr = 99		&
+	       )				&
+	    or 					&
+               (    adj-batch-nbr = "99999999" 	&
+                and adj-claim-nbr = 99		&
+	       )				&
+  else "N"
+
+select if delete-flag = "N"
+
+define fixed-ADJ-OMA-CD-SUFF char*5	&
+   = ADJ-OMA-CD-SUFF if fix-flag = "0"	&
+else "C195A"	     if fix-flag = "1"	&
+else "C195A"	     if fix-flag = "2"
+
+define fixed-ADJ-SERV-DATE date 	&
+    = ADJ-SERV-DATE  if fix-flag = "0"	&
+else 20020523       if fix-flag = "1"	&
+else 20010823	     if fix-flag = "2"
+
+subfile adj_claim_file_fixed keep include 		&
+  ADJ-BATCH-NBR,&
+  ADJ-CLAIM-NBR,&
+  fixed-ADJ-OMA-CD-SUFF,&
+  fixed-ADJ-SERV-DATE,&
+  ADJ-AGENT-CD,&
+  ADJ-PAT-ACRONYM,&
+  ADJ-AMT-BAL,&
+  ADJ-DIAG-CD,&
+  ADJ-LINE-NO

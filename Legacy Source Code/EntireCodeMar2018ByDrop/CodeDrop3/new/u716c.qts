@@ -1,0 +1,79 @@
+; Program: u716c.qts
+; Purpose: To create a flat file of modified description records to upload
+;	   back to the web
+;  	   - this pgm creates the subfile of concatenated descriptions with
+;	     1 long description text for all f002-suspend-desc recs
+; if any of the description records have been changed then all description
+; records must be processed and sent back to web.
+; the 1st request identifies claims with a changed detail and creates
+; driver file that the 2nd request uses to get all description recs
+;
+; Modification History
+; YY/MMM/DD  who  Why
+; 00/oct/05  B.E. - original
+; 
+
+can clear
+set process nolimit
+
+;**********************************************************************
+;
+request  u716c_ident_claims_with_changed_desc on calculation errors report
+
+
+access f002-suspend-desc
+
+use $use/def_clmdtl_status.def
+
+select if   clmdtl-status = clmdtl-status-updated	&
+	 or clmdtl-status = clmdtl-status-new
+	     
+sorted on clmdtl-doc-ohip-nbr	&
+       on clmdtl-accounting-nbr
+
+
+subfile u716c1 keep at clmdtl-accounting-nbr		 &
+ include                                                 &
+    clmdtl-doc-ohip-nbr   alias clmhdr-doc-ohip-nbr     ,&
+    clmdtl-accounting-nbr alias clmhdr-accounting-nbr  
+
+
+;**********************************************************************
+;
+request  u716c_get_all_desc_for_changed_claims on calculation errors report
+
+access *u716c1						&
+        link clmhdr-doc-ohip-nbr,                       &
+             clmhdr-accounting-nbr                      &
+          to clmhdr-doc-ohip-nbr,                       &
+             clmhdr-accounting-nbr  of f002-suspend-hdr &
+        link clmhdr-doc-ohip-nbr,                       &
+             clmhdr-accounting-nbr                      &
+          to clmdtl-doc-ohip-nbr,                       	&
+             clmdtl-accounting-nbr  of f002-suspend-desc 
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+select if    clmhdr-status <> clmhdr-status-delete            	&
+         and clmhdr-status <> clmhdr-status-cancel            	&
+         and clmhdr-status <> clmhdr-status-resubmit          	&
+         and clmhdr-status <> clmhdr-status-ignor	      
+	     
+sorted on clmhdr-doc-ohip-nbr	&
+       on clmhdr-accounting-nbr
+
+temp x-text char*255
+
+item x-text = truncate(pack(x-text)) + truncate(pack(clmdtl-suspend-desc)) &
+                        reset at clmhdr-accounting-nbr
+
+subfile u716c2 keep at clmhdr-accounting-nbr		 &
+ include                                                 &
+    clmdtl-doc-ohip-nbr   alias clmhdr-doc-ohip-nbr     ,&
+    clmdtl-accounting-nbr alias clmhdr-accounting-nbr   ,&
+    x-text
+
+
+build $pb_obj/u716c
+

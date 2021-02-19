@@ -1,0 +1,63 @@
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd                             &
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     
+
+select if (   comp-code = "TOTINC"    &
+          or  comp-code = "INCEXP"    &
+          or  comp-code = "AFP"       &
+          or  comp-code = "PAYPOT")   &
+         and  amt-mtd > 0
+
+sort on doc-nbr 
+
+temp x-totinc       num*7
+item x-totinc       = x-totinc + amt-mtd/100  &
+                    if comp-code = "TOTINC"   &
+                    reset at doc-nbr
+
+temp x-incexp       num*7
+item x-incexp       = x-incexp + amt-mtd/100  &
+                    if comp-code = "INXEXP"   &
+                    reset at doc-nbr
+
+temp x-paypot       num*7
+item x-paypot       = x-paypot + amt-mtd/100  &
+                    if comp-code = "PAYPOT"   &
+                    reset at doc-nbr
+
+temp x-afp          num*7
+item x-afp          = x-afp    + amt-mtd/100  &
+                    if comp-code = "AFP"      &
+                    reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile afpf119 portable keep at doc-nbr include     &
+doc-clinic-nbr                                      ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr             of f119-doctor-ytd              ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+x-totinc                                            ,&
+comma                                               ,&
+x-incexp                                            ,&
+comma                                               ,&
+x-paypot                                            ,&
+comma                                               ,&
+x-afp                                               ,&
+x-cr
+
+build $obj/checkf119   

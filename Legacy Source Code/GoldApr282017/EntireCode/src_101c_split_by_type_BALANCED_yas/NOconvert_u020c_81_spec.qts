@@ -1,0 +1,52 @@
+;#> PROGRAM-ID.     U020C.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : UPDATE SHADOW, CLAIMS, BATCTRL AND CONSTANTS FILES
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+
+can clear
+set default
+set process nolimit
+
+run u020c
+
+
+request process_shadow
+
+access *u020a1 					&
+  link "B",batctrl-batch-nbr, clmhdr-claim-nbr to	&
+  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr	&
+	of f002-claims-mstr
+
+select u020a1 if batctrl-batch-type = 'C'	
+
+select f002-claims-mstr if clmhdr-adj-oma-cd  <> '0000'	&
+                       and clmhdr-adj-oma-cd  <> 'ZZZZ'
+select if clmdtl-sv-date le '940531'
+
+
+sorted on clmhdr-claim-id of u020a1
+
+;;DEF X-CLAIM-NBR ZONED*10  = NCONVERT(ASCII(BATCTRL-BATCH-NBR,9)[1:2] &
+;;		+    ASCII(BATCTRL-BATCH-NBR,9)[4:6] &
+;;		+    ASCII(CLMHDR-CLAIM-NBR,2))
+
+
+output f002-claims-mstr alias clmhdr update	at clmhdr-claim-id   &
+	     via         key-clm-type, key-clm-batch-nbr, &
+	     key-clm-claim-nbr, key-clm-serv-code,    &
+	     key-clm-adj-nbr                    	&
+	using 'B', batctrl-batch-nbr, clmhdr-claim-nbr, &
+	     '00000', '0'                                     &
+	if moh-flag = 'Y'
+   item clmhdr-tape-submit-ind final 'S' if pat-mess-code = ' ' else 'H'
+   item clmhdr-submit-date final sysdate if pat-mess-code = ' ' else 0
+
+subfile u020c1 keep if moh-flag = 'Y' and pat-mess-code <> ' ' &
+	include u020a1
+
+build $pb_obj/u020c_81_spec
+  

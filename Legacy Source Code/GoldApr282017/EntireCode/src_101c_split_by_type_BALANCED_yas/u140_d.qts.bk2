@@ -1,0 +1,198 @@
+; Program: u140_d.qts
+; Purpose:	Calculate individual doctor AFP conversion payment /submission amounts 
+;		factoring values sent from MOH by the RA payments
+;		For doctors whose group is "R"eport only, there is no existing
+;		doctor record in f075 so add with zero RMA doctor number and
+;		payment to 100% for that transaction
+; 
+; modification history
+; 04/jul/01 b.e.	-original
+; 04/aug/12 b.e.	-add record to f075 if payment comes in for doctor
+;			 not on file .. 
+; 04/oct/16 b.e.	- store afp-submission-amt in tmp-counter-2
+; 05/mar/08 M.C.        - substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+; 2005/apr/08 b.e. - set lock update statement
+; 2005/jun/09 M.C. - change def factored with zoned*11 numeric
+; 2007/feb/26 b.e. - add logic to process doctors not already in f075 whose
+;		     afp group's process flag is not "R"eport only
+; 2007/may/01 b.e. - changed select to include if afp file has <> 0 payment
+; 2007/may/01 b.e. - undo above change - hard code doctor
+; 2007/jul/25 M.C. - reference doc-afp-paym-group of f075-afp-doc-mstr instead of
+;		     f020-doctor-mstr
+;		   - include file qualifier on sort and output statements
+; 2007/aug/19 b.e. - undo moira's change in select stmnt - check afp group in 
+;			 f020 not f075
+; 2007/sep/10 M.C. - uncomment the afp-conversion-amt <> 0   in the selection criteria
+;	             Brad mentioned: Try uncommenting the commented out line - ie if non-zero 
+;		     afp-conversion-payment then include ..  if the doctor isn't terminated we want 
+;		     to see payment but if he's terminated and there is either an RA payment or conversion payment then include .. 
+;                  - when storing afp-reporting-mth in u140_d1, use from f074 instead of f075
+; 2008/jun/26 M.C. - comment out the last part of the select statement, Yasemin would like to display what is coming
+;		     from the incoming file regardless the status of the doctors or the amount.
+; 2008/sep/04 M.C. - comment out the check of afp-group-process-flag of f074-afp-group-mstr = "E"
+; 2008/oct/14 M.C. - undo comment the check of afp-group-process-flag of f074-afp-group-mstr = "E" above
+; 2008/oct/20 M.C. - comment out the check of afp-group-process-flag of f074-afp-group-mstr = "E"
+
+cancel clear
+set process nolimit
+run u140_d
+;set lock file update 
+set lock record update 
+
+;-------------------------------------------------------
+request u140_d1_get_trans_in_a2s          		&
+                on edit        errors report    	&
+                on calculation errors report
+
+access afp-a2s-file						&
+	link (nconvert(doc-afp-paym-solo))			&
+	to   doc-ohip-nbr	of f020-doctor-mstr opt 	&
+        link doc-nbr of f020-doctor-mstr			&
+	to   doc-nbr of f075-afp-doc-mstr opt 			&
+	link doc-afp-paym-group of afp-a2s-file   		&
+	to   doc-afp-paym-group of f074-afp-group-mstr opt 	&
+        link doc-dept                                           &
+        to   dept-nbr            of f070-dept-mstr      opt
+
+; select "E"arning type afp groups and doctors that are either still active or have RA payments
+
+select if    (   doc-afp-paym-group of afp-a2s-file                     &
+; 2007/07/25 - MC
+;               = doc-afp-paym-group of f020-doctor-mstr                 &
+               = doc-afp-paym-group of f075-afp-doc-mstr                &
+; 2007/07/25 - end
+             )                                                     ;     &
+; 2008/10/20 - MC - include 'R'eporting only groups
+;        and (afp-group-process-flag of f074-afp-group-mstr = "E") ;	&
+; 2008/10/20 - end
+
+; 2008/06/26 - MC - comment out
+;        and (   doc-date-fac-term   = 0    				&
+;             or ra-payment-amt     <> 0					&
+;	     or	afp-conversion-amt <> 0					&
+;	     or doc-afp-paym-solo = "269993"				&
+;	    )
+
+def x-doc-name char*35                          &
+        =   pack(  doc-name                     &
+                 + ", "                         &
+                 + doc-inits                    &
+                 + " ("                         &
+                 + doc-nbr of f020-doctor-mstr 	&
+                 + ")"                          &
+                )
+
+def x-conversion-amt-unfactored zoned*11 numeric&
+        = afp-conversion-amt                    &
+                if afp-conversion-sign = " "    &
+    else  0 - afp-conversion-amt
+
+def x-conversion-amt zoned*11 numeric           			&
+   =  round(  x-conversion-amt-unfactored 				&
+	    * (  afp-multi-doc-ra-percentage of f075-afp-doc-mstr	&
+	       / 100000							&
+	      )								&
+	   ) 
+
+def x-submission-amt-unfactored zoned*11 numeric&
+        = afp-submission-amt                    &
+                if afp-submission-sign = " "    &
+    else  0 - afp-submission-amt
+def x-submission-amt zoned*11 numeric                                   &
+   =  round(  x-submission-amt-unfactored                               &
+            * (  afp-multi-doc-ra-percentage of f075-afp-doc-mstr       &
+               / 100000                                                 &
+              )                                                         &
+           )
+
+sort    on doc-afp-paym-solo            &
+; 2007/07/25 - MC
+;        on doc-afp-paym-group		&
+        on doc-afp-paym-group of afp-a2s-file		&
+; 2007/07/25 - end
+	on doc-nbr of f020-doctor-mstr
+
+;subfile u140_d1   append   keep at doc-afp-paym-solo   include	&
+subfile u140_d1   append   keep at doc-nbr of f020-doctor-mstr  include	&
+; 2007/apr/5
+;  afp-a2s-file,                                                        &
+  afp-transaction-id,                                   &
+  afp-record-id ,                                       &
+  doc-afp-paym-group of afp-a2s-file  ,                 &
+  afp-group-name,					&	
+  doc-afp-paym-solo ,                                   &
+  doc-nbr of f020-doctor-mstr,				&
+  afp-solo-name  ,                                      &
+  x-doc-name,						&
+  dept-nbr,						&
+  dept-name,						&
+  afp-payment-percentage ,                              &
+  afp-multi-doc-ra-percentage of f075-afp-doc-mstr,	&
+  afp-payment-amt of f075-afp-doc-mstr,			&
+  afp-submission-amt of f075-afp-doc-mstr,		&	
+  x-conversion-amt,					&
+  x-submission-amt,					&
+  afp-group-process-flag,				&
+  doc-date-fac-term, 					&
+; 2007/09/10 - MC
+;  afp-reporting-mth of f075-afp-doc-mstr
+  afp-reporting-mth of f074-afp-group-mstr
+; 2007/09/10 - end
+  
+
+output tmp-doctor-alpha alias tmp-doc-group-earnings add  on errors report 
+	item doc-ohip-nbr      final nconvert(doc-afp-paym-solo of afp-a2s-file)
+	item doc-nbr	       final doc-nbr of f020-doctor-mstr
+	item tmp-alpha-field-1 final doc-afp-paym-group of afp-a2s-file
+	item tmp-counter-1     final x-conversion-amt 
+	item tmp-counter-2     final x-submission-amt 
+
+output f075-afp-doc-mstr alias f075-update update	&
+     if record f075-afp-doc-mstr exists
+  item afp-reporting-mth  	final afp-reporting-mth of f074-afp-group-mstr 
+  item afp-payment-amt-total	final x-conversion-amt-unfactored
+  item afp-payment-amt		final x-conversion-amt
+  item afp-submission-amt	final x-submission-amt
+
+output f075-afp-doc-mstr alias f075-add    add		&
+     if not record f075-afp-doc-mstr exists
+; 2007/07/25 - MC
+;  item doc-nbr 		       final doc-nbr 
+  item doc-nbr 		       final doc-nbr  of f020-doctor-mstr
+; 2007/07/25 - end
+  item doc-ohip-nbr 	       final nconvert(doc-afp-paym-solo of afp-a2s-file)
+  item doc-afp-paym-group      final doc-afp-paym-group of u140_d1
+  item afp-reporting-mth       final afp-reporting-mth of f074-afp-group-mstr 
+  item afp-payment-amt-total   final x-conversion-amt-unfactored
+  item afp-payment-amt	       final x-conversion-amt
+  item afp-submission-amt      final x-submission-amt
+
+
+;-------------------------------------------------------
+; additional pass to ensure each doctor in f020, if even terminated but has
+; RA amounts is stamped with the reporting month so that it is reported on
+request u140_d5_update_f075_include_termed_doc_with_ra_amt	&
+                on edit        errors report    		&
+                on calculation errors report
+
+access f020-doctor-mstr					&
+	link doc-nbr					&
+	to   doc-nbr of f075-afp-doc-mstr		&
+	link doc-afp-paym-group of f075-afp-doc-mstr	&
+	to   doc-afp-paym-group of f074-afp-group-mstr opt 
+
+
+;select if     doc-date-fac-term <> 0			&
+;	  and (    ra-payment-amt       <> 0		&
+;	      )
+; select if not terminated OR RA payments are found
+select if      doc-date-fac-term = 0	&
+	   or  ra-payment-amt <> 0
+
+output f075-afp-doc-mstr  update on errors report
+  item afp-reporting-mth  	final afp-reporting-mth of f074-afp-group-mstr 
+
+
+; may delete the doctor f075 recorfd here if all values are zero and reporint mth not set
+
+build $obj/u140_d

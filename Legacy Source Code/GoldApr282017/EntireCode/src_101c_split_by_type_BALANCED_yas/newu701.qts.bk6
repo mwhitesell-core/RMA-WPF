@@ -1,0 +1,217 @@
+;#> PROGRAM-ID.    u072.qts
+;
+;       ((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE : THIS PROGRAM IS USED IN CONJUNCTION WITH R071 AND R073.
+;                   ITS PURPOSE IS TO PURGE THE CLAIMS WITH VALUES LESS
+;                   THAN .64 AND GREATER THAN -.64.  R071 VERIFIES THE NON-
+;                   PURGED CLAIMS AND R073 VERIFIES THE PURGED CLAIMS.
+;
+;    MODIFICATION HISTORY
+;    DATE      WHO        DESCRIPTION
+; 2000/04/28   B.Annis    Originally converted from u072.cbl
+;
+cancel clear
+set process nolimit
+set lock file update
+
+;------------------------------------------------
+request delete_type_claim
+
+access f002-claims-mstr                                 &
+      link nconv(ascii(clmhdr-batch-nbr,9)[1:2])        &
+        to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+choose key-clm-type 'B',                &
+       key-clm-batch-nbr,		& 
+       key-clm-claim-nbr,              	&
+       key-clm-serv-code '00000'
+
+define d-cutoff-date  int = days(sysdate) - days(nconv(clmhdr-date-sys))
+
+define d-balance-due zoned*7 numeric =                            &
+      clmhdr-manual-and-tape-payments + clmhdr-tot-claim-ar-ohip  &
+   if clmhdr-agent-cd = 0                                         &
+ else clmhdr-manual-and-tape-payments + clmhdr-tot-claim-ar-oma
+
+define d-ped-purge-from date = parm prompt "ENTER PED TO PURGE FROM YYYYMMDD :"
+define d-ped-purge-to date = parm prompt "ENTER PED TO PURGE TO YYYYMMDD :"
+
+define d-delete-flag char* 1 = 'Y' if                           &
+      clmhdr-batch-type = 'C'					&
+      and clmhdr-date-period-end <> iconst-date-period-end      &
+
+      and ((d-balance-due > -.86 and d-balance-due <  .86       &
+      and clmhdr-agent-cd <> 8                                  &
+      and (iconst-clinic-nbr-1-2 <> 81                       	&
+           or iconst-clinic-nbr-1-2 <> 82                       &
+           or iconst-clinic-nbr-1-2 <> 83))                     &
+
+       or (clmhdr-agent-cd = 8                                  &
+          and clmhdr-date-period-end >= d-ped-purge-from        &
+          and clmhdr-date-period-end <= d-ped-purge-to          &
+      and (iconst-clinic-nbr-1-2 <> 81                       	&
+           or iconst-clinic-nbr-1-2 <> 82                       &
+           or iconst-clinic-nbr-1-2 <> 83))                     &
+
+       or ((iconst-clinic-nbr-1-2 = 81                          &
+          or iconst-clinic-nbr-1-2 = 82                         &
+          or iconst-clinic-nbr-1-2 = 83)                        &
+          and d-cutoff-date > 365)                                &
+
+       or ((iconst-clinic-nbr-1-2 = 81                          &
+          or iconst-clinic-nbr-1-2 = 82                         &
+          or iconst-clinic-nbr-1-2 = 83)                        &
+         and (clmhdr-date-cash-tape-payment  <> "00000000"      &
+              and clmhdr-date-cash-tape-payment <>  " ")        &
+         and (clmhdr-status-ohip = "EV"                         &
+              or clmhdr-status-ohip = "EA"                      &
+              or clmhdr-status-ohip = "EF"                      &
+              or clmhdr-status-ohip = "48"                      &
+              or clmhdr-status-ohip = "I2"                      &
+              or clmhdr-status-ohip = " ")))                    &
+    else 'N'
+
+subfile u072-delete-claim-hdr keep if d-delete-flag = 'Y'       &
+include clmhdr-batch-nbr of f002-claims-mstr,                   &
+        clmhdr-claim-nbr of f002-claims-mstr,                   &
+        clmhdr-batch-type of f002-claims-mstr,                  &
+        clmhdr-adj-cd of f002-claims-mstr,                      &
+        clmhdr-agent-cd of f002-claims-mstr,                    &
+        clmhdr-cycle-nbr of f002-claims-mstr,                   &
+        clmhdr-date-period-end of f002-claims-mstr,             &
+        clmhdr-tot-claim-ar-oma of f002-claims-mstr,            &
+        clmhdr-tot-claim-ar-ohip of f002-claims-mstr,           &
+        clmhdr-manual-and-tape-payments of f002-claims-mstr,    &
+        d-balance-due,                                          &
+        clmhdr-orig-batch-nbr of f002-claims-mstr,              &
+        clmhdr-orig-claim-nbr of f002-claims-mstr,              &
+        d-cutoff-date
+
+subfile u072-retain-claim keep if d-delete-flag = 'N'           &
+          include                                               &
+        key-clm-type of f002-claims-mstr,                       &
+        key-clm-batch-nbr of f002-claims-mstr,                   &
+        key-clm-claim-nbr of f002-claims-mstr,                  &
+        key-clm-serv-code of f002-claims-mstr,                  &
+        key-clm-adj-nbr of f002-claims-mstr,			&
+	d-cutoff-date 
+
+;------------------------------------------------
+request retain_type_claims
+
+access *u072-retain-claim     		&
+          link key-clm-type, 		&
+               key-clm-batch-nbr,	&
+	       key-clm-claim-nbr 	&
+	    to key-clm-type, 		&
+	       key-clm-batch-nbr,	&
+               key-clm-claim-nbr	&
+    	  	of f002-claims-mstr
+
+define d-key-clm-serv-code char*4 = key-clm-serv-code[1:4]
+
+subfile u072-retain-claim-hdr keep if key-clm-serv-code 	&
+        of f002-claims-mstr = '00000'  				&
+                	include 				&
+                clmhdr-batch-nbr of f002-claims-mstr,           &
+                clmhdr-claim-nbr of f002-claims-mstr,           &
+                clmhdr-oma-suff-adj of f002-claims-mstr,        &
+		clmhdr-batch-type ,				&
+		clmhdr-adj-cd-sub-type,				&
+		clmhdr-doc-nbr-ohip,				&
+		clmhdr-doc-spec-cd,				&
+		clmhdr-refer-doc-nbr,				&
+		clmhdr-diag-cd,					&
+		clmhdr-loc,					&
+		clmhdr-hosp,					&
+		clmhdr-agent-cd,				&
+		clmhdr-adj-cd,					&
+		clmhdr-tape-submit-ind, 			&
+		clmhdr-i-o-pat-ind,				&
+		clmhdr-pat-ohip-id-or-chart,			&
+		clmhdr-pat-acronym,				&
+		clmhdr-reference,				&
+		clmhdr-date-admit,				&
+		clmhdr-doc-dept,				&
+		clmhdr-date-cash-tape-payment,  		&
+		clmhdr-curr-payment,  				&
+		clmhdr-date-period-end,				&
+		clmhdr-cycle-nbr,				&
+		clmhdr-date-sys,				&
+		clmhdr-amt-tech-billed,				&
+		clmhdr-amt-tech-paid,				&
+		clmhdr-tot-claim-ar-oma,			&
+		clmhdr-tot-claim-ar-ohip,			&
+		clmhdr-manual-and-tape-payments,		&
+		clmhdr-status-ohip, 				&
+		clmhdr-manual-review,				&
+		clmhdr-submit-date,				&
+		clmhdr-confidential-flag,			&
+		clmhdr-serv-date,				&
+		clmhdr-orig-batch-id,				&
+        	key-clm-type of f002-claims-mstr,  		&
+        	key-clm-batch-nbr of f002-claims-mstr, 		&
+        	key-clm-claim-nbr of f002-claims-mstr, 		&
+        	key-clm-serv-code of f002-claims-mstr, 		&
+        	key-clm-adj-nbr of f002-claims-mstr,		&
+;This will be uncommented when the line-no is in production!!!
+;		key-clm-line-no of f002-claims-mstr
+		key-p-clm-type of f002-claims-mstr,		&
+		key-p-clm-data of f002-claims-mstr,		&
+		d-cutoff-date 
+
+
+subfile u072-retain-claim-dtl keep				&
+    if key-clm-serv-code of f002-claims-mstr <> '00000' 	&
+   and d-key-clm-serv-code <> 'ZZZZ' include 	  	  	&
+                clmdtl-batch-nbr of f002-claims-mstr,           &
+                clmdtl-claim-nbr of f002-claims-mstr,           &
+                clmdtl-oma-cd of f002-claims-mstr,              &
+                clmdtl-oma-suff of f002-claims-mstr,            &
+                clmdtl-adj-nbr of f002-claims-mstr,             &
+                clmdtl-rev-group-cd of f002-claims-mstr, 	&
+                clmdtl-agent-cd of f002-claims-mstr,            &
+                clmdtl-adj-cd of f002-claims-mstr,              &
+                clmdtl-nbr-serv of f002-claims-mstr,            &
+                clmdtl-sv-date of f002-claims-mstr,             &
+                clmdtl-consec-dates of f002-claims-mstr,	&
+                clmdtl-amt-tech-billed of f002-claims-mstr,	&
+                clmdtl-fee-oma of f002-claims-mstr,            	&
+                clmdtl-fee-ohip of f002-claims-mstr,            &
+                clmdtl-date-period-end of f002-claims-mstr,     &
+                clmdtl-cycle-nbr of f002-claims-mstr,    	& 
+                clmdtl-diag-cd of f002-claims-mstr,             &
+                clmdtl-line-no of f002-claims-mstr,            	&
+		clmdtl-filler9  of f002-claims-mstr,		&
+		clmdtl-orig-batch-id of f002-claims-mstr,	&
+                key-clm-type of f002-claims-mstr,      		&
+                key-clm-batch-nbr of f002-claims-mstr,  	&
+                key-clm-claim-nbr of f002-claims-mstr,  	&
+                key-clm-serv-code of f002-claims-mstr,  	&
+                key-clm-adj-nbr of f002-claims-mstr,            &
+;This will be uncommented when the line-no is in production!!!
+;               key-clm-line-no of f002-claims-mstr
+                key-p-clm-type of f002-claims-mstr,             &
+                key-p-clm-data of f002-claims-mstr
+
+subfile u072-retain-claim-desc keep				&
+    if d-key-clm-serv-code = 'ZZZZ' include 	  	  	&
+                clmdtl-batch-nbr of f002-claims-mstr,           &
+                clmdtl-claim-nbr of f002-claims-mstr,           &
+                clmdtl-oma-cd of f002-claims-mstr,              &
+                clmdtl-oma-suff of f002-claims-mstr,            &
+                clmdtl-adj-nbr of f002-claims-mstr,             &
+                clmdtl-desc of f002-claims-mstr,	  	&
+                clmdtl-orig-batch-id of f002-claims-mstr, 	&
+                key-clm-type of f002-claims-mstr,         	&
+                key-clm-batch-nbr of f002-claims-mstr,    	&
+                key-clm-claim-nbr of f002-claims-mstr,    	&
+                key-clm-serv-code of f002-claims-mstr,    	&
+                key-clm-adj-nbr of f002-claims-mstr,            &
+;This will be uncommented when the line-no is in production!!!
+;               key-clm-line-no of f002-claims-mstr
+                key-p-clm-type of f002-claims-mstr,             &
+                key-p-clm-data of f002-claims-mstr
+
+build $obj/u072

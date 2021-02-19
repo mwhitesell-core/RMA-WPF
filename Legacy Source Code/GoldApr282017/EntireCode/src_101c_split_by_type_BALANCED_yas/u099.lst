@@ -1,0 +1,1984 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   1
+*                      u099.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. u099.
+author. dyad computer systems inc.
+installation. rma.
+date-written. 80/01/31.
+date-compiled. 18-May-06 15:42.
+security.
+*
+*    files      : f010 - patient master
+*               : f011 - subscriber master
+*               : f002 - claims master
+*
+*    program purpose :  to purge 'INACTIVE' patients from the patient
+*                       master. if all patients for a subscriber
+*                       are deleted, then the subscriber is also deleted.
+*
+*       date            programmer      modifications
+*       ----            ----------      -------------
+*       83/11/07        i.warsh         move zero to occurs variables
+*
+*       84/10/02        m. so           bypass all the bad acronym keys
+*                                       from patient master file
+*
+*       85/02/28        m. so           change codes to use invisible
+*                                       key to access claims-mstr or
+*                                       pat-mstr
+*
+*       85/11/04       m. so            change for direct-id stored
+*                                       in ohip instead of chart field.
+*
+*
+*       86/11/25       m. so            change report name from "r099"
+*                                       to "ru099".
+*
+*       87/05/28       s. blair       - coversion from aos to aos/vs.
+*                                       change field size for
+*                                       status clause to 2 and
+*                                       feedback clause to 4.
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*
+*  revised march/91  : - sms 138 (b.m.l.)
+*                      - removed access to subscriber file and changed
+*                         access to patient file from acronym to i-key
+*
+*
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   2
+*                      u099.cbl
+*  revised feb/98 j. chau - s149 unix conversion
+*
+*  revised 1999/May/18 S.B.     - Y2K conversion.
+*
+environment division.
+input-output section.
+file-control.
+*
+*   place your file select statements here
+*
+    copy "f010_new_patient_mstr.slr".
+*   (2002/jun/26 B.E. added chart nbrs 2-5)
+
+    select pat-mstr
+        assign to disk "$pb_data/f010_pat_mstr"
+        organization is indexed
+        access mode  is dynamic
+        lock mode is manual
+
+        record    key is key-pat-mstr    of pat-mstr
+        alternate key is pat-health-nbr  of pat-mstr with duplicates
+        alternate key is pat-acronym     of pat-mstr with duplicates
+        alternate key is pat-ohip-mmyy   of pat-mstr with duplicates
+        alternate key is pat-chart-nbr   of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-2 of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-3 of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-4 of pat-mstr with duplicates
+        alternate key is pat-chart-nbr-5 of pat-mstr with duplicates
+        alternate key is pat-full-name   of pat-mstr with duplicates
+
+        status       is status-cobol-pat-mstr.
+*
+*
+**  copy "F010_NEW_PAT_2CD_MSTR.SLR".
+*
+**  copy "F011_NEW_SUBSCRIBER_MSTR.SLR".
+*
+*mf    copy "F002_CLM_MSTR_P_ACCESS.SLR".
+*
+    copy "f002_claims_mstr.slr".
+    select claims-mstr
+*tobefixed* brad no unique key for this file !!!!!
+*               two record keys
+*       assign index to "f002_claims_mstr"
+*       assign data  to "f002_claims_mstr"
+
+        assign to disk "$pb_data/f002_claims_mstr"
+
+        organization is indexed
+        access mode  is dynamic
+*mf     (added lock mode so that files aren't open exclusively)
+        lock mode is manual
+
+*       record key   is key-claims-mstr     length is 18
+        record key   is key-claims-mstr
+          with duplicates
+
+*tobefixed*             with  duplicates occurrence is claims-occur
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   3
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+*mf     record key   is key-gen-claims-mstr length is  2
+*mf     alternate record key   is key-gen-claims-mstr
+        alternate record key   is clmdtl-p-claims-mstr
+           with duplicates
+
+        status       is status-cobol-claims-mstr.
+select audit-file
+       assign to printer print-file-name
+       file status is status-audit-rpt.
+*
+data division.
+file section.
+*
+    copy "f010_patient_mstr.fd".
+* file:  f010_patient_mstr.fd
+* modification history
+* --------------------
+* 98/dec/01 D.B.        -y2k
+* 99/jan/01 B.E.        - switch expiry date from mmyy to yymm
+* 99/Jan/21 M.C.        - change pat-reserve-for-future from 21 to 1, andd
+*                         pat-last-mod-by, change size from 330 to 315
+* 99/mar/16 B.E.        - added pat-health-nbr-unvalidated,
+*                         pat-version-cd-unvalidated, and
+*                         pat-ohip-validiation-status for additional 13 bytes
+*                         plus increase given name from 12 to 17 and surname
+*                         from 15 to 25 characters for an addition 15 bytes for
+*                         a total increase in sisze 13+15 = 28 bytes.
+* 2000/mar/24 B.E.      - redefined pat-version-cd into 1 and 2 characters.
+* 2002/may/10 B.E.      - phone-nbr from 7 to 20
+*                       - added 4 addition hospital chart nbrs:
+*                               pat-chart-nbr   = MUMC
+*                               pat-chart-nbr-2 = CHEDOKE
+*                               pat-chart-nbr-3 = HENDERSON
+*                               pat-chart-nbr-4 = GENERAL
+*                               pat-chart-nbr-5 = ST JOES
+*                       - changed subscr-addr, subscr-addr-unvalidated and
+*                         pat-old-addr elements to:
+*                               addr1/2/3 from 21 to 30
+*                        - change country from x(20) to x(1)
+*                        - added an 'address' prov-cd x(2) as compared to the
+*                          health insurance card prov-cd
+* 2002/sep/13 B.E.      - postal code from 6 to 10
+* 2003/apr/09 M.C.      - substitute pat-reserve-for-future with pat-obec-status
+* 2003/nov/24 M.C.      - change pat-last-doc-nbr-seen from 9(6) to x(3)
+*
+* Note: The following files must be kept in sync:
+*               f010_patient_mstr.fd
+*               f010_patient_mstr_new.fd
+*               f010_patient_mstr.ws
+
+
+fd  pat-mstr
+*          record      contains 343 characters .
+*       record      contains 379 characters [+10(addr3) +4(pc) -19(country)]
+*       record      contains 394 characters .  [ - 3(last doc seen)]
+        record      contains 391 characters .
+*       feedback is feedback-pat-mstr.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   4
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+01 pat-mstr-rec.
+
+    05  pat-acronym.
+        10  pat-acronym-first6          pic x(6).
+        10  pat-acronym-last3           pic xxx.
+
+    05  pat-ohip-mmyy.
+        10  pat-ohip-out-prov.
+            15  pat-ohip-nbr            pic 9(8).
+            15  pat-mm                  pic 99.
+            15  pat-yy                  pic 99.
+        10  filler                      pic x(3).
+    05  pat-ohip-mmyy-r  redefines pat-ohip-mmyy.
+        10  pat-direct-alpha.
+            15  pat-alpha1              pic x.
+            15  pat-alpha2-3            pic xx.
+        10  pat-direct-yy               pic xx.
+        10  pat-direct-mm               pic xx.
+        10  pat-direct-dd               pic xx.
+        10  pat-direct-filler           pic x(6).
+
+*       (MUMC)
+    05  pat-chart-nbr.
+*        10  pat-chart-m                        pic x.
+*        10  pat-chart-yy               pic xx.
+*        10  pat-chart-mm               pic xx.
+*        10  pat-chart-4-5              pic x(5).
+*        10  filler                     pic x(5).
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+
+*       (CHEDOKE)
+    05  pat-chart-nbr-2.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+
+*       (HENDERSON)
+    05  pat-chart-nbr-3.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+*       (GENERAL)
+    05  pat-chart-nbr-4.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(9).
+*       (ST JOES)
+    05  pat-chart-nbr-5.
+        10  pat-chart-1st-char          pic x.
+        10  pat-chart-remainder         pic x(10).
+
+    05  pat-full-name.
+*          05  pat-surname                              pic x(15).
+        10  pat-surname                 pic x(25).
+        10  pat-surname-r  redefines  pat-surname.
+            15  pat-surname-first6      pic x(6).
+* MC        15  pat-surname-last14      pic x(14).
+            15  pat-surname-last19      pic x(19).
+        10  pat-surname-rr  redefines  pat-surname.
+            15  pat-surname-first3      pic x(3).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   5
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+            15  pat-surname-last22      pic x(22).
+
+*           05  pat-given-name                  pic x(12).
+        10  pat-given-name              pic x(17).
+        10  pat-given-name-r  redefines  pat-given-name.
+            15  pat-given-name-first3   pic xxx.
+            15  pat-given-name-last14   pic x(14).
+        10  pat-given-name-rr redefines pat-given-name-r.
+            15  pat-given-name-first1   pic x.
+            15  filler                  pic x(16).
+
+    05  pat-init.
+        10  pat-init1                   pic x.
+        10  pat-init2                   pic x.
+        10  pat-init3                   pic x.
+    05  pat-location-field.
+        10  pat-location-field-1-3      pic x(3).
+        10  filler                      pic x(1).
+* 2003/11/24 - MC
+*    05  pat-last-doc-nbr-seen          pic 9(6).
+    05  pat-last-doc-nbr-seen           pic x(3).
+* 2003/11/24 - end
+
+    05  pat-birth-date                  pic 9(8).
+    05  pat-birth-date-r  redefines  pat-birth-date.
+        10  pat-birth-date-yy           pic 9999.
+        10  pat-birth-date-mm           pic 99.
+        10  pat-birth-date-dd           pic 99.
+    05  pat-date-last-maint             pic 9(8).
+    05  pat-date-last-maint-r redefines pat-date-last-maint.
+        10  pat-date-last-maint-yy      pic 9999.
+        10  pat-date-last-maint-mm      pic 99.
+        10  pat-date-last-maint-dd      pic 99.
+    05  pat-date-last-visit             pic 9(8).
+    05  pat-date-last-visit-r redefines pat-date-last-visit.
+        10  pat-date-last-visit-yy      pic 9999.
+        10  pat-date-last-visit-mm      pic 99.
+        10  pat-date-last-visit-dd      pic 99.
+    05  pat-date-last-admit             pic 9(8).
+    05  pat-date-last-admit-r redefines pat-date-last-admit.
+        10  pat-date-last-admit-yy      pic 9999.
+        10  pat-date-last-admit-mm      pic 99.
+        10  pat-date-last-admit-dd      pic 99.
+     05  pat-phone-nbr.
+        10  pat-phone-nbr-first3        pic 999.
+        10  pat-phone-nbr-last4         pic 9(4).
+        10  pat-phone-nbr-remainder     pic x(13).
+
+    05  pat-total-nbr-visits            pic 9(5).
+    05  pat-total-nbr-claims            pic 9(5).
+    05  pat-sex                         pic x.
+    05  pat-in-out                      pic x.
+    05  pat-nbr-outstanding-claims      pic 9(4).
+    05  key-pat-mstr.
+        10  pat-i-key                   pic x.
+        10  pat-con-nbr                 pic 99.
+        10  pat-i-nbr                   pic 9(12).
+        10  filler                      pic x.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   6
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+    05  pat-health-nbr                  pic 9(10).
+    05  pat-version-cd.
+        10  pat-version-cd-1            pic x.
+        10  pat-version-cd-2            pic x.
+    05  pat-health-65-ind               pic x.
+    05  pat-expiry-date.
+        10  pat-expiry-yy               pic 99.
+        10  pat-expiry-mm               pic 99.
+    05  pat-prov-cd                     pic xx.
+
+*          05  subscr-addr1                     pic x(21).
+    05  subscr-addr1                    pic x(30).
+*          05  subscr-addr2                     pic x(21).
+    05  subscr-addr2                    pic x(30).
+*          05  subscr-addr3                     pic x(21).
+    05  subscr-addr3                    pic x(30).
+
+    05  subscr-prov-cd                  pic xx.
+
+* 2002/sep/13 B.E.
+*    05  subscr-postal-cd               pic x(6).
+    05  subscr-postal-cd                pic x(10).
+    05  subscr-postal-cd-r  redefines  subscr-postal-cd.
+        10  subscr-post-code1.
+            15  subscr-post-cd1         pic x.
+            15  subscr-post-cd2         pic 9.
+            15  subscr-post-cd3         pic x.
+        10  subscr-post-code2.
+            15  subscr-post-cd4         pic 9.
+            15  subscr-post-cd5         pic x.
+            15  subscr-post-cd6         pic 9.
+        10  filler                      pic x(4).
+
+    05  subscr-msg-data.
+        10  subscr-msg-nbr              pic xx.
+        10  subscr-date-msg-nbr-eff-to          pic 9(8).
+        10  subscr-date-msg-nbr-eff-to-r
+              redefines subscr-date-msg-nbr-eff-to.
+            15  subscr-date-msg-nbr-eff-to-yy   pic 9999.
+            15  subscr-date-msg-nbr-eff-to-mm   pic 99.
+            15  subscr-date-msg-nbr-eff-to-dd   pic 99.
+        10  subscr-date-msg-nbr-eff-to-r1
+              redefines subscr-date-msg-nbr-eff-to-r
+                                                pic x(8).
+        10  subscr-date-last-statement          pic 9(8).
+        10  subscr-date-last-statement-r
+              redefines subscr-date-last-statement.
+            15  subscr-date-last-statement-yy           pic 9999.
+            15  subscr-date-last-statement-mm           pic 99.
+            15  subscr-date-last-statement-dd           pic 99.
+    05  subscr-auto-update                              pic x.
+    05  pat-last-mod-by                                 pic x(5).
+    05  pat-date-last-elig-mailing                      pic 9(8).
+    05  pat-date-last-elig-maint                        pic 9(8).
+    05  pat-last-birth-date                             pic 9(8).
+    05  pat-last-version-cd                             pic x(2).
+    05  pat-mess-code                                   pic x(3).
+***    05  pat-country                                     pic x(20).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   7
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f010_)
+    05  pat-country                                     pic x(1).
+    05  pat-no-of-letter-sent                           pic 99.
+    05  pat-dialysis                                    pic x(1).
+
+***    05  pat-health-nbr-unvalidated                      pic 9(10).
+***    05  pat-version-cd-unvalidated                      pic xx.
+    05  pat-ohip-validiation-status                     pic x.
+
+* 2003/04/09 - MC
+*    05  pat-reserve-for-future                         pic x(1).
+    05  pat-obec-status                                 pic x(1).
+* 2004/04/09 - end
+*
+**  copy "F010_PATIENT_2CD_MSTR.FD".
+*
+**  copy "F011_SUBSCRIBER_MSTR.FD".
+*
+*mf    copy "F002_CLM_MSTR_P_ACCESS.FD".
+*
+    copy "f002_claims_mstr.fd".
+* 99/jan/15 B.E  - y2k
+* 01/nov/06 B.E. - added clmrec-hdr-payroll as redefine of clmrec-hosp
+* 03/aug/21 M.C. - increase the file size by 8 characters
+* 03/oct/20 b.e. - alpha doctor nbr
+* 04/jun/02 b.e. - added field clmdtl-b-batch-number-numeric
+
+fd  claims-mstr
+*            block  contains       224 characters
+*            record contains       224 characters .
+*!             block  contains       232 characters
+*!             record contains       232 characters .
+             block  contains       228 characters
+             record contains       228 characters .
+*       feedback is feedback-claims-mstr.
+
+
+* insert this warning message from "F000_DUPLICATE_FD_WARNING.FD
+
+*----------------  note -----------------------
+*-- any changes to this fd must also be made  --
+*-- to the corresponding "..._D001_..." fd    --
+*-- and vice versa                            --
+*----------------  note -----------------------
+01  claims-mstr-rec.
+
+  05  claims-mstr-hdr-rec.
+
+    10  clmrec-hdr-clinic-nbr-1-2               pic 99.
+*!    10  filler                                  pic x(09).
+    10  filler                                  pic x(08).
+    10  clmrec-zeroed-oma-suff-adj              pic x(06).
+    10  clmrec-zeroed-area redefines clmrec-zeroed-oma-suff-adj
+                                                pic 9(06).
+    10  clmrec-hdr-batch-type                   pic x.
+    10  filler                                  pic x(15).
+    10  clmrec-hdr-diag-cd                      pic 9(3).
+    10  clmrec-hdr-loc                          pic x(4).
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   8
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+    10  clmrec-hdr-hosp                         pic x.
+    10  clmrec-hdr-payroll redefines clmrec-hdr-hosp pic x.
+
+    10  clmrec-hdr-agent-cd                     pic 9.
+    10  filler                                  pic x(2).
+    10  clmrec-hdr-i-o-pat-ind                  pic x.
+    10  clmrec-hdr-ohip-id-or-chart             pic x(16).
+    10  clmrec-hdr-pat-acronym                  pic x(9).
+* reference x(11) + date admit 9(8)
+    10  filler                                  pic x(19).
+
+    10  clmrec-doc-dept-nbr                     pic 99.
+
+*  (cash payment date 9(8) + curr payment 9(7) + ped 9(8)  + cycle nbr 9(2)
+    10  filler                                  pic x(25).
+
+*      (field now refers to clmhdr-date-sys instead of old
+*       clmhdr-date-claim, but name remains the same)
+    10  clmrec-hdr-date-claim                   pic x(8).
+    10  clmrec-hdr-amt-tech-billed              pic s9(4)v99.
+    10  clmrec-hdr-amt-tech-paid                pic s9(4)v99.
+    10  clmrec-hdr-tot-claim-ar-oma             pic s9(5)v99.
+    10  clmrec-hdr-tot-claim-ar-ohip            pic s9(5)v99.
+    10  clmrec-hdr-manual-tape-pymnts           pic s9(5)v99.
+    10  clmrec-hdr-status-ohip                  pic xx.
+*       (review=1,submitdate=8,confidential=1,servdate=8,origbatchid=11)
+* 2003/08/21 - MC - 8 chars for 4 new elements (elig-error, elig-status, serv-er
+*   10  filler                                  pic x(29).
+*!  10  filler                                  pic x(37).
+    10  filler                                  pic x(36).
+* 2003/08/21 - end
+
+*-------------------
+10  k-key-claims-mstr.
+*        key type: 'b' = batch id
+*                  'p' = patient id (i key)
+    20  clmrec-hdr-b-key-type                        pic x.
+    20  clmrec-hdr-b-data.
+*!        25  clmrec-hdr-b-batch-num                   pic 9(9).
+        25  clmrec-hdr-b-batch-num                   pic x(8).
+        25  clmrec-hdr-b-batch-nbr redefines clmrec-hdr-b-batch-num.
+            30  clmrec-hdr-b-clinic-nbr-1-2          pic 99.
+*!            30  clmrec-hdr-b-doc-nbr                 pic 9(4).
+            30  clmrec-hdr-b-doc-nbr                 pic x(3).
+            30  clmrec-hdr-b-doc-nbr-r redefines clmrec-hdr-b-doc-nbr.
+*!                35  clmrec-hdr-b-doc-nbr-1           pic 9.
+*!                35  clmrec-hdr-b-doc-nbr-2-4         pic 999.
+                35  clmrec-hdr-b-doc-nbr-2-4         pic xxx.
+*           ( added so that the new batch number can be accessed
+*             rather than the old  week-day combination )
+            30  clmrec-hdr-b-batch-number.
+                35  clmrec-hdr-b-week                pic 99.
+                35  clmrec-hdr-b-day                 pic 9.
+        25  clmrec-hdr-b-claim-nbr                   pic 99.
+        25  clmrec-hdr-b-oma-cd                      pic x999.
+
+        25  clmrec-hdr-b-oma-suff                    pic x.
+        25  clmrec-hdr-b-adj-nbr                     pic x.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page   9
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+    20  clmrec-hdr-b-data-r  redefines  clmrec-hdr-b-data.
+        25  clmrec-hdr-b-pat-id                      pic x(15).
+*!        25  filler                                   pic xx.
+        25  filler                                   pic x.
+
+10  k-clmdtl-p-claims-mstr.
+    20  clmdtl-p-key-type                        pic x.
+    20  clmdtl-p-data.
+        25  clmdtl-p-batch-nbr.
+            30  clmdtl-p-clinic-nbr-1-2      pic  99.
+*!            30  clmdtl-p-doc-nbr             pic 9(4).
+            30  clmdtl-p-doc-nbr             pic x(3).
+            30  clmdtl-p-week                pic 99.
+            30  clmdtl-p-day                 pic 9.
+        25  clmdtl-p-claim-nbr               pic 99.
+        25  clmdtl-p-oma-cd                  pic x999.
+        25  clmdtl-p-oma-suff                pic x.
+        25  clmdtl-p-adj-nbr                 pic x.
+*-------------------------
+
+01  claims-mstr-dtl-rec.
+
+*!    10  filler                                  pic x(11).
+    10  filler                                  pic x(10).
+    10  clmrec-dtl-oma-cd                       pic x(4).
+    10  filler                                  pic x(5).
+    10  clmrec-dtl-agent-cd                     pic  9.
+    10  clmrec-dtl-adj-cd                       pic  x.
+    10  clmrec-dtl-nbr-serv                     pic 99.
+    10  clmrec-dtl-sv-date                      pic x(8).
+    10  clmrec-dtl-consec-dates occurs 3 times.
+        15  clmrec-dtl-sv-nbr                   pic 9.
+        15  filler                              pic xx.
+    10  clmrec-dtl-amt-tech-billed              pic s9(4)v99.
+    10  clmrec-dtl-fee-oma                      pic s9(5)v99.
+    10  clmrec-dtl-fee-ohip                     pic s9(5)v99.
+* 2003/08/21 - MC
+*   10  filler                                  pic x(127).
+*!    10  filler                                  pic x(135).
+    10  filler                                  pic x(134).
+* 2003/08/21 - end
+
+*mf added below copy to include 'external' key within record.
+*mfcopy "f002_key_claims_mstr_mf.ws".
+*-------------------
+10  key-claims-mstr.
+*        key type: 'b' = batch id
+*                  'p' = patient id (i key)
+    20  clmdtl-b-key-type                        pic x.
+    20  clmdtl-b-data.
+*!        25  clmdtl-b-batch-num                   pic 9(9).
+        25  clmdtl-b-batch-num                   pic x(8).
+        25  clmdtl-b-batch-nbr redefines clmdtl-b-batch-num.
+            30  clmdtl-b-clinic-nbr-1-2          pic 99.
+*!            30  clmdtl-b-doc-nbr                 pic 9(4).
+            30  clmdtl-b-doc-nbr                 pic x(3).
+            30  clmdtl-b-doc-nbr-r redefines clmdtl-b-doc-nbr.
+*!                35  clmdtl-b-doc-nbr-1           pic 9.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  10
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+*!                35  clmdtl-b-doc-nbr-2-4         pic 999.
+                35  clmdtl-b-doc-nbr-2-4         pic xxx.
+*           ( added so that the new batch number can be accessed
+*             rather than the old  week-day combination )
+            30  clmdtl-b-batch-number.
+                35  clmdtl-b-week                pic 99.
+                35  clmdtl-b-day                 pic 9.
+            30  clmdtl-b-batch-number-numeric redefines  clmdtl-b-batch-number
+                                                pic 9(3).
+
+        25  clmdtl-b-claim-nbr                   pic 99.
+        25  clmdtl-b-oma-cd                      pic x999.
+
+        25  clmdtl-b-oma-suff                    pic x.
+        25  clmdtl-b-adj-nbr                     pic x.
+    20  clmdtl-b-data-r  redefines  clmdtl-b-data.
+        25  clmdtl-b-pat-id                      pic x(15).
+*!        25  filler                               pic xx.
+        25  filler                               pic x.
+
+10  clmdtl-p-claims-mstr.
+    20  clmdtl-p-key-type                        pic x.
+    20  clmdtl-p-data.
+        25  clmdtl-p-batch-nbr.
+            30  clmdtl-p-clinic-nbr-1-2      pic  99.
+*!            30  clmdtl-p-doc-nbr             pic 9(4).
+            30  clmdtl-p-doc-nbr             pic x(3).
+            30  clmdtl-p-week                pic 99.
+            30  clmdtl-p-day                 pic 9.
+        25  clmdtl-p-claim-nbr               pic 99.
+        25  clmdtl-p-oma-cd                  pic x999.
+        25  clmdtl-p-oma-suff                pic x.
+        25  clmdtl-p-adj-nbr                 pic x.
+*-------------------------
+
+fd audit-file
+   record contains 132 characters.
+
+01  audit-record.
+
+    05  filler                          pic x(132).
+*
+working-storage section.
+
+77  err-ind                                     pic 99  value zero.
+77  pat-occur                                   pic 9(12).
+**77  pat-2cd-occur                             pic 9(12).
+77  feedback-pat-mstr                           pic x(4).
+**77  feedback-pat-2cd-mstr                     pic x(4).
+**77  feedback-subscr-mstr                      pic x(4).
+77  claims-pat-access-occur                     pic 9(12).
+*mf 77  feedback-claims-mstr-pat-access         pic x(4).
+77  display-key-type                            pic x(7).
+77  del-ind                                     pic x   value "N".
+77  claim-exists-for-this-patient               pic x   value "N".
+*77  print-file-name                            pic x(4) value
+*               "r099".
+77  print-file-name                             pic x(5) value
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  11
+*                      u099.cbl                                      )
+                "ru099".
+
+*
+*  eof flags
+*
+**77  eof-subscr-mstr                           pic x   value "N".
+77  eof-pat-mstr                                pic x   value "N".
+77  eof-claims-mstr-pat-access                  pic x   value "N".
+
+**77  flag-set                                  pic x.
+**  88  bad-acronym-key                         value 'Y'.
+**  88  good-acronym-key                        value 'N'.
+
+
+*
+*  status file indicators
+*
+01  status-indicators.
+*mf    05  status-file                          pic x(11).
+**  05  status-subscr-mstr                      pic x(11) value zero.
+*mf    05  status-pat-mstr                      pic x(11) value zero.
+**  05  status-pat-2cd-mstr                     pic x(11) value zero.
+**  05  status-cobol-pat-2cd-mstr               pic xx    value zero.
+**  05  status-cobol-subscr-mstr                pic xx    value zero.
+*mf    05  status-claims-mstr-pat-access        pic x(11) value zero.
+
+    05  status-file                             pic xx.
+    05  status-cobol-pat-mstr                   pic xx    value zero.
+    05  status-cobol-claims-mstr                pic xx    value zero.
+    05  status-audit-rpt                        pic xx    value zero.
+
+**01  key-pat-mstr.
+
+**  05  pat-key-type                            pic a.
+**  05  pat-key-o-c-a                           pic x(15).
+
+**01  ws-key-pat-mstr.
+
+**  05  ws-pat-key-type                         pic a.
+**  05  ws-pat-key-nbr                          pic x(14).
+
+*mf    copy "F002_KEY_CLMS_MSTR_P_ACC.WS".
+
+    copy "f002_claims_mstr_rec1_2.ws".
+*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+*  yy/mm/dd  whom          why
+*  --------  ----          ---
+*
+*  84/12/19  i.warsh       broke down the reference field so that
+*                          each individual character could be looked at
+*                          for direct bills.
+*  90/09/27  b.elliott     added redefine for clmhdr-claim-source-cd
+*
+*  91/02/13  m. chan       clmhdr-tape-submit-ind is related to manual
+*                          review flag.  if 'n' means manual review is
+*                          on; ohterwise, if 'y' means manual review is
+*                          off
+*
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  12
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+*  91/04/17  m. chan       clmhdr-tape-submit-ind is related to claim
+*                          status - 's'ubmit, 'r'esubmit or 'h'old
+*  98/01/26  m. chan       moved clmhdr-orig-batch-id after clmhdr-reserve-
+*                          for-future
+*  98/06/02  d. balmer     y2K date change
+*  99/jan/21 B.E.  - added clmhdr-date-sys breakdown of -12 and -38 fields.
+*  99/jan/25 B.E.  - added clmhdr-date-admit breakdown of -12 and -38 fields.
+*  99/jan/25 B.E.  - added clmhdr-payroll redefine of clmhdr-hosp
+*  03/aug/21 M.C.  - add 5 new elements to the files
+*  03/nov/05 M.C.  - alpha doc nbr
+*  04/jul/07 b.e.  - added  clmdtl-orig-doc-number
+*                           clmdtl-orig-batch-number
+*                           clmdtl-orig-claim-number
+*  04/nov/18 M.C. - correct the redefinition of clmdtl-orig-complete-batch-n-r
+*                   by including clmdtl-orig-clinic-number
+*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+* insert this warning message from "f002_duplicate_fd_warning.fd"
+
+*+++++++++++++++W A R N I N G +++++++++++++++
+*                                           *
+* any changes to this fd must also be made  *
+* to the other 3 in the following list:     *
+*                                           *
+*        "f002_claims_hdr_rec.ws            *
+*        "f002_claims_dtl_rec.ws            *
+*        "f002_claims_mstr_rec1_2.ws        *
+*        "f002_clm_mstr_p_access.ws         *
+*                                           *
+*+++++++++++++++W A R N I N G +++++++++++++++
+
+*
+*       note 1: key for this file is the claim-id which is prefaced by a
+*               1 character type field -- 'p' = patient id (i key)
+*                                         'b' = batch nbr
+*       note 2: - the claim detail data recs are written with valid oma
+*                   codes, the detail description recs use an oma code of 'zzzz'
+*                   and adjustment detail records use and 'adj-cd' of "1")
+
+01  claim-header-rec.
+
+    05  clmhdr-claim-id.
+*!      10  clmhdr-batch-nbr                    pic 9(9).
+        10  clmhdr-batch-nbr                    pic x(8).
+        10  clmhdr-batch-nbr-r1 redefines clmhdr-batch-nbr.
+            15  clmhdr-clinic-nbr-1-2           pic 99.
+*!          15  clmhdr-doc-nbr                  pic 9(4).
+            15  clmhdr-doc-nbr                  pic x(3).
+            15  clmhdr-week                     pic 99.
+            15  clmhdr-day                      pic 9.
+        10  clmhdr-batch-nbr-r2 redefines clmhdr-batch-nbr.
+            15  filler                          pic xx.
+*!          15  clmhdr-batch-nbr-3-6            pic 9(4).
+            15  clmhdr-batch-nbr-3-6            pic x(3).
+            15  clmhdr-batch-nbr-7-9            pic 999.
+        10  clmhdr-claim-nbr                    pic 9(2).
+        10  clmhdr-zeroed-oma-suff-adj.
+            15  clmhdr-adj-oma-cd               pic x999.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  13
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+            15  clmhdr-adj-oma-suff             pic x.
+            15  clmhdr-adj-adj-nbr              pic 9.
+        10  clmhdr-zeroed-area redefines clmhdr-zeroed-oma-suff-adj
+                                                pic 9(6).
+*       (valid batch types are 'c' 'a' 'p')
+    05  clmhdr-batch-type                       pic x.
+*       ('clmhdr-card-colour' replaced by 'adjust-sub-type' --
+    05  clmhdr-adj-cd-sub-type                  pic x.
+    05  clmhdr-adj-cd-sub-type-ss redefines clmhdr-adj-cd-sub-type
+                                                pic 9.
+    05  clmhdr-claim-source-cd    redefines clmhdr-adj-cd-sub-type
+                                                pic x.
+    05  clmhdr-doc-nbr-ohip                     pic 9(6).
+    05  clmhdr-doc-spec-cd                      pic 99.
+    05  clmhdr-refer-doc-nbr                    pic 9(6).
+    05  clmhdr-diag-cd                          pic 999.
+    05  clmhdr-loc                              pic x999.
+
+    05  clmhdr-hosp                             pic x.
+    05  clmhdr-payroll redefines clmhdr-hosp    pic x.
+
+    05  clmhdr-agent-cd                         pic 9.
+    05  clmhdr-adj-cd                           pic x.
+    05  clmhdr-tape-submit-ind                  pic x.
+    05  clmhdr-i-o-pat-ind                      pic x.
+    05  clmhdr-pat-ohip-id-or-chart.
+        10  clmhdr-pat-key-type                 pic a.
+        10  clmhdr-pat-key-data.
+            15  clmhdr-pat-key-ohip             pic x(8).
+            15  filler                          pic x(7).
+    05  clmhdr-pat-acronym.
+        10  clmhdr-pat-acronym6                 pic x(6).
+        10  clmhdr-pat-acronym3                 pic x(3).
+    05  clmhdr-reference.
+        10  clmhdr-ref1                         pic x.
+        10  clmhdr-ref2                         pic x.
+        10  clmhdr-ref3                         pic x.
+        10  clmhdr-ref4                         pic x.
+        10  clmhdr-ref5                         pic x.
+        10  clmhdr-ref6                         pic x.
+        10  clmhdr-ref7                         pic x.
+        10  clmhdr-ref8                         pic x.
+        10  clmhdr-ref9                         pic x.
+* y2k
+        10  clmhdr-ref10                        pic x.
+        10  clmhdr-ref11                        pic x.
+    05  clmhdr-reference-r redefines clmhdr-reference.
+        10  clmhdr-ref-date1.
+* y2k
+*           15  clmhdr-ref-date-yy                      pic 9(2).
+            15  clmhdr-ref-date-yy              pic 9(4).
+            15  clmhdr-ref-date-mm              pic 9(2).
+            15  clmhdr-ref-date-dd              pic 9(2).
+        10  clmhdr-ref-inits                    pic x(3).
+    05  clmhdr-reference-r1 redefines clmhdr-reference-r.
+        10  filler                              pic x.
+* y2k
+*       10  clmhdr-ref-date2                            pic x(6).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  14
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+        10  clmhdr-ref-date2                    pic x(8).
+        10  filler                              pic x(2).
+    05  clmhdr-reference-r2 redefines clmhdr-reference-r1.
+        10  filler                              pic x(2).
+* y2k
+*       10  clmhdr-ref-date3                            pic x(6).
+        10  clmhdr-ref-date3                    pic x(8).
+        10  filler                              pic x(1).
+    05  clmhdr-reference-r3 redefines clmhdr-reference-r2.
+        10  filler                              pic x(3).
+* y2k
+*       10  clmhdr-ref-date4                            pic x(6).
+        10  clmhdr-ref-date4                    pic x(8).
+    05  clmhdr-date-admit.
+*           (note - admit-yy must be left alpha-numeric)
+* y2k
+*       10  clmhdr-date-admit-yy                        pic xx.
+        10  clmhdr-date-admit-yy                pic x(4).
+        10  clmhdr-date-admit-yy-r redefines
+            clmhdr-date-admit-yy.
+            15  clmhdr-date-admit-yy-12         pic xx.
+            15  clmhdr-date-admit-yy-34         pic xx.
+        10  clmhdr-date-admit-mm                pic 99.
+        10  clmhdr-date-admit-mm-r redefines clmhdr-date-admit-mm
+                                                pic xx.
+        10  clmhdr-date-admit-dd                pic 99.
+        10  clmhdr-date-admit-dd-r redefines clmhdr-date-admit-dd
+                                                pic xx.
+    05  clmhdr-date-admit-r redefines clmhdr-date-admit
+* y2k                                                pic 9(6).
+                                                pic 9(8).
+    05  clmhdr-date-admit-r2 redefines clmhdr-date-admit-r.
+        10 clmhdr-date-admit-12                 pic 9(2).
+        10 clmhdr-date-admit-38                 pic 9(6).
+    05  clmhdr-doc-dept                         pic 99.
+* y2k    05  clmhdr-date-cash-tape-payment           pic x(6).
+    05  clmhdr-date-cash-tape-payment           pic x(8).
+    05  clmhdr-date-cash-tape-paymt-r redefines
+        clmhdr-date-cash-tape-payment.
+        10  clmhdr-date-cash-tape-paymt-12      pic 9(2).
+        10  clmhdr-date-cash-tape-paymt-38      pic 9(6).
+    05  clmhdr-direct-bills-clm-info  redefines clmhdr-date-cash-tape-payment.
+        10  clmhdr-msg-nbr                      pic xx.
+        10  clmhdr-reprint-flag                 pic x.
+        10  clmhdr-sub-nbr                      pic x.
+        10  clmhdr-auto-logout                  pic x.
+        10  clmhdr-fee-complex                  pic x.
+        10  filler                              pic xx.
+    05  clmhdr-curr-payment                     pic s9(5)v99.
+
+    05  clmhdr-date-period-end.
+* y2k
+*       10  clmhdr-period-end-yy                        pic 99.
+        10  clmhdr-period-end-yy                pic 9(4).
+        10  clmhdr-period-end-mm                pic 99.
+        10  clmhdr-period-end-dd                pic 99.
+    05  clmhdr-cycle-nbr                        pic 99.
+* y2k
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  15
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+*   05  clmhdr-date-sys                                 pic x(6).
+    05  clmhdr-date-sys                         pic x(8).
+    05  clmhdr-date-sys-r redefines clmhdr-date-sys.
+        10  clmhdr-date-sys-12                  pic 9(2).
+        10  clmhdr-date-sys-38                  pic 9(6).
+    05  clmhdr-amt-tech-billed                  pic s9(4)v99.
+    05  clmhdr-amt-tech-paid                    pic s9(4)v99.
+    05  clmhdr-tot-claim-ar-oma                 pic s9(5)v99.
+    05  clmhdr-tot-claim-ar-ohip                pic s9(5)v99.
+    05  clmhdr-manual-and-tape-paymnts          pic s9(5)v99.
+    05  clmhdr-status-ohip                      pic xx.
+
+    05  clmhdr-manual-review                    pic x.
+    05  clmhdr-submit-date.
+* y2k
+*       10  clmhdr-submit-yy                            pic 99.
+        10  clmhdr-submit-yy                    pic 9(4).
+        10  clmhdr-submit-mm                    pic 99.
+        10  clmhdr-submit-dd                    pic 99.
+    05  clmhdr-confidential-flag                pic x.
+* y2k
+*   05  clmhdr-serv-date                                pic 9(6).
+    05  clmhdr-serv-date                        pic 9(8).
+*
+* (y2k removed)
+*           05  clmhdr-reserve-for-future               pic x(6).
+
+* 2003/08/21 - add 4 new items
+    05  clmhdr-elig-error                       pic x(3).
+    05  clmhdr-elig-status                      pic x.
+    05  clmhdr-serv-error                       pic x(3).
+    05  clmhdr-serv-status                      pic x.
+* 2003/08/21 - end
+
+    05  clmhdr-orig-batch-id.
+        10  clmhdr-orig-batch-nbr.
+            15  clmhdr-orig-batch-nbr-1-2       pic  99.
+*!          15  clmhdr-orig-batch-nbr-3         pic   9.
+*!          15  clmhdr-orig-batch-nbr-4-9       pic 9(6).
+            15  clmhdr-orig-batch-nbr-4-9       pic x(6).
+        10  clmhdr-orig-batch-nbr-next-def      redefines clmhdr-orig-batch-nbr.
+            15  filler                          pic  99.
+*!          15  filler                          pic   9.
+*!          15  clmhdr-orig-batch-nbr-4-6       pic 9(3).
+            15  clmhdr-orig-batch-nbr-4-6       pic x(3).
+            15  clmhdr-orig-batch-nbr-7-8       pic  99.
+            15  clmhdr-orig-batch-nbr-9         pic   9.
+        10  clmhdr-orig-claim-nbr               pic  99.
+    05  clmhdr-orig-batch-id-r  redefines clmhdr-orig-batch-id.
+*!      10  clmhdr-orig-complete-batch-nbr      pic 9(11).
+        10  clmhdr-orig-complete-batch-nbr      pic x(10).
+*mf moved external keys into data record
+*mfcopy "f002_key_claims_mstr_mf.ws" replacing "key-clm-" by "clmhdr-b-".
+*-------------------
+05  k-clmhdr-claims-mstr.
+*        key type: 'b' = batch id
+*                  'p' = patient id (i key)
+    20  k-clmhdr-b-key-type                        pic x.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  16
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+    20  k-clmhdr-b-data.
+*!      25  k-clmhdr-b-batch-num                   pic 9(9).
+        25  k-clmhdr-b-batch-num                   pic x(8).
+        25  k-clmhdr-b-batch-nbr redefines k-clmhdr-b-batch-num.
+            30  k-clmhdr-b-clinic-nbr-1-2          pic 99.
+*!          30  k-clmhdr-b-doc-nbr                 pic 9(4).
+            30  k-clmhdr-b-doc-nbr                 pic x(3).
+            30  k-clmhdr-b-doc-nbr-r redefines k-clmhdr-b-doc-nbr.
+*!              35  k-clmhdr-b-doc-nbr-1           pic 9.
+*!              35  k-clmhdr-b-doc-nbr-2-4         pic 999.
+                35  k-clmhdr-b-doc-nbr-2-4         pic xxx.
+*           ( added so that the new batch number can be accessed
+*             rather than the old  week-day combination )
+            30  k-clmhdr-b-batch-number.
+                35  k-clmhdr-b-week                pic 99.
+                35  k-clmhdr-b-day                 pic 9.
+        25  k-clmhdr-b-claim-nbr                   pic 99.
+        25  k-clmhdr-b-oma-cd                      pic x999.
+        25  k-clmhdr-b-oma-suff                    pic x.
+        25  k-clmhdr-b-adj-nbr                     pic x.
+    20  k-clmhdr-b-data-r  redefines  k-clmhdr-b-data.
+        25  k-clmhdr-b-pat-id                      pic x(15).
+*!      25  filler                                 pic xx.
+        25  filler                                 pic x.
+
+*mf10  k-clmhdr-p-claims-mstr.
+05  k-clmhdr-p-claims-mstr.
+    20  k-clmhdr-p-key-type                        pic x.
+    20  k-clmhdr-p-data.
+        25  k-clmhdr-p-batch-nbr.
+            30  k-clmhdr-p-clinic-nbr-1-2      pic  99.
+*!          30  k-clmhdr-p-doc-nbr             pic 9(4).
+            30  k-clmhdr-p-doc-nbr             pic x(3).
+            30  k-clmhdr-p-week                pic 99.
+            30  k-clmhdr-p-day                 pic 9.
+        25  k-clmhdr-p-claim-nbr               pic 99.
+        25  k-clmhdr-p-oma-cd                  pic x999.
+        25  k-clmhdr-p-oma-suff                pic x.
+        25  k-clmhdr-p-adj-nbr                 pic x.
+*-------------------------
+
+01  claim-detail-rec.
+
+    05  clmdtl-id.
+*!      10  clmdtl-batch-nbr                    pic 9(9).
+        10  clmdtl-batch-nbr                    pic x(8).
+        10  clmdtl-claim-nbr                    pic 9(2).
+        10  clmdtl-oma-cd                       pic xxxx.
+        10  clmdtl-oma-suff                     pic x.
+        10  clmdtl-adj-nbr                      pic 9.
+
+    05  clmdtl-det-rec.
+        10  clmdtl-rev-group-cd                 pic xxx.
+        10  clmdtl-agent-cd                     pic 9.
+        10  clmdtl-adj-cd                       pic x.
+        10  clmdtl-nbr-serv                     pic 99.
+        10  clmdtl-nbr-serv-r redefines clmdtl-nbr-serv.
+            15  clmdtl-adjust-reprint           pic x.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  17
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+            15  filler                          pic x.
+        10  clmdtl-sv-date.
+* y2k            15  clmdtl-sv-yy                    pic 99.
+            15  clmdtl-sv-yy                    pic 9999.
+            15  clmdtl-sv-mm                    pic 99.
+            15  clmdtl-sv-dd                    pic 99.
+
+        10  clmdtl-consec-dates.
+            15  clmdtl-consecutive-sv-date  occurs 3 times
+                                                pic 999.
+        10  clmdtl-consec-dates-r  redefines  clmdtl-consec-dates.
+            15  clmdtl-consecutive-dates    occurs 3 times.
+                20  clmdtl-sv-nbr               pic  9.
+                20  clmdtl-sv-day               pic xx.
+
+        10  clmdtl-amt-tech-billed              pic s9(4)v99.
+        10  clmdtl-fee-oma                      pic s9(5)v99.
+        10  clmdtl-fee-ohip                     pic s9(5)v99.
+* y2k        10  clmdtl-date-period-end              pic x(6).
+        10  clmdtl-date-period-end              pic x(8).
+        10  clmdtl-cycle-nbr                    pic 999.
+
+        10  clmdtl-diag-cd                      pic 999.
+        10  clmdtl-line-no                      pic 99.
+* (y2k)
+*       10  clmdtl-reserve-for-future                   pic x(8).
+* 2003/08/21 - MC
+*      10  clmdtl-reserve-for-future           pic x(4).
+       10  clmdtl-resubmit-flag                pic x.
+       10  clmdtl-reserve-for-future           pic x(3).
+* 2003/08/21 - end
+
+    05  clmdtl-desc-rec redefines clmdtl-det-rec.
+        10  clmdtl-desc                         pic x(22).
+        10  filler                              pic x(42).
+*mf
+*   05  clmdtl-filler                                   pic x(88).
+* 2003/08/21 - MC
+*   05  clmdtl-filler                           pic x(96).
+    05  clmdtl-filler                           pic x(104).
+* 2003/08/21 - end
+
+    05  clmdtl-orig-batch-id.
+*!      10  clmdtl-orig-batch-nbr               pic 9(9).
+        10  clmdtl-orig-batch-nbr               pic x(8).
+        10  clmdtl-orig-batch-nbr-r redefines clmdtl-orig-batch-nbr.
+            15  clmdtl-orig-batch-nbr-1-2       pic 99.
+*!          15  clmdtl-orig-batch-nbr-3         pic 9.
+*!          15  clmdtl-orig-batch-nbr-4-9       pic 9(6).
+            15  clmdtl-orig-batch-nbr-4-9       pic x(6).
+        10  clmdtl-orig-claim-nbr-in-batch      pic 99.
+    05  clmdtl-orig-batch-id-r  redefines clmdtl-orig-batch-id.
+*!      10  clmdtl-orig-complete-batch-nbr      pic 9(11).
+        10  clmdtl-orig-complete-batch-nbr      pic 9(10).
+        10  clmdtl-orig-complete-batch-n-r redefines clmdtl-orig-complete-batch-
+* 2004/11/18 - MC - include clinic nbr
+            15  clmdtl-orig-clinic-number       pic 99.
+* 2004/11/18 - end
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  18
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/f002_)
+            15  clmdtl-orig-doc-number          pic x(3).
+            15  clmdtl-orig-batch-number        pic 9(3).
+            15  clmdtl-orig-claim-number        pic 9(2).
+
+*mf moved external keys into data record
+*mfcopy "f002_key_claims_mstr_mf.ws" replacing "key-clm-" by "clmdtl-b-".
+*-------------------
+05  k-clmdtl-claims-mstr.
+*        key type: 'b' = batch id
+*                  'p' = patient id (i key)
+    20  k-clmdtl-b-key-type                        pic x.
+    20  k-clmdtl-b-data.
+*!      25  k-clmdtl-b-batch-num                   pic 9(9).
+        25  k-clmdtl-b-batch-num                   pic x(8).
+        25  k-clmdtl-b-batch-nbr redefines k-clmdtl-b-batch-num.
+            30  k-clmdtl-b-clinic-nbr-1-2          pic 99.
+*!          30  k-clmdtl-b-doc-nbr                 pic 9(4).
+            30  k-clmdtl-b-doc-nbr                 pic x(3).
+            30  k-clmdtl-b-doc-nbr-r redefines k-clmdtl-b-doc-nbr.
+*!              35  k-clmdtl-b-doc-nbr-1           pic 9.
+*!              35  k-clmdtl-b-doc-nbr-2-4         pic 999.
+                35  k-clmdtl-b-doc-nbr-2-4         pic xxx.
+*           ( added so that the new batch number can be accessed
+*             rather than the old  week-day combination )
+            30  k-clmdtl-b-batch-number.
+                35  k-clmdtl-b-week                pic 99.
+                35  k-clmdtl-b-day                 pic 9.
+        25  k-clmdtl-b-claim-nbr                   pic 99.
+        25  k-clmdtl-b-oma-cd                      pic x999.
+        25  k-clmdtl-b-oma-suff                    pic x.
+        25  k-clmdtl-b-adj-nbr                     pic x.
+    20  k-clmdtl-b-data-r  redefines  k-clmdtl-b-data.
+        25  k-clmdtl-b-pat-id                      pic x(15).
+*!      25  filler                                 pic xx.
+        25  filler                                 pic x.
+
+*mf10  k-clmdtl-p-claims-mstr.
+05  k-clmdtl-p-claims-mstr.
+    20  k-clmdtl-p-key-type                        pic x.
+    20  k-clmdtl-p-data.
+        25  k-clmdtl-p-batch-nbr.
+            30  k-clmdtl-p-clinic-nbr-1-2      pic  99.
+*!          30  k-clmdtl-p-doc-nbr             pic 9(4).
+            30  k-clmdtl-p-doc-nbr             pic x(3).
+            30  k-clmdtl-p-week                pic 99.
+            30  k-clmdtl-p-day                 pic 9.
+        25  k-clmdtl-p-claim-nbr               pic 99.
+        25  k-clmdtl-p-oma-cd                  pic x999.
+        25  k-clmdtl-p-oma-suff                pic x.
+        25  k-clmdtl-p-adj-nbr                 pic x.
+*-------------------------
+
+
+01  hso-non-hso                                 pic x.
+    88  hso                                     value 'Y'.
+    88  non-hso                                 value 'N'.
+
+01  sel-date.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  19
+*                      u099.cbl                                      )
+* (y2k)
+*    05  sel-yy                                 pic 99.
+    05  sel-yy                                  pic 9999.
+    05  sel-mm                                  pic 99.
+    05  sel-dd                                  pic 99.
+
+    copy "mth_desc_max_days.ws".
+*
+*       (each position contains:
+*               - maximum nbr of days in month
+*               - non-abreviated spelling of month
+*               - nbr of julian days from jan-01 until last day of month
+*       note: table does not take into consideration leap year)
+*
+01  month-descs-and-max-days-mth.
+    05  mth-desc-max-days.
+        10  filler                      pic x(14) value '31  JANUARY031'.
+        10  filler                      pic x(14) value '29 FEBRUARY059'.
+        10  filler                      pic x(14) value '31    MARCH090'.
+        10  filler                      pic x(14) value '30    APRIL120'.
+        10  filler                      pic x(14) value '31      MAY151'.
+        10  filler                      pic x(14) value '30     JUNE181'.
+        10  filler                      pic x(14) value '31     JULY212'.
+        10  filler                      pic x(14) value '31   AUGUST243'.
+        10  filler                      pic x(14) value '30SEPTEMBER273'.
+        10  filler                      pic x(14) value '31  OCTOBER304'.
+        10  filler                      pic x(14) value '30 NOVEMBER334'.
+        10  filler                      pic x(14) value '31 DECEMBER365'.
+    05  mth-desc-max-days-r   redefines mth-desc-max-days.
+        10  mth-desc-max-days-occur     occurs  12  times.
+            15  max-nbr-days            pic 99.
+            15  mth-desc                pic x(9).
+            15  nbr-julian-days-ytd     pic 9(3).
+
+
+
+*   counters for records read/written for all input/output files
+
+01  counters.
+    05  ctr-subscr-mstr-reads                   pic 9(7).
+    05  ctr-pat-mstr-reads                      pic 9(7).
+    05  ctr-subscr-mstr-rewrites                pic 9(7).
+    05  ctr-subscr-mstr-del                     pic 9(7).
+    05  ctr-pat-mstr-del                        pic 9(7).
+    05  ctr-audit-rpt-writes                    pic 9(7).
+    05  ctr-pat-mstr-hso-del                    pic 9(7).
+    05  ctr-pat-mstr-non-hso-del                pic 9(7).
+    05  ctr-pat-mstr-hso-ret                    pic 9(7).
+    05  ctr-pat-mstr-non-hso-ret                pic 9(7).
+    05  ctr-subscr-mstr-hso-del                 pic 9(7).
+    05  ctr-subscr-mstr-non-hso-del             pic 9(7).
+
+01  page-line-counters.
+    05  nbr-lines-to-adv                        pic 9(1).
+    05  max-lines-per-page                      pic 9(2).
+    05  nbr-lines-this-page                     pic 9(2).
+    05  page-nbr                                pic 9(4).
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  20
+*                      u099.cbl                                      )
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                        "INVALID YEAR".
+        10  filler                              pic x(60)   value
+                        "INVALID MONTH".
+        10  filler                              pic x(60)   value
+                        "INVALID DAY".
+        10  filler                              pic x(60)   value
+                        "PATIENTS MASTER NOT SUPPLIED".
+        10  filler                              pic x(60)   value
+                        "SPARE                            ".
+        10  filler                              pic x(60)   value
+                "ATTEMPT TO DELETE INVALID I-KEY FROM PATIENT MASTER".
+        10  filler                              pic x(60)   value
+                "SPARE                                   ".
+        10  filler                              pic x(60)   value
+                "SPARE                                   ".
+        10  filler                              pic x(60)   value
+                "SPARE                                   ".
+        10  filler                              pic x(60)   value
+                "SPARE                                   ".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs 10 times.
+
+01  err-msg-comment                             pic x(60).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                        "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  21
+*                      u099.cbl (/alpha/rmabill/rmabill101c/use/sysda)
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+01 h1-audit-head.
+
+    05  filler                          pic x(46)    value
+                "R099".
+    05  filler                          pic x(54)    value
+                "PATIENT - SUBSCRIBER PURGE AUDIT REPORT".
+    05  filler                          pic x(9)     value
+                "RUN DATE ".
+    05  h1-date.
+* (y2k)
+*       10  h1-date-yy                  pic xx.
+        10  h1-date-yy                  pic xxxx.
+        10  filler                      pic x        value "/".
+        10  h1-date-mm                  pic xx.
+        10  filler                      pic x        value "/".
+        10  h1-date-dd                  pic xx.
+*    05  filler                         pic x(6).
+    05  filler                          pic x(4).
+    05  filler                          pic x(5)     value "PAGE".
+    05  h1-page-nbr                     pic zzz9.
+
+01  h3-audit-head.
+
+    05  filler                          pic x(34)    value spaces.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  22
+*                      u099.cbl                                      )
+    05  filler                          pic x(57)    value
+                "H S O".
+    05  filler                          pic x(41)    value
+                "N O N - H S O".
+
+
+
+01  h4-audit-head.
+
+    05  filler                          pic x(23)    value spaces.
+    05  filler                          pic x(57)    value
+                "DELETED              RETAINED".
+    05  filler                          pic x(29)    value
+                "DELETED".
+    05  filler                          pic x(23)    value
+                "RETAINED".
+
+
+
+01  h5-audit-head.
+
+    05  filler                          pic x(23)    value spaces.
+    05  filler                          pic x(57)    value
+                "-------              --------".
+    05  filler                          pic x(29)    value
+                "-------".
+    05  filler                          pic x(23)    value
+                "--------".
+
+01  h6-audit-head.
+
+    05  filler                          pic x(9)     value spaces.
+    05  filler                          pic x(30)    value
+                "P A T I E N T".
+    05  filler                          pic x(12)    value
+                "O H I P".
+    05  filler                          pic x(4)     value
+                "/".
+    05  filler                          pic x(15)    value
+                "C H A R T".
+    05  filler                          pic x(7)     value
+                "LAST".
+    05  filler                          pic x(9)     value
+                "PATIENT".
+    05  filler                          pic x(10)    value
+                "LAST".
+    05  filler                          pic x(8)     value
+                "LAST".
+    05  filler                          pic x(12)    value
+                "PATIENT".
+    05  filler                          pic x(9)     value
+                "OHIP".
+    05  filler                          pic x(7)     value
+                "NBR    ".
+
+
+01  h7-audit-head.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  23
+*                      u099.cbl                                      )
+    05  filler                          pic x(12)    value spaces.
+    05  filler                          pic x(25)    value
+                "N A M E".
+    05  filler                          pic x(13)    value
+                "N U M B E R".
+    05  filler                          pic x(4)     value
+                "/".
+    05  filler                          pic x(17)    value
+                "N U M B E R".
+    05  filler                          pic x(7)     value
+                "DOC".
+    05  filler                          pic x(8)     value
+                "BIRTH".
+    05  filler                          pic x(10)    value
+                "ADMIT".
+    05  filler                          pic x(7)     value
+                "MAINT".
+    05  filler                          pic x(12)    value
+                "SEX/RELAT".
+    05  filler                          pic x(8)     value
+                "STATUS".
+    05  filler                          pic x(9)     value
+                "OUTSTND".
+
+01  h8-audit-head.
+
+    05  filler                          pic x(70)    value spaces.
+    05  filler                          pic x(8)     value
+                "SEEN".
+    05  filler                          pic x(8)     value
+                "DATE".
+    05  filler                          pic x(10)    value
+                "DATE".
+    05  filler                          pic x(28)    value
+                "DATE".
+    05  filler                          pic x(8)     value
+                "CLAIMS".
+
+01  print-line.
+
+    05  l1-print-line.
+        10  filler                      pic x(29).
+        10  l1-err-msg                  pic x(60).
+        10  l1-key                      pic x(43).
+    05  l2-print-line redefines l1-print-line.
+        10  l2-pat-subscr               pic x(21).
+        10  l2-hso-del                  pic z,zzz,zz9.
+        10  filler                      pic x(13).
+        10  l2-hso-ret                  pic z,zzz,zz9.
+        10  filler                      pic x(26).
+        10  l2-non-hso-del              pic z,zzz,zz9.
+        10  filler                      pic x(21).
+        10  l2-non-hso-ret              pic z,zzz,zz9.
+        10  filler                      pic x(15).
+    05  l3-print-line redefines l1-print-line.
+        10  filler                      pic x(1).
+        10  l3-surname                  pic x(15).
+        10  filler                      pic x(1).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  24
+*                      u099.cbl                                      )
+        10  l3-given-name               pic x(12).
+        10  filler                      pic x(1).
+        10  l3-init                     pic x(3).
+        10  filler                      pic x(2).
+        10  l3-ohip-nbr                 pic x(15).
+        10  filler                      pic x(2).
+        10  l3-chart-nbr                pic x(15).
+        10  filler                      pic x(1).
+        10  l3-last-doc                 pic zzz999.
+        10  filler                      pic x(2).
+* (y2k)
+*       10  l3-birth-date               pic 99/99/99.
+        10  l3-birth-date               pic 9999/99/99.
+        10  filler                      pic x(1).
+* (y2k)
+*       10  l3-admit-date               pic 99/99/99.
+        10  l3-admit-date               pic 9999/99/99.
+        10  filler                      pic x(1).
+* (y2k)
+*       10  l3-maint-date               pic 99/99/99.
+        10  l3-maint-date               pic 9999/99/99.
+* (y2k)
+*       10  filler                      pic x(4).
+        10  filler                      pic x(2).
+        10  l3-sex                      pic x(1).
+        10  l3-slash                    pic x.
+        10  l3-relat                    pic 9.
+* (y2k)
+*       10  filler                      pic x(8).
+        10  filler                      pic x(4).
+        10  l3-status                   pic x(2).
+        10  filler                      pic x(5).
+        10  l3-outst-claims             pic zzz9.
+        10  filler                      pic x(4).
+
+
+screen section.
+
+01  scr-title.
+
+    05  blank screen.
+    05  line 05 col 15 value is "U099  PATIENT/SUBSCR MASTER PURGE".
+    05  line 09 col 10 value is "PURGE ALL PATIENTS WITH NO OUTSTANDING".
+    05  line 10 col 10 value is "CLAIMS AND INACTIVE SINCE ".
+* (y2k - auto fix)
+*   05  scr-yy line 10 col 37 pic 99 using sel-yy auto required.
+    05  scr-yy line 10 col 37 pic 9(4) using sel-yy auto required.
+    05  line 10 col 41 value is "/".
+    05  scr-mm line 10 col 42 pic 99 using sel-mm auto required.
+*   05  line 10 col 42 value is "/".
+*   05  scr-dd line 10 col 43 pic 99 using sel-dd auto required.
+
+01 file-status-display.
+    05  line 24 col 01 "ERROR IN ACCESSING PATIENT MASTER - KEY = ".
+    05  line 24 col 44 pic x(7) from display-key-type.
+    05  line 24 col 56  "FILE STATUS = ".
+*mf    05  line 24 col 70       pic x(11) from status-file      bell blink.
+    05  line 24 col 70  pic x(2) from status-file       bell blink.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  25
+*                      u099.cbl                                      )
+*
+01  err-msg-line.
+    05  line 24 col 01  value " ERROR -  "      bell blink.
+    05  line 24 col 11  pic x(60)       from err-msg-comment.
+
+01  confirm.
+    05 line 23 col 01  value " ".
+
+01  blank-line-24.
+    05  line 24 col 1   blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+
+
+01  scr-closing-screen.
+    05  blank screen.
+**  05  line  5 col 20  value "NUMBER OF SUBSCRIBER-MSTR ACCESSES = ".
+**  05  line  5 col 60  pic 9(7) from ctr-subscr-mstr-reads.
+    05  line  6 col 20  value "NUMBER OF PATIENT-MSTR ACCESSES = ".
+    05  line  6 col 60  pic 9(7) from ctr-pat-mstr-reads.
+**  05  line  7 col 20 value "NUMBER OF SUBSCRIBER-MSTR REWRITES =".
+**  05  line  7 col 60 pic 9(7) from ctr-subscr-mstr-rewrites.
+**  05  line  8 col 20  value "NUMBER OF SUBSCRIBER DELETES = ".
+**  05  line  8 col 60  pic 9(7) from ctr-subscr-mstr-del.
+    05  line  9 col 20  value "NUMBER OF PATIENT DELETES = ".
+    05  line  9 col 60  pic 9(7) from ctr-pat-mstr-del.
+    05  line 21 col 20  value "PROGRAM U099 ENDING".
+* (y2k - auto fix)
+*   05  line 21 col 40  pic 99  from sys-yy.
+    05  line 21 col 40  pic 9(4)        from sys-yy.
+    05  line 21 col 44  value "/".
+    05  line 21 col 45  pic 99  from sys-mm.
+    05  line 21 col 47  value "/".
+    05  line 21 col 48  pic 99  from sys-dd.
+    05  line 21 col 52  pic 99  from sys-hrs.
+    05  line 21 col 54  value ":".
+    05  line 21 col 55  pic 99  from sys-min.
+    05  line 23 col 20  value "AUDIT REPORT IS IN FILE - ".
+    05  line 23 col 51  pic x(5) from print-file-name.
+procedure division.
+declaratives.
+
+**err-subscr-mstr-file section.
+**  use after standard error procedure on subscr-mstr.
+**err-subscr-mstr.
+**  stop "ERROR IN ACCESSING SUBSCRIBER MASTER".
+**  move status-subscr-mstr             to status-file.
+**  display file-status-display.
+**  stop run.
+
+err-pat-mstr-file section.
+    use after standard error procedure on pat-mstr.
+err-pat-mstr.
+    move "I KEY  "                      to display-key-type
+**  move 'Y'                            to flag-set
+*mf    move status-pat-mstr             to status-file.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  26
+*                      u099.cbl                                      )
+    move status-cobol-pat-mstr          to status-file.
+    display file-status-display.
+
+err-audit-rpt-file section.
+    use after standard error procedure on audit-file.
+err-audit-rpt.
+    stop "ERROR IN WRITING TO AUDIT REPORT FILE".
+    move status-audit-rpt               to status-file.
+    display file-status-display.
+    stop run.
+
+
+end declaratives.
+
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+    perform ab0-processing              thru ab0-99-exit.
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+    move sys-mm                         to run-mm.
+    move sys-dd                         to run-dd.
+    move sys-yy                         to run-yy.
+
+    accept sys-time                     from time.
+    move sys-hrs                        to run-hrs.
+    move sys-min                        to run-min.
+    move sys-sec                        to run-sec.
+
+*    expunge audit-file.
+
+
+
+**  open i-o    subscr-mstr.
+    open i-o    pat-mstr.
+**              pat-2cd-mstr.
+*mf    open input  claims-mstr-pat-access.
+    open input  claims-mstr.
+    open output audit-file.
+
+    move 0                              to      counters.
+    move 0                              to      page-line-counters.
+    move 60                             to      max-lines-per-page.
+    move spaces                         to      print-line.
+**  move 'N'                            to      flag-set.
+
+
+    move sys-yy                         to      h1-date-yy.
+    move sys-mm                         to      h1-date-mm.
+    move sys-dd                         to      h1-date-dd.
+
+    perform xa0-print-hdr               thru    xa0-99-exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  27
+*                      u099.cbl                                      )
+
+    move zero                           to      sel-dd.
+    move sys-mm                         to      sel-mm.
+    subtract 1                          from    sys-yy
+                                        giving  sel-yy.
+
+
+*       (display screen title/option)
+    display scr-title.
+aa0-10-enter-year.
+
+    accept scr-yy.
+* (y2k)
+*    if sel-yy < 32 or sel-yy > run-yy
+    if sel-yy < 1932 or sel-yy > run-yy
+    then
+        move 1                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to aa0-10-enter-year.
+*   (else)
+*   endif
+
+aa0-10-enter-month.
+    accept scr-mm.
+    if sel-mm < 1 or sel-mm > 12
+    then
+        move 2                          to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to aa0-10-enter-month.
+*   (else)
+*   endif
+
+aa0-10-enter-day.
+*    accept scr-dd.
+*    if sel-dd < 1 or sel-dd > max-nbr-days (sel-mm)
+*    then
+*       move 3                          to      err-ind
+*       perform za0-common-error        thru    za0-99-exit
+*       go to aa0-10-enter-day.
+*   (else)
+*   endif
+
+    move spaces                         to      key-pat-mstr
+                                                feedback-pat-mstr.
+
+    move zero                           to      pat-occur.
+
+*mf    read pat-mstr key is key-pat-mstr approximate
+*mf     invalid key
+*mf         move 'Y'                    to      eof-pat-mstr
+*mf         move 4                      to      err-ind
+*mf         perform za0-common-error    thru    za0-99-exit
+*mf         go to az0-end-of-job.
+
+    start pat-mstr key is greater than or equal to key-pat-mstr
+        invalid key
+            move 'Y'                    to      eof-pat-mstr
+            move 4                      to      err-ind
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  28
+*                      u099.cbl                                      )
+            perform za0-common-error    thru    za0-99-exit
+            go to az0-end-of-job.
+    read pat-mstr next.
+
+**  retrieve pat-mstr key fix position
+**      into key-pat-mstr.
+
+**  if pat-key-type not = 'A'
+**  then
+**      move 'Y'                        to      eof-pat-mstr
+**      go to aa0-99-exit.
+*   (else)
+*   endif
+
+    add 1                               to      ctr-pat-mstr-reads.
+
+    copy 'verify_hso.rtn'.
+    if    pat-location-field > '100   '
+      and pat-location-field < '135   '
+
+        move 'Y'                        to      hso-non-hso
+    else
+        move 'N'                        to      hso-non-hso.
+*   endif
+
+
+aa0-99-exit.
+    exit.
+az0-end-of-job.
+
+    perform az1-print-audit-totals      thru    az1-99-exit.
+
+**  close subscr-mstr
+    close pat-mstr
+**        pat-2cd-mstr
+*mf       claims-mstr-pat-access
+          claims-mstr
+          audit-file.
+
+    display blank-screen.
+    accept sys-time                     from time.
+    display scr-closing-screen.
+    display confirm.
+
+*   call program "MENU".
+
+az0-10-stop.
+
+    stop run.
+
+az0-99-exit.
+    exit.
+az1-print-audit-totals.
+
+    add 1                               to      page-nbr.
+    move page-nbr                       to      h1-page-nbr.
+    write audit-record                  from    h1-audit-head after advancing pa
+    write audit-record                  from    h3-audit-head after advancing 2
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  29
+*                      u099.cbl                                      )
+    write audit-record                  from    h4-audit-head after advancing 1
+    write audit-record                  from    h5-audit-head after advancing 1
+
+    move 'PATIENTS'                     to      l2-pat-subscr.
+    move ctr-pat-mstr-hso-del           to      l2-hso-del.
+    move ctr-pat-mstr-hso-ret           to      l2-hso-ret.
+    move ctr-pat-mstr-non-hso-del       to      l2-non-hso-del.
+    move ctr-pat-mstr-non-hso-ret       to      l2-non-hso-ret.
+
+    move 2                              to      nbr-lines-to-adv.
+    perform xb0-write-audit-record      thru    xb0-99-exit.
+
+**  move 'SUBSCRIBERS'                  to      l2-pat-subscr.
+**  move ctr-subscr-mstr-hso-del        to      l2-hso-del.
+**  move ctr-subscr-mstr-non-hso-del    to      l2-non-hso-del.
+
+    move 2                              to      nbr-lines-to-adv.
+    perform xb0-write-audit-record      thru    xb0-99-exit.
+
+
+az1-99-exit.
+    exit.
+ab0-processing.
+
+    move 'N'                            to      del-ind.
+
+    perform ca0-sel-read-pat-rec        thru    ca0-99-exit
+        until del-ind = "Y" or eof-pat-mstr = "Y".
+    if del-ind = "Y"
+    then
+        perform da0-del-pat-rec         thru    da0-99-exit
+*   endif
+
+    if eof-pat-mstr  = "N"
+    then
+        move "N"                        to      del-ind
+        perform cb0-read-pat-mstr       thru    cb0-99-exit
+        go to ab0-processing
+    else
+        next sentence.
+*   endif
+
+ab0-99-exit.
+    exit.
+
+ca0-sel-read-pat-rec.
+
+    if non-hso
+    then
+        perform cc0-sel-pat-rec         thru    cc0-99-exit.
+*   (else)
+*   (endif)
+    if del-ind = "N"
+    then
+        if hso
+        then
+            add 1                       to      ctr-pat-mstr-hso-ret
+            perform cb0-read-pat-mstr   thru    cb0-99-exit
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  30
+*                      u099.cbl                                      )
+        else
+            add 1                       to      ctr-pat-mstr-non-hso-ret
+            perform cb0-read-pat-mstr   thru    cb0-99-exit
+*       endif
+    else
+        next sentence.
+*   endif
+
+ca0-99-exit.
+    exit.
+
+cb0-read-pat-mstr.
+
+    move zero                   to      pat-occur
+                                        feedback-pat-mstr.
+
+    read pat-mstr next
+      at end
+        move "Y"                        to      eof-pat-mstr
+        go to cb0-99-exit.
+
+**  if bad-acronym-key
+**     move 'N'                         to      flag-set
+**     go to cb0-read-pat-mstr.
+
+**  retrieve pat-mstr key fix position
+**      into key-pat-mstr.
+*       (read 'A'cronym keys only)
+**  if pat-key-type not = "A"
+**      move "Y"                        to      eof-pat-mstr
+**      go to cb0-99-exit
+**  else
+**      next sentence.
+*   endif
+
+    add 1                               to      ctr-pat-mstr-reads.
+
+    copy 'verify_hso.rtn'.
+    if    pat-location-field > '100   '
+      and pat-location-field < '135   '
+
+    then
+        move 'Y'                        to      hso-non-hso
+    else
+        move 'N'                        to      hso-non-hso.
+*   endif
+
+cb0-99-exit.
+    exit.
+
+cc0-sel-pat-rec.
+
+*       (determine if there is a claim for patient in claims master
+*          and if so, set delete flag if pat rec prior to sel-date)
+
+    if    sel-date > pat-date-last-maint-r
+      and
+          sel-date > pat-date-last-visit-r
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  31
+*                      u099.cbl                                      )
+      and
+          sel-date > pat-date-last-admit-r
+    then
+        next sentence
+    else
+        move 'N'                        to      del-ind
+        go to cc0-99-exit.
+*   endif
+
+    perform cc1-read-claim-p-access     thru    cc1-99-exit.
+
+    if claim-exists-for-this-patient = 'Y'
+    then
+        move 'N'                        to      del-ind
+    else
+        move 'Y'                        to      del-ind.
+*   endif
+
+cc0-99-exit.
+    exit.
+
+
+cc1-read-claim-p-access.
+
+    move 'N'                            to claim-exists-for-this-patient.
+*mf    move spaces                      to key-claims-mstr-pat-access.
+*mf    move key-pat-mstr                to key-claims-mstr-pat-access.
+*mf    move "P"                         to key-clm-pat-access-type.
+
+    perform cc2-read-claims-mstr-p-access       thru    cc2-99-exit.
+
+cc1-99-exit.
+    exit.
+
+cc2-read-claims-mstr-p-access.
+
+*mf    move zero                        to claims-pat-access-occur
+*mf                                        feedback-claims-mstr-pat-access.
+
+*mf    read claims-mstr-pat-access
+*mf     invalid key
+*mf         move "N"    to      claim-exists-for-this-patient
+*mf         go to cc2-99-exit.
+
+    move "Y"            to      claim-exists-for-this-patient.
+
+cc2-99-exit.
+    exit.
+
+da0-del-pat-rec.
+
+    move zero                           to      err-ind.
+*mf    delete pat-mstr record physical
+    delete pat-mstr record
+        invalid key
+          move 6                        to      err-ind
+          perform za0-common-error      thru    za0-99-exit.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  32
+*                      u099.cbl                                      )
+    if err-ind = 0
+    then
+        if hso
+        then
+            add 1                       to ctr-pat-mstr-hso-del
+        else
+            add 1                       to ctr-pat-mstr-non-hso-del
+*       endif
+    else
+        next sentence.
+*   endif
+
+    move 0                              to      pat-occur
+                                                feedback-pat-mstr.
+
+    add 1                               to      ctr-pat-mstr-del.
+
+da0-99-exit.
+    exit.
+xa0-print-hdr.
+
+    add 1                               to      page-nbr.
+    move page-nbr                       to      h1-page-nbr.
+    write audit-record                  from    h1-audit-head after advancing pa
+    write audit-record                  from    h6-audit-head after advancing 2
+    write audit-record                  from    h7-audit-head after advancing 1
+    write audit-record                  from    h8-audit-head after advancing 1
+    move 2                              to      nbr-lines-to-adv.
+    move 6                              to      nbr-lines-this-page.
+
+xa0-99-exit.
+    exit.
+
+xb0-write-audit-record.
+
+    if nbr-lines-this-page + nbr-lines-to-adv > max-lines-per-page
+    then
+        perform xa0-print-hdr           thru    xa0-99-exit
+    else
+        next sentence.
+*   endif
+    write audit-record                  from    print-line after advancing nbr-l
+    add nbr-lines-to-adv                to      nbr-lines-this-page.
+    move spaces                         to      print-line.
+    move 1                              to      nbr-lines-to-adv.
+
+xb0-99-exit.
+    exit.
+
+xc0-build-detail-line.
+
+    move pat-surname                    to      l3-surname.
+    move pat-given-name                 to      l3-given-name.
+    move pat-init                       to      l3-init.
+    move pat-ohip-mmyy-r                to      l3-ohip-nbr.
+    move pat-chart-nbr                  to      l3-chart-nbr.
+    move pat-last-doc-nbr-seen          to      l3-last-doc.
+    move pat-birth-date                 to      l3-birth-date.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  33
+*                      u099.cbl                                      )
+    move pat-date-last-admit            to      l3-admit-date.
+    move pat-date-last-maint            to      l3-maint-date.
+    move pat-sex                        to      l3-sex.
+    move "/"                            to      l3-slash.
+**  move pat-relationship               to      l3-relat.
+    move spaces                         to      l3-status.
+    move pat-nbr-outstanding-claims     to      l3-outst-claims.
+
+xc0-99-exit.
+    exit.
+
+za0-common-error.
+
+    move err-msg (err-ind)              to      err-msg-comment
+                                                l1-err-msg.
+    display err-msg-line.
+    display confirm.
+    display blank-line-24.
+
+    if err-ind =   6
+                or 7
+                or 8
+    then
+        move key-pat-mstr               to      l1-key.
+**  else
+**      if err-ind =   5
+**                  or 9
+**                  or 10
+**      then
+**         move subscr-id               to      l1-key
+**      else
+**         next sentence.
+*       endif
+*   endif
+
+*   move 2                              to      nbr-lines-to-adv.
+    perform xb0-write-audit-record      thru    xb0-99-exit.
+
+za0-99-exit.
+    exit.
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:42 Page  34
+*                      u099.cbl                                      )
+* Total Messages:     0
+* Data:        5744     Code:        3137

@@ -1,0 +1,80 @@
+;#> PROGRAM-ID.    newu701.qts
+;
+;       ((C)) Dyad Technologies
+;
+; program purpose : transfer the manual review text records from the incoming
+;		    flat file (transferred from the web) into the f002
+;		    suspend description file
+;
+;  MODIFICATION HISTORY
+;  DATE      WHO   DESCRIPTION
+; 00/sep/15  B.E.  - original
+; 00/sep/20  B.E.  - set manual review flag to "Y'es if any desc recs found
+;
+cancel clear
+set process nolimit
+set lock file update
+
+;------------------------------------------------
+request newu701_1
+
+access submit-disk-desc
+
+; (split incoming 255 characters into up to 4  70 byte records)
+
+define x-rec-1 char*70 = clmdtl-suspend-desc-255[  1: 70]
+define x-rec-2 char*70 = clmdtl-suspend-desc-255[ 71:140]
+define x-rec-3 char*70 = clmdtl-suspend-desc-255[141:210]
+define x-rec-4 char*70 = clmdtl-suspend-desc-255[211:255]
+define x-nbr-desc-recs zoned*2	&	 
+     = 4 if x-rec-4 <> " "	&
+  else 3 if x-rec-3 <> " "	&
+  else 2 if x-rec-2 <> " "	&
+  else 1 if x-rec-1 <> " "	&
+  else 0
+		
+
+output f002-suspend-desc add if x-nbr-desc-recs > 0
+   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+			     final clmdtl-doc-ohip-nbr   of submit-disk-desc
+   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+			     final clmdtl-accounting-nbr of submit-disk-desc
+   item  clmdtl-line-no 	final 1 
+   item clmdtl-suspend-desc	final x-rec-1
+
+
+output f002-suspend-desc add if x-nbr-desc-recs > 1 alias f002-desc-2
+   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+			     final clmdtl-doc-ohip-nbr   of submit-disk-desc
+   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+			     final clmdtl-accounting-nbr of submit-disk-desc
+   item  clmdtl-line-no 	final 2 
+   item clmdtl-suspend-desc	final x-rec-2
+
+output f002-suspend-desc add if x-nbr-desc-recs > 2 alias f002-desc-3
+   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+			     final clmdtl-doc-ohip-nbr   of submit-disk-desc
+   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+			     final clmdtl-accounting-nbr of submit-disk-desc
+   item  clmdtl-line-no 	final 3 
+   item clmdtl-suspend-desc	final x-rec-3
+
+output f002-suspend-desc add if x-nbr-desc-recs > 3 alias f002-desc-4
+   item clmdtl-doc-ohip-nbr	of f002-suspend-desc	&
+			     final clmdtl-doc-ohip-nbr   of submit-disk-desc
+   item clmdtl-accounting-nbr	of f002-suspend-desc    &
+			     final clmdtl-accounting-nbr of submit-disk-desc
+   item  clmdtl-line-no 	final 4 
+   item clmdtl-suspend-desc	final x-rec-4
+
+output f002-suspend-hdr update  	&
+	viaindex suspend-hdr-id using   &
+		 clmdtl-doc-ohip-nbr,	&
+	 	 clmdtl-accounting-nbr
+
+   item clmhdr-nbr-suspend-desc-recs of f002-suspend-hdr 	&
+		final  x-nbr-desc-recs
+;  (00/sep/20 B.E.)
+   item clmhdr-manual-review	final "Y"
+
+build $obj/newu701

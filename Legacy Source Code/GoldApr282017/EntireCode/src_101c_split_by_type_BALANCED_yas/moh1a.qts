@@ -1,0 +1,129 @@
+; Name   : MOH1A.QTS
+; Purpose: - FIRST PASS - EXTRACT ALL DETAILS FOR ALTERNATIVE FUNDING CLAIMS
+;
+;  MODIFICATION HISTORY
+;  YY/MMM/DD  by whom          why
+;  90/OCT/05  B. E.            - original
+;  90/OCT/11  B. E.            - changed from QUIZ to QTP to write out
+;                                separate transactions to subfile for each
+;                                service date (initial + up to 3 consecutive days)
+;  90/NOV/08  M. CHAN	       - modify the program, use the subfile
+;				 MOH1AA which generated from MOH1A.qzs
+;  91/OCT/22  M. CHAN	       - INCLUDE ADJUSTMENT RECORDS
+;  03/dec/19  A.A.	       - alpha doctor nbr
+;
+
+cancel clear
+
+request extract on calculation errors report on edit errors report
+
+set process limit 999999
+
+access *moh1aa
+
+;! define clmdtl-doc-nbr zoned*3 = nconvert(ascii(clmdtl-batch-nbr,9)[3:4])
+define clmdtl-doc-nbr char*3 = clmdtl-batch-nbr[3:3] 
+ define x-svc-nbr num*2 =					&
+ 	  clmdtl-nbr-serv					
+ define x-svc-nbr1 num*2 =					&
+  	  nconvert(ascii(clmdtl-consec-dates,9)[1:1])          	
+ define x-svc-nbr2 num*2 =					&
+  	  nconvert(ascii(clmdtl-consec-dates,9)[4:1])
+ define x-svc-nbr3 num*2 =					&
+  	  nconvert(ascii(clmdtl-consec-dates,9)[7:1])
+
+def x-total-svc-nbr = x-svc-nbr + x-svc-nbr1 + x-svc-nbr2	&
+                    + x-svc-nbr3
+
+define x-fee  zoned*7 signed = (clmdtl-fee-ohip / x-total-svc-nbr) * x-svc-nbr  &
+	if clmdtl-adj-cd = ' ' else clmdtl-fee-ohip
+define x-fee1 zoned*7 signed = (clmdtl-fee-ohip / x-total-svc-nbr) * x-svc-nbr1
+define x-fee2 zoned*7 signed = (clmdtl-fee-ohip / x-total-svc-nbr) * x-svc-nbr2
+define x-fee3 zoned*7 signed = (clmdtl-fee-ohip / x-total-svc-nbr) * x-svc-nbr3
+
+define x-svc-date char*6 = 					&
+		clmdtl-sv-date
+;1ST CONSECUTIVE SERVICE DATE
+define x-svc-date1 char*6 = 					&
+		   clmdtl-sv-date[1:4] 				&
+ 	         + ascii(clmdtl-consec-dates,9)[2:2]
+
+;2ND CONSECUTIVE SERVICE DATE
+define x-svc-date2 char*6 = 					&
+		   clmdtl-sv-date[1:4] 				&
+ 	         + ascii(clmdtl-consec-dates,9)[5:2]
+
+;3RD CONSECUTIVE SERVICE DATE
+define x-svc-date3 char*6 = 					&
+		   clmdtl-sv-date[1:4] 				&
+ 	         + ascii(clmdtl-consec-dates,9)[8:2]
+
+
+; WRITE RECORD FOR SERVICES ON INITIAL SERVICE DATE
+;SUBFILE MOH1A                KEEP IF X-SVC-NBR > 0		&
+subfile moh1a                keep if x-svc-nbr > 0		&
+                              or clmdtl-adj-cd <> ' '		&
+    include 							&
+	sel-from-ped of moh1aa,					&
+	sel-to-ped of moh1aa,		  			&
+;
+	clmdtl-batch-nbr of moh1aa,				&
+	clmdtl-claim-nbr   of moh1aa,			&
+	clmdtl-doc-nbr ,				&
+	clmdtl-oma-cd   of moh1aa,			&
+ 	clmdtl-fee-ohip   of moh1aa,			&
+	clmdtl-date-period-end   of moh1aa,		&
+	x-svc-date,					&
+ 	x-svc-nbr,					&
+	x-fee
+
+; WRITE RECORD FOR SERVICES ON 1ST CONSECUTIVE SVC DATE
+subfile moh1a alias moh1a01  keep if x-svc-nbr1 > 0		&
+    include 							&
+	sel-from-ped of moh1aa,					&
+	sel-to-ped of moh1aa,		  			&
+;
+	clmdtl-batch-nbr   of moh1aa,			&
+	clmdtl-claim-nbr   of moh1aa,			&
+	clmdtl-doc-nbr ,				&
+	clmdtl-oma-cd   of moh1aa,			&
+ 	clmdtl-fee-ohip   of moh1aa,			&
+	clmdtl-date-period-end   of moh1aa,		&
+	x-svc-date1, 					&
+ 	x-svc-nbr1 ,					&
+	x-fee1
+
+; WRITE RECORD FOR SERVICES ON 2ND CONSECUTIVE SVC DATE
+subfile moh1a alias moh1a02  keep if x-svc-nbr2 > 0		&
+    include 							&
+	sel-from-ped of moh1aa,					&
+	sel-to-ped of moh1aa,		  			&
+;
+	clmdtl-batch-nbr   of moh1aa,			&
+	clmdtl-claim-nbr   of moh1aa,			&
+	clmdtl-doc-nbr ,				&
+	clmdtl-oma-cd   of moh1aa,			&
+ 	clmdtl-fee-ohip   of moh1aa,			&
+	clmdtl-date-period-end   of moh1aa,		&
+	x-svc-date2 ,					&
+ 	x-svc-nbr2,					&
+	x-fee2
+
+; WRITE RECORD FOR SERVICES ON 3RD CONSECUTIVE SVC DATE
+subfile moh1a alias moh1a03  keep if x-svc-nbr3 > 0		&
+    include 							&
+	sel-from-ped of moh1aa,					&
+	sel-to-ped of moh1aa,		  			&
+;
+	clmdtl-batch-nbr   of moh1aa,			&
+	clmdtl-claim-nbr   of moh1aa,			&
+	clmdtl-doc-nbr,					&
+	clmdtl-oma-cd   of moh1aa,			&
+ 	clmdtl-fee-ohip   of moh1aa,			&
+	clmdtl-date-period-end   of moh1aa,		&
+	x-svc-date3,					&
+ 	x-svc-nbr3,					&
+	x-fee3
+
+build $pb_obj/moh1a
+  

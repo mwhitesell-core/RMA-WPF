@@ -1,0 +1,70 @@
+;doc     : tarnopolsky.qts
+;who     : Ken 
+
+
+;Date           Who             Description
+;2008/07/11      Yasemin
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22888@",                  &
+                                              "98888@",                  &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if    clmhdr-batch-type = 'C'       &
+                          and clmhdr-serv-date >= 20070701  & 
+                          and clmhdr-serv-date <= 20080630    
+
+
+def x-doc-nbr cha*3 = clmhdr-claim-id[3:3]
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile tarnopolsky portable keep  include               &
+clmhdr-claim-id                                     ,&
+comma                                               ,&
+x-doc-nbr                                           ,&
+comma                                               ,&
+clmhdr-serv-date                                    ,&
+comma                                               ,&
+clmhdr-date-period-end                              ,&
+comma                                               ,&
+clmhdr-tot-claim-ar-ohip                            ,&
+x-cr
+
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *tarnopolsky                   
+
+
+sort on x-doc-nbr          
+
+temp x-billings num*9
+item x-billings= x-billings+ clmhdr-tot-claim-ar-ohip    &
+                 if (    clmhdr-serv-date >= 20071001    &
+                     and clmhdr-serv-date <= 20080630    &
+                    )                                    &
+                    reset at x-doc-nbr
+
+
+subfile tarnopolsky1 portable keep at x-doc-nbr include              &
+x-doc-nbr                                           ,&
+comma                                               ,&
+x-billings                                          ,&
+x-cr
+
+
+build $obj/tarnopolsky

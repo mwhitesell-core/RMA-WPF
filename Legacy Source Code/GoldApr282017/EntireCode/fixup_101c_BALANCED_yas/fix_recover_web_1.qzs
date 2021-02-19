@@ -1,0 +1,86 @@
+; Program: fix_recover_web_1.qzs (headers)
+
+can clear
+set rep nolimit
+set nohead
+set noformfeed
+set page width 85 length 0
+set rep dev disc name r716a
+
+access *fix_recover_web						&
+;  link (nconvert(   ascii(key-clm-batch-nbr,9)[4:6]             &
+;                 + ascii(key-clm-claim-nbr,2)          	&
+;                )                                               &
+;        )                                                       &
+;    to claim-nbr-rma  of  f071-client-rma-claim-nbr opt		&
+  link (key-clm-type,                                                 &
+       key-clm-batch-nbr,                                            &
+       key-clm-claim-nbr,                                            &
+       '00000'          ,                                            &
+       '0')            							&
+    to key-clm-type,                                                 &
+       key-clm-batch-nbr,                                            &
+       key-clm-claim-nbr,                                            &
+       key-clm-serv-code,                                            &
+       key-clm-adj-nbr							&
+		of f002-claims-mstr     	    			&
+  link clmhdr-pat-ohip-id-or-chart					&
+   to key-pat-mstr of f010-pat-mstr	opt				&
+  link clmhdr-loc                                         		&
+    to loc-nbr of f030-locations-mstr opt
+
+sel f002-claims-mstr if    clmdtl-oma-cd   = '0000' 
+
+;sorted  on clmhdr-doc-nbr-ohip  &
+;        on claim-nbr-client
+
+def x-clmhdr-doc-ohip-nbr zoned unsigned size 6 = clmhdr-doc-nbr-ohip
+def x-clmhdr-agent-cd zoned unsigned size 1 = clmhdr-agent-cd 
+def x-clmhdr-refer-doc-nbr zoned unsigned size 6 = clmhdr-refer-doc-nbr
+def x-clmhdr-diag-cd zoned unsigned size 3 = clmhdr-diag-cd
+def x-clmhdr-tot-claim-ar-ohip zoned unsigned size 7 = clmhdr-tot-claim-ar-ohip
+def x-clmhdr-amt-tech-billed zoned unsigned size 6 = clmhdr-amt-tech-billed
+def x-clinic zoned unsigned size 2 = nconvert(clmhdr-claim-id[1:2])
+def x-clmhdr-confidential-flag char*1		&
+	= "Y" if clmhdr-confidential-flag = "Y"	&
+     else "N"
+def x-clmhdr-manual-review char*1		&
+	= "Y" if clmhdr-manual-review = "Y"	&
+     else "N"
+
+def x-blanks char*2 = "  "
+
+def clmhdr-health-care-nbr char*12 = ascii(pat-health-nbr)
+def clmhdr-health-care-prov char*2 = pat-prov-cd 
+def clmhdr-status char*1 = "U"
+
+report                                                      &
+tab  1 x-CLMHDR-DOC-OHIP-NBR       pic "^^^^^^" fill "0"    &
+tab  7 CLMdtl-ACCOUNTING-NBR                                &       
+
+; (00/oct/02 B.E. - replaced field that contained the"I" key with 
+;   		    health care number and version 
+;tab 15 CLMHDR-PAT-OHIP-ID-OR-CHART                          &
+tab 15  clmhdr-health-care-nbr				    &
+tab 27  x-blanks					    &
+tab 29  clmhdr-health-care-prov			            &
+
+tab 31 clmhdr-loc           	            		    &
+tab 35 x-clmhdr-agent-cd          pic "^" fill "0"          &
+tab 36 x-clmhdr-refer-doc-nbr     pic "^^^^^^" fill "0"     &
+tab 42 x-clmhdr-diag-cd           pic "^^^" fill "0"	    & 
+tab 45 clmhdr-date-admit                                    &
+tab 53 loc-hospital-nbr		  pic "^^^^" fill "0"	    &
+tab 57 x-clmhdr-tot-claim-ar-ohip pic "^^^^^^^" fill "0"    &
+tab 64 x-clmhdr-amt-tech-billed   pic "^^^^^^" fill "0"     &       
+tab 70 clmhdr-i-o-pat-ind		 		    &
+tab 71 x-clmhdr-manual-review   	  		    &
+tab 72 x-clinic pic "^^" fill "0"                    	    &
+tab 74 x-clmhdr-confidential-flag			    &
+tab 75 clmhdr-status                                	    &
+tab 76 clmhdr-doc-spec-cd pic "^^" fill "0"		    &
+tab 78 clmdtl-sv-date
+
+;?tab tot_ohip_addons
+
+build $obj/fix_recover_web_1

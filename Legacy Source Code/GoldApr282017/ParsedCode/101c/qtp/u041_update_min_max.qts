@@ -1,0 +1,33 @@
+; Program:
+; Purpose:	when the MOH releases new fees u041.cbl updates a- and h- fee-1/2 but it doens't look at min/max values
+;		this program will update any code that already have min/max defined if the new fee $ don't match them min max
+;		This is SIMPLISTIC solution in that the min/max may be multiples of the base fee but it works in 2010
+cancel clear
+set process nolimit
+
+access f040-oma-fee-mstr
+;rep FEE-OMA-CD   FEE-CURR-A-FEE-1  FEE-CURR-H-FEE-1 FEE-CURR-A-FEE-2 FEE-CURR-H-FEE-2 FEE-CURR-A-MIN FEE-CURR-H-MIN FEE-CURR-A-MAX FEE-CURR-H-MAX
+
+; do some calcs to ensure fee hasn't change by more than 20% - otherwise the min/max must not be a single unit but a multiple
+; of the base amount and thus must handled by manually
+
+define x-20-percent = FEE-CURR-H-MIN *.2
+define x-test-amt   = FEE-CURR-H-MIN + x-20-percent
+
+;2010 C183 has > 20 increase but allow it
+define x-flag char*1 = "*" if           x-test-amt < FEE-CURR-A-FEE-1   &
+                                AND     fee-oma-cd <> "C183"            &
+                 else  " "
+
+select if  FEE-CURR-A-FEE-1  = FEE-CURR-H-FEE-1		&
+	and FEE-CURR-H-MIN   <> 0  			&
+	and FEE-CURR-H-MAX   <> 0 			&
+	and FEE-CURR-H-MIN   = FEE-CURR-H-MAX		&
+	and FEE-CURR-A-FEE-1 <> FEE-CURR-H-MIN		&
+	and x-flag <> "*"
+
+output f040-oma-fee-mstr update
+	item FEE-CURR-H-MIN	final  FEE-CURR-H-FEE-1
+	item FEE-CURR-H-MAX	final  FEE-CURR-H-FEE-1
+
+build $obj/u041_update_min_max

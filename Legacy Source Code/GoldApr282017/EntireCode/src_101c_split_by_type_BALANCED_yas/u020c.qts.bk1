@@ -1,0 +1,149 @@
+;#> PROGRAM-ID.     U020C.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : UPDATE SHADOW, CLAIMS, BATCTRL AND CONSTANTS FILES
+;	NOTE: if the patient has non-blank message code, then the claim can't
+;	      be submitted to OHIP and must be put on hold. 
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/13 D.B.         - ORIGINAL (SMS 138)
+;     91/APR/29 M.C.	     - SMS 138 (ENHANCEMENT)
+;			     - UPDATE THE CLMHDR WITH CLAIM STATUS
+;			       AND SUBMISSION DATE
+;     91/OCT/07 M.C.	     - PDR 521 - OPTIMIZATION
+;     91/OCT/28 M.C.	     - UPDATE CYCLE STRAIGHT TO CONSTANT-MSTR
+;			       DO NOT DEPEND ON BATCH CONTROL FILE.
+;     92/JUN/10 M.C.	     - SMS 139 - UPDATE RECORD 61 TO 65 IN
+;                              CONSTANTS-MSTR AS WELL
+;     92/JUL/06 Y.B.         - UPDATE RECORD 60 TO 65 IN CONSTANTS-MSTR
+;     93/MAR/18 M.C.	     - SMS 140 - THE FIRST REQUEST IS NOW
+;			       TRANSFERRED TO U020B.QTS
+;			     - SELECT ON MOH-FLAG INSTEAD OF AGENT
+;			     - UPDATE ANY VALID CLINIC BETWEEN 22 TO 99
+;			       IN CONSTANTS-MSTR
+;    93/MAY/06 M.C.	     - SMS 141
+;			     - ADD PAT-MESS-CODE INTO CONSIDERATION
+;			     - PUT ALL NEW CLAIMS THAT HAVE MESS CODE
+;			       IN PAT-MSTR INTO REJECTED-CLAIMS FILE
+;			       AND THE SUBFILE U020C1
+;    96/JAN/16 M.C.	     - PDR 636
+;			     - UPDATE BATCTRL-STATUS TO '3' INSTEAD OF
+;			       '2'
+;    98/Mar/06 M.C.	     - SAF 149
+;			     - add on errors report for all output files
+; 99/feb/09 B.E		- no y2k changes needed
+;    1999/May/21 S.B.        - Added the use file
+;                              def_batctrl_batch_status.def to 
+;                              prevent hardcoding of batctrl-batch-status.
+; 04/jan/12 M.C.	- alpha doc nbr
+; 10/aug/03 MC1 	- do not preset clmhdr-submit-date of f085 to be the set as f002
+; 11/Jan/17 MC2		- update clmhdr-submit-date of f085 to be the system run date
+;			- keep append for subfile u020c1
+; 			- update the last request to update constants mstr based on the actual clinic
+
+can clear
+set default
+set process nolimit
+set lock record update
+
+run u020c
+
+
+request process_shadow
+
+access *u020a1 					&
+	link 'B', batctrl-batch-nbr, clmhdr-claim-nbr, &
+	     '00000', '0' to key-clm-type, key-clm-batch-nbr, &
+	     key-clm-claim-nbr, key-clm-serv-code,    &
+	     key-clm-adj-nbr of f002-claims-mstr
+
+select u020a1 if batctrl-batch-type = 'C'	
+
+sorted on clmhdr-claim-id of u020a1
+
+; 2004/01/12 - MC
+;!def x-claim-nbr zoned*10  = nconvert(ascii(batctrl-batch-nbr,9)[1:2] &
+;!				+    ascii(batctrl-batch-nbr,9)[4:6] &
+;!				+    ascii(clmhdr-claim-nbr,2))
+
+def x-claim-nbr  char*10  = batctrl-batch-nbr +  ascii(clmhdr-claim-nbr,2)
+; 2004/01/12 - end
+
+
+output f002-claim-shadow at clmhdr-claim-id add on errors report	&
+	if  (batctrl-agent-cd = 4 or batctrl-agent-cd = 6)
+  item clm-shadow-clinic final iconst-clinic-nbr-1-2
+  item clm-shadow-subdivision final clmhdr-sub-nbr of u020a1
+  item clm-shadow-patient final clmhdr-pat-ohip-id-or-chart of u020a1
+  item clm-shadow-batch-nbr final batctrl-batch-nbr
+; 2004/04/14 - MC
+;!  item clm-shadow-claim-nbr final nconvert(clmhdr-claim-id of u020a1[10:2])
+  item clm-shadow-claim-nbr final nconvert(clmhdr-claim-id of u020a1[9:2])
+; 2004/04/14 - end
+
+output f002-claims-mstr update				&
+;	IF (BATCTRL-AGENT-CD = 0 OR  BATCTRL-AGENT-CD = 2)
+	if moh-flag = 'Y' on errors report
+;  ITEM CLMHDR-TAPE-SUBMIT-IND FINAL 'S'
+;  ITEM CLMHDR-SUBMIT-DATE FINAL SYSDATE
+   item clmhdr-tape-submit-ind final 'S' if pat-mess-code = ' ' else 'H'
+   item clmhdr-submit-date final sysdate if pat-mess-code = ' ' else 0
+
+; 2011/01/17 - MC2
+;subfile u020c1 keep if moh-flag = 'Y' and pat-mess-code <> ' ' &
+subfile u020c1 keep append if moh-flag = 'Y' and pat-mess-code <> ' ' &
+; 2011/01/17 - end
+	include u020a1
+
+output rejected-claims add if pat-mess-code of u020a1 <> ' ' &
+	and moh-flag of u020a1 = 'Y' on errors report
+   item claim-nbr final x-claim-nbr
+   item clmhdr-pat-ohip-id-or-chart final 	&
+	clmhdr-pat-ohip-id-or-chart of u020a1
+   item doc-nbr final doc-nbr of u020a1
+   item clmhdr-loc final clmhdr-loc of u020a1
+   item mess-code final pat-mess-code of u020a1
+; 2010/08/03 - MC1
+; 2011/01/17 - MC2
+;   item clmhdr-submit-date final 0
+   item clmhdr-submit-date final sysdate
+; 2011/01/17 - end
+; 2010/08/03 - end
+
+request update_batch_control
+
+access *u020a1					&
+	link batctrl-batch-nbr to batctrl-batch-nbr	&
+	of f001-batch-control-file
+
+sorted on batctrl-batch-nbr
+
+;S.B.
+use $use/def_batctrl_batch_status.def
+
+output f001-batch-control-file update at batctrl-batch-nbr on errors report
+; ITEM BATCTRL-BATCH-STATUS FINAL '2'
+;  item batctrl-batch-status final '3'
+  item batctrl-batch-status final batctrl-batch-status-ohip-sent
+
+
+request update_iconst-mstr
+
+; 2011/01/17 - MC2 -use u020a1 subfile instead
+;access iconst-mstr-rec
+;choose iconst-clinic-nbr-1-2 22 to 99
+access *u020a1	&
+	link nconvert(batctrl-batch-nbr[1:2])	&
+	 to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+; 2011/01/17 - end
+
+sorted on iconst-clinic-nbr-1-2
+
+output iconst-mstr-rec update at iconst-clinic-nbr-1-2 on errors report
+  item iconst-clinic-cycle-nbr final iconst-clinic-cycle-nbr + 1
+
+build $pb_obj/u020c
+  

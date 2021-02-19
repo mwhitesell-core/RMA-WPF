@@ -1,0 +1,54 @@
+; Program: r906.qzs
+; Purpose: To check if the calculated claim amount from the detail records
+; 	   equal to the claim header amount - SMS 107.1
+;
+; 1991/APR/19	M. CHAN	- SMS 138
+;			- MODIFY ACCESS STATEMENT
+; 1991/AUG/09	M. CHAN	- PDR 507, MODIFY THE LOGIC
+
+set default
+set report device disc name r906
+set report nolimit
+set report page length 60
+set report page width 132
+
+access *sub905 link ("B", key-clm-batch-nbr,   		       	&
+                     key-clm-claim-nbr, "00000", "0")		&
+		to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+		   key-clm-serv-code, key-clm-adj-nbr 		&
+		of f002-claims-mstr
+
+define w-bal-due int*8 pic "^^^,^^^.^^"		&
+     =  clmhdr-tot-claim-ar-ohip		&
+      + clmhdr-manual-and-tape-payments
+
+define x-diff    int*8 pic "^^^,^^^.^^"		&
+     =   clmhdr-tot-claim-ar-ohip		&
+       - clmdtl-fee-ohip
+;y2k
+define x-ast char*1 = "*" if    clmhdr-date-cash-tape-payment = " "         &
+                             or clmhdr-date-cash-tape-payment = "00000000"  &
+		else  " "
+; 2003/10/23 - MC
+;select if    w-bal-due  <> 0 				&
+;        and clmdtl-fee-ohip <> w-bal-due		&
+; 	 and clmdtl-fee-ohip <> clmhdr-tot-claim-ar-ohip
+
+select if x-diff <> 0
+
+; 2003/10/23 - end
+
+
+sort on clmhdr-date-period-end
+
+report clmhdr-date-period-end				&
+       sort-key 					&
+       clmdtl-fee-ohip of sub905 			&
+       clmhdr-tot-claim-ar-ohip 			&
+       clmhdr-manual-and-tape-payments 			&
+       x-diff						&
+       w-bal-due					&
+       clmhdr-date-cash-tape-payment 			&
+       x-ast
+
+build $pb_obj/r906

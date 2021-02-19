@@ -1,0 +1,122 @@
+;#> PROGRAM-ID.     u130.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             Copies payments into f114 to f110 and deletes them from f114
+
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 2004/02/25            b.e.    - original
+; 2004/03/15		b.e.	- add logic to factor amt-net
+;
+
+cancel clear
+set stacksize 500
+run u130
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u130_const_mstr_get_ep_nbr              &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        final  current-ep-nbr
+item w-current-ep-nbr-minus1 final  current-ep-nbr - 1
+;
+
+
+;-------------------------------------------------------------------------------
+;
+request u130_process                           &
+                on edit        errors report    &
+                on calculation errors report
+
+access f114-special-payments					&
+	link comp-code of f114-special-payments			&
+	  to comp-code of f190-comp-codes			&
+        link doc-nbr,						&
+	     w-current-ep-nbr,					&
+	     process-seq of f190-comp-codes,			&
+	     comp-code   of f114-special-payments		&
+	  to doc-nbr,						&
+	     ep-nbr,						&
+	     process-seq,					&
+	     comp-code	 of f110-compensation opt	
+
+select if     ep-nbr-from of f114-special-payments <= w-current-ep-nbr	&
+	  and ep-nbr-to   of f114-special-payments >= w-current-ep-nbr	
+
+use $use/def_compensation_status.def
+
+define x-factor numeric 			&
+      = factor of f110-compensation		&
+	   if record f110-compensation exists	&
+   else factor of f190-comp-codes		&
+  	   if record f190-comp-codes   exists	&
+   else 1.0
+	
+define x-amt-net-factored numeric				&
+     = round(   (  amt-gross of f114-special-payments		&
+	         * factor of f110-compensation			&
+	        )						&
+              / 10000,0,near					&
+	    )
+
+subfile $pb_data/u130_audit keep include &
+  w-current-ep-nbr,					&
+  doc-nbr of f114-special-payments,			&
+  ep-nbr of f110-compensation, 				&
+  doc-nbr of f110-compensation,  			&
+  comp-code of f114-special-payments,			&
+  amt-gross of f114-special-payments,			&
+  amt-net of f114-special-payments,			&
+  x-factor,						&
+  x-amt-net-factored 
+  
+
+output f110-compensation add alias f110-add                   &
+    if     not record f110-compensation  exists               &
+	and 1=1 
+        item doc-nbr	     final  doc-nbr of f114-special-payments
+        item ep-nbr          final  w-current-ep-nbr
+        item ep-nbr-entry    final  w-current-ep-nbr
+        item comp-code       final  comp-code   of f114-special-payments
+        item comp-type       final  comp-type   of f190-comp-codes  
+        item process-seq     final  process-seq of f190-comp-codes
+        item factor          final  factor      of f190-comp-codes
+        item factor-override final  " "
+        item comp-units      final  comp-units of f114-special-payments
+        item amt-gross       final  amt-gross  of f114-special-payments
+        item amt-net         final  x-amt-net-factored
+        item compensation-status final  compensation-status-accepted
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+        item last-mod-user-id final  "u130    Gen'd"
+
+output f110-compensation update alias f110-update       &
+    if     record f110-compensation exists		&
+	and 1=1
+        item factor-override final  "*"
+        item comp-units      final  comp-units of f114-special-payments
+        item amt-gross       final  amt-gross  of f114-special-payments
+        item amt-net         final  x-amt-net-factored
+        item compensation-status final  compensation-status-accepted
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+        item last-mod-user-id final  "u130    Upd'd"
+
+output f114-special-payments alias f114-delete delete	&
+	if 1 = 1
+
+build $pb_obj/u130
+  

@@ -1,0 +1,199 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE COSTING1.QTS
+COMMENT "Program: costing1.qts"
+COMMENT "Purpose: - creates files for costing the KEYING Charges"
+COMMENT "99/06/02 M. Chan - Yasemin to increase the size of nbr-svc,"
+COMMENT "nbr-dtl, nbr-clm  from 4 to 6"
+COMMENT "99/06/08 M. Chan - Yasemin to apply tech-ind <> 'Y' for clinic"
+COMMENT "60 to 65 claims only  , add a new column man reject"
+COMMENT "- add request seven to extract man reject from manual"
+COMMENT "rejected claims history file"
+COMMENT "99/07/20  B.E.  - added qualification of clinic nbr in request 4"
+COMMENT "00/01/07  B.E.  - added copy books to remove hard coding of "
+COMMENT " miscellenous  billing codes "
+COMMENT "2003/dec/11 A.A. - alpha doctor nbr"
+COMMENT "2003/sep/17 b.e. - correction on alpha doctor nbr conversion - request"
+COMMENT "costing1_1 variable x-claims and request "
+COMMENT "costing1_2a variable x-claim-nbr-only size needed to"
+COMMENT "be reduced by 1 due to change of doc-nbr from 9(4)"
+COMMENT "to x(3)."
+COMMENT "2015/Jul/15 MC1       - add the same prepass (first request) as costing1_noweb.qts"
+COMMENT "2016/Nov/28 MC2 - change to set lock record update"
+CANCEL CLEAR
+RUN COSTING1
+SET DEFAULT
+SET PROCESS NOLIMIT
+COMMENT "MC2"
+COMMENT "set lock file update"
+SET LOCK RECORD UPDATE
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+COMMENT "File: globals_get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+GLOBAL TEMP W-CURRENT-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-CUTOFF-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED-YYMM ZONED*6
+GLOBAL TEMP W-PREVIOUS-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-PREVIOUS-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-EP-YR NUM*2
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+COMMENT "File: get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+REQUEST COSTING1_GET_REC_7 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-7
+CHOOSE CONST-REC-NBR 7
+ITEM W-CURRENT-FISCAL-START-YYMMDD = CURRENT-FISCAL-START-YYMMDD
+ITEM W-CURRENT-FISCAL-END-YYMMDD = CURRENT-FISCAL-END-YYMMDD
+ITEM W-CURRENT-COSTING-CUTOFF-YYMMDD = CURRENT-COSTING-CUTOFF-YYMMDD
+ITEM W-CURRENT-COSTING-PED = CURRENT-COSTING-PED
+ITEM W-CURRENT-COSTING-PED-YYMM = CURRENT-COSTING-PED / 100
+ITEM W-PREVIOUS-FISCAL-START-YYMMDD = PREVIOUS-FISCAL-START-YYMMDD
+ITEM W-PREVIOUS-FISCAL-END-YYMMDD = PREVIOUS-FISCAL-END-YYMMDD
+ITEM W-EP-YR = EP-YR
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+COMMENT "MC1"
+REQUEST COSTING ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F002-CLAIMS-MSTR LINK (CLMHDR-CLAIM-ID[3:3]) TO DOC-NBR OF F020-DOCTOR-MSTR
+CHOOSE KEY-CLM-TYPE 'B' , KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE '00000' , KEY-CLM-ADJ-NBR '0'
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "(select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm)"
+COMMENT "File: select_f020_active_for_costing_analysis_period.use "
+COMMENT "Purpose: "
+COMMENT "select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm"
+DEF DOC-START-YYMM ZONED*6 = DOC-DATE-FAC-START / 100
+SELECT F020-DOCTOR-MSTR IF ( DOC-DATE-FAC-START = 0000000 OR DOC-START-YYMM <= W-CURRENT-COSTING-PED-YYMM ) AND ( DOC-DATE-FAC-TERM = 00000000 OR DOC-DATE-FAC-TERM >= W-CURRENT-FISCAL-START-YYMMDD )
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+SUBFILE COSTING KEEP INCLUDE KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR
+COMMENT "MC1 - end"
+COMMENT "Purpose: This request counts # claims and # services"
+REQUEST COSTING1_1 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "MC1"
+COMMENT "access f002-claims-mstr              &"
+COMMENT "MC1 - end"
+ACCESS *COSTING LINK 'B' , KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR LINK CLMHDR-CLAIM-ID[3:3] TO DOC-NBR OF F020-DOCTOR-MSTR LINK CLMDTL-OMA-CD TO FEE-OMA-CD OF F040-OMA-FEE-MSTR OPT
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F002_FOR_COSTING_KEYING_CHARGES.USE
+COMMENT "MC1"
+COMMENT "choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr, &"
+COMMENT "key-clm-serv-code, key-clm-adj-nbr '0'"
+COMMENT "(select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm)"
+COMMENT "use $use/select_f020_active_for_costing_analysis_period.use"
+COMMENT "MC1 - end"
+COMMENT "(select non-clinic 60 claim detail recs ignoring 'misc' records and also"
+COMMENT "ignoring any any clinic 60 records whose keying costs are reclaimed"
+COMMENT "from the hospital)"
+COMMENT "File: select_f002_for_costing_keying_charges.use"
+COMMENT "Purpose: select claim detail records for determining  keying "
+COMMENT "charges for costing system. Note that  misc  type claims"
+COMMENT "are ignored, as well as clinic 60 claims who keying"
+COMMENT "costs are reclaimed from the hospital."
+COMMENT "These  specialized  miscellaneous billings are coded with the following"
+COMMENT " oma  codes - "
+COMMENT "-------------------------------------------------------"
+COMMENT "IF UPDATING THIS FILE ALSO UPDATE THE FOLLOWING FILES:"
+COMMENT "costing_billing_codes_?.q?s "
+COMMENT "u110.qts"
+COMMENT "-------------------------------------------------------"
+COMMENT "2010/07/14 - ignore clinic 71 to 75 only"
+COMMENT "and  clmdtl-id[1:1]     <>  7          ; ignore clinic 70"
+COMMENT "ignore clinic 70's"
+SELECT F002-CLAIMS-MSTR IF CLMDTL-DATE-PERIOD-END >= ASCII(W-CURRENT-FISCAL-START-YYMMDD) AND CLMDTL-DATE-PERIOD-END <= ASCII(W-CURRENT-COSTING-CUTOFF-YYMMDD) AND CLMDTL-OMA-CD <> "0000" AND CLMDTL-OMA-CD <> "ZZZZ" AND CLMDTL-OMA-CD <> "PAID" AND CLMDTL-OMA-CD <> "MICM" AND CLMDTL-OMA-CD <> "MISJ" AND CLMDTL-OMA-CD <> "MISC" AND CLMDTL-OMA-CD <> "MICV" AND CLMDTL-OMA-CD <> "MISP" AND CLMDTL-OMA-CD <> "MICB" AND CLMDTL-OMA-CD <> "MIBR" AND CLMDTL-OMA-CD <> "MINH" AND CLMDTL-OMA-CD <> "MHSC" AND CLMDTL-OMA-CD <> "DHSC" AND CLMDTL-OMA-CD <> "MOHR" AND CLMDTL-OMA-CD <> "AGEP" AND CLMDTL-OMA-CD <> "MICA" AND CLMDTL-OMA-CD <> "MICC" AND CLMDTL-OMA-CD <> "MICD" AND CLMDTL-OMA-CD <> "MICE" AND CLMDTL-OMA-CD <> "MICF" AND CLMDTL-OMA-CD <> "MICG" AND CLMDTL-OMA-CD <> "MICH" AND CLMDTL-OMA-CD <> "MICJ" AND CLMDTL-OMA-CD <> "MICK" AND CLMDTL-OMA-CD <> "MICL" AND CLMDTL-ADJ-NBR = 0 AND CLMDTL-ID[1:1] <> "6" AND CLMDTL-ID[1:2] <> "71" AND CLMDTL-ID[1:2] <> "72" AND CLMDTL-ID[1:2] <> "73" AND CLMDTL-ID[1:2] <> "74" AND CLMDTL-ID[1:2] <> "75"
+COMMENT "2010/07/14 - end"
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F002_FOR_COSTING_KEYING_CHARGES.USE
+COMMENT "select if   (    fee-tech-ind <> 'Y'   &"
+COMMENT "and clmdtl-id[1:2] >= '60' &"
+COMMENT "and clmdtl-id[1:2] <= '65' &"
+COMMENT ")      &"
+COMMENT "or clmdtl-id[1:2] < '60'   &"
+COMMENT "or clmdtl-id[1:2] > '65'"
+COMMENT "def x-doc-nbr cha*3 = clmdtl-id[4:3]"
+DEFINE X-SV-NBR1 ZONED*2 UNSIGNED = CLMDTL-NBR-SERV
+DEFINE X-SV-NBR2 ZONED*2 UNSIGNED = CLMDTL-SV-NBR(1) IF CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'OP' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'MR' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'BI' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE '  ' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE '00' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE '0 ' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE ' 0' ELSE 0
+DEFINE X-SV-NBR3 ZONED*2 UNSIGNED = CLMDTL-SV-NBR(2) IF CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'OP' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'MR' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'BI' AND CLMDTL-CONSECUTIVE-SV-DAYS(2)[2:2] NE '  ' AND CLMDTL-CONSECUTIVE-SV-DAYS(2)[2:2] NE '0 ' AND CLMDTL-CONSECUTIVE-SV-DAYS(2)[2:2] NE ' 0' AND CLMDTL-CONSECUTIVE-SV-DAYS(2)[2:2] NE '00' ELSE 0
+DEFINE X-SV-NBR4 ZONED*2 UNSIGNED = CLMDTL-SV-NBR(3) IF CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'OP' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'MR' AND CLMDTL-CONSECUTIVE-SV-DAYS(1)[2:2] NE 'BI' AND CLMDTL-CONSECUTIVE-SV-DAYS(3)[2:2] NE '  ' AND CLMDTL-CONSECUTIVE-SV-DAYS(3)[2:2] NE '0 ' AND CLMDTL-CONSECUTIVE-SV-DAYS(3)[2:2] NE ' 0' AND CLMDTL-CONSECUTIVE-SV-DAYS(3)[2:2] NE '00' ELSE 0
+COMMENT "! b.e. def x-claims char*16 = clmdtl-id[1:16]"
+DEF X-CLAIMS CHAR*15 = CLMDTL-ID[1:15]
+SORTED ON X-CLAIMS
+TEMP X-NBR-SVCS ZONED*4 UNSIGNED
+ITEM X-NBR-SVCS = X-NBR-SVCS + X-SV-NBR1 + X-SV-NBR2 + X-SV-NBR3 + X-SV-NBR4 RESET AT X-CLAIMS
+SUBFILE COSTING1 KEEP AT X-CLAIMS INCLUDE DOC-NBR , DOC-NAME , DOC-INITS , DOC-DEPT , DOC-CLINIC-NBR , X-CLAIMS , CLMDTL-ID , X-NBR-SVCS
+COMMENT "Purpose: This request counts the number of detail lines in the claims"
+COMMENT "and the number of details less than $3.00"
+REQUEST COSTING1_2A ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+COMMENT "modification history"
+COMMENT "99/06/07   B.E.         - added keep at claim nbr instead of doc nbr"
+SET PROCESS NOLIMIT
+ACCESS *COSTING1
+COMMENT "! b.e. def x-claim-nbr-only char*11 = x-claims[1:11]"
+DEF X-CLAIM-NBR-ONLY CHAR*10 = X-CLAIMS[1:10]
+SORT ON DOC-NBR ON X-CLAIM-NBR-ONLY
+TEMP C-NBR-SVC ZONED*6 UNSIGNED
+COMMENT "item nbr-svc = nbr-svc + x-nbr-svcs  reset at doc-nbr"
+ITEM C-NBR-SVC = C-NBR-SVC + X-NBR-SVCS RESET AT X-CLAIM-NBR-ONLY
+TEMP C-NBR-CLM ZONED*6 UNSIGNED
+COMMENT "item nbr-clm = nbr-clm + 1 at x-claim-nbr-only reset at doc-nbr"
+ITEM C-NBR-CLM = C-NBR-CLM + 1 AT X-CLAIM-NBR-ONLY RESET AT X-CLAIM-NBR-ONLY
+TEMP C-NBR-DTL ZONED*6 UNSIGNED
+COMMENT "item nbr-dtl = nbr-dtl + 1                     reset at doc-nbr"
+ITEM C-NBR-DTL = C-NBR-DTL + 1 RESET AT X-CLAIM-NBR-ONLY
+TEMP DTL-AMT ZONED*6 UNSIGNED
+ITEM DTL-AMT = 1000
+TEMP C-NBR-DTL-LESS-THAN-MIN-AMT ZONED*6 UNSIGNED
+ITEM C-NBR-DTL-LESS-THAN-MIN-AMT = C-NBR-DTL-LESS-THAN-MIN-AMT + 1 IF DTL-AMT < 300 RESET AT X-CLAIM-NBR-ONLY
+DEF NBR-REJECT ZONED*4 UNSIGNED = 0
+DEF AMT-YTD ZONED*8 SIGNED = 0
+DEF MISC-AMT-YTD ZONED*8 SIGNED = 0
+DEF MOHR-AMT-YTD ZONED*8 SIGNED = 0
+DEF TOTAL-AMT-YTD ZONED*8 SIGNED = 0
+DEF MAN-REJECT ZONED*6 UNSIGNED = 0
+COMMENT "subfile costing2  keep append at doc-nbr                 &"
+SUBFILE COSTING1B KEEP AT X-CLAIM-NBR-ONLY INCLUDE X-CLAIM-NBR-ONLY, DOC-NBR, DOC-NAME, DOC-INITS, DOC-DEPT, DOC-CLINIC-NBR, C-NBR-SVC, C-NBR-CLM, C-NBR-DTL, C-NBR-DTL-LESS-THAN-MIN-AMT, NBR-REJECT, AMT-YTD, MISC-AMT-YTD, MOHR-AMT-YTD, TOTAL-AMT-YTD, MAN-REJECT
+COMMENT "request purpose : This pgm used for 'what if' type analysis of costing"
+COMMENT "by allowing the programmer to change the calculation"
+COMMENT "of 'nbr detail recs'."
+COMMENT "- code tests if 'clinic 6x' and nbr details > 3 then"
+COMMENT "only count 3 as max details."
+COMMENT "- this logic can be changed to test impact on costing model"
+REQUEST COSTING1_2B ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS *COSTING1B
+SORT ON DOC-NBR ON X-CLAIM-NBR-ONLY
+TEMP NBR-SVC ZONED*6 UNSIGNED
+ITEM NBR-SVC = NBR-SVC + C-NBR-SVC RESET AT DOC-NBR
+TEMP NBR-CLM ZONED*6 UNSIGNED
+ITEM NBR-CLM = NBR-CLM + 1 AT X-CLAIM-NBR-ONLY RESET AT DOC-NBR
+COMMENT "(don't count more than 3 details for any claim if claim is for clinic 60-65)"
+DEF X-CLINIC CHAR*2 = X-CLAIM-NBR-ONLY[1:2]
+TEMP NBR-DTL ZONED*6 UNSIGNED
+COMMENT "********************** changeable logic ********************"
+COMMENT "= nbr-dtl                    + 2                           &"
+COMMENT "if     (c-nbr-dtl > 2)                          &"
+COMMENT "and (x-clinic >='60' and x-clinic <='65')    &"
+COMMENT "************************************************************"
+ITEM NBR-DTL = NBR-DTL + C-NBR-DTL IF 1=1 ELSE NBR-DTL + C-NBR-DTL RESET AT DOC-NBR
+DEF NBR-REJECT ZONED*4 UNSIGNED = 0
+DEF AMT-YTD ZONED*8 SIGNED = 0
+DEF MISC-AMT-YTD ZONED*8 SIGNED = 0
+DEF MOHR-AMT-YTD ZONED*8 SIGNED = 0
+DEF TOTAL-AMT-YTD ZONED*8 SIGNED = 0
+DEF MAN-REJECT ZONED*6 UNSIGNED = 0
+COMMENT "subfile costing2 keep append at doc-nbr  &"
+SUBFILE COSTING2 KEEP AT DOC-NBR INCLUDE DOC-NBR, DOC-NAME, DOC-INITS, DOC-DEPT, DOC-CLINIC-NBR, NBR-SVC, NBR-CLM, NBR-DTL, NBR-REJECT, AMT-YTD, MISC-AMT-YTD, MOHR-AMT-YTD, TOTAL-AMT-YTD, MAN-REJECT
+BUILD $OBJ/COSTING1
+ENDMODULE COSTING1.QTS

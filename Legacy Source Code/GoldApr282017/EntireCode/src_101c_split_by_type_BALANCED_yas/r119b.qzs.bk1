@@ -1,0 +1,110 @@
+; DOC: R119B.QZS
+; DOC; REPORT MTD AND YTD FIGURES PRINT AT DOC-DEPT
+
+; DATE      WHO       MODIFICATION
+; 93/06/23  YASEMIN   ORIGINAL
+; 94/10/03  YASEMIN   CHANGE SORT SEQUENCE OF COMP DESCRIPTION
+; 95/01/09  YASEMIN   CHANGE SORT SEQUENCE OF COMP DESCRIPTION
+; 98/01/29  J. CHAU   COMMENT OUT SET NOCLOSE
+; 03/dec/16 A.A.      alpah doctor nbr
+; 08/may/27 M.C.      add the select of rec-type = 'A' or 'C'
+
+;
+cancel clear
+set default
+set noblanks
+set report nolimit
+set report dev disc name r119b
+set page width 132 length 63
+set formfeed
+;jc set noclose
+
+access f020-doctor-mstr                   	           	&
+  link doc-nbr to doc-nbr of f119-doctor-ytd                    &
+  link comp-code to f190-comp-codes              opt            &
+  link doc-dept to dept-nbr of f070-dept-mstr    opt            &
+; LINK DOC-NBR TO DOC-NBR OF F110-COMPENSATION   OPT            &
+  link (6) to const-rec-nbr of constants-mstr-rec-6
+
+;DEFINE W-SEL-EP-NBR-FROM NUM*4 = PARM PROMPT "ENTER EP FROM: "
+;DEFINE W-SEL-EP-NBR-TO   NUM*4 = PARM PROMPT "ENTER EP TO: "
+
+;SELECT F110-COMPENSATION IF    EP-NBR GE W-SEL-EP-NBR-FROM    &
+;                             AND EP-NBR LE W-SEL-EP-NBR-TO
+
+; 2008/05/27 - MC - add select
+select f119-doctor-ytd if rec-type = 'A' or rec-type = 'C'
+; 2008/05/27 - end
+
+
+;DEF X-KEY2 CHA*11 = ASCII(EP-NBR,4) + COMP-TYPE + COMP-CODE
+;DEF X-KEY2 CHA*11 = COMP-CODE-GROUP + ASCII(PROCESS-SEQ,2) + COMP-CODE
+;DEF X-KEY2 CHA*11 = COMP-TYPE + COMP-CODE
+;DEF X-KEY2 CHA*11 = ASCII(PROCESS-SEQ,2) + COMP-CODE
+ def x-key2 cha*9  = comp-code-group + ascii(reporting-seq,2) + comp-code
+
+;SORT ON DOC-DEPT ON EP-NBR ON X-KEY2
+
+;SORT ON DOC-DEPT ON X-KEY2
+sort on doc-dept                                               &
+     on x-key2
+
+define w-doc-name char*20 =  "DR. " + doc-inits + " "		    &
+                           + doc-name				    &
+                                 if record f020-doctor-mstr exists  &
+		       else "UNKNOWN!"
+
+def x-class cha*18 = "FULL TIME"         if doc-full-part-ind = "F"  &
+                else "PART TIME"         if doc-full-part-ind = "P"  &
+                else "CLINICAL SCHOLARS" if doc-full-part-ind = "C"  &
+                else "PLASTIC SURGERY"   if doc-full-part-ind = "S"
+
+
+page heading							&
+  tab  1 "R119"							&
+  tab  7 "RUN DATE:"						&
+;y2k
+  tab 17  sysdate						&
+  tab 47  sysname						&
+  tab 121 "PAGE:"						&
+  tab 127 syspage						&
+skip 1								&
+  tab 49  "EARNINGS REGISTER MTD & YTD TOTALS"                  &
+skip 1								&
+  tab 53  "For Earnings Period: "				&
+  tab 74  current-ep-nbr    				        &
+; TAB 70  W-SEL-EP-NBR-FROM					&
+; TAB 77  "thru"                    				&
+; TAB 82  W-SEL-EP-NBR-TO  					&
+skip 2
+
+;HEADING AT EP-NBR  SKIP 2
+
+heading at doc-dept                                                   &
+        tab  1  "********** DEPARTMENT TOTALS **********"             &
+skip 2  tab  1  "DEPT NBR: "                                          &
+        tab  11 doc-dept                                              &
+        tab  15 dept-name                                             &
+;SKIP 1  TAB  42 "EP-NBR"                                              &
+skip 2  tab  52  "COMPENSATION DESCRIPTION"                           &
+        tab 105 "MTD"                                                 &
+        tab 122 "YTD"                                                 &
+skip 2
+
+footing at x-key2                                                     &
+;SKIP 1  TAB 43  EP-NBR                         PRINT AT EP-NBR        &
+skip 1  tab  50 comp-type                                             &
+        tab  52 comp-code of f119-doctor-ytd                          &
+        tab  59 "-"                                                   &
+        tab  60 desc-short                                            &
+        tab  93 amt-mtd                                               &
+                  subtotal pic "^^^^,^^^,^^^.^^"                        &
+        tab 110 amt-ytd   of f119-doctor-ytd                          &
+                  subtotal pic "^^^^,^^^,^^^.^^"                        &
+skip 1
+
+footing at doc-dept skip page
+
+build $pb_obj/r119b
+
+  

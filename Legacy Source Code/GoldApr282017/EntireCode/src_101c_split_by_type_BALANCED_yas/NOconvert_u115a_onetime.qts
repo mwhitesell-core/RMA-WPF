@@ -1,0 +1,81 @@
+;#> program-id.     u115a_onetime.qts
+;
+;       ((C)) Dyad Technologies
+;
+; one time pgm to move 94 titheable comp codes to 97 screen
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; brad - move ytd to both mth and ytd values
+
+cancel clear
+set stacksize 10000
+run u115
+
+set default
+set process 50000
+set lock record update
+
+request u115_run_0                              &
+                on edit        errors report    &
+                on calculation errors report
+
+access f119-doctor-ytd                          	 	&
+       link doc-nbr						&	
+        to   doc-nbr of f020-doctor-mstr                      &
+       link ("FLAT+3_TITHE_LEVELS"), 				&
+	    doc-dept, 						&
+	    doc-afp-paym-group, 				&
+	    '000', 						&
+	    comp-code  						&
+	 to dept-expense-calc-code, 				&
+	    dept-nbr, 						&
+	    doc-afp-paym-group, 				&
+	    doc-nbr, 						&
+	    comp-code 						&
+	  of  f116-dept-expense-rules-dtl alias f116-group  opt	&
+	link comp-code					&
+	to comp-code of f190-comp-codes opt
+
+select f119-doctor-ytd if rec-type of f119-doctor-ytd = 'A'
+
+def rec-type-d char*1 = 'D'
+
+;output rec with real doc-nbr
+subfile f119_tithe_dtl_onetime  keep 	                  &
+  if    comp-type of f190-comp-codes = "I"    	  &
+    and tithe-in-ex-clude-flag = "I"		  &
+   include                                        &
+         doc-ohip-nbr of f119-doctor-ytd        , &
+         doc-nbr   of f119-doctor-ytd     	, &
+         comp-code of f119-doctor-ytd  		, &
+         process-seq of f119-doctor-ytd        , &
+         comp-code-group of f119-doctor-ytd     , &
+         rec-type-d                             , &
+;brad
+;         amt-mtd of f119-doctor-ytd             , &
+         amt-ytd of f119-doctor-ytd             , &
+
+         amt-ytd of f119-doctor-ytd               
+
+output f119-doctor-ytd alias f119-add add 	  &
+  if    comp-type of f190-comp-codes = "I"    	  &
+    and tithe-in-ex-clude-flag = "I" on errors report		
+   item doc-nbr final         doc-nbr   of f119-doctor-ytd     	
+   item comp-code final          comp-code of f119-doctor-ytd  
+   item process-seq final          process-seq of f119-doctor-ytd 
+   item comp-code-group final         comp-code-group of f119-doctor-ytd 
+   item rec-type final       rec-type-d                          
+;brad
+;   item amt-mtd final         amt-mtd of f119-doctor-ytd        
+   item amt-mtd final         amt-ytd of f119-doctor-ytd        
+
+   item amt-ytd final          amt-ytd of f119-doctor-ytd      
+   item last-mod-date final sysdate
+   item last-mod-time final systime / 10000
+   item last-mod-user-id final 'moira'         
+
+
+;-------------------------------------------------------------------------------
+
+build $obj/u115a_onetime

@@ -1,0 +1,218 @@
+;DOC: r004btp_70
+;
+;PROGRAM PURPOSE : TRANSACTION SUMMARY (DETAIL REPORT)
+;                  SORT .SF FILE CREATED IN R004ATP AND CREATE
+;                  R004ATP.TXT REPORT.
+;
+;  MODIFICATION HISTORY
+;DATE       BY WHOM   DESCRIPTION
+;2007/Mar   YASEMIN   r004btp
+;
+;
+
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r004btp_70
+set formfeed
+
+access *r004atp_70				  &
+  link ("B" , key-clm-batch-nbr, key-clm-claim-nbr)		  &
+  to   key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr 	  &
+					 of f002-claims-mstr      &
+  link clmhdr-doc-dept of r004atp_70		  &
+  to   dept-nbr of f070-dept-mstr   opt  
+
+
+;EXCLUDE "HEADER" RECS, "DESCRIPTION" RECS AND "ADJUSTMENT" RECS RESPECTIVELY
+;DON"T WANT ADJ RECS FOUND WITHIN CLAIMS
+select f002-claims-mstr					 	     &
+   if    clmhdr-adj-oma-cd ne "0000"			             &
+     and clmhdr-adj-oma-cd ne "ZZZZ"				     &
+     and clmhdr-adj-oma-cd ne "PAID"				     &
+     and (clmdtl-orig-batch-nbr = key-clm-batch-nbr)
+
+sort	on iconst-clinic-nbr-1-2				&
+	on clmhdr-doc-dept of r004atp_70			&
+	on x-doc-nbr						&
+	on x-pat-name   				        &
+	on clmdtl-sv-date					&
+	on clmdtl-id
+
+def x-clmhdr-reference char*9 = clmhdr-reference[1:9]
+
+def x-claim-dtl-id char*10 = clmdtl-id[1:10]
+
+def x-ohip-fee zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = "M"     &
+                               or clmdtl-adj-cd  = " "
+
+def x-tech-fee zoned*6 signed = clmdtl-amt-tech-billed     &
+                               if clmdtl-adj-cd  = "M"     &
+                               or clmdtl-adj-cd  = " "
+
+def x-prof-fee zoned*7 signed = x-ohip-fee - x-tech-fee
+
+def x-ohip-adj zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = "B"     &
+                               or clmdtl-adj-cd  = "R"
+
+def x-tech-adj zoned*6 signed = clmdtl-amt-tech-billed     &
+                               if clmdtl-adj-cd  = "B"     &
+                               or clmdtl-adj-cd  = "R"
+
+def x-prof-adj zoned*7 signed = x-ohip-adj - x-tech-adj
+
+def x-ar-ohip-fee zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = " "
+
+def x-ar-tech-fee zoned*6 signed = clmdtl-amt-tech-billed     &
+                             if clmdtl-adj-cd  = " "
+
+def x-ar-prof-fee zoned*7 signed = x-ar-ohip-fee - x-ar-tech-fee
+
+def x-ar-ohip-adj zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = "B"
+
+def x-ar-tech-adj zoned*6 signed = clmdtl-amt-tech-billed     &
+                             if clmdtl-adj-cd  = "B"
+
+def x-ar-prof-adj zoned*7 signed = x-ar-ohip-adj - x-ar-tech-adj
+
+def x-ar-ohip-total zoned*7 signed = x-ar-ohip-fee + x-ar-ohip-adj
+
+def x-ar-tech-total zoned*7 signed = x-ar-tech-fee + x-ar-tech-adj
+
+def x-ar-prof-total zoned*7 signed = x-ar-prof-fee + x-ar-prof-adj
+
+def x-rev-ohip-total zoned*7 signed = x-ohip-fee + x-ohip-adj
+
+def x-rev-tech-total zoned*7 signed = x-tech-fee + x-tech-adj
+
+def x-rev-prof-total zoned*7 signed = x-prof-fee + x-prof-adj
+
+def x-nbr-svcs num*2 =  clmdtl-nbr-serv			&
+		      + sum(clmdtl-sv-nbr,1,3)
+
+page heading                                              	&
+	tab 1   "R004TP_70"		          	        &
+	tab 7   "/"         		          	        &
+	tab 8   iconst-clinic-nbr-1-2                           &
+	tab 13  "P.E.D"				          	&
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 37  "* MONTHLY CLAIMS AND ADJUSTMENTS TRANSACTION SUMMARY *"&
+	tab 103 "RUN DATE:"                               	&
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 55  iconst-clinic-name                      	&
+        tab 105 "CLINIC:"                                       &
+        tab 113  iconst-clinic-nbr-1-2                          &
+        tab 116  "-"                                            &
+        tab 118  iconst-clinic-nbr                              &
+skip 1  tab 1    "DOCTOR-"                                      &
+        tab 8    x-doc-nbr                                      &
+        tab 12   x-doc-name                                     &
+        tab 45  "DEPARTMENT"                                    &
+        tab 55  " # "                                           &
+        tab 58  clmhdr-doc-dept of r004atp_70 fill "0"          &
+        tab 61  dept-name                                       &
+skip 2  tab 3   "PATIENT"                                       &
+        tab 15  "CLAIM"                                         &
+        tab 23  "PATIENT ID/"                                   &
+        tab 36  "AG"                                            &
+        tab 41  "OHIP"                                          &
+        tab 50  "TECH"                                          &
+        tab 59  "PROF"                                          &
+        tab 68  "OHIP"                                          &
+        tab 77  "TECH"                                          &
+        tab 86  "PROF"                                          &
+        tab 93  "SERVICE"                                       &
+        tab 104 "CLAIM"                                         &
+        tab 111 "DIAG"                                          &
+        tab 117 "OMA"                                           &
+        tab 121 "#OF"                                           &
+        tab 126 "FORM #"                                        &
+skip 1  tab 4   "NAME"                                          &
+        tab 15  "NUMBER"                                        &
+        tab 23  "CHART NUMBER"                                  &
+        tab 42  "FEE"                                           &
+        tab 51  "FEE"                                           &
+        tab 60  "FEE"                                           &
+        tab 69  "ADJ"                                           &
+        tab 78  "ADJ"                                           &
+        tab 87  "ADJ"                                           &
+        tab 95  "DATE"                                          &
+        tab 105 "DATE"                                          &
+        tab 111 "CODE"                                          &
+        tab 116 "CODE"                                          &
+        tab 121 "SRV"                                           &
+        tab 127 "NOTE"                                          &
+skip 2
+
+report                                                          &
+  tab 01  x-pat-name   						&
+  tab 12  x-claim-dtl-id					&
+  tab 23  x-pat-id-info						&
+  tab 36  clmdtl-agent-cd                                       &
+  tab 37  clmdtl-adj-cd                                        &
+  tab 38  x-ohip-fee pic "^^^^^.^^ " trailing sign "-" bwz       &
+  tab 47  x-tech-fee pic "^^^^^.^^ " trailing sign "-" bwz       &
+  tab 56  x-prof-fee pic "^^^^^.^^ " trailing sign "-" bwz       &
+  tab 65  x-ohip-adj pic "^^^^^.^^ " trailing sign "-" bwz       &
+  tab 74  x-tech-adj pic "^^^^^.^^ " trailing sign "-" bwz       &
+  tab 83  x-prof-adj pic "^^^^^.^^ " trailing sign "-" bwz       &
+  tab 93  clmdtl-sv-date  pic "^^^^^^^^"                        &
+  tab 102 clmhdr-date-sys pic "^^^^^^^^"                        &
+  tab 111 clmdtl-diag-cd bwz                                    &
+  tab 115 clmdtl-oma-cd                                         &
+  tab 119 clmdtl-oma-suff                                       &
+  tab 120 x-nbr-svcs bwz                                        &
+  tab 124 x-clmhdr-reference                                    &
+skip 1
+
+footing at x-doc-nbr                                                    &
+skip 4                                                                &
+       tab 1   "DOCTOR"                                               &
+       tab 9   x-doc-nbr                                              &
+       tab 28  "OHIP"                                                 &
+       tab 44  "TECH"                                                 &
+       tab 60  "PROF"                                                 &
+skip 2                                                                &
+       tab 1   "EFFECT ON A/R"                                        &
+skip 2 tab 1   "RECEIVABLE"                                           &
+       tab 21  x-ar-ohip-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-ar-tech-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-ar-prof-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "A/R ADJUSTMENT"                                       &
+       tab 21  x-ar-ohip-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-ar-tech-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-ar-prof-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "TOTAL A/R *"                                          &
+       tab 21  x-ar-ohip-total subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-ar-tech-total subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-ar-prof-total subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 2                                                                &
+       tab 1   "EFFECT ON REVENUE"                                    &
+skip 2 tab 1   "REVENUE"                                              &
+       tab 21  x-ohip-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-tech-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-prof-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "REVENUE ADJUSTMENT"                                   &
+       tab 21  x-ohip-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-tech-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-prof-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "TOTAL REVENUE *"                                      &
+       tab 21  x-rev-ohip-total subtotal pic "^^^^,^^^.^^ " trailing sign "-" &
+       tab 37  x-rev-tech-total subtotal pic "^^^^,^^^.^^ " trailing sign "-" &
+       tab 53  x-rev-prof-total subtotal pic "^^^^,^^^.^^ " trailing sign "-" &
+skip 4                                                                &
+       tab 1   "SEQUENTIAL SERVICE CODES INCLUDING PSYCHOTHERAPY MAY BE GROUPED"  &
+skip page
+
+build $pb_obj/r004btp_70
+
+  

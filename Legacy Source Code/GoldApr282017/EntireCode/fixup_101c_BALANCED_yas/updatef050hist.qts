@@ -1,0 +1,57 @@
+cancel clear
+set lock file update
+
+request delete_records on calculation errors report on edit errors report
+
+access f050-doc-revenue-mstr-history
+choose ep-yr 2000,				&
+       iconst-date-period-end  20020301,	&
+       docrev-key '2215669G441G558A',   	&
+                  '2215669G441G559A'
+output f050-doc-revenue-mstr-history  delete on errors report
+
+request update_records on calculation errors report on edit errors report
+
+access *extractf001f002dtl 		        &		
+   link nconvert(clmhdr-doc-nbr), 		&
+	nconvert(clmhdr-clinic-nbr), 		&
+	clmhdr-payroll	 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt  
+
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else clmhdr-clinic-nbr
+
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-nbr-svc zoned*4 signed = x-nbr-serv
+
+output f050-doc-revenue-mstr-history  update		&
+	via ep-yr, iconst-date-period-end, docrev-key	&
+	using  2000, 20020301,			&
+   		(x-translated-clinic +		&
+		ascii(clmhdr-doc-dept,2) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		clmdtl-oma-suff)
+	
+
+   item docrev-mtd-in-svc  subtotal x-nbr-svc         if x-i-o-ind = 'I'
+   item docrev-mtd-in-rec  subtotal clmdtl-fee-ohip   if x-i-o-ind = 'I'
+   item docrev-ytd-in-svc  subtotal x-nbr-svc         if x-i-o-ind = 'I'
+   item docrev-ytd-in-rec  subtotal clmdtl-fee-ohip   if x-i-o-ind = 'I'
+   item docrev-mtd-out-svc subtotal x-nbr-svc         if x-i-o-ind = 'O'
+   item docrev-mtd-out-rec subtotal clmdtl-fee-ohip   if x-i-o-ind = 'O'
+   item docrev-ytd-out-svc subtotal x-nbr-svc         if x-i-o-ind = 'O'
+   item docrev-ytd-out-rec subtotal clmdtl-fee-ohip   if x-i-o-ind = 'O'
+
+
+
+

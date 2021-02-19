@@ -1,0 +1,154 @@
+;DOC: R004CTP.QZS
+;
+;PROGRAM PURPOSE : TRANSACTION SUMMARY (SUMMARY REPORT)
+;                  SORT .SF FILE CREATED IN R004ATP AND CREATE
+;                  R004CTP.TXT REPORT.
+;
+;  MODIFICATION HISTORY
+;DATE       BY WHOM   DESCRIPTION
+;92/06/10   YASEMIN   ORIGINAL
+;
+;97/JAN/19  J.C.      S149 - ADD DEPT-NBR TO FILE LINKAGE
+;
+
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r004ctp
+set formfeed
+
+
+access *r004atp							  &
+;  LINK ("B" , CLMHDR-BATCH-NBR) TO KEY-CLM-TYPE,		  &
+  link ("B" , key-clm-batch-nbr, key-clm-claim-nbr) to key-clm-type, &
+    key-clm-batch-nbr, key-clm-claim-nbr of f002-claims-mstr      &
+  link clmhdr-doc-dept of r004atp to dept-nbr of f070-dept-mstr optional ;jc
+
+;EXCLUDE "HEADER" RECS, "DESCRIPTION" RECS AND "ADJUSTMENT" RECS RESPECTIVELY
+;DON"T WANT ADJ RECS FOUND WITHIN CLAIMS
+select f002-claims-mstr					 	     &
+   if    clmhdr-adj-oma-cd ne "0000"			             &
+     and clmhdr-adj-oma-cd ne "ZZZZ"				     &
+     and clmhdr-adj-oma-cd ne "PAID"				     &
+     and (clmdtl-orig-batch-nbr = key-clm-batch-nbr)
+
+sort	on iconst-clinic-nbr-1-2				&
+	on clmhdr-doc-dept of r004atp				
+
+def x-claim-dtl-id char*10 = clmdtl-id[1:2] + clmdtl-id[4:8]
+
+def x-ohip-fee zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = "M"     &
+                               or clmdtl-adj-cd  = " "
+
+def x-tech-fee zoned*6 signed = clmdtl-amt-tech-billed     &
+                               if clmdtl-adj-cd  = "M"     &
+                               or clmdtl-adj-cd  = " "
+
+def x-prof-fee zoned*7 signed = x-ohip-fee - x-tech-fee
+
+def x-ohip-adj zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = "B"     &
+                               or clmdtl-adj-cd  = "R"
+
+def x-tech-adj zoned*6 signed = clmdtl-amt-tech-billed     &
+                               if clmdtl-adj-cd  = "B"     &
+                               or clmdtl-adj-cd  = "R"
+
+def x-prof-adj zoned*7 signed = x-ohip-adj - x-tech-adj
+
+def x-ar-ohip-fee zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = " "
+
+def x-ar-tech-fee zoned*6 signed = clmdtl-amt-tech-billed     &
+                             if clmdtl-adj-cd  = " "
+
+def x-ar-prof-fee zoned*7 signed = x-ar-ohip-fee - x-ar-tech-fee
+
+def x-ar-ohip-adj zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = "B"
+
+def x-ar-tech-adj zoned*6 signed = clmdtl-amt-tech-billed     &
+                             if clmdtl-adj-cd  = "B"
+
+def x-ar-prof-adj zoned*7 signed = x-ar-ohip-adj - x-ar-tech-adj
+
+def x-ar-ohip-total zoned*7 signed = x-ar-ohip-fee + x-ar-ohip-adj
+
+def x-ar-tech-total zoned*7 signed = x-ar-tech-fee + x-ar-tech-adj
+
+def x-ar-prof-total zoned*7 signed = x-ar-prof-fee + x-ar-prof-adj
+
+def x-rev-ohip-total zoned*7 signed = x-ohip-fee + x-ohip-adj
+
+def x-rev-tech-total zoned*7 signed = x-tech-fee + x-tech-adj
+
+def x-rev-prof-total zoned*7 signed = x-prof-fee + x-prof-adj
+
+page heading                                              	&
+	tab 1   "R004TP"  			          	&
+	tab 7   "/"       			          	&
+	tab 8   iconst-clinic-nbr-1-2                           &
+	tab 13  "P.E.D"				          	&
+;y2k
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 37  "* MONTHLY CLAIMS AND ADJUSTMENTS TRANSACTION SUMMARY *"&
+	tab 103 "RUN DATE:"                               	&
+;y2k
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 55  iconst-clinic-name                      	&
+        tab 105 "CLINIC:"                                       &
+        tab 113  iconst-clinic-nbr-1-2                          &
+        tab 116  "-"                                            &
+        tab 118  iconst-clinic-nbr                              &
+skip 1  tab 45  "DEPARTMENT"                                    &
+        tab 55  " # "                                           &
+        tab 58  dept-nbr fill "0"                               &
+        tab 61  dept-name                                       &
+skip 2
+
+footing at clmhdr-doc-dept                                            &
+skip 2                                                                &
+       tab 1   "DEPARTMENTAL SUMMARY DEPT #"                          &
+       tab 29  clmhdr-doc-dept fill "0"                               &
+skip 2 tab 28  "OHIP"                                                 &
+       tab 44  "TECH"                                                 &
+       tab 60  "PROF"                                                 &
+skip 2                                                                &
+       tab 1   "EFFECT ON A/R"                                        &
+skip 2 tab 1   "RECEIVABLE"                                           &
+       tab 21  x-ar-ohip-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-ar-tech-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-ar-prof-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "A/R ADJUSTMENT"                                       &
+       tab 21  x-ar-ohip-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-ar-tech-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-ar-prof-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "TOTAL A/R *"                                          &
+       tab 21  x-ar-ohip-total subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-ar-tech-total subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-ar-prof-total subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 2                                                                &
+       tab 1   "EFFECT ON REVENUE"                                    &
+skip 2 tab 1   "REVENUE"                                              &
+       tab 21  x-ohip-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-tech-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-prof-fee subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "REVENUE ADJUSTMENT"                                   &
+       tab 21  x-ohip-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 37  x-tech-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+       tab 53  x-prof-adj subtotal pic "^^^^,^^^.^^ " trailing sign "-"  &
+skip 1                                                                &
+       tab 1   "TOTAL REVENUE *"                                      &
+       tab 21  x-rev-ohip-total subtotal pic "^^^^,^^^.^^ " trailing sign "-" &
+       tab 37  x-rev-tech-total subtotal pic "^^^^,^^^.^^ " trailing sign "-" &
+       tab 53  x-rev-prof-total subtotal pic "^^^^,^^^.^^ " trailing sign "-" &
+skip page
+
+build $pb_obj/r004ctp
+
+  

@@ -1,0 +1,101 @@
+ @DYAD/rmaBKP=/alpha/rmabill/rmabill101c/src/fixup
+$ quiz auto=checkf002_adj_sub_type.qzs
+Q U I Z   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ; This program is for costing purpose, find out what adj cd sub type for the doctor so that it can be
+> ; updated accordingly in f073 file via checkf020_adjtype subfile in createf073_costing.qts
+> 
+> cancel clear
+> set report nolimit
+> set page width 132
+> 
+> ;extract all claim type
+> access f002-claims-mstr
+> choose key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+*W* Item (KEY-CLM-CLAIM-NBR) is stored by the file system as a character type.
+Choose viaindex KEY-CLAIMS-MSTR.
+> 
+> sel if clmhdr-batch-type = 'C'
+> 
+> def doc-nbr char*3 = key-clm-batch-nbr[3:3]
+> 
+> set subfile name checkf002adjsubtype keep
+> 
+> rep summ clmhdr-claim-id doc-nbr  clmhdr-adj-cd-sub-type clmhdr-date-period-end clmhdr-date-sys
+> 
+> go
+
+
+Records selected:  2578519
+Records written:   2578519
+
+> 
+> ; calculate the claim out per doctor per adj type
+> access *checkf002adjsubtype
+> 
+> sort on doc-nbr on clmhdr-adj-cd-sub-type
+> def x-count = 1
+> set subfile name checkf020_adjtype keep at clmhdr-adj-cd-sub-type
+> rep summ doc-nbr clmhdr-adj-cd-sub-type  x-count subt reset at clmhdr-adj-cd-sub-type
+> go
+
+Records selected:  2578519
+Records sorted:    2578519
+Records written:   2236
+
+> 
+> ; write record for each doctor at the highest claim count for the adj type
+> access *checkf020_adjtype
+> sort on doc-nbr on x-count
+> set subfile name savef020adjtype keep at doc-nbr
+> rep summ all
+> go
+
+Records selected:  2236
+Records sorted:    2236
+Records written:   1354
+
+> 
+> 
+> exit
+
+ @DYAD/rmaBKP=/alpha/rmabill/rmabill101c/src/fixup
+
+
+
+ @DYAD/rmaBKP=/alpha/rmabill/rmabill101c/src/fixup
+$ qtp auto=createf073_costing.qts
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ; 2013/sep/25 MC      - create f073 file based on savef020adjtype subfile which is based on f002 file
+> ;                     - whatever the highest count of the adj-cd-sub-type (C,S,D,W) for the doctor,
+> ;                       create the records only for Disk  or Web
+> 
+> cancel clear
+> set lock record update
+> 
+> access *savef020adjtype
+> sel if clmhdr-adj-cd-sub-type = 'D' or clmhdr-adj-cd-sub-type = 'W'
+> 
+> output f073-client-doc-mstr add on errors report
+>       item client-id final 'DISK' if clmhdr-adj-cd-sub-type = 'D'     &
+>                       else 'WEB'  if clmhdr-adj-cd-sub-type = 'W'
+>       item doc-nbr final doc-nbr of savef020adjtype
+> go
+
+Executing request 1 ...
+
+Records read:
+  SAVEF020ADJTYPE                      1,354
+
+Transactions processed:                  980
+
+Records processed:                     Added    Updated  Unchanged    Deleted
+  F073-CLIENT-DOC-MSTR                   980          0          0          0
+
+Finished.
+> 

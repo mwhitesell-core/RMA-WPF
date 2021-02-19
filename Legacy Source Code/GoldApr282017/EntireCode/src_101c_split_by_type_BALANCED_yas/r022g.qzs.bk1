@@ -1,0 +1,136 @@
+;#> PROGRAM-ID.     r022g.qzs 
+;
+;    Program Purpose	Generate a report for the almost staled date claims with
+;		        all status payment date not I2
+;
+;       ((C)) Dyad Technologies
+; 2007/mar/06 yas     - r022g   
+; 2009/dec/03 MC1     - Yasemin requested exclude records that are clinic 78, 79 & 88 
+;			with reason code '36'
+ 
+can clear
+set default
+set report  nolimit
+
+
+access f002-claims-mstr                                        		&
+  link clmhdr-pat-ohip-id-or-chart  to key-pat-mstr of f010-pat-mstr opt 
+
+choose key-clm-type "B", key-clm-batch-nbr, key-clm-claim-nbr, &
+	key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-clinic char*2 = clmhdr-claim-id[1:2]
+
+def balance-due zoned*7 signed                 &
+     =  clmhdr-tot-claim-ar-ohip               &
+      + clmhdr-manual-and-tape-payments        
+
+def x-days-since-service = days(sysdate) - days(clmhdr-serv-date)  &
+       if clmhdr-serv-date <> 0  else 99999
+
+select if   (    (                                                      &
+                      clmhdr-batch-type = "C"                           &
+                  and clmhdr-status-ohip <> "I2"              		&
+                  and balance-due > 0                                   &
+                  and x-days-since-service >= 150                       &
+                  and (     clmhdr-date-cash-tape-payment <>" "         &
+                        and clmhdr-date-cash-tape-payment <>"00000000"  &
+		      )							&
+                  and (     clmhdr-agent-cd = 0                         &
+                        or  clmhdr-agent-cd = 2                         &
+                        or  clmhdr-agent-cd = 4                         &
+		      )							&
+                  and (     clmhdr-reference[1:2] <> "I2"               &
+                        and clmhdr-reference[1:2] <> "12"               &
+                        and clmhdr-reference[1:4] <> "PAID"             &
+                      )                                                 &
+                 )							&
+            )                                                           
+
+
+set subfile name r022g  keep 
+
+rep summary			&
+  x-clinic 			&
+  key-clm-batch-nbr             &
+  key-clm-claim-nbr             &
+  clmhdr-claim-id               &
+  clmhdr-pat-ohip-id-or-chart   &
+  clmhdr-agent-cd               &
+  clmhdr-tape-submit-ind 	&
+  clmhdr-status-ohip            &
+  clmhdr-serv-date		&
+  clmhdr-tot-claim-ar-ohip      &
+  clmhdr-manual-and-tape-payments  &
+  balance-due 			&
+  x-days-since-service 		&
+  clmhdr-reference     		&
+  clmhdr-status-ohip   		&
+  clmhdr-date-cash-tape-payment &
+  pat-surname	
+
+build $obj/r022g_1  
+
+
+set rep device disc name r022g
+set rep page width 132 length 60
+set formfeed
+
+
+access *r022g
+
+;sort   on x-clinic on clmhdr-agent-cd on key-clm-batch-nbr on key-clm-claim-nbr
+sort   on x-clinic on clmhdr-reference on key-clm-batch-nbr on key-clm-claim-nbr
+
+
+page heading	&
+  tab   1 "R022G /"		&
+  tab   8  x-clinic            	&
+  tab  40 "STALED DATE CLAIMS   "	&
+  tab  99 "RUN DATE"		&
+  tab 108 sysdate		&
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 2	&
+  tab  01 "AGENT   "			&
+  tab  10 "CLAIM NBR"			&
+  tab  25 "SERVICE DATE"		&
+  tab  40 "STATUS"          		&
+  tab  50 "PATIENT  SURNAME"		&
+  tab  68 "BALANCE DUE"     		&
+  tab  80 "Reason"          		&
+  Tab  90 "Reference"       		&
+  tab 104 "Payment Date"    		&
+skip 2
+
+; 2009/12/03 - MC1 - do not print if x-clinic = 78 or 79 or 88 with reason cd = 36
+sel if     (x-clinic <> '78' and x-clinic <> '79' and x-clinic  <> '88')		&
+	or  clmhdr-status-ohip <> '36'
+; 2009/12/03 - end
+
+heading  at x-clinic skip page
+
+report					&
+  tab 02 clmhdr-agent-cd		&
+  tab 10 key-clm-batch-nbr		&
+  tab 18 key-clm-claim-nbr  significance 2		&
+  tab 25 clmhdr-serv-date		&
+  tab 42 clmhdr-tape-submit-ind		&
+  tab 50 pat-surname			&
+  tab 68 balance-due  pic "^^^^.^^ " trailing sign "-" &
+  tab 82 clmhdr-status-ohip                            &
+  tab 90 clmhdr-reference                              &
+  tab 104 clmhdr-date-cash-tape-payment pic "^^^^/^^/^^" &
+skip 1
+
+footing at x-clinic &
+  tab 44 "Clinic Total:"   &  
+  tab 65 balance-due  sub pic "^^^,^^^.^^ " trailing sign "-" &
+skip 2
+
+final footing       &
+  tab 44 "Grand  Total:"   &  
+  tab 64 balance-due  sub pic "^^^,^^^.^^ " trailing sign "-" &
+skip 2
+
+build $obj/r022g_2

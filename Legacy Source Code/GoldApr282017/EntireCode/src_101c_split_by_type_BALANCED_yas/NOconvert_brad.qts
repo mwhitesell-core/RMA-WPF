@@ -1,0 +1,128 @@
+;#> PROGRAM-ID.   utl0201.qts
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :
+;	- extract data from:
+;		- all 'doctor changes audit' files 
+;		- f020
+;		- all payments from f119 and f119 history
+;	  and place into .ps for ftp download to SQL server database
+;
+;  MODIFICATION HISTORY
+;    DATE   WHO   DESCRIPTION
+; 2015/mar/03 b.e - original
+;
+cancel clear
+
+set stacksize 15000
+run utl0201
+
+set default
+set verify errors
+set process nolimit
+set lock record update
+
+global temp w-current-ep-nbr            integer*8 signed size 4
+global temp w-first-ep-nbr-of-fiscal-yr integer*8 signed size 4
+global temp w-iconst-date-period-end    char*8
+
+global temp  environment char*4  parm prompt 'Select environment (101c, Solo, MP): '
+;-------------------------------------------------------------------------------
+access f119-doctor-ytd				&
+	link doc-nbr 				&
+	to   doc-nbr of f020-doctor-mstr opt	;&
+;	link comp-code 				&
+;	to   comp-code of f190-comp-codes opt
+;
+; comment out select of P and download ALL payroll data
+select if     rec-type = "A"	;		&
+;	  and comp-type of f190-comp-codes = "P"
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+def x-ped      char*6 = ascii(w-current-ep-nbr)[1:6]
+def x-last-mod-date-time char*14 = ascii(last-mod-date of f119-doctor-ytd) + ascii(LAST-MOD-TIME  of f119-doctor-ytd)
+
+;subfile utl0201_f119_payments portable keep include	&
+subfile utl0201_f119 portable keep include	&
+  environment						,&
+  x-delimiter  						 ,&
+  DOC-NBR of f119-doctor-ytd                  ,&
+  x-delimiter  						 ,&
+  x-ped                					 ,&
+  x-delimiter  						 ,&
+  COMP-CODE  of f119-doctor-ytd              ,&
+  x-delimiter  						 ,&
+  PROCESS-SEQ of f119-doctor-ytd             ,&
+  x-delimiter  						 ,&
+  COMP-CODE-GROUP of f119-doctor-ytd         ,&
+  x-delimiter  						 ,&
+  REC-TYPE                 ,&
+  x-delimiter  						 ,&
+  AMT-MTD                  ,&
+  x-delimiter  						 ,&
+  AMT-YTD                  ,&
+  x-delimiter  						 ,&
+  LAST-MOD-DATE of  f119-doctor-ytd          ,&
+  x-delimiter  						 ,&
+  LAST-MOD-TIME of f119-doctor-ytd          ,&
+  x-delimiter  						 ,&
+  LAST-MOD-USER-ID of f119-doctor-ytd       		 ,&
+  x-lf
+ 
+go 
+;-------------------------------------------------------------------------------
+request utl0201_f119_history on edit        errors report &
+                  on calculation errors report
+;
+access f119-doctor-ytd-history			&
+	link doc-nbr 				&
+	to   doc-nbr of f020-doctor-mstr opt	&
+;	link comp-code 				&
+;	to   comp-code of f190-comp-codes opt	&
+	link ep-nbr of f119-doctor-ytd-history	&
+        to   ep-nbr of f191-earnings-period opt
+item w-iconst-date-period-end    = ascii(iconst-date-period-end)[1:8]
+;
+; select 'payments' for download
+; change to download all trans
+select if     rec-type = "A"		;	&
+;	  and comp-type of f190-comp-codes = "P"
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+def x-blank-last-mod-date char*8 = " "
+def x-blank-last-mod-time char*5 = "  "
+def x-blank-last-mod-user-id  char*15 = " "
+
+subfile utl0201_f119_payments portable keep append include	&
+  environment						,&
+  x-delimiter  						 ,&
+  DOC-NBR of f119-doctor-ytd-history          ,&
+  x-delimiter  						 ,&
+  ep-nbr of f119-doctor-ytd-history			,&
+  x-delimiter  						 ,&
+  COMP-CODE  of f119-doctor-ytd-history      ,&
+  x-delimiter  						 ,&
+  PROCESS-SEQ of f119-doctor-ytd-history    ,&
+  x-delimiter  						 ,&
+  COMP-CODE-GROUP of f119-doctor-ytd-history ,&
+  x-delimiter  						 ,&
+  REC-TYPE                 ,&
+  x-delimiter  						 ,&
+  AMT-MTD                  ,&
+  x-delimiter  						 ,&
+  AMT-YTD                  ,&
+  x-delimiter  						 ,&
+  x-blank-last-mod-date                              ,&
+  x-delimiter  						 ,&
+  x-blank-last-mod-time                             ,&
+  x-delimiter  						 ,&
+  x-blank-last-mod-user-id                          		 ,&
+  x-lf
+  

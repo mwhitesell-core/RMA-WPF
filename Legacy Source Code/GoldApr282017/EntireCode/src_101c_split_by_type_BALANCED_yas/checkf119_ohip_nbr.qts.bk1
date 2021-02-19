@@ -1,0 +1,62 @@
+cancel clear
+set process nolimit
+set lock record update
+
+request one
+; check if different in doc ohip nbr for non-zero doctor number
+
+access f119-doctor-ytd		&
+	link  doc-nbr		&
+	 to   doc-nbr of f020-doctor-mstr 
+def x-doc-ohip zoned*6 unsigned = doc-ohip-nbr of f020-doctor-mstr
+sel if doc-ohip-nbr of f119-doctor-ytd <> doc-ohip-nbr of f020-doctor-mstr 
+subfile savef119_diff_ohip_before keep include &
+	f119-doctor-ytd, 		&
+	x-doc-ohip,			&
+	doc-date-fac-start,		&
+	doc-date-fac-term
+
+request two
+; select only the doctors with zero doc ohip nbr
+
+access f119-doctor-ytd		&
+	link  doc-nbr		&
+	 to   doc-nbr of f020-doctor-mstr 
+choose doc-ohip-nbr 0
+def x-doc-ohip zoned*6 unsigned = doc-ohip-nbr of f020-doctor-mstr
+subfile savef119_zero_ohip_nbr keep include	&
+	f119-doctor-ytd, 			&
+	x-doc-ohip
+subfile savef119_zero_diff_ohip_nbr keep 	&
+  	if doc-ohip-nbr of f119-doctor-ytd <> doc-ohip-nbr of f020-doctor-mstr &
+include f119-doctor-ytd, x-doc-ohip
+
+output f119-doctor-ytd update on errors report
+  item doc-ohip-nbr final doc-ohip-nbr of f020-doctor-mstr
+
+request three
+; change doctor summarized records
+
+access *savef119_zero_diff_ohip_nbr      	&
+  	link doc-ohip-nbr, '000'		&
+	 to  doc-ohip-nbr, doc-nbr of f119-doctor-ytd
+
+output f119-doctor-ytd update on errors report
+   item doc-ohip-nbr final x-doc-ohip
+     
+request four
+; check again for all different or zero doctor number
+
+access f119-doctor-ytd		&
+	link  doc-nbr		&
+	 to   doc-nbr of f020-doctor-mstr 
+def x-doc-ohip zoned*6 unsigned = doc-ohip-nbr of f020-doctor-mstr
+sel if doc-ohip-nbr of f119-doctor-ytd <> doc-ohip-nbr of f020-doctor-mstr  &
+   or doc-ohip-nbr of f119-doctor-ytd = 0
+subfile savef119_diff_ohip_after  keep include &
+	f119-doctor-ytd, 		&
+	x-doc-ohip,			&
+	doc-date-fac-start,		&
+	doc-date-fac-term
+
+build $obj/checkf119_ohip_nbr

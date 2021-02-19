@@ -1,0 +1,64 @@
+; 2015/Mar/03	MC	- utl0f020_ohip_sin.qts
+;			- determine for different OHIP & SIN nbr for doctors in different environments
+
+
+cancel clear
+set process  nolimit 
+set lock record update
+
+request one
+
+access *utl0f020_all_A
+sort on doc-nbr on doc-dept on doc-name
+
+temp xcount
+item xcount  = xcount + 1 reset at doc-name    
+
+subfile utl0f020_count keep		&
+include environment,			&
+	doc-nbr,			&
+	doc-dept,			&
+	doc-name,			&
+	doc-ohip-nbr,			&
+	doc-sin-nbr,			&
+	doc-date-fac-start,		&
+	doc-date-fac-term,  		&
+	xcount 
+
+request two
+
+access *utl0f020_count
+
+def key1 char*40 = doc-nbr + ascii(doc-dept,2) + doc-name
+def key2 char*15 = ascii(doc-ohip-nbr,6) + ascii(doc-sin-nbr,9)
+
+sort on key1 on key2
+
+subfile utl0f020_ohip_sin keep		include  utl0f020_count   
+
+request three
+
+access *utl0f020_ohip_sin
+
+def key1 char*40 = doc-nbr + ascii(doc-dept,2) + doc-name
+def key2 char*15 = ascii(doc-ohip-nbr,6) + ascii(doc-sin-nbr,9)
+
+sort on key1 on key2 on xcount
+
+temp x-ohip-sin zoned*1 
+item x-ohip-sin  = x-ohip-sin + 1 at key2   reset at key1
+
+subfile f020_ohip_sin keep at key1 include utl0f020_ohip_sin, x-ohip-sin, xcount
+
+request four
+
+access *f020_ohip_sin
+
+sel if x-ohip-sin <> 1
+
+output tmp-counters-alpha add on errors report
+  item tmp-counter-key-alpha final doc-nbr + ascii(doc-dept,2) + doc-name
+
+build $obj/utl0f020_ohip_sin
+
+

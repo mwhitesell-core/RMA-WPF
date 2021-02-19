@@ -1,0 +1,183 @@
+; Program: u140_d.qts
+; Purpose:	Calculate individual doctor AFP conversion payment  based
+;		upon amt from MOH factors by the RA payment percentage
+; 
+; modification history
+; 04/jul/01 b.e.	-original
+; 04/aug/12 b.e.	-add record to f075 if payment comes in for doctor
+;			 not on file .. 
+; 04/oct/16 b.e.	- store afp-submission-amt in tmp-counter-2
+
+cancel clear
+set process nolimit
+run u140_d
+set lock file update 
+
+;-------------------------------------------------------
+request u140_find_matching_doc_in_f075			&
+                on edit        errors report    	&
+                on calculation errors report
+
+access afp-a2s-file					&
+	link (nconvert(doc-afp-paym-solo))		&
+	to   doc-ohip-nbr	of f020-doctor-mstr opt &
+        link doc-nbr of f020-doctor-mstr		&
+	to   doc-nbr of f075-afp-doc-mstr opt 		&
+        link doc-afp-paym-group of afp-a2s-file         &
+        to   doc-afp-paym-group of f074-afp-group-mstr opt
+
+select if    (    doc-afp-paym-group of afp-a2s-file	&
+	       = doc-afp-paym-group of f020-doctor-mstr	&
+	     )						&
+       and (afp-group-process-flag of f074-afp-group-mstr = "E")
+
+def x-conversion-amt    zoned*11 numeric        &
+        = afp-conversion-amt                    &
+                if afp-conversion-sign = " "    &
+    else  0 - afp-conversion-amt
+
+def x-submission-amt    zoned*11 numeric        &
+        = afp-submission-amt                    &
+                if afp-submission-sign = " "    &
+    else  0 - afp-submission-amt
+
+def x-doc-nbr char*3 = "000" if not record f020-doctor-mstr exists &
+        else doc-nbr of f020-doctor-mstr
+
+sort    on doc-afp-paym-solo            &
+        on doc-afp-paym-group
+
+subfile u140_d1   append   keep at doc-afp-paym-group include    &
+; 2007/apr/5
+;  afp-a2s-file,                                                        &
+  afp-transaction-id,                                   &
+  afp-record-id ,                                       &
+  doc-afp-paym-group of afp-a2s-file  ,                 &
+  doc-afp-paym-solo ,                                   &
+  afp-solo-name  ,                                      &
+  afp-payment-percentage ,                              &
+
+  x-conversion-amt,                                     &
+  x-submission-amt,                                     &
+  x-doc-nbr
+
+output tmp-doctor-alpha add
+  item doc-ohip-nbr	 final nconvert(doc-afp-paym-solo of afp-a2s-file) 
+  item doc-nbr		 final x-doc-nbr	;doc-nbr of f020-doctor-mstr
+  item tmp-alpha-field-1 final doc-afp-paym-group of afp-a2s-file
+; 2007/apr/05
+;  item tmp-counter-1     final afp-conversion-amt of afp-a2s-file
+;  item tmp-counter-2	  final afp-submission-amt of afp-a2s-file
+  item tmp-counter-1     final x-conversion-amt
+  item tmp-counter-2     final x-submission-amt
+
+
+;-------------------------------------------------------
+request u140_check_if_doctor_missed	&
+                on edit        errors report    	&
+                on calculation errors report
+
+access afp-a2s-file					&
+	link (nconvert(doc-afp-paym-solo))		&
+	to   doc-ohip-nbr	of tmp-doctor-alpha opt	&
+	link (nconvert(doc-afp-paym-solo))		&
+	to   doc-ohip-nbr	of f020-doctor-mstr opt	&
+        link doc-afp-paym-group of afp-a2s-file         &
+        to   doc-afp-paym-group of f074-afp-group-mstr opt
+
+select if     not record tmp-doctor-alpha exist			 	       &
+	   or (    tmp-alpha-field-1 <> doc-afp-paym-group of afp-a2s-file     &
+       	       and doc-nbr of f020-doctor-mstr  <> doc-nbr of tmp-doctor-alpha &
+	      )
+def x-conversion-amt    zoned*11 numeric        &
+        = afp-conversion-amt                    &
+                if afp-conversion-sign = " "    &
+    else  0 - afp-conversion-amt
+
+def x-submission-amt    zoned*11 numeric        &
+        = afp-submission-amt                    &
+                if afp-submission-sign = " "    &
+    else  0 - afp-submission-amt
+
+def x-doc-nbr char*3 = "000" if not record f020-doctor-mstr exists &
+        else doc-nbr of f020-doctor-mstr
+
+sort    on doc-afp-paym-solo            &
+        on doc-afp-paym-group
+
+subfile u140_d1  append   keep at doc-afp-paym-group include    &
+; 2007/apr/5
+;  afp-a2s-file,                                                        &
+  afp-transaction-id,                                   &
+  afp-record-id ,                                       &
+  doc-afp-paym-group of afp-a2s-file  ,                 &
+  doc-afp-paym-solo ,                                   &
+  afp-solo-name  ,                                      &
+  afp-payment-percentage ,                              &
+
+  x-conversion-amt,                                     &
+  x-submission-amt,                                     &
+  x-doc-nbr
+
+output tmp-doctor-alpha alias tmp-add add on errors report
+  item doc-ohip-nbr	 final nconvert(doc-afp-paym-solo of afp-a2s-file) 
+  item doc-nbr		 final doc-nbr of f020-doctor-mstr
+  item tmp-alpha-field-1 final doc-afp-paym-group of afp-a2s-file
+; 2007/apr/05 
+;  item tmp-counter-1     final afp-conversion-amt of afp-a2s-file
+;  item tmp-counter-2     final afp-submission-amt of afp-a2s-file
+  item tmp-counter-1     final x-conversion-amt
+  item tmp-counter-2     final x-submission-amt
+
+ 
+;-------------------------------------------------------
+request u140_update_f075_with_conversion_payments	&
+                on edit        errors report    	&
+                on calculation errors report
+access *u140_d1						&
+	link (nconvert(doc-afp-paym-solo)),		&
+	     x-doc-nbr					&
+	to   doc-ohip-nbr,				&
+	     doc-nbr of tmp-doctor-alpha opt		&
+        link x-doc-nbr					&
+	to   doc-nbr of f075-afp-doc-mstr opt 		&
+	link doc-afp-paym-group of u140_d1		&
+	to   doc-afp-paym-group of f074-afp-group-mstr opt
+
+select if  doc-afp-paym-group of u140_d1		&
+	 = doc-afp-paym-group of f075-afp-doc-mstr
+
+;def x-afp-payment-amt-factored						&
+;      =    afp-conversion-amt 	     of u140_d1			&
+;	 * (  afp-payment-percentage of f075-afp-doc-mstr		&
+;	    / 100							&
+;	   ) 
+; no RA for solo doctors so pay full amount of afp payment
+def x-afp-payment-amt-factored						&
+; 2007/apr/05
+;      =    afp-conversion-amt 	     of u140_d1			
+      =    x-conversion-amt 	     of u140_d1			
+
+output f075-afp-doc-mstr alias f075-update update	&
+     if record f075-afp-doc-mstr exists
+  item afp-reporting-mth  	final afp-reporting-mth of f074-afp-group-mstr 
+;  item afp-payment-amt-total	final afp-conversion-amt
+  item afp-payment-amt-total	final x-conversion-amt
+  item afp-payment-amt		final x-afp-payment-amt-factored
+;  item afp-submission-amt	final afp-submission-amt of u140_d1
+  item afp-submission-amt	final x-submission-amt of u140_d1
+
+output f075-afp-doc-mstr alias f075-add    add		&
+     if not record f075-afp-doc-mstr exists
+  item doc-nbr 			final x-doc-nbr of u140_d1
+  item doc-ohip-nbr 		final nconvert(doc-afp-paym-solo)
+  item doc-afp-paym-group 	final doc-afp-paym-group of u140_d1
+  item afp-reporting-mth  	final afp-reporting-mth of f074-afp-group-mstr 
+;  item afp-payment-amt-total	final afp-conversion-amt
+  item afp-payment-amt-total	final x-conversion-amt
+  item afp-payment-amt		final x-afp-payment-amt-factored
+;  item afp-submission-amt	final afp-submission-amt of u140_d1
+  item afp-submission-amt	final x-submission-amt of u140_d1
+
+; M P
+build $obj/u140_d_mp

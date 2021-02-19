@@ -1,0 +1,238 @@
+;doc: r004b.qzs
+;
+;program purpose : transaction summary (detail report)
+;                  sort .sf file created in r004a and create
+;                  r004b.sf work file (detail and header info)
+;
+;  modification history
+;date       by whom   description
+;95/10/17   yasemin   original
+;04/12/07   MC        make the neccessary changes
+;
+
+can clear
+set default
+set rep nolimit
+
+access *r004a  							  &
+  link ("B" , key-clm-batch-nbr, key-clm-claim-nbr)		  &
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr 	  &
+					 of f002-claims-mstr      &
+  link clmhdr-doc-dept of r004a   				  &
+    to dept-nbr of  f070-dept-mstr   opt
+
+
+;exclude 'HEADER' recs, 'DESCRIPTION' recs and 'ADJUSTMENT' recs respectively
+;don'T WANT ADJ RECS FOUND WITHIN CLAIMS
+select f002-claims-mstr					 	     &
+   if    clmhdr-adj-oma-cd ne "0000"			             &
+     and clmhdr-adj-oma-cd ne "ZZZZ"				     &
+     and clmhdr-adj-oma-cd ne "PAID"				     &
+     and (clmdtl-orig-batch-nbr = key-clm-batch-nbr)
+
+def x-oma-code cha*5 = clmdtl-id[11:5]
+
+def x-claim-dtl-id cha*10 = (key-clm-batch-nbr[1:8])  &
+                           + (ascii(key-clm-claim-nbr,2))
+
+
+;def x-orig-batch zoned*8 UNSIGNED = CLMDTL-ORIG-BATCH-NBR[1:2]  &
+;                                 + clmdtl-orig-batch-nbr[4:6]
+
+def x-orig-batch cha*8 = clmdtl-id[1:8]
+
+def x-rev-ohip-fee zoned*7 signed = clmdtl-fee-ohip            &
+                                   if clmdtl-adj-cd  = 'M'     &
+                                   or clmdtl-adj-cd  = ' '
+
+def x-rev-ohip-adj zoned*7 signed = clmdtl-fee-ohip            &
+                                   if clmdtl-adj-cd  = 'B'     &
+                                   or clmdtl-adj-cd  = 'R'
+
+def x-rev-ohip-total zoned*7 signed = x-rev-ohip-fee + x-rev-ohip-adj
+
+def x-agent-0-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 0
+def x-agent-1-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 1
+def x-agent-2-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 2
+def x-agent-3-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 3
+def x-agent-4-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 4
+def x-agent-5-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 5
+def x-agent-6-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 6
+def x-agent-7-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 7
+def x-agent-8-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 8
+def x-agent-9-rev zoned*7 signed = x-rev-ohip-fee if clmdtl-agent-cd = 9
+
+def x-ag-0-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 0
+def x-ag-1-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 1
+def x-ag-2-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 2
+def x-ag-3-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 3
+def x-ag-4-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 4
+def x-ag-5-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 5
+def x-ag-6-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 6
+def x-ag-7-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 7
+def x-ag-8-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 8
+def x-ag-9-adj-rev zoned*7 signed= x-rev-ohip-adj if clmdtl-agent-cd = 9
+
+def x-ag-0-tot-rev zoned*7 signed= x-agent-0-rev + x-ag-0-adj-rev
+def x-ag-1-tot-rev zoned*7 signed= x-agent-1-rev + x-ag-1-adj-rev
+def x-ag-2-tot-rev zoned*7 signed= x-agent-2-rev + x-ag-2-adj-rev
+def x-ag-3-tot-rev zoned*7 signed= x-agent-3-rev + x-ag-3-adj-rev
+def x-ag-4-tot-rev zoned*7 signed= x-agent-4-rev + x-ag-4-adj-rev
+def x-ag-5-tot-rev zoned*7 signed= x-agent-5-rev + x-ag-5-adj-rev
+def x-ag-6-tot-rev zoned*7 signed= x-agent-6-rev + x-ag-6-adj-rev
+def x-ag-7-tot-rev zoned*7 signed= x-agent-7-rev + x-ag-7-adj-rev
+def x-ag-8-tot-rev zoned*7 signed= x-agent-8-rev + x-ag-8-adj-rev
+def x-ag-9-tot-rev zoned*7 signed= x-agent-9-rev + x-ag-9-adj-rev
+
+def x-ar-ohip-fee zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = ' '
+
+def x-ar-ohip-adj zoned*7 signed = clmdtl-fee-ohip            &
+                               if clmdtl-adj-cd  = 'B'
+
+def x-ar-ohip-total zoned*7 signed = x-ar-ohip-fee + x-ar-ohip-adj
+
+def x-agent-0-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 0
+def x-agent-1-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 1
+def x-agent-2-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 2
+def x-agent-3-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 3
+def x-agent-4-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 4
+def x-agent-5-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 5
+def x-agent-6-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 6
+def x-agent-7-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 7
+def x-agent-8-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 8
+def x-agent-9-ar zoned*7 signed = x-ar-ohip-fee if clmdtl-agent-cd = 9
+
+def x-agent-0-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 0
+def x-agent-1-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 1
+def x-agent-2-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 2
+def x-agent-3-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 3
+def x-agent-4-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 4
+def x-agent-5-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 5
+def x-agent-6-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 6
+def x-agent-7-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 7
+def x-agent-8-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 8
+def x-agent-9-adj-ar zoned*7 signed=x-ar-ohip-adj if clmdtl-agent-cd = 9
+
+
+def x-agent-0-tot-ar zoned*7 signed = x-agent-0-ar + x-agent-0-adj-ar
+def x-agent-1-tot-ar zoned*7 signed = x-agent-1-ar + x-agent-1-adj-ar
+def x-agent-2-tot-ar zoned*7 signed = x-agent-2-ar + x-agent-2-adj-ar
+def x-agent-3-tot-ar zoned*7 signed = x-agent-3-ar + x-agent-3-adj-ar
+def x-agent-4-tot-ar zoned*7 signed = x-agent-4-ar + x-agent-4-adj-ar
+def x-agent-5-tot-ar zoned*7 signed = x-agent-5-ar + x-agent-5-adj-ar
+def x-agent-6-tot-ar zoned*7 signed = x-agent-6-ar + x-agent-6-adj-ar
+def x-agent-7-tot-ar zoned*7 signed = x-agent-7-ar + x-agent-7-adj-ar
+def x-agent-8-tot-ar zoned*7 signed = x-agent-8-ar + x-agent-8-adj-ar
+def x-agent-9-tot-ar zoned*7 signed = x-agent-9-ar + x-agent-9-adj-ar
+
+def x-nbr-svcs num*2 =  clmdtl-nbr-serv			&
+		      + sum(clmdtl-sv-nbr,1,3)
+
+def x-source cha*2 =  ("/" + clmhdr-adj-cd-sub-type)  &
+               if     (clmhdr-adj-cd-sub-type ne "0"   &
+                  and   clmhdr-adj-cd-sub-type ne "S"   &
+                  and   clmhdr-adj-cd-sub-type ne " ")  &
+		else  " "
+
+set subfile name r004b keep
+
+report summary                  &
+iconst-clinic-nbr               &
+iconst-clinic-nbr-1-2           &
+iconst-clinic-name              &
+iconst-date-period-end          &
+x-oma-code                      &
+x-doc-nbr                       &
+x-doc-name                      &
+x-pat-name                      &
+x-pat-id-info                   &
+clmhdr-doc-dept                 &
+clmhdr-date-sys                 &
+clmdtl-sv-date                  &
+clmdtl-id                       &
+clmhdr-reference                &
+clmdtl-agent-cd                 &
+clmdtl-adj-cd                   &
+clmdtl-diag-cd                  &
+clmdtl-oma-cd                   &
+clmdtl-oma-suff                 &
+clmhdr-adj-cd-sub-type          &
+key-clm-batch-nbr               &
+key-clm-claim-nbr               &
+x-claim-dtl-id                  &
+x-orig-batch                    &
+x-rev-ohip-fee                  &
+x-rev-ohip-adj                  &
+x-rev-ohip-total                &
+x-agent-0-rev                   &
+x-agent-1-rev                   &
+x-agent-2-rev                   &
+x-agent-3-rev                   &
+x-agent-4-rev                   &
+x-agent-5-rev                   &
+x-agent-6-rev                   &
+x-agent-7-rev                   &
+x-agent-8-rev                   &
+x-agent-9-rev                   &
+x-ag-0-adj-rev                  &
+x-ag-1-adj-rev                  &
+x-ag-2-adj-rev                  &
+x-ag-3-adj-rev                  &
+x-ag-4-adj-rev                  &
+x-ag-5-adj-rev                  &
+x-ag-6-adj-rev                  &
+x-ag-7-adj-rev                  &
+x-ag-8-adj-rev                  &
+x-ag-9-adj-rev                  &
+x-ag-0-tot-rev                  &
+x-ag-1-tot-rev                  &
+x-ag-2-tot-rev                  &
+x-ag-3-tot-rev                  &
+x-ag-4-tot-rev                  &
+x-ag-5-tot-rev                  &
+x-ag-6-tot-rev                  &
+x-ag-7-tot-rev                  &
+x-ag-8-tot-rev                  &
+x-ag-9-tot-rev                  &
+x-ar-ohip-fee                   &
+x-ar-ohip-adj                   &
+x-ar-ohip-total                 &
+x-agent-0-ar                    &
+x-agent-1-ar                    &
+x-agent-2-ar                    &
+x-agent-3-ar                    &
+x-agent-4-ar                    &
+x-agent-5-ar                    &
+x-agent-6-ar                    &
+x-agent-7-ar                    &
+x-agent-8-ar                    &
+x-agent-9-ar                    &
+x-agent-0-adj-ar                &
+x-agent-1-adj-ar                &
+x-agent-2-adj-ar                &
+x-agent-3-adj-ar                &
+x-agent-4-adj-ar                &
+x-agent-5-adj-ar                &
+x-agent-6-adj-ar                &
+x-agent-7-adj-ar                &
+x-agent-8-adj-ar                &
+x-agent-9-adj-ar                &
+x-agent-0-tot-ar                &
+x-agent-1-tot-ar                &
+x-agent-2-tot-ar                &
+x-agent-3-tot-ar                &
+x-agent-4-tot-ar                &
+x-agent-5-tot-ar                &
+x-agent-6-tot-ar                &
+x-agent-7-tot-ar                &
+x-agent-8-tot-ar                &
+x-agent-9-tot-ar                &
+x-nbr-svcs                      &
+x-source			&
+dept-name
+
+
+build $obj/r004b
+
+

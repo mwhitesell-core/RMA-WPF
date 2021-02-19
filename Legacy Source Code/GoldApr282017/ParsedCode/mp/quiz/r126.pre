@@ -1,0 +1,71 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE R126.QZS
+COMMENT "program: R126.QZS"
+COMMENT "#> PROGRAM-ID.     R126.QZS"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: VERIFY special payment in f114 has pay code '0' or ' ' IN SCREEN 91"
+COMMENT "if record in f114 and record exist in f112 with current ep-nbr and pay code in f112 = '0' or 'blank', then report"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    WHO      DESCRIPTION"
+COMMENT "2013/Sep/26  MC       - original"
+COMMENT "2013/Oct/03  MC   - add second criteria - if no record found in f112, report"
+COMMENT "2014/Apr/23  MC1      - separate f114 check into 2 separate passes - one is if no f112 record exists for the doctor,"
+COMMENT "two is if f112 records exists for previous ep-nbr but with pay code 0"
+COMMENT "2015/Jan/15  MC2      - include columns comp-code and amt-net in the report  in first pass"
+COMMENT "2016/Jul/19  MC3   - add a new request to access f110 file to see if record found if f112 "
+CAN CLEAR
+SET REP NOLIMIT
+SET PAGE LENGTH 62 WIDTH 132
+SET REP DEVICE DISC NAME R126
+SET FORMFEED
+COMMENT "MC1"
+SET NOCLOSE
+COMMENT "MC1 - end"
+ACCESS F114-SPECIAL-PAYMENTS LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK DOC-NBR TO DOC-NBR OF F112-PYCDCEILINGS OPT
+COMMENT "MC1"
+COMMENT "select if  (      (    doc-pay-code =       &"
+COMMENT "or doc-pay-code =  0    &"
+COMMENT ")     &"
+COMMENT "and  record f112-pycdceilings exists  &"
+COMMENT ")      &"
+COMMENT "or   not record f112-pycdceilings exists"
+SELECT IF NOT RECORD F112-PYCDCEILINGS EXISTS
+COMMENT "MC1 - end"
+SORTED ON DOC-NBR
+COMMENT "MC1"
+COMMENT "tab 25   PHYSCIANS WITH SPECIAL PAYMENTS BUT WITH NO OR ZERO PAYCODE  &"
+COMMENT "MC1 - end"
+COMMENT "MC1"
+COMMENT "skip    tab 25            OR NO RECORD FOUND IN F112 FILE (91 SCREEN)         &"
+COMMENT "MC1 - end"
+COMMENT "MC2"
+COMMENT "tab 40   PAY CODE      &"
+COMMENT "MC2 - end"
+PAGE HEADING TAB 1 "R126" TAB 10 'PHYSICIANS WITH SPECIAL PAYMENTS WITH BLANK RECORD in 91 screen (f112)' TAB 100 "RUN DATE:" TAB 110 SYSDATE TAB 124 "PAGE:" TAB 129 SYSPAGE PIC "^" SKIP 2 TAB 1 "DOC #" TAB 8 "DOC NAME" TAB 40 "COMP CODE" TAB 55 "AMT NET" SKIP 2
+COMMENT "MC2"
+COMMENT "tab 43  doc-pay-code                     "
+FOOTING AT DOC-NBR TAB 2 DOC-NBR TAB 8 DOC-NAME TAB 43 COMP-CODE TAB 55 AMT-NET
+COMMENT "MC2 - end"
+BUILD $PB_OBJ/R126_1
+COMMENT "MC1 - new request to check if f112 record exists for previous ep-nbr in f114 file"
+ACCESS F114-SPECIAL-PAYMENTS LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK (DOC-NBR, EP-NBR-FROM - 1) TO DOC-NBR, EP-NBR OF F112-PYCDCEILINGS
+SEL IF DOC-PAY-CODE = '0'
+SORTED ON DOC-NBR
+PAGE HEADING TAB 1 'R126' TAB 10 'Run Date: ' TAB 20 SYSDATE TAB 70 'Page: ' TAB 79 SYSPAGE PIC '^^' SKIP 2 TAB 10 'Doctors have special payments with record in 91 screen (f112)' SKIP 1 TAB 10 '     with previous ep nbr and pay code ZERO      ' SKIP 3 KEEP COLUMN HEADING
+FOOTING AT DOC-NBR DOC-NBR COMP-CODE EP-NBR-FROM AMT-GROSS AMT-NET DOC-PAY-CODE DOC-DEPT DOC-DATE-FAC-TERM EP-NBR
+BUILD $PB_OBJ/R126_2
+COMMENT "MC3 - new request to check if f112 record exists for records found in f110 file   "
+ACCESS CONSTANTS-MSTR-REC-6 LINK CURRENT-EP-NBR TO EP-NBR OF F110-COMPENSATION LINK DOC-NBR TO DOC-NBR OF F112-PYCDCEILINGS OPT
+CHOOSE CONST-REC-NBR 6
+SEL IF NOT RECORD F112-PYCDCEILINGS EXISTS
+SORT ON DOC-NBR ON COMP-CODE
+PAGE HEADING TAB 1 'R126' TAB 10 'Run Date: ' TAB 20 SYSDATE TAB 70 'Page: ' TAB 79 SYSPAGE PIC '^^' SKIP 2 TAB 10 'Doctors have records in 93 screen (f110) in current ep nbr' SKIP 1 TAB 10 '       but no record found in f112 file (91 screen)       ' SKIP 3 KEEP COLUMN HEADING
+REPORT DOC-NBR COMP-CODE AMT-GROSS AMT-NET EP-NBR
+BUILD $PB_OBJ/R126_3
+ENDMODULE R126.QZS

@@ -1,0 +1,114 @@
+; program: r086 -  
+; purpose: create listing for confidential/stale dates and 2 letters sent
+;          (patient requires direct contact)
+;
+;	93/04/21	AGK       SMS 141 (ORIGINAL)
+;       93/04/22        YASEMIN   MODIFY
+;                                 CHECK LAST MAILING > 10 DAYS OLD
+;	93/05/21	M.CHAN	  - ADD THE MESS CODE CHECK IN THE
+;				    SELECTION CRITERIA
+;       93/06/04        YASEMIN   - ADD REFERENCE FILED COLUMN
+;	94/02/22	M. CHAN	  - PDR 594
+;				  - USE LAST MAILING > 21 DAYS OLD
+;				    INSTEAD OF 10 DAYS
+;  1999/jan/31 B.E.		- y2k
+;  2003/apr/30 M.C.		- include clmhdr-confidential-flage = 'R' in 
+;				  the selection criteria to be the same as 'Y'
+;				  as Yasemin requested
+
+cancel clear
+
+set def
+set rep dev disc name r086
+set report nolimit
+set nohead
+set rep page length 60
+set formfeed
+set page width 132
+
+access rejected-claims						&
+  link ("B",  							&
+	nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+	nconvert(ascii(claim-nbr,10)[9:2]), 			&
+	"00000", "0")						&
+   to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+      key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr	&
+  link clmhdr-pat-ohip-id-or-chart   		           	&
+   viaindex key-pat-mstr					&
+   to f010-pat-mstr						&
+  link doc-nbr							&
+   to doc-nbr of f020-doctor-mstr
+
+
+;y2k
+;define d-test-serv numeric*6 = days(sysdate) - days(clmhdr-serv-date) &
+define d-test-serv numeric*8 = days(sysdate) - days(clmhdr-serv-date) &
+	if clmhdr-serv-date > 0
+
+;y2k
+;define d-test-date num*6 =     &
+define d-test-date num*8 =     &
+	days(sysdate) - days(pat-date-last-elig-mailing) &
+	if pat-date-last-elig-mailing > 0
+
+select if    (   clmhdr-confidential-flag = "Y"   	        &
+;2003/04/30 - MC
+              or clmhdr-confidential-flag = "R"   	        &
+; 2003/04/30 - end
+	      or (    d-test-date > 21 				&
+	          and pat-no-of-letter-sent >= 2		&
+	         )    						&
+              or  d-test-serv > 150				&
+	     ) 							&
+	and pat-mess-code <> " "
+
+define d-status character*1 			&
+      =  "C" if clmhdr-confidential-flag = "Y"	& ; confidential
+;2003/04/30 - MC
+              or clmhdr-confidential-flag = "R" &
+; 2003/04/30 - end
+    else "S" if d-test-serv > 150		& ; staledate
+    else "I" if pat-no-of-letter-sent >= 2	  ; not contact with letters
+
+sort on d-status on claim-nbr
+
+define d-doctor-name character*30 	=	&
+	doc-inits + ", " + doc-name
+define d-patient-name character*30	=	&
+	truncate(pat-surname) + ", " + pat-given-name
+
+page heading 				&
+  tab  10   "DATE:"			&
+  tab  16   sysdate			&
+skip 2					&
+  tab  10   "R086 LISTING FOR CONFIDENTIAL AND STALE DATES"	&
+skip 3					&
+  tab   1   "CLAIM NUMB"		&
+  tab  12   "PATIENT NAME"		&
+  tab  42   "STATUS"			&
+  tab  49   "DOCTOR NAME"		&
+  tab  82   "REFERENCE FIELD"           &
+skip					&
+  tab   1   "----------"		&
+  tab  12   "------------"		&
+  tab  42   "------"			&
+  tab  49   "-----------"		&
+  tab  82   "---------------"           &
+skip 2
+
+report 					&
+  tab   1   claim-nbr   		&
+  tab  12   d-patient-name		&
+  tab  44   d-status			&
+  tab  49   d-doctor-name		&
+  tab  82   clmhdr-reference            &
+reserve 4
+
+page footing 				&
+  tab   5   "LEGEND FOR STATUS:   'C'  - CONFIDENTIAL"		&
+skip					&
+  tab  26   "'S'  - STALE DATES (CLAIM DATES 5 MONTHS AND OLDER)" &
+skip					&
+  tab  26   "'I'  - INVESTIGATE (2 LETTERS ALREADY SENT TO PATIENT)"
+
+build $pb_obj/r086

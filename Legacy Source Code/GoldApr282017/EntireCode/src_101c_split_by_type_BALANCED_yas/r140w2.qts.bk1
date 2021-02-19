@@ -1,0 +1,39 @@
+
+cancel clear
+set process nolimit
+set lock record update 
+
+request r140w_check_if_incoming_records_exists_in_f075  &
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access tmp-governance-payments-file			&
+	link doc-ohip-nbr 				&
+	 to  doc-ohip-nbr of f075-afp-doc-mstr 
+
+select if doc-afp-paym-group of tmp-governance-payments-file  &
+	= doc-afp-paym-group of f075-afp-doc-mstr
+
+; update record if there is a match
+output tmp-governance-payments-file update  on errors report
+  item reported_in_r140b_report final 'Y'
+
+request r140w_check_if_doc_exists_in_incoming_file	&
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access f075-afp-doc-mstr 				&
+	link doc-ohip-nbr				&
+	 to doc-ohip-nbr of tmp-governance-payments-file opt
+
+sorted on doc-ohip-nbr
+
+select if not record tmp-governance-payments-file exists
+
+; create a record if doctor does not exist from the incoming governance file
+output tmp-governance-payments-file alias tmp-gov-add add at doc-ohip-nbr on errors report
+   item doc-ohip-nbr final doc-ohip-nbr of f075-afp-doc-mstr
+   item doc-afp-paym-group final doc-afp-paym-group of f075-afp-doc-mstr
+   item reported_in_r140b_report final 'M'
+
+build $obj/r140w2    

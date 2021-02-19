@@ -1,0 +1,92 @@
+
+cancel clear
+; 2011/02/28 - MC2
+;set stacksize 10000
+; 2011/02/28 -  end
+run u014_f050
+
+set default
+; 2011/02/28 - MC2
+;set lock file update
+set lock record update
+; 2011/02/28 - end
+
+set process nolimit
+
+; define globals for this run
+use $use/get_const_rec_7_values_globals.qts
+
+global temp x-selected-clinic       num*2 	parm			&
+	prompt "Enter CLINIC(2 digits) to be transferred to history: " 
+global temp x-selected-clinic-alpha char*2 
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values.qts
+
+;-------------------------------------------------------------------------------
+;
+
+item x-selected-clinic-alpha        = ascii(x-selected-clinic,2)
+
+request u014_transfer_f050_to_f050_hist         &
+                on edit        errors report    &
+                on calculation errors report
+
+access f050-doc-revenue-mstr			&
+   link x-selected-clinic			&
+    to iconst-clinic-nbr-1-2  of iconst-mstr-rec
+
+
+; (for clinic 61-66 passed parameter is 60 so match only on 1st digit)
+; (for clinic 71-70 passed parameter is 70 so match only on 1st digit)
+def x-selected-clinic-1 char*1 = ascii(x-selected-clinic,2)[1:1]
+def x-docrev-clinic-1   char*1 =       docrev-clinic-1-2   [1:1]
+select if docrev-clinic-1-2 					&
+        =    x-selected-clinic-alpha                            &
+         or (    x-selected-clinic-alpha = "60"                 &
+; 2009/09/29 - MC - match the specific clinic range instead of ONLY the first digit
+;             and x-selected-clinic-1     = x-docrev-clinic-1    &
+; 2010/02/10 - MC1 - include clinic 66
+;             and (docrev-clinic-1-2 >= '61' and docrev-clinic-1-2 <= '65')   &
+              and (docrev-clinic-1-2 >= '61' and docrev-clinic-1-2 <= '66')   &
+; 2010/02/10 - end
+; 2009/09/29 - end
+            )							&
+         or (    x-selected-clinic-alpha = "70"                 &
+; 2009/09/29 - MC - match the specific clinic range instead of ONLY the first digit
+;             and x-selected-clinic-1     = x-docrev-clinic-1    &
+              and (docrev-clinic-1-2 >= '71' and docrev-clinic-1-2 <= '75')   &
+; 2009/09/29 - end
+            )
+
+; 2012/08/23 - MC4
+def ped-dd zoned*2 unsigned = mod(iconst-date-period-end of iconst-mstr-rec,100)
+; 2012/08/23 - end
+
+;  (PED from constants master has yyyymmdd however each clinic's dd is
+;   different for the same month.
+;   Therefore use hard coded '01' for dd so that each clinics data is 
+;   in effect stored at the yyyymm level and thus monthly values can
+;   be easily obtained across clinic)
+def x-iconst-date-period-end date = 					&
+     nconvert(								&
+	         ascii (						&
+		        ( iconst-date-period-end of iconst-mstr-rec	&
+		         /100   					&
+		        )						&
+		       ,6)						&
+    	       + '01'							&
+	     )								&
+; 2012/08/23 - MC4 - add if condition - to check if monthend or yearend
+        if ped-dd <> 30                                                 &
+    else   iconst-date-period-end  of iconst-mstr-rec      
+
+; 2012/08/23 - end
+
+subfile u014_f050 keep include		 &
+     x-iconst-date-period-end		,&
+     f050-doc-revenue-mstr	
+
+

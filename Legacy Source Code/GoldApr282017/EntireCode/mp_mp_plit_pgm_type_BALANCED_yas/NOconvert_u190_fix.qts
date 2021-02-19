@@ -1,0 +1,103 @@
+;#> PROGRAM-ID.     U190_YEAREND_3.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Year end roll over for EARNING SUBSYSTEM.
+;
+;	Note: This program must be run while the Constant's Master
+;	      EP number is the last EP of the current fiscal year
+;	      and before moving to the next year's FIRST EP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+; !!!! THIS PGMS STILL HAVE PLUS/MINS 0/1 DIFFERENT BETWEEN CEILING/EXPESE
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+cancel clear
+run u190
+
+set default
+set process nolimit
+
+global temp x-current-ep-nbr        zoned unsigned
+global temp x-current-ep-nbr-minus1 zoned unsigned
+global temp x-current-ep-nbr-plus1  zoned unsigned
+global temp x-next-yr-first-ep-nbr  zoned unsigned
+global temp x-next-yr-last-ep-nbr   zoned unsigned
+global temp x-ep-fiscal-nbr         zoned unsigned
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u114_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item x-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item x-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item x-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+
+; using current EP get FIRST EP of next YR
+item x-next-yr-first-ep-nbr 					&
+  = (  floor(    (  current-ep-nbr   of constants-mstr-rec-6	&
+                  + 100						&
+	         )						&
+               / 100						&
+	    )							&
+     * 100							&
+    )								&
+   + 01	
+
+
+item x-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+
+;-------------------------------------------------------------------------------
+; Roll over DEFAULT COMPENSATION
+;
+request u190_default_pycdceilings               &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access f112-pycdceilings					       &
+	link doc-nbr of f112-pycdceilings                              &
+	to   doc-nbr of f020-doctor-mstr			       &
+	link doc-nbr of f112-pycdceilings,                             &
+	     x-next-yr-first-ep-nbr                                    &
+	to   doc-nbr,                                                  &
+	     ep-nbr of f112-pycdceilings                               &
+	alias f112-next-yr    opt
+
+select f112-pycdceilings 					       &
+ if     ep-nbr of f112-pycdceilings = x-current-ep-nbr		
+
+define x-computed = doc-yrly-ceiling of f112-pycdceilings * 100
+
+ output f112-pycdceilings update alias f112-output if record f112-next-yr  exists
+ 	item doc-yrly-ceiling = doc-yrly-ceiling    of f112-pycdceilings
+ 	item doc-yrly-ceiling-computed				&
+ 			      = x-computed
+
+
+ output f020-doctor-mstr alias f020-update  update  if record f020-doctor-mstr exists
+ 	item doc-ytdcea                = 0
+ 	item doc-yrly-ceiling-computed = x-computed
+ 	item doc-ytdcex                = 0
+ 	item doc-yrly-expense-computed = 0
+
+build $pb_obj/u190_yearend_3
+  

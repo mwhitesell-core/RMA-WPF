@@ -1,0 +1,93 @@
+; doc: common_diag_noweb
+; doc: diagnostic codes used by physicians exculude web doctors
+; doc: run for: Billig section
+;
+;PROGRAM PURPOSE :  DIAGNOSTIC CODES USED
+;
+;
+;DATE       BY WHOM   DESCRIPTION
+;95/05/31   YASEMIN   ORIGINAL
+;01/10/03   yas       take out web/diskette doctors 
+; 
+;
+can clear
+set default
+set report nolimit
+
+access f002-claims-mstr                     &
+  link (nconvert(clmhdr-claim-id[4:3]))     &
+    to  doc-nbr of f073-client-doc-mstr opt 
+
+choose key-clm-type 'B'
+
+sel f002-claims-mstr if      clmhdr-oma-suff-adj = '000000'   &
+                        and  clmhdr-batch-type = 'C'          &
+                        and  clmhdr-date-period-end >= 200107 
+
+select if not record f073-client-doc-mstr exists
+
+set subfile name diag1 keep
+
+report summary   &
+clmhdr-claim-id  &
+clmhdr-diag-cd
+
+build $pb_obj/diagnoweb1
+
+
+
+can clear
+set default
+set report nolimit
+
+access *diag1
+
+def x-docnbr cha*3 = clmhdr-claim-id[4:3]
+def x-count num*1 = 1
+
+sort on x-docnbr on clmhdr-diag-cd
+
+set subfile name diag2 keep at clmhdr-diag-cd
+
+report summary  &
+x-docnbr        &
+clmhdr-diag-cd  &
+x-count subtotal
+
+build $pb_obj/diagnoweb2
+
+can clear
+set default
+set report nolimit
+set report device disc name diag
+set page length 64 width 132
+set formfeed
+set page nohead
+
+access *diag2    &
+  link (nconvert(x-docnbr)) to doc-nbr of f020-doctor-mstr opt &
+  link (ascii(clmhdr-diag-cd,3)) to diag-cd of f091-diag-codes-mstr opt
+
+def x-name cha*30 =pack(doc-name +" "+ doc-inits)
+
+;sort on x-name on x-count d on clmhdr-diag-cd
+sort on x-name  on clmhdr-diag-cd
+
+
+heading at x-name    skip page  &
+        tab 1  "***"            &
+        tab 5  doc-nbr fill '0' &
+        tab 10 "DR."            &
+        tab 14 x-name           &
+        tab 66  syspage         &
+skip 2
+
+footing at clmhdr-diag-cd                 &
+skip 1   tab 1  clmhdr-diag-cd  fill '0'  &
+         tab 7  diag-cd-desc              &
+skip 1
+
+build $pb_obj/diagnoweb3
+
+
+  

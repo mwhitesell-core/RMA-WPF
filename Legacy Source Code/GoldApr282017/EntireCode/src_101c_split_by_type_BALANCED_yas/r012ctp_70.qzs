@@ -1,0 +1,230 @@
+; DOC: r012ctp_70  
+; DOC: PHYSICIAN REVENUE RECONCILLIATION BY DOCTOR
+; DOC: SORT BY CLINIC  (SUMMARY REPORT)
+; DOC: RUN FOR: MUMC DIAGNOSTICS
+;
+;PROGRAM PURPOSE : REVENUE ANALYSIS RECONCILIATION BY DOCTOR
+;                  R012TPA.CB CONVERSTION TO POWERHOUSE R012CTP.QZS
+;                  THIS IS THE FIRST OF 3 PROGRMAS APPEND
+;                  R012BTP.TXT R012CTP.TXT END OF R012ATP.TXT
+;
+;DATE       BY WHOM   DESCRIPTION
+;2007/Mar   YASEMIN   r012ctp 
+;
+;
+
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r012ctp_70
+set formfee
+
+
+access f050tp-doc-revenue-mstr                              &
+  link docrevtp-doc-nbr                                     &
+    to doc-nbr of f020-doctor-mstr  opt                     &
+  link docrevtp-clinic-nbr                                  &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec  opt        &
+  link doc-dept                                             &
+    to dept-nbr of f070-dept-mstr  opt
+
+choose docrevtp-key "71@" to "75@"
+
+sorted on docrevtp-clinic-nbr
+
+def t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1) +  &
+                              docrevtp-out-tech-amt-billed(1))
+
+def t-adj-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-adjusts(1) +  &
+                              docrevtp-out-tech-amt-adjusts(1))
+
+def t-svc-mtd zoned*5 unsigned =   &
+                              (docrevtp-in-tech-nbr-svc(1) +  &
+                              docrevtp-out-tech-nbr-svc(1))
+
+def net-t-mtd zoned*8 signed  = (t-amt-mtd + t-adj-mtd)
+
+def p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1))
+
+def p-adj-mtd zoned*8 signed  =   &
+                             (docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))
+
+def p-svc-mtd zoned*5 unsigned =   &
+                              (docrevtp-in-prof-nbr-svc(1) +  &
+                              docrevtp-out-prof-nbr-svc(1))
+
+def net-p-mtd zoned*8 signed   = (p-amt-mtd + p-adj-mtd)
+
+def total-svc-mtd zoned*5 unsigned = t-svc-mtd if t-svc-mtd ne 0  &
+                                             else p-svc-mtd
+
+def total-adj-mtd zoned*8 signed = (t-adj-mtd + p-adj-mtd)
+
+def total-amt-mtd zoned*8 signed = (net-t-mtd + net-p-mtd)
+
+def t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2))
+
+def t-adj-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))
+
+def t-svc-ytd zoned*5 unsigned =   &
+                              (docrevtp-in-tech-nbr-svc(2) +  &
+                              docrevtp-out-tech-nbr-svc(2))
+
+def net-t-ytd zoned*8 signed  = (t-amt-ytd + t-adj-ytd)
+
+def p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2))
+
+def p-adj-ytd zoned*8 signed  =   &
+                             (docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))
+
+def p-svc-ytd zoned*5 unsigned =   &
+                              (docrevtp-in-prof-nbr-svc(2) +  &
+                              docrevtp-out-prof-nbr-svc(2))
+
+def net-p-ytd zoned*8 signed   = (p-amt-ytd + p-adj-ytd)
+
+def total-svc-ytd zoned*5 unsigned = t-svc-ytd if t-svc-ytd ne 0  &
+                                             else p-svc-ytd
+
+def total-adj-ytd zoned*8 signed = (t-adj-ytd + p-adj-ytd)
+
+def total-amt-ytd zoned*8 signed = (net-t-ytd + net-p-ytd)
+
+define x-name cha*30 = pack(doc-inits + " " + doc-name)
+
+def x-day cha*2 = ascii(iconst-date-period-end,8)[7:2]
+
+def x-mth cha*2 = ascii(sysdate,8)[5:2]
+
+def x-year cha*4 = ascii(sysdate,8)[1:4]
+
+def x-month cha*9 = "JANUARY"   if x-mth  = "01"      &
+               else "FEBRUARY"  if x-mth  = "02"      &
+               else "MARCH"     if x-mth  = "03"      &
+               else "APRIL"     if x-mth  = "04"      &
+               else "MAY"       if x-mth  = "05"      &
+               else "JUNE"      if x-mth  = "06" and x-day < "30"  &
+               else "YEAREND"   if x-mth  = "06" and x-day = "30"  &
+               else "JULY"      if x-mth  = "07"      &
+               else "AUGUST"    if x-mth  = "08"      &
+               else "SEPTEMBER" if x-mth  = "09"      &
+               else "OCTOBER"   if x-mth  = "10"      &
+               else "NOVEMBER"  if x-mth  = "11"      &
+               else "DECEMBER"  if x-mth  = "12"
+
+def x-date cha*15 = pack(x-month +"/ "+ x-year)
+
+heading at docrevtp-clinic-nbr  skip 2
+
+page heading       &
+	tab 1   "R012TP_70"		          	&
+	tab 13  "P.E.D"				          	&
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 102 "RUN DATE:"                               	&
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 50  "MONTHLY REVENUE RECONCILLIATION"         	&
+skip 1  tab 53  "BY DOCTOR SUMMARY REPORT"                	&
+skip 1  tab 54  "FOR THE MONTH OF" tab 68 x-date                &
+skip 1  tab 123 "NET TECH"                                      &
+skip 1  tab 1   "CLINIC"                                        &
+        tab 15  "TECH"                                          &
+        tab 27  "TECH"                                          &
+        tab 38  '"B"'                                           &
+        tab 52  "NET"                                           &
+        tab 59  "PROF"                                          &
+        tab 71  "PROF"                                          &
+        tab 82  '"B"'                                           &
+        tab 96  "NET"                                           &
+        tab 102 "TOTAL"                                         &
+        tab 113 "TOTAL"                                         &
+        tab 125 "PLUS"                                          &
+skip 1  tab 1   "SUMMARY"                                       &
+        tab 15  "SVC"                                           &
+        tab 27  "COMP"                                          &
+        tab 37  "ADJUST"                                        &
+        tab 52  "TECH"                                          &
+        tab 59  "SVC"                                           &
+        tab 71  "COMP"                                          &
+        tab 81  "ADJUST"                                        &
+        tab 96  "PROF"                                          &
+        tab 103 "SVC"                                           &
+        tab 113 "ADJUST"                                        &
+        tab 123 "NET PROF"                                      &
+skip 2
+
+footing at docrevtp-clinic-nbr                                      &
+        tab 1   docrevtp-clinic-nbr                                 &
+        tab 9   "MTD"                                                 &
+        tab 13  t-svc-mtd     subtotal pic "^^,^^^"                   &
+        tab 20  t-amt-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 32  t-adj-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 45  net-t-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 57  p-svc-mtd     subtotal pic "^^,^^^"                   &
+        tab 64  p-amt-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 76  p-adj-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 89  net-p-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 101 total-svc-mtd subtotal pic "^^,^^^"                   &
+        tab 108 total-adj-mtd subtotal pic "^^^^,^^^.^^"              &
+        tab 120 total-amt-mtd subtotal pic "^^^^,^^^.^^"              &
+skip 1                                                                &
+        tab 9   "YTD"                                                 &
+        tab 13  t-svc-ytd     subtotal pic "^^,^^^"                   &
+        tab 20  t-amt-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 32  t-adj-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 45  net-t-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 57  p-svc-ytd     subtotal pic "^^,^^^"                   &
+        tab 64  p-amt-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 76  p-adj-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 89  net-p-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 101 total-svc-ytd subtotal pic "^^,^^^"                   &
+        tab 108 total-adj-ytd subtotal pic "^^^^,^^^.^^"              &
+        tab 120 total-amt-ytd subtotal pic "^^^^,^^^.^^"              &
+skip 2
+
+final footing  skip 1                                                 &
+        tab 1   "GRAND"                                               &
+        tab 9   "MTD"                                                 &
+        tab 13  t-svc-mtd     subtotal pic "^^,^^^"                   &
+        tab 20  t-amt-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 32  t-adj-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 45  net-t-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 57  p-svc-mtd     subtotal pic "^^,^^^"                   &
+        tab 64  p-amt-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 76  p-adj-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 89  net-p-mtd     subtotal pic "^^^^,^^^.^^"              &
+        tab 101 total-svc-mtd subtotal pic "^^,^^^"                   &
+        tab 108 total-adj-mtd subtotal pic "^^^^,^^^.^^"              &
+        tab 120 total-amt-mtd subtotal pic "^^^^,^^^.^^"              &
+skip 1                                                                &
+        tab 1   "TOTALS"                                              &
+        tab 9   "YTD"                                                 &
+        tab 13  t-svc-ytd     subtotal pic "^^,^^^"                   &
+        tab 20  t-amt-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 32  t-adj-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 45  net-t-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 57  p-svc-ytd     subtotal pic "^^,^^^"                   &
+        tab 64  p-amt-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 76  p-adj-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 89  net-p-ytd     subtotal pic "^^^^,^^^.^^"              &
+        tab 100 total-svc-ytd subtotal pic "^^^,^^^"                   &
+        tab 108 total-adj-ytd subtotal pic "^^^^,^^^.^^"              &
+        tab 120 total-amt-ytd subtotal pic "^^^^,^^^.^^"              &
+skip 2
+
+build $pb_obj/r012ctp_70
+
+
+  

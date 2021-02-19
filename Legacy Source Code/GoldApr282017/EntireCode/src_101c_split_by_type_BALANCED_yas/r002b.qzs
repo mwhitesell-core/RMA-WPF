@@ -1,0 +1,85 @@
+; DOC: R002B.QZS
+; DOC: UNBALANCED BATCH SUMMARY REPORT
+; DOC: RUN FOR: MULTI-CLINICS
+;
+;PROGRAM PURPOSE : CYCLE BATCH SUMMARY REPORT
+;
+;
+;
+;  DATE     BY WHOM   DESCRIPTION
+;95/07/25   YASEMIN   ORIGINAL
+;03/dec/17  A.A.      alpha doctor nbr
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r002b
+set formfee
+
+access f001-batch-control-file                               &
+  link batctrl-doc-nbr-ohip                                  &
+    to doc-ohip-nbr of f020-doctor-mstr  opt                 &
+;!  link (floor(batctrl-batch-nbr / 10000000))                &
+  link (nconvert(batctrl-batch-nbr[1:2]))                     &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+;y2k
+select if  (batctrl-date-period-end = ascii(iconst-date-period-end,8)) &
+        and (   batctrl-amt-est ne batctrl-amt-act                     &
+             or batctrl-svc-est ne batctrl-svc-act)
+
+sort on iconst-clinic-nbr-1-2 on batctrl-batch-nbr
+
+;!def x-batch-nbr cha*8 = ((ascii(batctrl-batch-nbr,9))[1:2]) &
+;!                      + ((ascii(batctrl-batch-nbr,9))[4:6])
+def x-batch-nbr cha*8 = batctrl-batch-nbr
+
+def x-diff-svc zoned*4 unsigned = batctrl-svc-act - batctrl-svc-est
+
+def x-diff-amt zoned*8 unsigned = batctrl-amt-act - batctrl-amt-est
+
+page heading                                              	&
+	tab 1   "R002B"  			          	&
+	tab 10  "P.E.D."                                        &
+;y2k
+        tab 18  iconst-date-period-end pic "^^^^/^^/^^"         &
+	tab 53  "* UNBALANCED BATCH REPORT *"                   &
+	tab 98  "RUN DATE:"                               	&
+;y2k
+	tab 110  sysdate                                  	&
+        tab 124 "PAGE:" tab 129 syspage pic "^^^"      	 	&
+skip 3  tab 1   "CLAIM NBR"                                     &
+        tab 12  "DP#"                           	        &
+        tab 21  "COMPUTER SVC"                  	        &
+        tab 38  "ESTIMATE SVC"                  	        &
+        tab 55  "DIFFERENCE"                    	        &
+        tab 82  "COMPUTER AMT"                          	&
+        tab 100 "ESTIMATE AMT"                                  &
+        tab 118 "DIFFERENCE"                                    &
+skip 1  tab 1   "---------"                                     &
+        tab 12  "---"                           	        &
+        tab 21  "------------"                  	        &
+        tab 38  "------------"                  	        &
+        tab 55  "----------"                    	        &
+        tab 82  "------------"                          	&
+        tab 100 "------------"                                  &
+        tab 118 "----------"                                    &
+skip 2
+
+heading at iconst-clinic-nbr-1-2 skip 2
+
+report                                                          &
+        tab 1   x-batch-nbr                                     &
+        tab 13  doc-dept fill "0"                               &
+        tab 29  batctrl-svc-act pic "^^^^"                      &
+        tab 46  batctrl-svc-est pic "^^^^"                      &
+        tab 61  x-diff-svc      pic "^^^^"                      &
+        tab 84  batctrl-amt-act pic "^^,^^^.^^ " trailing sign "-" &
+        tab 102 batctrl-amt-est pic "^^,^^^.^^ " trailing sign "-" &
+        tab 118 x-diff-amt      pic "^^,^^^.^^ " trailing sign "-" &
+skip 2
+
+build $pb_obj/r002b
+
+
+  

@@ -1,0 +1,82 @@
+cancel clear
+set process nolimit
+set lock record update
+
+request ext_f110_totexp
+access f110-compensation
+choose doc-nbr, ep-nbr, process-seq, comp-code 'TOTEXP'
+sorted on doc-nbr
+
+temp totexp-gross zoned*10 numeric
+item totexp-gross  = totexp-gross  + amt-gross        reset at doc-nbr
+temp totexp-net zoned*10 numeric
+item totexp-net  = totexp-net  + amt-net        reset at doc-nbr
+subfile f110_totexp keep at doc-nbr include &
+	doc-nbr, comp-code, totexp-net , totexp-gross
+
+request verify_f119
+access *f110_totexp		&
+	link doc-nbr,		&
+	     comp-code,		&
+	     'A'		&
+	 to doc-nbr,		&
+	    comp-code,		&
+	    rec-type of f119-doctor-ytd opt
+
+subfile f119_totexp_not_exist keep if not record f119-doctor-ytd exists 	&
+	include f110_totexp
+
+subfile f119_totexp_exist keep if record f119-doctor-ytd exists		&
+	include f110_totexp, amt-ytd
+
+request update_exist_f119
+
+access *f119_totexp_exist	&
+	link doc-nbr,		&
+	     comp-code,		&
+	     'A'		&
+	 to doc-nbr,		&
+	    comp-code,		&
+	    rec-type of f119-doctor-ytd &   
+	link doc-nbr,		&
+	     200804,      	&
+	     'A'		&
+	 to doc-nbr,		&
+	    ep-nbr,  	 	&
+	    rec-type of f119-doctor-ytd-history
+
+sel if comp-code of f119-doctor-ytd-history = 'TOTEXP'	
+	
+output f119-doctor-ytd update on errors report 
+      item amt-ytd final totexp-net of f119_totexp_exist
+
+output f119-doctor-ytd-history update on errors report 
+      item amt-ytd final totexp-net of f119_totexp_exist
+
+request add_missing_f119_totexp
+
+access *f119_totexp_not_exist   &
+	link doc-nbr 		&
+	 to  doc-nbr of f020-doctor-mstr opt	
+
+output f119-doctor-ytd add    on errors report 
+	item doc-nbr final doc-nbr of f119_totexp_not_exist
+	item doc-ohip-nbr final doc-ohip-nbr of f020-doctor-mstr
+	item comp-code final 'TOTEXP'
+	item process-seq final 48
+	item comp-code-group final 'D'
+	item rec-type final 'A'
+        item amt-ytd final totexp-net of f119_totexp_not_exist
+	item last-mod-date final sysdate
+	item last-mod-time final systime / 10000
+	item last-mod-user-id final 'Moira'
+
+
+output f119-doctor-ytd-history add on errors report 
+	item doc-nbr final doc-nbr of f119_totexp_not_exist
+	item ep-nbr final 200804   
+	item comp-code final 'TOTEXP'
+	item process-seq final 48
+	item comp-code-group final 'D'
+	item rec-type final 'A'
+        item amt-ytd final totexp-net of f119_totexp_not_exist

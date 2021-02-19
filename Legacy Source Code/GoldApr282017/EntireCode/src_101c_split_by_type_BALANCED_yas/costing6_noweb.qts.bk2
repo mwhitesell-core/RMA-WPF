@@ -1,0 +1,127 @@
+; Program: costing6_man_rej_dtl.qts
+; Purpose: - creates files for costing the MANUAL REJECTION Charges
+;          - seperate it into 3 catagories E, R and S                      
+;
+;
+;DATE       BY WHOM      DESCRIPTION
+;00/02/23   YASEMIN      ORIGINAL
+;02/07/30   M.C.	- increase the record count for manual rejection by patient by ohip-err-code
+;03/dec/19  A.A.	- alpha doctor nbr
+;04/may/10  M.C.	- access f087-submitted-rejected-claims-hdr instead
+;			- change sort statement
+
+;
+
+;
+
+cancel clear
+
+run costing6
+
+set default
+set process nolimit
+set lock file update
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+request costing5_1     &
+        on calculation errors report    &
+        on edit errors report
+
+; 2004/05/10  - MC
+;access manual-rejected-claims-hist                       &
+access f087-submitted-rejected-claims-hdr                 &
+; 2004/05/10 - end
+  link clmhdr-doc-nbr                                    &
+  to   doc-nbr of f020-doctor-mstr			 &
+  link ohip-err-code 					 &
+  to   f093-ohip-error-msg-mstr opt			 &
+;2002/07/30 - MC - add to link to f002 hdr
+  link 'B', clmhdr-batch-nbr, clmhdr-claim-nbr, '00000', '0'                & 
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, &
+       key-clm-adj-nbr  of f002-claims-mstr  opt
+; 2002/07/30 - end
+
+
+;(select rejections whose PED is within the period 'start of fiscal period'
+;  and  the 'current costing analysis ped' )
+
+;(select rejections whose PED is within the period 'start of fiscal period'
+;  and  the 'current costing analysis ped' )
+define ped-yymm zoned*6 = ped / 100
+select if   (    ped      >= w-current-fiscal-start-yymmdd	&
+	     and ped-yymm <= w-current-costing-ped-yymm		&
+	    )	 						&
+;yasemin select physician non web/diskette rejects              &
+             and  clmhdr-adj-cd-sub-type ne "W"                 &
+             and  clmhdr-adj-cd-sub-type ne "D"                 &
+             and  clmhdr-adj-cd-sub-type ne "C"                     
+           
+
+; (select doctor who  was 'active' anytime within the costing
+;  analysis period - ie. start of fiscal year to current costing
+;  analysis ped's yymm)
+
+use $use/select_f020_active_for_costing_analysis_period.use
+
+; 2004/05/10 - MC - comment out
+;choose clmhdr-doc-nbr  
+; 2004/05/10 - end
+
+
+; 2000/feb/06 B.E. - changed to sort
+;sorted on clmhdr-doc-nbr
+sort on clmhdr-doc-nbr	&
+     on ohip-err-cat-code &
+; 2002/07/30 - MC - changed to sort to include pat ikey and ohip-err-code 
+; 2004/05/10 - MC
+;    on clmhdr-pat-ohip-id-or-chart on ohip-err-code of manual-rejected-claims-hist
+     on clmhdr-pat-ohip-id-or-chart on ohip-err-code of f087-submitted-rejected-claims-hdr  
+; 2004/05/10 - end
+; 2002/07/30 - end
+
+
+temp man-reject-r  zoned*6 unsigned 
+item man-reject-r  = man-reject-r + 1 		&	
+    if ohip-err-cat-code = "R"			&
+; 2002/07/30 - MC
+		at ohip-err-code		&
+; 2002/07/30 - end
+	reset at ohip-err-cat-code 
+
+
+temp man-reject-e  zoned*6 unsigned             
+item man-reject-e  = man-reject-e + 1           &
+    if ohip-err-cat-code = "E"			&
+; 2002/07/30 - MC
+		at ohip-err-code		&
+; 2002/07/30 - end
+	reset at ohip-err-cat-code 
+
+temp man-reject-s  zoned*6 unsigned             
+item man-reject-s  = man-reject-s + 1           &
+    if ohip-err-cat-code = "S"			&
+; 2002/07/30 - MC
+		at ohip-err-code		&
+; 2002/07/30 - end
+	reset at ohip-err-cat-code 
+
+
+subfile costing6 keep at ohip-err-cat-code   &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+         doc-clinic-nbr,                    &
+         man-reject-r,                      &
+         man-reject-s,                      &
+         man-reject-e,			    &
+         ohip-err-cat-code
+
+build $obj/costing6_noweb
+

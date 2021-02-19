@@ -1,0 +1,126 @@
+;doc     : drbain_misc.qts    
+;purpose : Report Dr. Bain (03-628) agent 9 misc payments since 2001-01 
+;          Pass 1 - select appropriate claims and "explode" repetitive services
+;who     : Dr. Bain                 
+
+
+;Date           Who             Description
+;2004/04/12     Yasemin         Original
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr							&
+    link clmhdr-pat-ohip-id-or-chart					&
+     to  key-pat-mstr of f010-pat-mstr opt	
+ 
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220000000 to 220999999,      &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-doc cha*3 =clmhdr-claim-id[4:3]
+
+
+select f002-claims-mstr if  (clmhdr-batch-type = 'P'and clmhdr-adj-cd = 'M') &
+        	         and clmhdr-agent-cd = 9	                       
+
+Select if x-doc = "628"  
+
+subfile drbain keep include                       &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+clmhdr-batch-type	     of f002-claims-mstr,&
+clmhdr-manual-and-tape-payments of f002-claims-mstr,&
+clmhdr-amt-tech-billed       of f002-claims-mstr,&
+clmhdr-tot-claim-ar-oma      of f002-claims-mstr,&
+clmhdr-tot-claim-ar-ohip     of f002-claims-mstr,&
+clmhdr-serv-date             of f002-claims-mstr,& 
+clmhdr-loc                   of f002-claims-mstr,& 
+clmhdr-hosp                  of f002-claims-mstr,&
+clmhdr-agent-cd              of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *drbain                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20010101' & 
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and (clmdtl-oma-cd       = "MICM"     & ; no miscellaneous billings
+         or clmdtl-oma-cd       = "MISJ"     & ; "  "             "
+         or clmdtl-oma-cd       = "MISC"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MICV"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MISP"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MOHR"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MICB"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MIBR"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MINH"     & ; "  "             "
+        or  clmdtl-oma-cd       = "MHSC"     & ; "  "             "
+        or  clmdtl-oma-cd       = "NHSC")                                
+
+def x-oma-code cha*5 = clmdtl-id[12:5]
+
+def x-clinic zoned*2 unsigned = key-clm-batch-nbr / 10000000
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+
+subfile drbain1 keep include               &
+clmdtl-id             of f002-claims-mstr ,&
+key-clm-batch-nbr     of f002-claims-mstr ,&
+key-clm-claim-nbr     of f002-claims-mstr ,&
+x-clinic				  ,&
+x-oma-code	                          ,& 
+x-doc-nbr                                 ,&
+clmdtl-sv-date        of f002-claims-mstr ,&
+clmdtl-fee-ohip       of f002-claims-mstr ,&
+clmhdr-loc            of drbain           ,&
+clmhdr-hosp           of drbain           ,& 
+clmhdr-agent-cd       of drbain	
+
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *drbain1 link (x-oma-code[1:4]) to fee-oma-cd of f040-oma-fee-mstr opt 
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile drbain2 keep include              &
+x-clinic              of drbain1         ,&
+comma                                    ,&
+x-doc-nbr             of drbain1         ,&
+comma                                    ,&
+clmhdr-agent-cd       of drbain1         ,&
+comma                                    ,&
+clmdtl-sv-date        of drbain1         ,&
+comma                                    ,&
+x-oma-code	      of drbain1         ,& 
+comma                                    ,&
+clmhdr-loc	      of drbain1         ,& 
+comma                                    ,&
+clmhdr-hosp           of drbain1         ,& 
+comma                                    ,&
+clmdtl-fee-ohip       of drbain1         ,&
+comma                                    ,&
+fee-desc  of f040-oma-fee-mstr 	         ,&                
+x-cr 
+
+build $obj/drbain_misc
+

@@ -1,0 +1,940 @@
+;#> PROGRAM-ID.     U030B.QTS
+;
+; ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SECOND PASS OF U030
+;                    THIS IS THE MAIN PROGRAM OF THE ORIGINAL
+;                       U030.CB
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/20 M.C.         - ORIGINAL (SMS 138)
+;     91/JUL/27 M.C.        - PDR 511
+;                      - ADD TWO NEW REQUESTS IN THE BEGINNING
+;                          EDIT AND SORT RECORDS
+;     91/OCT/01 M.C.             - PDR 520
+;                      - ADD TWO NEW REQUESTS BETWEEN REQUESTS
+;                          'CREATE_ISAM_DTL' AND 'MATCH_DTL'
+;                            - TRY TO MATCH RAT DTL WITH EQUIVALENCE
+;                          TABLE FOR THE DTL THAT DO NOT MATCH TO
+;                         CLAIM MSTR
+;                           - ADD NEW FIELD 'PART-DTL-EQUIV-FLAG' IN
+;                         PART-PAID-DTL RECORD
+;                         - SAVE 'X-BAL-FLAG' IN U030_NO_ADJ SUBFILE.
+;     91/DEC/16 M.C.         - ADD SEL IF CONDITION IN MATCH_DTL REQUEST
+;                            - ADD SELECTION AND STORE TWO MORE FIELDS
+;                        IN THE SUBFILE IN SORT_BEFORE_ADJ REQUEST
+;                            - COMMENT THE LINKAGE TO F002-CLMHDR AND
+;                         SOME DEFINE STATEMENTS AND SELECTION
+;                           CONDITION IN  SORT_BEFORE_ADJ REQUEST
+;                        - COMMENT THE LINKAGE TO F002-CLMDTL AND
+;                         SOME DEFINE STATEMENTS AND SELECTION
+;                           CONDITION IN CREATE_B_ADJUSTMENT REQUEST
+;                             - IN CREATE_B_ADJUSTMENT REQUEST, CREATE
+;                         A NEW SUBFILE TO STORE ALL ADJUSTED
+;                            BATCHES
+;                      - ADD A NEW REQUEST TO UPDATE THE ADJUSTED
+;                               BATCHES INTO THE INTERMEDIATE FILE
+;                             PART_ADJ_BATCH
+;     92/MAR/20 M.C.            - PDR 550
+;                              - AGENT 4 CLAIMS GOT PROCESSED IN TAPE,
+;                          MODIFY REQUEST 'EXTRACT-CLAIMS', TO
+;                            UPDATE CLAIMS MSTR AND/OR CREATE
+;                               PART-PAID-HDR FOR AGENT 4 AS WELL
+;
+;     92/AUG/17 M.C.        - TAKE OUT THE SELECTION CRITERIA  IN
+;                            MATCH_DTL REQUEST
+;     93/FEB/19 M.C.         - PDR 560 - WHEN CREATING THE ADJUSTMENT
+;                         USE THE DOC-DEPT INSTEAD OF THE DEPT OF
+;                        THE ORIGINAL CLAIM DEPT
+;
+;     93/AUG/10 M.C.          - PDR 565 - SET THE CLMDTL-LINE-NO
+;
+;     93/SEP/02 M.C.         - SMS 143 - EXTEND THE FILE DEFINITION
+;                                     IN PART-PAID-HDR AND
+;                                   PART-PAID-DTL FILE TO STORE
+;                                    THE NECESSARY INFO FOR RU030B
+;                                  REPORT
+;     94/JAN/06 M.C.          - SMS 144 - INCLUDE THE LOGIC FOR SOCIAL
+;                                   CONTRACT ADJUSTMENT (IE. HOLD
+;                                  BACK OR OVERPAY)
+;     94/FEB/01 M.C.        - COMMENT OUT THE REQUEST 'CREATE_DUMMY_
+;                         SERV_CODE', DO NOT CREATE AUTO ADJUSTMENT
+;                              FOR DUMMY CODE Y999A, REPORT ON THE NEW
+;                        REPORT FOR MANUALLY ADJUSTMENT BY USER
+;     94/FEB/21 M.C.            - SUBTOTAL THE OUTSTANDING BALANCE BY CLAIM
+;                              AND UPDATE TO THE CLAIM HEADER IN A NEW
+;                        SEPARATE REQUEST
+;     94/AUG/03 M.C.         - SMS 146 - CHECK THE APPROPRIATE SOCIAL
+;                                    CONTRACT REDUCTION FACTOR BASED
+;                                        ON THE SERVICE DATE
+;     95/APR/25 M.C.             - PDR 615 - PRESET THE AGENT  OF AUTOMATIC
+;                                         ADJUSTMENT CLAIM TO BE THE SAME
+;                                        AS THE ORIGINAL CLAIM
+;                                - PRESET THE BATCTRL AGENT OF THE
+;                                        AUTOMATIC ADJUSTMENT TO BE THE
+;                                         SAME AS THE LAST CLAIM IN THE
+;                                  BATCH
+;     96/MAR/11 M.C.           - PDR 637 - UPDATE OHIP CLAIM NBR INTO
+;                                     F002-CLAIMS-EXTRA IN PROCEDURE
+;                                         HOLD_CLAIM_STATUS
+;
+;     96/OCT/08 M.C.      - MODIFY REQUEST 'EXTRACT_CLAIMS' TO ADD
+;                         CLMHDR-AGENT-CD IN U030_PAID_AMT SUBFILE
+;                             - MODIFY REQUEST 'UPDATE_CASH_MSTR' TO USE
+;                               CLMHDR-AGENT-CD TO LINK F051-DOC-CASH-MSTR
+;     97/APR/14 YAS.        - PDR 656 - NEW CLINIC 82 - NO AUTO ADJUST
+;     97/AUG/06 YAS.          - PDR 664 - NEW CLINIC 83 - NO AUTO ADJUST
+;     97/DEC/03 M.C.          - PDR 663 - ADD TO LINK TO F099 FILE
+;                             SUBSTITUTE RAT-145-GROUP-NBR WITH X-GROUP-NBR
+;                          FROM REQUEST EXTRACT_CLAIMS AND ONWARD
+;     98/MAR/25 YAS.            - PDR 668 - ADD CLINIC 80
+
+CAN CLEAR
+SET DEFAULT
+SET PROCESS NOLIMIT
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST EDIT_RECORDS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                              ;Edit the account nbrs, make sure they
+                          ;are 8 digits.  If invalid, put them
+                            ;into the unmatch subfile; otherwise
+                            ;put into a good subfile
+
+ACCESS U030-TAPE-145-FILE                                       &
+  LINK 'B', NCONVERT(RAT-145-GROUP-NBR[1:2] + '0' + RAT-145-ACCOUNT-NBR[1:6]), &
+       NCONVERT(RAT-145-ACCOUNT-NBR[7:2]) , '00000', '0'       &
+   TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR,      &
+      KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR OPT &
+  LINK RAT-145-ACCOUNT-NBR TO ACCOUNTING-NBR OF F099-GROUP-CLAIM-MSTR OPT
+DEF X-GROUP-NBR CHAR*2 = RAT-145-GROUP-NBR[1:2]     &
+       IF RECORD F002-CLAIMS-MSTR EXISTS       &
+   ELSE ASCII(CLAIM-ID OF F099-GROUP-CLAIM-MSTR,11)[1:2] &
+     IF RECORD F099-GROUP-CLAIM-MSTR EXISTS
+
+DEFINE GOOD-REC CHAR*1 = 'Y'                      &
+       IF MATCHPATTERN(RAT-145-ACCOUNT-NBR,'########') &
+       ELSE 'N'
+
+DEFINE X-TYPE CHAR*1 = 'H'
+DEFINE X-OMA-FOUND CHAR*1  = ' '
+DEFINE X-TECH-AMT INT*7 SIGNED = 0
+DEFINE X-PROF-AMT INT*7 SIGNED = 0
+
+;SUBFILE U030_GOOD_145_REC KEEP IF GOOD-REC = 'Y' &
+SUBFILE U030_GOOD_145_REC      IF GOOD-REC = 'Y' &
+;    INCLUDE U030-TAPE-145-FILE
+      INCLUDE U030-TAPE-145-FILE, X-GROUP-NBR
+
+SUBFILE U030_UNMATCH KEEP IF GOOD-REC = 'N' &
+;   INCLUDE U030-TAPE-145-FILE, X-TYPE, X-OMA-FOUND, &
+      INCLUDE U030-TAPE-145-FILE, X-GROUP-NBR, X-TYPE, X-OMA-FOUND, &
+         X-TECH-AMT, X-PROF-AMT
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST SORT_GOOD_RECORDS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                                ; sort the record by account nbr from
+                           ; food subfile
+
+ACCESS *U030_GOOD_145_REC
+
+;SORT ON RAT-145-ACCOUNT-NBR ON RAT-145-EXPLAN-CD
+SORT ON X-GROUP-NBR ON RAT-145-ACCOUNT-NBR ON RAT-145-EXPLAN-CD
+
+SUBFILE U030_SORT_145_FILE KEEP INCLUDE U030_GOOD_145_REC
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST EXTRACT_CLAIMS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                      ; Extract all claims into match and unmatch
+                      ; subfiles.  For the match claims, update the
+                   ; amount paid to CLAIMS MSTR. Summarize total
+                   ; amount paid. Create partially paid claims
+                     ; into PART_PAID_HDR file.
+                
+
+ACCESS *U030_SORT_145_FILE                                      &
+  LINK 'B', NCONVERT(X-GROUP-NBR + '0' + RAT-145-ACCOUNT-NBR[1:6]), &
+  NCONVERT(RAT-145-ACCOUNT-NBR[7:2]) , '00000', '0'       &
+   TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR,      &
+      KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR OPTIONAL
+
+SORTED ON RAT-145-ACCOUNT-NBR
+
+DEFINE X-TYPE CHAR*1 = 'H'
+DEFINE X-OMA-FOUND CHAR*1 = 'Y'
+DEFINE X-TECH-AMT INT*7 SIGNED = 0
+DEFINE X-PROF-AMT INT*7 SIGNED = 0
+
+DEF X-OUT-BAL INT*7 SIGNED =   CLMHDR-MANUAL-AND-TAPE-PAYMENTS &
+         + CLMHDR-TOT-CLAIM-AR-OHIP
+
+DEF X-BAL-DUE CHAR*1 = 'Y' IF X-OUT-BAL <> 0
+
+DEF X-RAT-145-AMT-PAID INT*7 SIGNED = RAT-145-AMT-PAID * -1
+
+TEMP X-TOT-AMT-PAID INT*7 SIGNED
+   ITEM X-TOT-AMT-PAID SUBTOTAL RAT-145-AMT-PAID              &
+       IF (RECORD F002-CLAIMS-MSTR EXISTS AND                  &
+         (CLMHDR-AGENT-CD = 0 OR CLMHDR-AGENT-CD = 2           &
+               OR CLMHDR-AGENT-CD = 4))                        &
+       RESET AT RAT-145-ACCOUNT-NBR
+
+TEMP X-TOT-AMT-BILL INT*7 SIGNED
+   ITEM X-TOT-AMT-BILL SUBTOTAL RAT-145-AMOUNT-SUB          &
+       IF (RECORD F002-CLAIMS-MSTR EXISTS AND                  &
+         (CLMHDR-AGENT-CD = 0 OR CLMHDR-AGENT-CD = 2           &
+               OR CLMHDR-AGENT-CD = 4))                        &
+       RESET AT RAT-145-ACCOUNT-NBR
+
+SUBFILE U030_DTL KEEP                                               &
+   IF (RECORD F002-CLAIMS-MSTR EXISTS AND                              &
+      (CLMHDR-AGENT-CD = 0 OR CLMHDR-AGENT-CD = 2              &
+               OR CLMHDR-AGENT-CD = 4))                        &
+   INCLUDE U030_SORT_145_FILE
+
+SUBFILE U030_UNMATCH APPEND                                       &
+   IF   (NOT RECORD F002-CLAIMS-MSTR EXISTS                    &
+     OR  (CLMHDR-AGENT-CD <> 0 AND CLMHDR-AGENT-CD <> 2        &
+               AND CLMHDR-AGENT-CD <> 4))                      &
+   INCLUDE U030_SORT_145_FILE, X-TYPE, X-OMA-FOUND,            &
+          X-TECH-AMT, X-PROF-AMT
+
+OUTPUT PART-PAID-HDR ADD ON ERRORS REPORT                       &
+        AT RAT-145-ACCOUNT-NBR IF (X-BAL-DUE = 'Y'            &
+       AND  RECORD F002-CLAIMS-MSTR EXISTS AND                 &
+       (CLMHDR-AGENT-CD = 0 OR CLMHDR-AGENT-CD = 2             &
+               OR CLMHDR-AGENT-CD = 4))                
+   ITEM  PART-HDR-CLINIC-NBR INITIAL                            &
+       NCONVERT(X-GROUP-NBR OF U030_SORT_145_FILE)
+   ITEM  PART-HDR-CLAIM-NBR INITIAL                          &
+               NCONVERT(RAT-145-ACCOUNT-NBR OF U030_SORT_145_FILE)
+   ITEM  PART-HDR-AMT-BILL  INITIAL CLMHDR-TOT-CLAIM-AR-OHIP
+   ITEM  PART-HDR-AMT-PAID  FINAL   X-TOT-AMT-PAID
+   ITEM  PART-HDR-OHIP-BILL FINAL   X-TOT-AMT-BILL
+   ITEM  PART-HDR-LAST-NAME INITIAL RAT-145-LAST-NAME OF U030_SORT_145_FILE &
+        IF RAT-145-LAST-NAME OF U030_SORT_145_FILE <> ' '       &
+      ELSE CLMHDR-PAT-ACRONYM[1:6]
+   ITEM  PART-HDR-FIRST-NAME INITIAL RAT-145-FIRST-NAME OF U030_SORT_145_FILE &
+      IF RAT-145-FIRST-NAME OF U030_SORT_145_FILE <> ' '      &
+      ELSE CLMHDR-PAT-ACRONYM[7:3]
+   ITEM  PART-HDR-OHIP-CLM-NBR INITIAL RAT-145-CLAIM-NBR OF U030_SORT_145_FILE
+   ITEM  PART-HDR-VERSION-CD INITIAL RAT-145-VERSION-CD OF U030_SORT_145_FILE
+   ITEM  PART-HDR-PAY-PGM INITIAL RAT-145-PAY-PROG OF U030_SORT_145_FILE
+   ITEM  PART-HDR-REGISTER-NBR INITIAL RAT-145-HEALTH-OHIP-NBR OF U030_SORT_145_FILE
+   ITEM  PART-HDR-EXPLAN-CD FINAL RAT-145-EXPLAN-CD OF U030_SORT_145_FILE
+
+OUTPUT F002-CLAIMS-MSTR UPDATE ON ERRORS REPORT              &
+       AT RAT-145-ACCOUNT-NBR                                  &
+       IF (RECORD F002-CLAIMS-MSTR EXISTS AND                  &
+       (CLMHDR-AGENT-CD = 0 OR CLMHDR-AGENT-CD = 2             &
+               OR CLMHDR-AGENT-CD = 4))                
+   ITEM CLMHDR-MANUAL-AND-TAPE-PAYMENTS                         &       
+        SUBTOTAL X-RAT-145-AMT-PAID
+   ITEM CLMHDR-DATE-CASH-TAPE-PAYMENT FINAL ASCII(SYSDATE,6)
+   ITEM CLMHDR-STATUS-OHIP          FINAL PART-HDR-EXPLAN-CD
+
+
+SUBFILE U030_PAID_AMT KEEP AT RAT-145-ACCOUNT-NBR            &
+       IF (RECORD F002-CLAIMS-MSTR EXISTS AND                  &
+          (CLMHDR-AGENT-CD = 0 OR CLMHDR-AGENT-CD = 2          &
+               OR CLMHDR-AGENT-CD = 4))                        &
+INCLUDE X-GROUP-NBR OF U030_SORT_145_FILE,             &
+       RAT-145-ACCOUNT-NBR OF U030_SORT_145_FILE,              &
+       CLMHDR-DOC-DEPT, CLMHDR-LOC,                            &
+       X-TOT-AMT-PAID, X-TOT-AMT-BILL, CLMHDR-AGENT-CD
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST SPLIT_CLAIMS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                      ; Extract all claims into fully and partially
+               ; paid subfiles.
+
+ACCESS *U030_PAID_AMT LINK (X-GROUP-NBR + '0' +   &
+       RAT-145-ACCOUNT-NBR) TO PART-HDR-CLAIM-ID OF PART-PAID-HDR OPT
+
+SUBFILE U030_FULLY_PAID KEEP IF NOT RECORD PART-PAID-HDR EXISTS &
+ INCLUDE U030_PAID_AMT
+
+SUBFILE U030_PARTIALLY_PAID KEEP IF RECORD PART-PAID-HDR EXISTS &
+  INCLUDE U030_PAID_AMT
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST UPDATE_CASH_MSTR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                ; Update Doctor Cash File
+
+
+ACCESS *U030_PAID_AMT                                            
+
+
+OUTPUT F051-DOC-CASH-MSTR ADD UPDATE ON ERRORS REPORT           &
+        VIAINDEX DOCASH-KEY USING                              &       
+   X-GROUP-NBR + ASCII(CLMHDR-DOC-DEPT,2) +             &
+;  RAT-145-ACCOUNT-NBR[1:3] + CLMHDR-LOC + '0' - 96/10/08
+   RAT-145-ACCOUNT-NBR[1:3] + CLMHDR-LOC + ASCII(CLMHDR-AGENT-CD,1)
+   ITEM  DOCASH-MTD-IN-REC SUBTOTAL X-TOT-AMT-PAID
+   ITEM  DOCASH-YTD-IN-REC SUBTOTAL X-TOT-AMT-PAID
+   ITEM  DOCASH-MTD-IN-SVC INITIAL 0
+   ITEM  DOCASH-YTD-IN-SVC INITIAL 0
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST CREATE_ISAM_DTL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                        ; Create partially paid claim details
+                  ; Add the sort stmt on 94/01/07
+                 ; Create one record per ohip code
+                       ; 94/08/03 - update PART-HDR-SERV-DATE
+
+
+ACCESS *U030_DTL                                                  &
+   LINK (X-GROUP-NBR + '0' +   RAT-145-ACCOUNT-NBR)    &
+   VIAINDEX PART-HDR-CLAIM-ID TO PART-PAID-HDR
+
+SORT ON PART-HDR-CLAIM-ID ON RAT-145-SERVICE-CD ON RAT-145-EXPLAN-CD
+
+;OUTPUT PART-PAID-DTL ADD ON ERRORS REPORT
+OUTPUT PART-PAID-DTL ADD AT RAT-145-SERVICE-CD ON ERRORS REPORT
+   ITEM PART-DTL-CLINIC-NBR INITIAL NCONVERT(X-GROUP-NBR)
+   ITEM PART-DTL-CLAIM-NBR INITIAL NCONVERT(RAT-145-ACCOUNT-NBR)
+   ITEM PART-DTL-OMA-CD    INITIAL RAT-145-SERVICE-CD
+;  ITEM PART-DTL-AMT-BILL  INITIAL RAT-145-AMOUNT-SUB
+;  ITEM PART-DTL-AMT-PAID  INITIAL RAT-145-AMT-PAID
+   ITEM PART-DTL-AMT-BILL  SUBTOTAL RAT-145-AMOUNT-SUB
+   ITEM PART-DTL-AMT-PAID  SUBTOTAL RAT-145-AMT-PAID
+;  ITEM PART-DTL-EXPLAN-CD INITIAL RAT-145-EXPLAN-CD
+   ITEM PART-DTL-EXPLAN-CD FINAL   RAT-145-EXPLAN-CD
+   ITEM PART-DTL-SERV-DATE INITIAL RAT-145-SERVICE-DATE
+   ITEM PART-DTL-EQUIV-FLAG INITIAL ' '
+;  ITEM PART-DTL-NBR-SERV INITIAL RAT-145-NBR-OF-SERV
+   ITEM PART-DTL-NBR-SERV SUBTOTAL RAT-145-NBR-OF-SERV
+
+OUTPUT PART-PAID-HDR UPDATE  AT PART-HDR-CLAIM-ID ON ERRORS REPORT
+   ITEM PART-HDR-SERV-DATE FINAL RAT-145-SERVICE-DATE
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST MATCH_CLMDTL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                   ; Check if every rat dtl matches to claims mstr file.
+                  ; If no match, put into the subfile, so they can
+                ; try to match with equivalence table in next request
+
+ACCESS PART-PAID-DTL                                    &
+   LINK 'B', NCONVERT(PART-DTL-CLAIM-ID[1:9]),         &
+        NCONVERT(PART-DTL-CLAIM-ID[10:2]),             &
+        PART-DTL-OMA-CD, '0'                           &
+    TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,              &
+        KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE,          &
+        KEY-CLM-ADJ-NBR   OF F002-CLAIMS-MSTR  OPTIONAL
+
+SEL IF NOT RECORD F002-CLAIMS-MSTR EXISTS
+       
+SUBFILE U030_NOMATCH_DTL KEEP INCLUDE PART-PAID-DTL
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST MATCH_EQUIV_TABLE ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                   ; Match rat detail with equiv table. If match, update
+              ; PART-PAID-DTL record with the equivalence oma code
+            ; and set equiv flag.  If no match, put into subfile.
+
+ACCESS *U030_NOMATCH_DTL                                &
+       LINK PART-DTL-OMA-CD TO ORIG-OMA-CODE OF F098-EQUIV-OMA-CODE-MSTR OPTIONAL
+
+OUTPUT PART-PAID-DTL UPDATE IF RECORD F098-EQUIV-OMA-CODE-MSTR EXISTS &
+       VIA PART-DTL-CLINIC-NBR, PART-DTL-CLAIM-NBR,            &
+           PART-DTL-OMA-CD                                     &
+      USING PART-DTL-CLINIC-NBR OF U030_NOMATCH_DTL,           &
+            PART-DTL-CLAIM-NBR  OF U030_NOMATCH_DTL,           &
+            PART-DTL-OMA-CD     OF U030_NOMATCH_DTL            &
+      ON ERRORS REPORT
+   ITEM PART-DTL-OMA-CD OF PART-PAID-DTL FINAL EQUIV-OMA-CODE
+   ITEM PART-DTL-EQUIV-FLAG OF PART-PAID-DTL FINAL '?'
+
+SUBFILE U030_NO_EQUIV KEEP                                    &
+       IF NOT RECORD F098-EQUIV-OMA-CODE-MSTR EXISTS           &
+       INCLUDE U030_NOMATCH_DTL
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST DETERMINE_ADJUSTMENT ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                             ; Determine if automatic 'B' Adjustment
+                            ; is to be generated
+                            ; Automatic adjustment if balance is
+                            ; less than $1.00 for overpayment and
+                           ; underpayment
+                          ; 94/01/08 - Consider the Social contract
+                       ; adjustment, create a new holdback subfile
+                             ; and overpay subfile
+                           ; 94/08/03 - add linkage to SOCIAL-CONTRACT
+                             ; -FACTOR file, select the correct factor
+                       ; based on the service date
+
+ACCESS PART-PAID-HDR                                                 &
+  LINK NCONVERT(PART-HDR-CLAIM-ID[1:2]) TO ICONST-MSTR-REC     &
+  LINK PART-HDR-EXPLAN-CD TO RAT-CODE OF F096-OHIP-PAY-CODE OPT &
+ LINK NCONVERT(PART-HDR-CLAIM-ID[1:2]) TO SOCIAL-CONTRACT-FACTOR
+
+SEL IF  PART-HDR-SERV-DATE GE CONST-SERV-DATE-FROM &
+    AND PART-HDR-SERV-DATE LE CONST-SERV-DATE-TO
+
+
+DEF X-PART-BAL INT*7 SIGNED = PART-HDR-AMT-BILL - PART-HDR-AMT-PAID
+
+DEF X-OVER CHAR*1 = 'Y' IF X-PART-BAL < 0 ELSE ' '
+
+DEF X-UNDER CHAR*1 = 'Y' IF X-PART-BAL > 0 ELSE ' '
+
+DEF X-PART-BAL-DIFF INT*7 SIGNED = X-PART-BAL * -1 IF X-OVER = 'Y' &
+ ELSE X-PART-BAL
+
+DEF X-BAL-FLAG CHAR*1 = 'Y'                              &
+     IF  PART-HDR-OHIP-BILL = PART-HDR-AMT-BILL                &
+     ELSE 'N'
+
+DEF X-AUTO-ADJ CHAR*1 = 'Y'                               &
+   IF   (X-PART-BAL-DIFF LE 99)                                &
+   OR  ((X-OVER = 'Y' AND PART-HDR-EXPLAN-CD = ' '     &
+     AND X-PART-BAL-DIFF LE ICONST-CLINIC-OVER-LIM1)   &
+   OR   (X-OVER = 'Y' AND PART-HDR-EXPLAN-CD <> ' '    &
+     AND X-PART-BAL-DIFF LE ICONST-CLINIC-OVER-LIM4)   &
+   OR   (X-UNDER = 'Y' AND PART-HDR-AMT-PAID <> 0      &
+     AND X-PART-BAL-DIFF LE ICONST-CLINIC-UNDER-LIM2)  &
+   OR   (X-UNDER = 'Y' AND RECORD F096-OHIP-PAY-CODE EXISTS &
+     AND X-PART-BAL-DIFF LE ICONST-CLINIC-UNDER-LIM3)   &
+   AND  (X-BAL-FLAG = 'Y'))
+
+;DEF X-RED-AMOUNT INT*4 = PART-HDR-AMT-BILL * ICONST-REDUCTION-FACTOR &
+DEF X-RED-AMOUNT INT*4 = PART-HDR-AMT-BILL * CONST-REDUCTION-FACTOR &
+                   / 10000
+
+DEF X-FROM-RED-RANGE INT*6 = X-RED-AMOUNT - 5 IF X-RED-AMOUNT <> 0
+DEF X-TO-RED-RANGE INT*6 = X-RED-AMOUNT + 5 IF X-RED-AMOUNT <> 0
+
+;DEF X-OVER-AMOUNT INT*6  = PART-HDR-AMT-BILL * ICONST-OVERPAY-FACTOR &
+DEF X-OVER-AMOUNT INT*6  = PART-HDR-AMT-BILL * CONST-OVERPAY-FACTOR &
+                   / 10000
+
+DEF X-FROM-OVER-RANGE INT*6 = X-OVER-AMOUNT - 5 IF X-OVER-AMOUNT <> 0
+DEF X-TO-OVER-RANGE INT*6 = X-OVER-AMOUNT + 5 IF X-OVER-AMOUNT <> 0
+
+DEF X-HOLD-BACK CHAR*1 = 'Y'                            &
+       IF X-PART-BAL GE X-FROM-RED-RANGE  AND          &
+          X-PART-BAL LE X-TO-RED-RANGE    AND          &
+          PART-HDR-PAY-PGM = 'HCP'        AND          &
+          X-UNDER = 'Y'                                &
+     ELSE  'N'
+
+DEF X-OVER-PAY  CHAR*1 = 'Y'                             &
+       IF X-PART-BAL-DIFF GE X-FROM-OVER-RANGE AND     &
+          X-PART-BAL-DIFF LE X-TO-OVER-RANGE AND       &
+          PART-HDR-PAY-PGM = 'HCP'        AND          &
+          X-OVER = 'Y'                                 &
+     ELSE  'N'
+
+DEF X-ADJ-SERV-CODE CHAR*5 = 'Y900A' IF X-HOLD-BACK = 'Y' &
+                      ELSE 'Y901A' IF X-OVER-PAY  = 'Y'
+
+SUBFILE U030_AUTO_ADJ KEEP IF X-AUTO-ADJ = 'Y'          &
+                      AND   X-HOLD-BACK = 'N'         &
+                       AND   X-OVER-PAY  = 'N'         &
+                       AND PART-HDR-CLAIM-ID[1:2] NE "80"      &
+                       AND PART-HDR-CLAIM-ID[1:2] NE "81"      &
+                       AND PART-HDR-CLAIM-ID[1:2] NE "82"      &
+                       AND PART-HDR-CLAIM-ID[1:2] NE "83"      &
+;  INCLUDE U030_HIGH_OMA_CD
+   INCLUDE PART-PAID-HDR, X-BAL-FLAG, X-PART-BAL
+
+SUBFILE U030_NO_ADJ KEEP IF (X-AUTO-ADJ <> 'Y'              &
+                       AND   X-HOLD-BACK = 'N'         &
+                       AND   X-OVER-PAY  = 'N')        &
+                       OR PART-HDR-CLAIM-ID[1:2] = "80"        &
+                       OR PART-HDR-CLAIM-ID[1:2] = "81"        &
+                       OR PART-HDR-CLAIM-ID[1:2] = "82"        &
+                       OR PART-HDR-CLAIM-ID[1:2] = "83"        &
+;  INCLUDE U030_HIGH_OMA_CD, X-BAL-FLAG
+   INCLUDE PART-PAID-HDR, X-BAL-FLAG
+
+SUBFILE U030_HOLDBACK KEEP IF X-HOLD-BACK = 'Y'             &
+   INCLUDE PART-PAID-HDR, X-BAL-FLAG
+
+SUBFILE U030_OVERPAY  KEEP IF X-OVER-PAY  = 'Y'            &
+   INCLUDE PART-PAID-HDR, X-BAL-FLAG
+
+SUBFILE U030_TOT_CLAIMS KEEP                               &
+;  INCLUDE U030_HIGH_OMA_CD, X-AUTO-ADJ, X-BAL-FLAG
+   INCLUDE PART-PAID-HDR, X-AUTO-ADJ, X-BAL-FLAG,       &
+           X-HOLD-BACK, X-OVER-PAY, X-ADJ-SERV-CODE, X-PART-BAL
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST SUMM_CLAIM_SERV_CODE ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                       ; Summarize duplicate ohip code details
+                 ; into one record per claim
+
+ACCESS *U030_AUTO_ADJ                                &
+   LINK 'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),         &
+        NCONVERT(PART-HDR-CLAIM-ID[10:2])              &
+    TO  KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR &
+        OF F002-CLAIMS-MSTR
+
+SEL IF CLMDTL-OMA-CD <> '0000' AND CLMDTL-OMA-CD <> 'ZZZZ' &
+  AND  CLMDTL-ADJ-NBR = 0
+
+SORTED ON PART-HDR-CLAIM-ID ON KEY-CLM-SERV-CODE
+
+TEMP X-AMT-BILLED INT*7
+   ITEM X-AMT-BILLED = X-AMT-BILLED + CLMDTL-FEE-OHIP       &
+               RESET AT KEY-CLM-SERV-CODE
+
+SUBFILE U030_SUMM_SERV_CODE KEEP AT KEY-CLM-SERV-CODE   &
+   INCLUDE X-AMT-BILLED, KEY-CLM-SERV-CODE,          &
+          PART-HDR-CLAIM-ID, PART-HDR-CLAIM-NBR,       &
+          PART-HDR-CLINIC-NBR, CLMDTL-DIAG-CD,         &
+          CLMDTL-SV-DATE, CLMDTL-LINE-NO, X-PART-BAL
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST MATCH_DTL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                   ; Match paid detail and claim detail, calculate
+                  ; the difference in payment for each match detail
+               ; 91/12/16 - Select claim detail which has the
+                  ; balance not equal to 0
+
+
+;ACCESS PART-PAID-HDR                                        &
+;  LINK 'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),                 &
+;              NCONVERT(PART-HDR-CLAIM-ID[10:2])       &
+;   TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,              &
+;       KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR          &
+ACCESS *U030_SUMM_SERV_CODE                            &
+   LINK  PART-HDR-CLINIC-NBR, PART-HDR-CLAIM-NBR, KEY-CLM-SERV-CODE &
+    TO   PART-DTL-CLINIC-NBR, PART-DTL-CLAIM-NBR, PART-DTL-OMA-CD   &
+      OF PART-PAID-DTL OPTIONAL
+
+SORTED ON PART-HDR-CLAIM-ID
+
+;DEF X-BAL-DIFF INT*7 SIGNED = CLMDTL-FEE-OHIP - PART-DTL-AMT-PAID
+DEF X-BAL-DIFF INT*7 SIGNED = X-AMT-BILLED  - PART-DTL-AMT-PAID
+
+TEMP X-SEL-DTL
+ITEM X-SEL-DTL = X-SEL-DTL + 1 IF X-BAL-DIFF <> 0 AND   &
+   RECORD PART-PAID-DTL EXIST RESET AT PART-HDR-CLAIM-ID
+
+TEMP X-TOT-BAL
+ITEM X-TOT-BAL = X-TOT-BAL + X-BAL-DIFF IF X-BAL-DIFF <> 0 AND   &
+   RECORD PART-PAID-DTL EXIST RESET AT PART-HDR-CLAIM-ID
+
+DEF X-ADJ-SERV-CODE CHAR*5 = KEY-CLM-SERV-CODE
+
+;Select all Claim detail records except adjustment one
+;SEL F002-CLAIMS-MSTR IF CLMDTL-OMA-CD <> '0000'               &
+;                   AND CLMDTL-OMA-CD <> 'ZZZZ'                &
+;          AND CLMDTL-ADJ-NBR = 0              
+
+; 91/12/16 - add the following selection
+;SEL IF X-BAL-DIFF <> 0  - TAKE THIS SELECT OUT ON 92/08/17 BY MC.
+
+SUBFILE U030_AUTO_ADJDTL KEEP IF X-BAL-DIFF <> 0 AND      &
+    RECORD PART-PAID-DTL EXIST                             &
+;   PART-PAID-HDR, PART-PAID-DTL, KEY-CLM-SERV-CODE, X-BAL-DIFF
+   INCLUDE X-ADJ-SERV-CODE,                             &
+          PART-HDR-CLAIM-ID,                           &
+          CLMDTL-DIAG-CD,                              &
+          CLMDTL-SV-DATE, CLMDTL-LINE-NO, X-BAL-DIFF,  &
+          PART-DTL-EXPLAN-CD
+
+SUBFILE U030_NO_ADJCLM_CREATED KEEP AT PART-HDR-CLAIM-ID &
+   INCLUDE X-ADJ-SERV-CODE,                              &
+          PART-HDR-CLAIM-ID OF U030_SUMM_SERV_CODE,     &
+           CLMDTL-DIAG-CD OF U030_SUMM_SERV_CODE,        &
+       CLMDTL-SV-DATE OF U030_SUMM_SERV_CODE,        &
+         CLMDTL-LINE-NO OF U030_SUMM_SERV_CODE,       &
+          PART-DTL-EXPLAN-CD OF PART-PAID-DTL,         &
+          X-PART-BAL OF U030_SUMM_SERV_CODE,           &
+           X-TOT-BAL, X-SEL-DTL
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;REQUEST CREATE_DUMMY_SERV_CODE
+                           ; FOR THE CLAIMS THAT DO NOT HAVE ANY
+                           ; MATCHING DETAIL, OR THE CLAIMS THAT
+                           ; STILL HAVE THE REMAINING BALANCE,
+                             ; CREATE THE ADJUSTMENT CLMDTL WITH
+                             ; THE DUMMY OHIP CODE 'Y999A'.
+
+;ACCESS *U030_NO_ADJCLM_CREATED
+
+;DEF X-BAL-DIFF INT*7 SIGNED = X-PART-BAL  - X-TOT-BAL
+;DEF X-SERV-CODE CHAR*5 = 'Y999A'
+
+;SEL IF X-SEL-DTL = 0  OR (X-BAL-DIFF <> 0 AND X-SEL-DTL > 0)
+
+;SUBFILE U030_AUTO_ADJDTL APPEND                       &
+;  INCLUDE X-SERV-CODE,                                        &
+;         PART-HDR-CLAIM-ID,                           &
+;         CLMDTL-DIAG-CD,                              &
+;         CLMDTL-SV-DATE, CLMDTL-LINE-NO,              &
+;         X-BAL-DIFF, PART-DTL-EXPLAN-CD
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST GEN_HOLDBACK_OVERPAY_DTL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+
+ACCESS *U030_TOT_CLAIMS                               &
+   LINK 'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),                 &
+               NCONVERT(PART-HDR-CLAIM-ID[10:2])       &
+    TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,              &
+        KEY-CLM-CLAIM-NBR OF F002-CLAIMS-MSTR          &
+   LINK  PART-HDR-CLINIC-NBR, PART-HDR-CLAIM-NBR,      &
+        KEY-CLM-SERV-CODE                              &
+    TO   PART-DTL-CLINIC-NBR, PART-DTL-CLAIM-NBR,       &
+       PART-DTL-OMA-CD OF PART-PAID-DTL OPTIONAL
+
+;Select all Claim detail records except adjustment one
+SEL F002-CLAIMS-MSTR IF CLMDTL-OMA-CD <> '0000'         &
+                    AND CLMDTL-OMA-CD <> 'ZZZZ'                &
+                   AND CLMDTL-ADJ-NBR = 0              &
+                   AND (X-HOLD-BACK = 'Y' OR X-OVER-PAY = 'Y')
+
+DEFINE X-DTL-BAL-DIFF INT*7 SIGNED = CLMDTL-FEE-OHIP - PART-DTL-AMT-PAID
+DEFINE X-BAL-DIFF INT*7 SIGNED = X-PART-BAL
+
+SUBFILE U030_PAID_DIFF KEEP                           &
+   INCLUDE X-ADJ-SERV-CODE,                                    &
+          PART-HDR-CLAIM-ID,                           &
+          CLMDTL-DIAG-CD,                              &
+          CLMDTL-SV-DATE, CLMDTL-LINE-NO,              &
+          X-BAL-DIFF, X-DTL-BAL-DIFF, PART-DTL-EXPLAN-CD
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST SORT_BY_DIFF_BAL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                         ; Extract the Oma Code with the highest
+                        ; outstanding balance
+
+ACCESS *U030_PAID_DIFF
+
+SORT ON PART-HDR-CLAIM-ID ON X-DTL-BAL-DIFF
+
+SUBFILE U030_AUTO_ADJDTL APPEND  AT PART-HDR-CLAIM-ID    &
+   INCLUDE X-ADJ-SERV-CODE,                                    &
+          PART-HDR-CLAIM-ID,                           &
+          CLMDTL-DIAG-CD,                              &
+          CLMDTL-SV-DATE, CLMDTL-LINE-NO,              &
+          X-BAL-DIFF, PART-DTL-EXPLAN-CD
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;REQUEST SORT_BEFORE_ADJ ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                      ;91/12/16 - Comment out the linkage to F002-
+                    ; CLMHDR and define and selection statements
+                    ; Add the sorted Statement, create only one
+                     ; record per claim, this will prevent multiple
+                  ; records for the same claim.
+                   ; Store CLMDTL-DIAG-CD and CLMDTL-SV-DATE in
+                    ; the subfile
+
+
+;ACCESS *U030_AUTO_ADJ                                     &
+;  LINK 'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),                 &
+;       NCONVERT(PART-HDR-CLAIM-ID[10:2]),             &
+;       KEY-CLM-SERV-CODE OF U030_AUTO_ADJ, '0'        &
+;   TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,              &
+;       KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR &
+;        OF F002-CLAIMS-MSTR ALIAS F002-CLMDTL          
+
+
+;SORTED ON PART-HDR-CLAIM-ID
+
+;SUBFILE U030_SRT_DTL KEEP AT PART-HDR-CLAIM-ID INCLUDE  &
+; U030_AUTO_ADJ, CLMDTL-DIAG-CD, CLMDTL-SV-DATE, CLMDTL-LINE-NO
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST CALC_BATCH_NBR ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+
+ACCESS *U030_AUTO_ADJDTL
+
+SORT ON PART-HDR-CLAIM-ID ON X-ADJ-SERV-CODE
+
+TEMP X-COUNT
+  ITEM X-COUNT COUNT
+
+TEMP X-BATCH-COUNT
+  ITEM X-BATCH-COUNT = CEILING(X-COUNT / 99)
+
+TEMP X-CLAIM-BAL INT*7 SIGNED
+  ITEM X-CLAIM-BAL = X-CLAIM-BAL + X-BAL-DIFF &
+                RESET AT PART-HDR-CLAIM-ID
+
+SUBFILE U030_SRT_ADJ KEEP INCLUDE                         &
+        U030_AUTO_ADJDTL,  X-COUNT, X-BATCH-COUNT
+
+SUBFILE U030_UPDATE_CLMHDR KEEP AT PART-HDR-CLAIM-ID INCLUDE &
+    PART-HDR-CLAIM-ID OF U030_AUTO_ADJDTL, X-CLAIM-BAL
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST CREATE_B_ADJUSTMENT ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                            ; Create a batch control record for every
+                          ; 99 claim. Create a clmhdr and a clmdtl
+                        ; record, and inverted clmdtl key to the
+                        ; each adjusting clmdtl record in the
+                           ; subfile. At the end of the request,
+                           ; update the batch nbr in Constant Mstr
+                         ; Note:  Create adjustment only if the
+                          ;        Rma Billed = Ohip Billed
+                       ; 91/12/16 - Comment out the linkage to
+                         ; F002-CLMDTL, some define statements and
+                       ; selection statement.  Create a new subfile
+                            ; that store all adjusted batches.
+                      ; 93/02/19 - link to doctor master to use
+                       ; the department instead of from claims
+
+
+ACCESS *U030_SRT_ADJ                                 &
+   LINK  'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),        &
+        NCONVERT(PART-HDR-CLAIM-ID[10:2]), '00000', '0' &
+    TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,             &
+        KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR &
+         OF F002-CLAIMS-MSTR ALIAS F002-CLMHDR          &
+  LINK   NCONVERT(PART-HDR-CLAIM-ID[4:3])              &
+   TO    DOC-NBR OF F020-DOCTOR-MSTR                   &
+   AND   NCONVERT(PART-HDR-CLAIM-ID[1:2]) TO ICONST-MSTR-REC
+
+SORTED ON X-BATCH-COUNT ON PART-HDR-CLAIM-ID
+
+
+TEMP X-BATCH-NBR INT*6
+  ITEM X-BATCH-NBR = ICONST-CLINIC-BATCH-NBR + X-BATCH-COUNT   &
+        AT X-BATCH-COUNT                          &
+               RESET AT INITIAL TO  ICONST-CLINIC-BATCH-NBR
+
+DEFINE X-CLINIC-BATCH-NBR INT*9 =                  &
+       NCONVERT(PART-HDR-CLAIM-ID[1:2] +               &
+                ASCII(X-BATCH-NBR,7))
+
+DEFINE X-MOD       = MOD(X-COUNT,99)
+
+DEFINE X-CLAIM-NBR = X-MOD IF X-MOD <> 0 ELSE 99
+
+DEFINE X-OHIP-BAL INT*7 SIGNED =                      &
+;      (PART-HDR-AMT-BILL - PART-HDR-AMT-PAID) * -1
+    X-BAL-DIFF * -1
+
+DEFINE X-TOT-CLAIM-AR-OMA INT*7 SIGNED =         &
+  ROUND((CLMHDR-TOT-CLAIM-AR-OMA OF F002-CLMHDR /      &
+        CLMHDR-TOT-CLAIM-AR-OHIP OF F002-CLMHDR) * X-OHIP-BAL)
+
+DEFINE X-AMT-TECH-BILLED  INT*7 SIGNED =         &
+  ROUND((CLMHDR-AMT-TECH-BILLED  OF F002-CLMHDR /      &
+        CLMHDR-TOT-CLAIM-AR-OHIP OF F002-CLMHDR) * X-OHIP-BAL)
+
+OUTPUT F001-BATCH-CONTROL-FILE ADD AT X-BATCH-COUNT ON ERRORS REPORT
+   ITEM BATCTRL-BATCH-NBR       INITIAL X-CLINIC-BATCH-NBR
+   ITEM BATCTRL-BATCH-TYPE            INITIAL 'A'
+   ITEM BATCTRL-CLINIC-NBR         INITIAL ICONST-CLINIC-NBR
+   ITEM BATCTRL-ADJ-CD                   INITIAL 'B'
+   ITEM BATCTRL-DATE-BATCH-ENTERED INITIAL ASCII(SYSDATE,6)
+   ITEM BATCTRL-DATE-PERIOD-END    INITIAL ASCII(ICONST-DATE-PERIOD-END,6)
+   ITEM BATCTRL-CYCLE-NBR       INITIAL ICONST-CLINIC-CYCLE-NBR
+   ITEM BATCTRL-AR-YY-MM         INITIAL '0000'
+   ITEM BATCTRL-ADJ-CD-SUB-TYPE    INITIAL 'A'
+   ITEM BATCTRL-NBR-CLAIMS-IN-BATCH FINAL X-CLAIM-NBR
+   ITEM BATCTRL-LAST-CLAIM-NBR      FINAL X-CLAIM-NBR
+   ITEM BATCTRL-BATCH-STATUS       FINAL "1"
+   ITEM BATCTRL-AMT-ACT             SUBTOTAL X-OHIP-BAL
+   ITEM BATCTRL-AMT-EST             SUBTOTAL X-OHIP-BAL
+   ITEM BATCTRL-CALC-AR-DUE         SUBTOTAL X-OHIP-BAL
+   ITEM BATCTRL-CALC-TOT-REV        SUBTOTAL X-OHIP-BAL
+   ITEM BATCTRL-AGENT-CD           FINAL CLMHDR-AGENT-CD OF F002-CLMHDR
+
+
+OUTPUT F002-CLAIMS-MSTR ALIAS F002-ADJ-HDR ADD NOITEMS ON ERRORS REPORT
+;Preset claim header data from batctrl record
+   ITEM KEY-CLM-TYPE                   INITIAL 'B'
+   ITEM KEY-CLM-BATCH-NBR            INITIAL X-CLINIC-BATCH-NBR
+   ITEM KEY-CLM-CLAIM-NBR     INITIAL X-CLAIM-NBR
+   ITEM KEY-CLM-SERV-CODE    INITIAL '00000'
+   ITEM KEY-CLM-ADJ-NBR                  INITIAL '0'
+   ITEM CLMHDR-ORIG-BATCH-NBR        INITIAL BATCTRL-BATCH-NBR
+   ITEM CLMHDR-ORIG-CLAIM-NBR          INITIAL X-CLAIM-NBR
+   ITEM CLMHDR-BATCH-TYPE          INITIAL BATCTRL-BATCH-TYPE
+   ITEM CLMHDR-ADJ-CD-SUB-TYPE     INITIAL BATCTRL-ADJ-CD-SUB-TYPE
+;  ITEM CLMHDR-AGENT-CD            INITIAL BATCTRL-AGENT-CD
+   ITEM CLMHDR-ADJ-CD              INITIAL BATCTRL-ADJ-CD
+   ITEM CLMHDR-DATE-PERIOD-END    INITIAL NCONVERT(BATCTRL-DATE-PERIOD-END)
+   ITEM CLMHDR-CYCLE-NBR       INITIAL BATCTRL-CYCLE-NBR
+; Preset claim header data with values from claim being adjusted
+   ITEM CLMHDR-CLAIM-ID        INITIAL CLMHDR-CLAIM-ID OF F002-CLMHDR
+   ITEM CLMHDR-DIAG-CD            INITIAL CLMHDR-DIAG-CD OF F002-CLMHDR
+   ITEM CLMHDR-HOSP                INITIAL CLMHDR-HOSP OF F002-CLMHDR
+   ITEM CLMHDR-I-O-PAT-IND         INITIAL CLMHDR-I-O-PAT-IND OF F002-CLMHDR
+   ITEM CLMHDR-AGENT-CD            INITIAL CLMHDR-AGENT-CD OF F002-CLMHDR
+   ITEM CLMHDR-LOC                 INITIAL CLMHDR-LOC OF F002-CLMHDR
+   ITEM CLMHDR-PAT-OHIP-ID-OR-CHART INITIAL CLMHDR-PAT-OHIP-ID-OR-CHART OF F002-CLMHDR
+   ITEM CLMHDR-PAT-ACRONYM         INITIAL CLMHDR-PAT-ACRONYM OF F002-CLMHDR
+;  ITEM CLMHDR-DOC-DEPT            INITIAL CLMHDR-DOC-DEPT OF F002-CLMHDR
+   ITEM CLMHDR-DOC-DEPT            INITIAL DOC-DEPT OF F020-DOCTOR-MSTR
+; Assign values to the remaining fields
+   ITEM CLMHDR-REFERENCE    INITIAL PART-DTL-EXPLAN-CD
+   ITEM CLMHDR-DATE-ADMIT          INITIAL '000000'
+   ITEM CLMHDR-DATE-CASH-TAPE-PAYMENT INITIAL ASCII(SYSDATE,6)
+   ITEM CLMHDR-DATE-SYS            INITIAL ASCII(SYSDATE,6)
+   ITEM CLMHDR-STATUS-OHIP         INITIAL '00'
+   ITEM CLMHDR-TAPE-SUBMIT-IND     INITIAL 'N'
+   ITEM CLMHDR-DOC-NBR-OHIP        INITIAL 0
+   ITEM CLMHDR-DOC-SPEC-CD         INITIAL 0
+   ITEM CLMHDR-REFER-DOC-NBR       INITIAL 0
+   ITEM CLMHDR-CURR-PAYMENT        INITIAL 0
+   ITEM CLMHDR-AMT-TECH-PAID       INITIAL 0
+   ITEM CLMHDR-MANUAL-AND-TAPE-PAYMENTS INITIAL 0
+;
+   ITEM CLMHDR-AMT-TECH-BILLED         INITIAL X-AMT-TECH-BILLED
+   ITEM CLMHDR-TOT-CLAIM-AR-OMA    INITIAL X-TOT-CLAIM-AR-OMA
+   ITEM CLMHDR-TOT-CLAIM-AR-OHIP   INITIAL X-OHIP-BAL
+
+
+OUTPUT F002-CLAIMS-MSTR ALIAS F002-ADJ-DTL ADD NOITEMS ON ERRORS REPORT
+   ITEM KEY-CLM-TYPE               INITIAL 'B'
+   ITEM KEY-CLM-BATCH-NBR          INITIAL X-CLINIC-BATCH-NBR
+   ITEM KEY-CLM-CLAIM-NBR          INITIAL X-CLAIM-NBR
+   ITEM KEY-CLM-SERV-CODE          INITIAL X-ADJ-SERV-CODE OF U030_SRT_ADJ
+   ITEM KEY-CLM-ADJ-NBR            INITIAL '0'
+   ITEM CLMDTL-BATCH-NBR           INITIAL CLMHDR-BATCH-NBR OF F002-ADJ-HDR
+   ITEM CLMDTL-CLAIM-NBR           INITIAL CLMHDR-CLAIM-NBR OF F002-ADJ-HDR
+   ITEM CLMDTL-OMA-CD              INITIAL X-ADJ-SERV-CODE  OF U030_SRT_ADJ[1:4]
+   ITEM CLMDTL-OMA-SUFF            INITIAL X-ADJ-SERV-CODE OF U030_SRT_ADJ[5:1]
+   ITEM CLMDTL-ADJ-NBR             INITIAL 1
+   ITEM CLMDTL-AGENT-CD            INITIAL CLMHDR-AGENT-CD OF F002-ADJ-HDR
+   ITEM CLMDTL-ADJ-CD              INITIAL CLMHDR-ADJ-CD OF F002-ADJ-HDR
+;  ITEM CLMDTL-SV-DATE             INITIAL CLMDTL-SV-DATE OF F002-CLMDTL
+   ITEM CLMDTL-SV-DATE             INITIAL CLMDTL-SV-DATE OF U030_SRT_ADJ
+   ITEM CLMDTL-NBR-SERV            INITIAL 0
+   ITEM CLMDTL-CONSEC-DATES        INITIAL 0
+   ITEM CLMDTL-DATE-PERIOD-END     INITIAL ASCII(CLMHDR-DATE-PERIOD-END OF F002-ADJ-HDR,6)
+   ITEM CLMDTL-CYCLE-NBR           INITIAL CLMHDR-CYCLE-NBR OF F002-ADJ-HDR
+   ITEM CLMDTL-ORIG-BATCH-ID       INITIAL CLMHDR-ORIG-BATCH-ID OF F002-ADJ-HDR
+   ITEM CLMDTL-FEE-OMA             INITIAL CLMHDR-TOT-CLAIM-AR-OMA OF F002-ADJ-HDR
+   ITEM CLMDTL-FEE-OHIP            INITIAL CLMHDR-TOT-CLAIM-AR-OHIP OF F002-ADJ-HDR
+   ITEM CLMDTL-AMT-TECH-BILLED     INITIAL CLMHDR-AMT-TECH-BILLED OF F002-ADJ-HDR
+;  ITEM CLMDTL-DIAG-CD                 INITIAL CLMDTL-DIAG-CD OF F002-CLMDTL
+   ITEM CLMDTL-DIAG-CD             INITIAL CLMDTL-DIAG-CD OF U030_SRT_ADJ
+   ITEM CLMDTL-REV-GROUP-CD        INITIAL ' '
+   ITEM CLMDTL-LINE-NO              INITIAL CLMDTL-LINE-NO OF U030_SRT_ADJ
+
+
+;OUTPUT F002-CLMHDR UPDATE ON ERRORS REPORT
+;OUTPUT F002-CLMHDR UPDATE AT PART-HDR-CLAIM-ID ON ERRORS REPORT
+;  ITEM CLMHDR-TOT-CLAIM-AR-OMA    SUBTOTAL X-TOT-CLAIM-AR-OMA
+;  ITEM CLMHDR-TOT-CLAIM-AR-OHIP   SUBTOTAL X-OHIP-BAL
+;  ITEM CLMHDR-AMT-TECH-BILLED     SUBTOTAL X-AMT-TECH-BILLED
+;  ITEM CLMHDR-STATUS-OHIP    FINAL PART-DTL-EXPLAN-CD
+
+
+OUTPUT ICONST-MSTR-REC UPDATE AT FINAL ON ERRORS REPORT
+;  ITEM ICONST-CLINIC-BATCH-NBR     FINAL X-BATCH-NBR + 1
+;  ITEM ICONST-CLINIC-BATCH-NBR     FINAL X-BATCH-NBR - 1
+   ITEM ICONST-CLINIC-BATCH-NBR     FINAL X-BATCH-NBR
+
+
+;Create Clmdtl Key in Subfile, so Cobol pgm can write inverted to
+;the adjusting Clmdtl
+SUBFILE U030_DTL_KEY KEEP INCLUDE                        &
+   KEY-CLM-TYPE      OF F002-ADJ-DTL,                  &
+   KEY-CLM-BATCH-NBR OF F002-ADJ-DTL,                  &
+   KEY-CLM-CLAIM-NBR OF F002-ADJ-DTL,                  &
+   KEY-CLM-SERV-CODE OF F002-ADJ-DTL,                  &
+   KEY-CLM-ADJ-NBR   OF F002-ADJ-DTL
+
+
+
+SUBFILE U030_ADJ_BATCHES KEEP AT X-BATCH-COUNT     &
+       INCLUDE BATCTRL-BATCH-NBR
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST HOLD_CLAIM_STATUS ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                           ;  If partial payment, set the claim to 'H'old
+                       ;  and update OHIP claim nbr in F020-CLAIMS-EXTRA
+
+ACCESS *U030_NO_ADJ                                         &
+   LINK  'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),        &
+        NCONVERT(PART-HDR-CLAIM-ID[10:2]), '00000', '0' &
+    TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,             &
+        KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR &
+         OF F002-CLAIMS-MSTR                            &
+   LINK  NCONVERT(PART-HDR-CLAIM-ID)                   &
+    TO   CLMHDR-RMA-CLM-NBR OF F002-CLAIMS-EXTRA OPT
+
+OUTPUT F002-CLAIMS-MSTR UPDATE ON ERRORS REPORT
+   ITEM CLMHDR-TAPE-SUBMIT-IND FINAL 'H'
+;  ITEM CLMHDR-STATUS-OHIP FINAL PART-DTL-EXPLAN-CD
+   ITEM CLMHDR-STATUS-OHIP FINAL PART-HDR-EXPLAN-CD
+
+OUTPUT F002-CLAIMS-EXTRA ADD UPDATE ON ERRORS REPORT
+   ITEM CLMHDR-OHIP-CLM-NBR FINAL PART-HDR-OHIP-CLM-NBR
+   ITEM CLMHDR-RMA-CLM-NBR INITIAL NCONVERT(PART-HDR-CLAIM-ID)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST PART_ADJ_BATCH ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                           ;  Store the adjusted batches into the file
+                           ;  PART_ADJ_BATCH
+
+ACCESS *U030_ADJ_BATCHES LINK 'B', BATCTRL-BATCH-NBR    &
+   TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR OF F002-CLAIMS-MSTR
+
+SEL IF CLMHDR-OMA-SUFF-ADJ = '000000'
+
+OUTPUT PART-ADJ-BATCH ADD
+   ITEM  PART-ADJ-CLAIM-ID FINAL CLMHDR-CLAIM-ID[1:11]
+   ITEM  PART-ADJ-BAL FINAL CLMHDR-TOT-CLAIM-AR-OHIP
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+REQUEST UPDATE_CLAIM_BAL ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+                           ;  Update the adjusted balance to the
+                    ;  original claim header
+
+
+
+
+ACCESS *U030_UPDATE_CLMHDR                           &
+   LINK  'B', NCONVERT(PART-HDR-CLAIM-ID[1:9]),        &
+        NCONVERT(PART-HDR-CLAIM-ID[10:2]), '00000', '0' &
+    TO   KEY-CLM-TYPE, KEY-CLM-BATCH-NBR,             &
+        KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR &
+         OF F002-CLAIMS-MSTR
+
+DEFINE X-OHIP-BAL INT*7 SIGNED =                    &
+       X-CLAIM-BAL * -1
+
+DEFINE X-TOT-CLAIM-AR-OMA INT*7 SIGNED =                &
+  ROUND((CLMHDR-TOT-CLAIM-AR-OMA * X-OHIP-BAL) /       &
+        CLMHDR-TOT-CLAIM-AR-OHIP  )
+
+DEFINE X-AMT-TECH-BILLED  INT*7 SIGNED =            &
+  ROUND((CLMHDR-AMT-TECH-BILLED  * X-OHIP-BAL) /       &
+        CLMHDR-TOT-CLAIM-AR-OHIP  )
+
+
+OUTPUT F002-CLAIMS-MSTR  UPDATE ON ERRORS REPORT
+   ITEM CLMHDR-TOT-CLAIM-AR-OMA    SUBTOTAL X-TOT-CLAIM-AR-OMA
+   ITEM CLMHDR-TOT-CLAIM-AR-OHIP   SUBTOTAL X-OHIP-BAL
+   ITEM CLMHDR-AMT-TECH-BILLED     SUBTOTAL X-AMT-TECH-BILLED
+
+BUILD U030B
+

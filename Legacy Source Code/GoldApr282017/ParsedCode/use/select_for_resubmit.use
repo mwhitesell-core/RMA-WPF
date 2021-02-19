@@ -1,0 +1,108 @@
+; 2014/Apr/10 	MC -  transfer the selection for resubmit from u022a1.qts into 
+;		      this copybook
+
+; SELECT FOR RE-SUBMISSION -
+; IF         (claim header rec going to OHIP)                  
+;    AND     (not fully paid or not 'I2' payment received)	
+;    AND     (not alternative payment clinic (80-83,95)(ie. I2 'zero' payment) 
+;					      or temporarily '35'
+;    AND     (no cash date found ie. not previously paid)          
+;    AND     (has been submitted to ohip - ie. ignore current cycle claims)
+;    AND     (claim is not fully paid)                            
+;    AND     (claim's PED within 1 year of current system date)
+;    AND EITHER                                                     
+;            (an unheld/non-manual claim with 2 rats processed)              
+;         OR (someone has manually requested resubmit)          
+; OR REGARDLESS OF ABOVE if 'X' then resubmit regardless of other variables
+; OR 'X' with health nbr = 1111111116 for CME claims
+; OR stale date claims that are 150 days or greater   and there is balance and no submission date
+
+select if   (    (                                                      &
+                      clmhdr-batch-type = "C"                           &
+                  and clmhdr-adj-oma-cd = "0000"                        &
+                  and moh-flag = "Y"                                    &
+                  and balance-due > 0                                   &
+                  and (							&
+; 2004/03/01 - MC - use afp-flag instead of clinic nbr
+;                          (    x-clinic-nbr-1-2 >= "80"                &
+;                           and x-clinic-nbr-1-2 <= "95"                &
+; 2004/05/19 - MC - check value 'O' which represents old afp
+;                          (   iconst-clinic-card-colour = 'Y'          &
+                           (   iconst-clinic-card-colour = 'O'          &
+; 2004/05/19 - end
+
+; 2004/03/01 - end
+		            and clmhdr-status-ohip <> "I2"              &
+		            and clmhdr-status-ohip <> "35"              &
+	                   )						&
+; 2004/03/01 - MC - use afp-flag instead of clinic nbr
+;                       or (    x-clinic-nbr-1-2 <  "80"                &
+;                            or x-clinic-nbr-1-2 >  "95"                &
+; 2004/05/19 - MC - check value 'O' which represents old afp
+;                       or (    iconst-clinic-card-colour = 'N'         &
+                        or (    iconst-clinic-card-colour <> 'O'        &
+; 2003/05/19 - end
+
+; 2004/03/01 - end
+			   )						&
+		       )						&
+                  and  (   clmhdr-date-cash-tape-payment = " "          &
+                        or clmhdr-date-cash-tape-payment = "      00"   &
+                        or clmhdr-date-cash-tape-payment = "00000000"   &
+                       )                                                &
+		  and x-days-since-ped < 365				&
+	 	  and							&
+; 2004/04/21 - MC
+;                     (    two-rats-processed = "Y"                     &
+;                       and clmhdr-tape-submit-ind = "R"                &
+
+                      (    (     two-rats-processed = "Y"               &
+                            and (     clmhdr-tape-submit-ind <> 'H'     &
+                                  and clmhdr-tape-submit-ind <> 'C'     &
+                                )                                       &
+                           )                                            &
+                        or                                              &
+                           clmhdr-tape-submit-ind = 'R'                 &
+; 2004/04/21 - end
+
+		      )							&
+                 )							&
+            )                                                           &
+         or (    clmhdr-tape-submit-ind = "X"                           &
+             and moh-flag = "Y"                                    	&
+             and balance-due > 0                    			&
+             and clmhdr-batch-type = "C"                           &
+             and clmhdr-adj-oma-cd = "0000"                        &
+; 2004/03/17 - MC  - if afp clinic and I2 reason code, this consider
+;                    the claim is fully paid, do not resubmit
+; 2004/05/19 - MC - check value 'O' which represents old afp
+;            and (   iconst-clinic-card-colour <> 'Y'                   &
+             and (   iconst-clinic-card-colour <> 'O'                   &
+; 2004/05/19 - end 
+                  or clmhdr-status-ohip <> 'I2'                         &
+                 )                                                      &
+; 2004/03/17 - end
+            )								&
+; 2012/12/19 - MC1
+; OR 'X' with health nbr = 1111111116 for CME claims
+         or (    clmhdr-tape-submit-ind = "X"                           &
+             and moh-flag = "Y"                                    	&
+             and clmhdr-batch-type = "C"                                &
+             and clmhdr-adj-oma-cd = "0000"                             &
+             and pat-health-nbr = 1111111116        			&
+	    )								&
+; 2012/12/19 - end
+; 2003/12/09 - MC
+         or (    x-days-since-service >= 150                            &
+   	     and clmhdr-submit-date =  0		        	&
+             and moh-flag = "Y"                                         &
+             and balance-due > 0                                         &
+             and clmhdr-batch-type = "C"                           &
+             and clmhdr-adj-oma-cd = "0000"                        &
+; 2005/06/14 - MC 
+	     and clmhdr-tape-submit-ind <> " "			  &
+; 2005/06/14 - end
+            )
+; 2003/12/09 - end
+
+

@@ -1,0 +1,56 @@
+; Program: fix_recover_web_2.qzs
+
+can clear
+set rep nolimit
+set page width 132 length 0
+set noformfeed
+set nohead
+set rep dev disc name r716b
+
+access *fix_recover_web                                         &
+  link (key-clm-type,                                                 &
+       key-clm-batch-nbr,                                            &
+       key-clm-claim-nbr)                                             &
+    to key-clm-type,                                                 &
+       key-clm-batch-nbr,                                            &
+       key-clm-claim-nbr                                             &
+;       key-clm-serv-code,                                            &
+;       key-clm-adj-nbr                                                  &
+                of f002-claims-mstr     opt                             &
+  link ("I" + clmhdr-pat-ohip-id-or-chart)                      &
+    to key-pat-mstr of f010-pat-mstr    opt                     &
+  link clmhdr-loc                                               &
+    to loc-nbr of f030-locations-mstr opt
+
+select f002-claims-mstr if                      &
+                clmdtl-oma-cd      <> "0000"    & ; details only
+           and  clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+	   and  clmdtl-adj-nbr = 0		  ; no adjustment details
+
+; (00/sep/21 B.E.)
+def x-clmdtl-flag-bi char*1                     &
+     = "Y" if clmdtl-sv-day-alpha-1 = "BI"      &
+  else  " "
+def x-clmdtl-flag-op char*1                     &
+     = "Y" if clmdtl-sv-day-alpha-1 = "OP"      &
+  else  " " 
+
+def Z-CLMDTL-DOC-OHIP-NBR zoned unsigned size 6 = CLMDTL-DOC-OHIP-NBR
+def Z-CLMDTL-DIAG-CD zoned unsigned size 3 = CLMDTL-DIAG-CD
+def Z-CLMDTL-NBR-SERV zoned unsigned size 2 = CLMDTL-NBR-SERV
+def Z-CLMDTL-FEE-OHIP zoned unsigned size 7 = CLMDTL-FEE-OHIP
+def Z-CLMDTL-AMT-TECH-BILLED zoned unsigned size 6 = CLMDTL-AMT-TECH-BILLED
+
+report                                                   &     
+tab 1 Z-CLMDTL-DOC-OHIP-NBR     pic "^^^^^^" fill "0"    &
+tab 7 CLMDTL-ACCOUNTING-NBR                              &
+tab 15 CLMDTL-OMA-CD                                     & 
+tab 19 CLMDTL-OMA-SUFF                                   &
+tab 20 Z-CLMDTL-DIAG-CD         pic "^^^" fill "0"       &
+tab 23 Z-CLMDTL-NBR-SERV        pic "^^" fill "0"        &
+tab 25 Z-CLMDTL-FEE-OHIP        pic "^^^^^^^" fill "0"   &
+tab 32 Z-CLMDTL-AMT-TECH-BILLED pic "^^^^^^" fill "0"    &
+tab 38 x-clmdtl-flag-op                                  &
+tab 39 x-clmdtl-flag-bi                                 
+
+build $obj/fix_recover_web_2

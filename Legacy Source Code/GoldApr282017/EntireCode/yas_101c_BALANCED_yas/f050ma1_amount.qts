@@ -1,0 +1,80 @@
+cancel clear
+set process nolimit
+set lock file update 
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-cd  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+select if 			      &
+   (    docrev-doc-nbr = "055"	      &
+     or docrev-doc-nbr = "078"	      &
+     or docrev-doc-nbr = "188"	      &
+     or docrev-doc-nbr = "279"	      &
+     or docrev-doc-nbr = "403"	      &
+     or docrev-doc-nbr = "425"	      &
+     or docrev-doc-nbr = "448"	      &
+     or docrev-doc-nbr = "455"	      &
+     or docrev-doc-nbr = "459"	      &
+     or docrev-doc-nbr = "481"        &
+     or docrev-doc-nbr = "524"        &
+     or docrev-doc-nbr = "662"        &
+     or docrev-doc-nbr = "792"        &
+     or docrev-doc-nbr = "832"        &
+     or docrev-doc-nbr = "839"        &
+     or docrev-doc-nbr = "879"        &
+     or docrev-doc-nbr = "928"        &
+     or docrev-doc-nbr = "967"        &
+     or docrev-doc-nbr = "C16"        &
+     or docrev-doc-nbr = "C18"        &
+     or docrev-doc-nbr = "J26"        &
+     or docrev-doc-nbr = "D69"        &
+     or docrev-doc-nbr = "D80")       &
+and ICONST-DATE-PERIOD-END = 20080601 &
+and (   docrev-clinic-1-2 = '22'      &
+     or docrev-clinic-1-2 = '34'      &
+     or docrev-clinic-1-2 = '98')
+
+def fixed-docrev-oma-cd char*5                  &
+    =    docrev-oma-cd[1:4]                     &
+      + "A"                                     &
+         if docrev-oma-cd[5:1] = "M"            &
+ else            docrev-oma-cd
+
+def oma-cd-desc char*55 				&
+    = pack(fixed-docrev-oma-cd + " - " + fee-desc)	&
+	 if record f040-oma-fee-mstr exists		&
+ else pack(fixed-docrev-oma-cd + " - UNKNOWN FEE CODE")
+
+def x-code cha*4 = docrev-oma-cd[1:4]
+
+subfile f050ma1_amt keep include   &
+  x-code                          ,&
+  oma-cd-desc	                  ,& 
+  DOCREV-MTD-IN-REC               ,&
+  DOCREV-MTD-OUT-REC 
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *f050ma1_amt
+
+sort on x-code         
+
+temp x-amt  zoned*9 numeric
+item x-amt  = x-amt + DOCREV-MTD-IN-REC + DOCREV-MTD-OUT-REC  &
+              reset at x-code       
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f050ma1_amt1 keep at x-code portable include  &    
+oma-cd-desc                                          ,&
+comma                                                ,&
+x-amt                                                ,&
+x-cr
+
+build $pb_obj/f050ma1_amount
+

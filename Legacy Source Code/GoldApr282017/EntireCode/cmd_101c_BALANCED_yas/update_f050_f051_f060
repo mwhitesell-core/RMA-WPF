@@ -1,0 +1,62 @@
+# update_f050_f051_f060
+#    update doctor revenue, doctor cash, cheque register files
+#    to change the doctor's department. If a 3rd parameter (date) is
+#    passed then only records on/after that date are changed.
+#
+#  this job tests to see if the 'indicator' file exists before it runs - if
+#  and then removes it after running
+
+
+macros=/macros; export macros
+audit_file=/audit/applications.audit;export audit_file
+RELNOTES=/relnotes; export RELNOTES
+
+ENV=$macros/sys.kshrc; export ENV
+
+. $macros/globals
+. $macros/toolkit
+
+# POWERHOUSE setup
+COGNOS=/usr/cognos                              ; export COGNOS
+
+umask 002
+
+# LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE
+. $macros/setup_rmabill.com 101c
+# LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE LIVE
+
+cd $pb_data
+
+if ( [ -f batch_update_f050_f051_f060.flg ] )	
+then
+   echo " "
+   echo "Department Change 'indicator' file FOUND " `date` 
+
+   cd $application_production 
+#   qtp auto=$obj/u901.qtc < $pb_data/batch_update_f050_f051_f060.flg \
+#			 >> /beta/rmabill/rmabill101c/production/u901.log
+#   qtp auto=$obj/u901.qtc < $pb_data/batch_update_f050_f051_f060.flg \
+#			 >> /dyad/rmabill101c/production/u901.log
+   qtp auto=$obj/u901.qtc < $pb_data/batch_update_f050_f051_f060.flg \
+			 >> /dyad/rmabill/rmabill101c/production/u901.log
+   echo "Processing completed" `date` 
+
+   cd $pb_data 
+#  (remove the 3 parameter lines from .flg file and rebuild new parm file if
+#   more transactions found)
+   awk -f $cmd/batch_update_f050.awk < batch_update_f050_f051_f060.flg 
+   mv batch_update_f050_f051_f060.flg batch_update_f050_f051_f060.run.`date +%Y_%m_%d_time_%H:%M`
+#  (if more transactions then rename to correct parm file and recall this macro)
+   echo testing if more parms
+   if ( [ -f batch_update_f050_f051_f060.flg.new ] )
+   then
+      echo parms found
+      mv batch_update_f050_f051_f060.flg.new  batch_update_f050_f051_f060.flg 
+      echo recalling this macro
+      $cmd/update_f050_f051_f060
+   else
+	echo NO more parms `date` 
+   fi
+else
+   echo "Department Change 'indicator' file NOT found " `date` 
+fi

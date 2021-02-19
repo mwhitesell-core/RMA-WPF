@@ -1,0 +1,191 @@
+; Name   : PM15.QZS
+; Purpose: THE THIRD AND LAST PASS OF GENERATING INVOICES
+; 	   PRINT INVOICES FROM TEMPORARY FILE CREATED BY PM14B.QZS
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD  	By whom        	Why
+; ??/???/??  	?.?           	-
+; 87/09/02 	B. MONTY    	ADD AUTHORIZED PERSONNEL DATA AND CHANGE
+;                      		SORT SEQUENCE. LINK TO PWO
+; 88/09/15	B. ELLIOTT  	CHANGE THE SORT SEQUENCE TO SORT BY
+;				PWO # + EMPLOYEE #
+; 89/09/21 	M. CHAN     	ADD A FOOTING FOR PWO BREAKDOWN
+; 90/05/07 	B. ELLIOTT  	INVOICES written to file PM15.txt for
+;				downloading to PC
+;		       		MADE VARIOUS FORMAT CHANGES
+; 90/07/11 	B. ELLIOTT  	DECREASE SIZE OF EMPLOYEE NAME THAT IS
+;		       		PRINTED, MOVE REMAINDER OF INVOICE TO
+;				THE LEFT 5 CHARACTERS
+; 91/01/31 	B.M.L.      	CHANGE MONTH TO LOWERCASE SAF 1002
+;
+; 91/02/08 	S. CHAN     	ADDITION OF 7% GST CALCULATION TO THE
+;				INVOICE
+;
+; 92/02/28	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+
+can clear
+set default
+set report device disc name pm15
+set formfeed
+set page length 63 width 80
+set report nolimit
+
+access *tempinvoicesb &
+       link(pwo-num) to pwo-num of fpwos     opt &
+       link(emp-num of fpwos) to emp-num of femployees alias femp1     &
+       and  client of tempinvoicesb to client of fclients &
+       and tsht-emp of tempinvoicesb to emp-num of femployees opt
+
+define today-yy char*2 = ascii(sysdate,6)[1:2]
+define today-mm char*2 = ascii(sysdate,6)[3:2]
+define today-dd char*2 = ascii(sysdate,6)[5:2]
+define today-month char*10 = "  January " if today-mm = "01" else &
+                             " February " if today-mm = "02" else &
+                             "    March " if today-mm = "03" else &
+                             "    April " if today-mm = "04" else &
+                             "      May " if today-mm = "05" else &
+                             "     June " if today-mm = "06" else &
+                             "     July " if today-mm = "07" else &
+                             "   August " if today-mm = "08" else &
+                             "September " if today-mm = "09" else &
+                             "  October " if today-mm = "10" else &
+                             " November " if today-mm = "11" else &
+                             " December " if today-mm = "12"
+
+define today-date char*18 = left justify(pack(today-month     + &
+                                              today-dd        + &
+                                              ", 19"          + &
+                                              today-yy))
+
+define year character*2 = characters(temp-yymm)[1:2]
+define month character*9 = &
+ 	"  January" if characters(temp-yymm)[3:2] = "01" else &
+        " February" if characters(temp-yymm)[3:2] = "02" else &
+        "    March" if characters(temp-yymm)[3:2] = "03" else &
+        "    April" if characters(temp-yymm)[3:2] = "04" else &
+        "      May" if characters(temp-yymm)[3:2] = "05" else &
+        "     June" if characters(temp-yymm)[3:2] = "06" else &
+        "     July" if characters(temp-yymm)[3:2] = "07" else &
+        "   August" if characters(temp-yymm)[3:2] = "08" else &
+        "September" if characters(temp-yymm)[3:2] = "09" else &
+        "  October" if characters(temp-yymm)[3:2] = "10" else &
+        " November" if characters(temp-yymm)[3:2] = "11" else &
+        " December" if characters(temp-yymm)[3:2] = "12"
+define monthyear  character*14 = &
+	left justify(pack (month + " 19" + year))
+define x-empl-name-small char*20 = name of femployees[1:20]
+define x-bill-type2 char*1 = "R"        if type = "R"              &
+       			else x-bill-type
+define temp-billemp numeric*8 = temp-bbill * x-bill-rate/100  &
+                                if x-bill-type2 = "H"          &
+                      else temp-bbill/hrs-per-day * x-bill-rate/100 &
+                           if x-bill-type2 = "D" and type <> "R" &
+                      else 0  if x-bill-type2 = "R"
+;                     ELSE X-BILL-RATE  IF TYPE = "R"
+define temp-nc-mess character*10 = "Hours @N/C"
+define temp-nc-line character*10 = temp-nc-mess if temp-nbill ne 0 &
+        else " "
+def x-invoice-type char*50 = "NO INVOICE - INTERNAL BILLING" &
+                             if type = "N"                   &
+                        else "      RECURRING INVOICE OF "       &
+                             if type = "R"                   &
+          else "FIXED PRICE CONTRACT - SEE CONTRACT FOR DETAILS" &
+                             if type = "F"                   &
+          else "CONFIRM THIS WITH ACCT. REP."
+def x-authorize char*50 = "TO BE AUTHORIZED BY ---->"+ name of femp1
+def x-recur-amount = invoice-amt-fixed if type = "R" else 0
+def x-bill-lit char*4 = "/Hr" if (x-bill-type = "H" and type <> "R") &
+                  else "/Day" if (x-bill-type = "D" and type <> "R") &
+                  else " "
+def x-bbill = temp-bbill if type <> "R" else 0
+def x-bill-rate2 = x-bill-rate if type <> "R" else 0
+
+def x-footing char*50 = '                                  '	&
+		if pwo-breakdown of fpwos = ' '	  else		&
+			'ENCLOSURE: Monthly PWO/ACTIVITY Breakdown' &
+		if pwo-breakdown of fpwos = 'M'   else		&
+			'ENCLOSURE: YEAR-TO-DATE PWO/ACTIVITY Breakdown' &
+		if pwo-breakdown of fpwos = 'Y'
+def temp-gst    num*8 = temp-pwo-bbill * 0.07
+def temp-invamt num*8 = temp-pwo-bbill * 1.07
+
+sort on client on pwo-num on tsht-emp
+;SORT ON CLIENT ON PWO-NUM ON EMP-NUM
+;SORT ON EMP-NUM OF FPWOS ON PWO-NUM OF FPWOS
+
+
+page heading 							&
+               tab 01  "--------------------------------------------" &
+        skip 1 tab 01 "Agreement:"			&
+ 	       tab 13 pwo-num of tempinvoicesb bwz 		&
+	       tab 20 "-"					&
+	       tab 22 pwo-desc of fpwos				&
+        skip 1							&
+               tab 22 x-invoice-type				&
+	       tab 74 x-recur-amount bwz pic "^^,^^^.^^" float "$" &
+        skip 1 tab 01 x-authorize      &
+        skip 1 tab 01  "--------------------------------------------" &
+        skip 2 tab 06 today-date   &
+	skip 5 tab 06 cl-name &
+        skip 1 tab 06 addr-l1 &
+        skip 1 tab 06 addr-l2 &
+        skip 1 tab 06 addr-l3 &
+        skip 1 tab 06 postal-code of fclients &
+        skip 3 tab 06 "ATTN:" billing-person &
+        skip 1 tab 13         billing-person-title &
+        skip 2 tab 40 "INVOICE" &
+        skip 1 tab 40 "-------" &
+        skip 3 tab 06 "Re: PWO "  &
+               tab 14 pwo-num of tempinvoicesb bwz  &
+               tab 21 "- Services for the month of "      &
+ 	       tab 49 monthyear &
+        skip 2 tab 27 "Hours" tab 37 "Hours" tab 48 "Rate" tab 62 "Extended" &
+        skip 1                tab 37 "(N/C)" &
+        skip 2
+report tab 06 x-empl-name-small &
+       tab 25 x-bbill picture "^^^^.^^" &
+       tab 35 temp-nbill pic "^^^^.^^" bwz &
+       tab 45 x-bill-rate2 picture "^^^^.^^" float "$" bwz &
+       tab 52 x-bill-lit  &
+       tab 60 temp-billemp picture "^^^,^^^.^^"
+footing at pwo-num of tempinvoicesb  skip 2 &
+        tab 25 "-------" &
+        tab 35 "-------" &
+        tab 60 "----------" &
+       skip 1 &
+        tab 25 x-bbill subtotal picture "^^^^.^^" &
+        tab 35 temp-nbill subtotal pic "^^^^.^^" bwz &
+        tab 50 "Sub Total" &
+        tab 60 temp-billemp subtotal pic "^^^,^^^.^^" float "$" &
+       skip 01 &
+        tab 06 "G.S.T. 7%" &
+        tab 60 temp-gst pic "^^^,^^^.^^" &
+       skip 1 &
+	tab 60 "----------" &
+       skip 1 &
+	tab 06 "Total Invoice" &
+        tab 60 temp-invamt  pic "^^^,^^^.^^" float "$" &
+       skip 1 &
+        tab 60 "==========" &
+       skip 4 &
+        tab 06 "Invoice No.   :" &
+       skip 1 &
+        tab 06 "Agreement No. :" &
+	tab 22 pwo-num of tempinvoicesb bwz &
+	tab 29 "-"			    &
+	tab 31 pwo-desc of fpwos				 &
+       skip 1 &
+        tab 06 "G.S.T. No.    : 101529469" &
+       skip 1 &
+        tab 06 "Terms         : Due on receipt" &
+       skip 1 &
+        tab 06 "                2% per month on overdue accounts" &
+       skip 3 &
+        tab 06 "E & OE" &
+       skip 2 tab 06 x-footing   &
+       skip page
+
+
+build $pb_obj/pm15
+  

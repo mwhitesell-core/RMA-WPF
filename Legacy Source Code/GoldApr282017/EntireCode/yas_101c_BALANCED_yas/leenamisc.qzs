@@ -1,0 +1,108 @@
+;doc:     leenamisc.qzs
+;         report misc payments by doctor    
+;For:     Leena and the Board
+
+
+;Date           Who             Description
+;2001/02/01     Yasemin         Original
+
+
+can clear
+set rep nolimit
+
+access f002-claims-mstr
+
+choose key-clm-type 'B', key-clm-batch-nbr 220700001 to 220700999, &
+	key-clm-claim-nbr, key-clm-serv-code '00000'
+
+select if clmhdr-batch-type = 'P' and clmhdr-adj-cd = 'M'     ;& 
+;and (clmhdr-date-period-end >= 19990722 and clmhdr-date-period-end <= 20000630)
+
+def doc zoned*3 unsigned = nconvert(clmhdr-claim-id[4:3])
+
+set subfile name leenamisc keep
+rep summ doc clmhdr-claim-id clmhdr-reference  &
+ clmhdr-manual-and-tape-payments clmhdr-date-period-end &
+	KEY-CLAIMS-MSTR KEY-CLM-BATCH-NBR &
+   KEY-CLM-CLAIM-NBR 
+
+
+build $obj/leenamisc
+go
+
+cancel clear
+set rep nolimit
+set rep dev disc name leenamisc1a
+set rep page width 132
+set rep page length 62
+set formfeed
+
+access *leenamisc
+
+
+sort on doc on clmhdr-reference
+
+rep doc clmhdr-reference clmhdr-claim-id clmhdr-manual-and-tape-payments  &
+clmhdr-date-period-end
+
+final footing clmhdr-manual-and-tape-payments sub pic ' ^^^,^^^,^^^.^^'
+
+build $obj/leenamisc1a
+
+go
+
+cancel clear
+set rep nolimit
+set rep dev disc name leenamisc1b
+set rep page width 132
+set rep page length 62
+set formfeed
+
+access *leenamisc          		     &	
+  link  doc to doc-nbr of f020-doctor-mstr opt   
+
+sort on doc on clmhdr-reference
+
+page heading                                                              &
+skip 1 tab 1   sysdate                                                    &
+       tab 15  "Micellaneous Payments from July 2000 to February 2001"    &
+       tab 80  syspage                                                    &
+skip 2 tab 1   "Doc#"                                                     &
+       tab 7   "Dept#"                                                    &
+       tab 15  "Name"                                                     &
+       tab 45  "Inits"                                                    &
+       tab 55  "Reference"                                                &
+       tab 78  "Amount"                                                   &
+skip 1 tab 1   "===="                                                     &
+       tab 7   "====="                                                    &
+       tab 15  "===="                                                     &
+       tab 45  "====="                                                    &
+       tab 55  "========="                                                &
+       tab 72  "============"                                             &
+skip 2
+
+footing at clmhdr-reference			                           &
+skip 1 tab 1   doc         print at doc                                    &
+       tab 7   doc-dept    print at doc                                    &
+       tab 15  doc-name    print at doc                                    &
+       tab 45  doc-inits   print at doc                                    &
+       tab 55  clmhdr-reference                                            &
+       tab 69  clmhdr-manual-and-tape-payments  subt pic " ^^^,^^^,^^^.^^" &
+skip 1
+
+footing at doc                                                             &
+skip 1 tab 72 "------------"                                               &
+skip 1 tab 69  clmhdr-manual-and-tape-payments  subt pic " ^^^,^^^,^^^.^^" &
+skip 1 tab 72 "============"                                               &
+skip 2 
+
+final footing 							            &
+skip 1 tab 1   "Grand Totals"                                               &
+       tab 69  clmhdr-manual-and-tape-payments  subt pic " ^^^,^^^,^^^.^^"  &
+skip 1 tab 72 "============"                                                &
+skip 2 
+
+build $obj/leenamisc1b
+
+go
+

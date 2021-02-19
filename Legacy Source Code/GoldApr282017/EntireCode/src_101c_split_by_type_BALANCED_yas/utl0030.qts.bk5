@@ -1,0 +1,590 @@
+; PROGRAM: utl0030.qts
+; PURPOSE: download files for storage in SQL for analysis
+;	- extract data from all 'doctor changes audit' files into csv file so that it can be loaded into SQL
+;
+; 2014/Dec/09 	MC	- utl0030.qts
+;			- download f030, f070 & f190 files
+; 2014/mar/15   be1	- added f020 into download 
+; 2015/mar/18   be2	- new files/fields for ross's monthly payroll analysis
+
+cancel  clear
+set process nolimit
+set lock record update
+
+run utl0030
+
+global temp w-current-ep-nbr            integer*8 signed size 4
+global temp w-first-ep-nbr-of-fiscal-yr integer*8 signed size 4
+global temp w-iconst-date-period-end    char*8
+
+;be1
+;--------------------------------------------------
+request download_f020
+
+access f020-doctor-mstr		 	&
+	link doc-dept 			&
+	to   dept-nbr of f070-dept-mstr
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+def x-doc-ohip-nbr char*6 = ascii(doc-ohip-nbr)[2:6]
+def x-doc-sin-nbr  char*9 = ascii(doc-sin-nbr)[2:9]
+subfile utl0f020   keep portable include	&
+	doc-nbr 		,	&
+	x-delimiter		,	&
+	doc-dept		,       &
+	x-delimiter		,	&
+	doc-name		,	&
+	x-delimiter		,	&
+	doc-inits 		,	&
+	x-delimiter		,	&
+	x-doc-ohip-nbr		,	&
+	x-delimiter		,	&
+	x-doc-sin-nbr		,	&
+	x-lf
+
+;--------------------------------------------------
+request download_f030
+
+access f030-locations-mstr 
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+
+subfile utl0f030  keep portable include	&
+	loc-nbr 		,	&
+	x-delimiter		,	&
+	loc-name 		,	&
+	x-delimiter		,	&
+  LOC-CLINIC-NBR        , & 
+	x-delimiter		,	&
+  LOC-HOSPITAL-NBR       , & 
+	x-delimiter		,	&
+  LOC-HOSPITAL-CODE       , & 
+	x-delimiter		,	&
+  LOC-CARD-COLOUR          , & 
+	x-delimiter		,	&
+  LOC-MINISTRY-LOC-CODE       , &
+	x-delimiter		,	&
+  LOC-PAYROLL-FLAG            , & 
+	x-delimiter		,	&
+  LOC-ACTIVE-FOR-ENTRY         , & 
+	x-delimiter		,	&
+  LOC-SERVICE-LOCATION-INDICATOR , &
+	x-lf
+
+;--------------------------------------------------
+request download_f070
+
+access f070-dept-mstr      
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+
+subfile utl0f070   keep portable include	&
+	dept-nbr		,	&
+	x-delimiter		,	&
+	dept-name		,	&
+	x-delimiter		,	&
+	dept-addr1		,	&
+	x-delimiter		,	&
+	dept-addr2		,	&
+	x-delimiter		,	&
+	dept-addr3		,	&
+	x-delimiter		,	&
+	dept-chairman		,	&
+	x-delimiter		,	&
+	dept-co-ordinator	,	&
+	x-delimiter		,	&
+	dept-company		, 	&
+	x-lf
+
+;--------------------------------------------------
+request download_f190
+
+access f190-comp-codes    
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+
+def x-delimiter char*1 = "~"
+
+subfile utl0f190   keep portable include	&
+	comp-code 		,	&
+	x-delimiter		,	&
+	comp-type		,	&
+	x-delimiter		,	&
+	desc-long		,	&
+	x-delimiter		,	&
+	desc-short		,	&
+	x-lf
+
+;be2
+;-------------------------------------------------------------------------------
+; OBTAIN CONSTANTS VALUES FOR PASSING TO SUBSEQUENT REQUESTS
+;
+request utl0030_a_constants_values_ep_nbr       &
+                on edit        errors report 	&
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+item w-current-ep-nbr            = current-ep-nbr
+item w-first-ep-nbr-of-fiscal-yr = first-ep-nbr-of-fiscal-yr
+
+request utl0030_b_get_ped_date                  &
+                on edit        errors report 	&
+                on calculation errors report
+access f191-earnings-period 
+choose ep-nbr
+select if ep-nbr = w-current-ep-nbr
+item w-iconst-date-period-end    = ascii(iconst-date-period-end)[1:8]
+
+;be2
+;-------------------------------------------------------------------------------
+request utl0030_1 on edit        errors report &
+                  on calculation errors report
+;
+;-------------------------------------------------------------------------------
+access f020-doctor-audit
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+subfile utlf020_audit portable keep include	&
+; f020
+  DOC-NBR                               ,&
+  x-delimiter														,&
+  DOC-DEPT                              ,&
+  x-delimiter														,&
+  DOC-OHIP-NBR                          ,&
+  x-delimiter														,&
+  DOC-SIN-NBR                           ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR                        ,&
+  x-delimiter														,&
+  DOC-SPEC-CD                           ,&
+  x-delimiter														,&
+  DOC-HOSP-NBR                          ,&
+  x-delimiter														,&
+  DOC-NAME                              ,&
+  x-delimiter														,&
+  DOC-NAME-SOUNDEX                      ,&
+  x-delimiter														,&
+  DOC-INITS                             ,&
+  x-delimiter														,&
+  DOC-FULL-PART-IND                     ,&
+  x-delimiter														,&
+  DOC-BANK-NBR                          ,&
+  x-delimiter														,&
+  DOC-BANK-BRANCH                       ,&
+  x-delimiter														,&
+  DOC-BANK-ACCT                         ,&
+  x-delimiter														,&
+  DOC-DATE-FAC-START                    ,&
+  x-delimiter														,&
+  DOC-DATE-FAC-TERM                     ,&
+  x-delimiter														,&
+  DOC-YTDGUA                            ,&
+  x-delimiter														,&
+  DOC-YTDGUB                            ,&
+  x-delimiter														,&
+  DOC-YTDGUC                            ,&
+  x-delimiter														,&
+  DOC-YTDGUD                            ,&
+  x-delimiter														,&
+  DOC-YTDCEA                            ,&
+  x-delimiter														,&
+  DOC-YTDCEX                            ,&
+  x-delimiter														,&
+  DOC-YTDEAR                            ,&
+  x-delimiter														,&
+  DOC-YTDINC                            ,&
+  x-delimiter														,&
+  DOC-YTDEFT                            ,&
+  x-delimiter														,&
+  DOC-TOTINC-G                          ,&
+  x-delimiter														,&
+  DOC-EP-DATE-DEPOSIT                   ,&
+  x-delimiter														,&
+  DOC-TOTINC                            ,&
+  x-delimiter														,&
+  DOC-EP-CEIEXP                         ,&
+  x-delimiter														,&
+  DOC-ADJCEA                            ,&
+  x-delimiter														,&
+  DOC-ADJCEX                            ,&
+  x-delimiter														,&
+  DOC-CEICEA                            ,&
+  x-delimiter														,&
+  DOC-CEICEX                            ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-2                      ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-3                      ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-4                      ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-5                      ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-6                      ,&
+  x-delimiter														,&
+  DOC-SPEC-CD-2                         ,&
+  x-delimiter														,&
+  DOC-SPEC-CD-3                         ,&
+  x-delimiter														,&
+  DOC-YTDINC-G                          ,&
+  x-delimiter														,&
+  DOC-LOCATIONS                         ,&
+  x-delimiter														,&
+  DOC-RMA-EXPENSE-PERCENT-MISC          ,&
+  x-delimiter														,&
+  DOC-AFP-PAYM-GROUP                    ,&
+  x-delimiter														,&
+  DOC-DEPT-2                            ,&
+  x-delimiter														,&
+  DOC-IND-PAYS-GST                      ,&
+  x-delimiter														,&
+  DOC-NX-AVAIL-BATCH                    ,&
+  x-delimiter														,&
+  DOC-NX-AVAIL-BATCH-2                  ,&
+  x-delimiter														,&
+  DOC-NX-AVAIL-BATCH-3                  ,&
+  x-delimiter														,&
+  DOC-NX-AVAIL-BATCH-4                  ,&
+  x-delimiter														,&
+  DOC-NX-AVAIL-BATCH-5                  ,&
+  x-delimiter														,&
+  DOC-NX-AVAIL-BATCH-6                  ,&
+  x-delimiter														,&
+  DOC-YRLY-CEILING-COMPUTED             ,&
+  x-delimiter														,&
+  DOC-YRLY-EXPENSE-COMPUTED             ,&
+  x-delimiter														,&
+  DOC-RMA-EXPENSE-PERCENT-REG           ,&
+  x-delimiter														,&
+  DOC-SUB-SPECIALTY                     ,&
+  x-delimiter														,&
+  DOC-PAYEFT                            ,&
+  x-delimiter														,&
+  DOC-YTDDED                            ,&
+  x-delimiter														,&
+  DOC-DEPT-EXPENSE-PERCENT-MISC         ,&
+  x-delimiter														,&
+  DOC-DEPT-EXPENSE-PERCENT-REG          ,&
+  x-delimiter														,&
+  DOC-EP-PED                            ,&
+  x-delimiter														,&
+  DOC-EP-PAY-CODE                       ,&
+  x-delimiter														,&
+  DOC-EP-PAY-SUB-CODE                   ,&
+  x-delimiter														,&
+  DOC-PARTNERSHIP                       ,&
+  x-delimiter														,&
+  DOC-IND-HOLDBACK-ACTIVE               ,&
+  x-delimiter														,&
+  GROUP_REGULAR_SERVICE                 ,&
+  x-delimiter														,&
+  GROUP_OVER_SERVICED                   ,&
+  x-delimiter														,&
+  DOC-SPECIALTIES                       ,&
+  x-delimiter														,&
+  DOC-YRLY-REQUIRE-REVENUE              ,&
+  x-delimiter														,&
+  DOC-YRLY-TARGET-REVENUE               ,&
+  x-delimiter														,&
+  DOC-CEIREQ                            ,&
+  x-delimiter														,&
+  DOC-YTDREQ                            ,&
+  x-delimiter														,&
+  DOC-CEITAR                            ,&
+  x-delimiter														,&
+  DOC-YTDTAR                            ,&
+  x-delimiter														,&
+  BILLING-VIA-PAPER-FLAG                ,&
+  x-delimiter														,&
+  BILLING-VIA-DISKETTE-FLAG             ,&
+  x-delimiter														,&
+  BILLING-VIA-WEB-TEST-FLAG             ,&
+  x-delimiter														,&
+  BILLING-VIA-WEB-LIVE-FLAG             ,&
+  x-delimiter														,&
+  BILLING-VIA-RMA-DATA-ENTRY            ,&
+  x-delimiter														,&
+  DATE-START-RMA-DATA-ENTRY             ,&
+  x-delimiter														,&
+  DATE-START-DISKETTE                   ,&
+  x-delimiter														,&
+  DATE-START-PAPER                      ,&
+  x-delimiter														,&
+  DATE-START-WEB-LIVE                   ,&
+  x-delimiter														,&
+  DATE-START-WEB-TEST                   ,&
+  x-delimiter														,&
+  LEAVE-DESCRIPTION                     ,&
+  x-delimiter														,&
+  LEAVE-DATE-START                      ,&
+  x-delimiter														,&
+  LEAVE-DATE-END                        ,&
+  x-delimiter														,&
+  WEB-USER-REVENUE-ONLY-FLAG            ,&
+  x-delimiter														,&
+  MANAGER-FLAG                          ,&
+  x-delimiter														,&
+  CHAIR-FLAG                            ,&
+  x-delimiter														,&
+  ABE-USER-FLAG                         ,&
+  x-delimiter														,&
+  CPSO-NBR                              ,&
+  x-delimiter														,&
+  CMPA-NBR                              ,&
+  x-delimiter														,&
+  OMA-NBR                               ,&
+  x-delimiter														,&
+  CFPC-NBR                              ,&
+  x-delimiter														,&
+  RCPSC-NBR                             ,&
+  x-delimiter														,&
+  DOC-MED-PROF-CORP                     ,&
+  x-delimiter														,&
+  MCMASTER-EMPLOYEE-ID                  ,&
+  x-delimiter														,&
+  DOC-SPEC-CD-EFF-DATE                  ,&
+  x-delimiter														,&
+  DOC-SPEC-CD-2-EFF-DATE                ,&
+  x-delimiter														,&
+  DOC-SPEC-CD-3-EFF-DATE                ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-STATUS                 ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-2-STATUS               ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-3-STATUS               ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-4-STATUS               ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-5-STATUS               ,&
+  x-delimiter														,&
+  DOC-CLINIC-NBR-6-STATUS               ,&
+  x-delimiter														,&
+  FACTOR-GST-INCOME-REG                 ,&
+  x-delimiter														,&
+  FACTOR-GST-INCOME-MISC                ,&
+  x-delimiter														,&
+  YELLOW-PAGES-FLAG                     ,&
+  x-delimiter														,&
+  REPLACED-BY-DOC-NBR                   ,&
+  x-delimiter														,&
+  PRIOR-DOC-NBR                         ,&
+  x-delimiter														,&
+  COP-NBR                               ,&
+  x-delimiter														,&
+  DOC-FLAG-PRIMARY                      ,&
+  x-delimiter														,&
+  HAS-VALID-CURRENT-PAYROLL-RECORD      ,& 
+  x-delimiter														,&
+  PAY-THIS-DOCTOR-OHIP-PREMIUM          ,&
+  x-delimiter														,&
+  DOC-FISCAL-YR-START-MONTH             ,&
+  x-delimiter														,&
+  LAST-MOD-FLAG                         ,&
+  x-delimiter														,&
+  LAST-MOD-DATE                         ,&
+  x-delimiter														,&
+  LAST-MOD-TIME                         ,&
+  x-delimiter														,&
+  LAST-MOD-USER-ID                     
+
+;be2
+;-------------------------------------------------------------------------------
+request utl0030_2 on edit        errors report &
+                  on calculation errors report
+;
+access f028-audit-file
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+subfile utlf028_audit portable keep include	&
+  DOC-NBR              ,&
+  x-delimiter					, &
+  CONTACTS-TYPE        ,&
+  x-delimiter					, &
+  CONTACTS-LOCATION    ,&
+  x-delimiter					, &
+  LAST-MOD-DATE        ,&
+  x-delimiter					, &
+  LAST-MOD-TIME        ,&
+  x-delimiter					, &
+  LAST-MOD-USER-ID     ,&
+  x-delimiter					, &
+  CONTACTS-EMAIL-ADDR  				, &
+  x-lf
+
+;be2
+;-------------------------------------------------------------------------------
+request utl0030_3 on edit        errors report &
+                  on calculation errors report
+;
+access f110-compensation-audit
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+subfile utlf110_audit portable keep include	&
+  x-delimiter  						 ,&
+  DOC-NBR                   ,&
+  x-delimiter  						 ,&
+  EP-NBR                    ,&
+  x-delimiter  						 ,&
+  PROCESS-SEQ               ,&
+  x-delimiter  						 ,&
+  COMP-CODE                 ,&
+  x-delimiter  						 ,&
+  COMP-TYPE                 ,&
+  x-delimiter  						 ,&
+  FACTOR                    ,&
+  x-delimiter  						 ,&
+  FACTOR-OVERRIDE           ,&
+  x-delimiter  						 ,&
+  COMP-UNITS                ,&
+  x-delimiter  						 ,&
+  AMT-GROSS                 ,&
+  x-delimiter  						 ,&
+  AMT-NET                   ,&
+  x-delimiter  						 ,&
+  EP-NBR-ENTRY              ,&
+  x-delimiter  						 ,&
+  COMPENSATION-STATUS       ,&
+  x-delimiter  						 ,&
+  LAST-MOD-FLAG             ,&
+  x-delimiter  						 ,&
+  LAST-MOD-DATE             ,&
+  x-delimiter  						 ,&
+  LAST-MOD-TIME             ,&
+  x-delimiter  						 ,&
+  LAST-MOD-USER-ID         				 ,&
+  x-lf
+
+;be2
+;-------------------------------------------------------------------------------
+request utl0030_4 on edit        errors report &
+                  on calculation errors report
+;
+access f112-pycdceilings-audit
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+subfile utlf112_audit portable keep include	&
+  x-delimiter  						 ,&
+  DOC-NBR                               ,&
+  x-delimiter  						 ,&
+  EP-NBR                                ,&
+  x-delimiter  						 ,&
+  FACTOR                                ,&
+  x-delimiter  						 ,&
+  DOC-PAY-CODE                          ,&
+  x-delimiter  						 ,&
+  DOC-PAY-SUB-CODE                      ,&
+  x-delimiter  						 ,&
+  RETRO-TO-EP-NBR                       ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-CEILING                      ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-CEILING-ADJUSTED             ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-CEILING-COMPUTED             ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-EXPENSE                      ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-EXPENSE-ADJUSTED             ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-EXPENSE-COMPUTED             ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-EXPN-ALLOC-PERS              ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-CEIL-GUAR                    ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-CEILING-GUAR-PERC            ,&
+  x-delimiter  						 ,&
+  DOC-RMA-EXPENSE-PERCENT-REG           ,&
+  x-delimiter  						 ,&
+  DOC-RMA-EXPENSE-PERCENT-MISC          ,&
+  x-delimiter  						 ,&
+  DOC-DEPT-EXPENSE-PERCENT-REG          ,&
+  x-delimiter  						 ,&
+  DOC-DEPT-EXPENSE-PERCENT-MISC         ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-REQREV                       ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-REQREV-ADJUSTED              ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-REQREV-COMPUTED              ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-TARREV                       ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-TARREV-ADJUSTED              ,&
+  x-delimiter  						 ,&
+  DOC-YRLY-TARREV-COMPUTED              ,&
+  x-delimiter  						 ,&
+  RETRO-TO-EP-NBR-REQ                   ,&
+  x-delimiter  						 ,&
+  RETRO-TO-EP-NBR-TAR                   ,&
+  x-delimiter  						 ,&
+  LAST-MOD-FLAG                         ,&
+  x-delimiter  						 ,&
+  LAST-MOD-DATE                         ,&
+  x-delimiter  						 ,&
+  LAST-MOD-TIME                         ,&
+  x-delimiter  						 ,&
+  LAST-MOD-USER-ID                     			 ,&
+  x-lf
+  
+;be2
+;-------------------------------------------------------------------------------
+request utl0201_5 on edit        errors report &
+                  on calculation errors report
+;
+access f119-doctor-ytd-audit
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf     char*1 = char(x-num-lf)
+def x-delimiter	char*1 = "~"
+
+subfile utl0201_f119_audit portable keep include	&
+  DOC-NBR                  ,&
+  x-delimiter  						 ,&
+  DOC-OHIP-NBR             ,&
+  x-delimiter  						 ,&
+  COMP-CODE                ,&
+  x-delimiter  						 ,&
+  PROCESS-SEQ              ,&
+  x-delimiter  						 ,&
+  COMP-CODE-GROUP          ,&
+  x-delimiter  						 ,&
+  REC-TYPE                 ,&
+  x-delimiter  						 ,&
+  AMT-MTD                  ,&
+  x-delimiter  						 ,&
+  AMT-YTD                  ,&
+  x-delimiter  						 ,&
+  LAST-MOD-FLAG            ,&
+  x-delimiter  						 ,&
+  LAST-MOD-DATE            ,&
+  x-delimiter  						 ,&
+  LAST-MOD-TIME            ,&
+  x-delimiter  						 ,&
+  LAST-MOD-USER-ID        				 ,&
+  x-lf
+ 
+build $obj/utl0030 

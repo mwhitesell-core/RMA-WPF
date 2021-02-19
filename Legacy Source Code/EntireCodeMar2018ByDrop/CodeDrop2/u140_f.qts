@@ -1,0 +1,74 @@
+; Program: u140_f.qts
+;
+; Purpose:	add 'report only' docs to subfile so that they appear in r140_b
+;
+; modification history
+; 2007/mar/08 b.e. - origina
+
+
+cancel clear
+set process nolimit
+run u140_f
+set lock record update
+
+set default
+set process nolimit
+
+;------------------------------------------------
+request u140_update_f075_with_report_only      &
+                on edit        errors report    &
+                on calculation errors report
+
+set lock record update
+
+access tmp-doctor-alpha						&
+ 	link doc-nbr       					&
+	to   doc-nbr of f075-afp-doc-mstr opt			&
+        link tmp-alpha-field-1 of tmp-doctor-alpha                 &
+        to   doc-afp-paym-group of f074-afp-group-mstr	 opt
+
+;only "R"eport only docs could have been missed at this point
+;select if     AFP-GROUP-PROCESS-FLAG = "R" 		&
+
+select if   tmp-alpha-field-1  of tmp-doctor-alpha	&
+	  = doc-afp-paym-group of f075-afp-doc-mstr
+
+def x-doc-solo = doc-ohip-nbr	;nconvert(doc-afp-paym-solo)
+
+def x-submission-amt = tmp-counter-1       
+			;if afp-submission-sign  = " " else 0 - tmp-counter-1 
+def x-conversion-amt = tmp-counter-2 
+			;if afp-conversion-sign  = " " else 0 - tmp-counter-2 
+
+output tmp-doctor-alpha update 
+  item tmp-alpha-field-2 	final "on f075"
+
+;------------------------------------------------
+request u140_update_f075_with_report_only      &
+                on edit        errors report    &
+                on calculation errors report
+
+access tmp-doctor-alpha						&
+        link tmp-alpha-field-1 of tmp-doctor-alpha              &
+        to   doc-afp-paym-group of f074-afp-group-mstr	 opt
+
+select if     tmp-alpha-field-2 <> "on f075"	&
+          and afp-group-process-flag = "R" 	
+
+def x-submission-amt = tmp-counter-1 ;if afp-submission-sign  = " " else 0 - tmp-counter-1 
+def x-conversion-amt = tmp-counter-2 ;if afp-conversion-sign  = " " else 0 - tmp-counter-2 
+
+output f075-afp-doc-mstr  alias f075-add   add 
+  item doc-nbr                     final doc-nbr      of tmp-doctor-alpha
+  item doc-ohip-nbr                final doc-ohip-nbr of tmp-doctor-alpha 
+  item doc-afp-paym-group          final tmp-alpha-field-1 of tmp-doctor-alpha 
+  item afp-reporting-mth           final afp-reporting-mth of  f074-afp-group-mstr 
+  item afp-multi-doc-ra-percentage final 0
+  item ra-payment-amt              final 0
+  item ra-payment-amt-total        final 0
+  item afp-payment-amt             final x-conversion-amt
+  item afp-payment-amt-total       final x-conversion-amt
+  item afp-submission-amt          final x-submission-amt
+  item afp-duplicate-doc-count     final 1
+
+build $obj/u140_f

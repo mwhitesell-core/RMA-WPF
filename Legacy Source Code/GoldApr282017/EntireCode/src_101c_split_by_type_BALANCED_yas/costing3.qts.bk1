@@ -1,0 +1,79 @@
+; Program: costing3.qts
+; Purpose: determine doctor's that bill only in non-22 clinics
+; Method: access f050 revenue history for appropriate ped and select
+;	  any doctor with non-zero YTD values for clinic 22. Write
+;	  these doctor numbers to doc-tmp-totals file. Program costing4
+;	  will later check the doc-tmp-totals to determine if the doctor
+;	  has billed in 22 and will then ignore other non-22 billings
+;	  (which were re-entered into 22 and therefore shouldn't be
+;	  counted twice)
+;	  YTD values 
+
+;DATE       BY WHOM      DESCRIPTION
+;99/mar/28   YASEMIN      ORIGINAL
+;00/jun/30  B.E.	 - re-organized code
+;03/dec/17  A.A.	 - alpha doctor nbr
+;05/jul/13  b.e.	 - changed sorted to sort so that only 1 doctor rec
+;			   is written to output file regardless of the nbr
+;			   of clinics the doctor has records for.
+;12/jan/18  MC1		- include clinic 23 & 24 in the selection to be the same as clinic 22
+;12/jun/20  MC2		- include clinic 25 in the selection to be the same as clinic 22
+
+cancel clear
+
+run costing3
+
+set default
+set process nolimit
+set lock file update
+
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+
+request costing3_1     &
+        on calculation errors report    &
+        on edit errors report
+
+; obtain all revenue for appropriate period
+access f050-doc-revenue-mstr-history		&
+  link docrev-doc-nbr				&
+    to doc-nbr of f020-doctor-mstr opt		
+
+;y2k
+;select if ep-yr = 1999 ;and docrev-key[1:1] <> "6"
+;select if    ep-yr of f050-doc-revenue-mstr-history  = w-ep-yr 	&
+select if    iconst-date-period-end = w-current-costing-ped 	&
+; 2012/01/18 - MC1
+;        and docrev-clinic-1-2 =  '22'
+         and (     docrev-clinic-1-2 =  '22'			&
+		or docrev-clinic-1-2 =  '23'			&
+		or docrev-clinic-1-2 =  '24'			&
+; 2012/06/20 - MC2
+		or docrev-clinic-1-2 =  '25'			&
+; 2012/06/20 - end
+	     ) 
+; 2012/01/18 - end
+
+; (select doctor who  was 'active' anytime within the costing
+;  analysis period - ie. start of fiscal year to current costing
+;  analysis ped's yymm)
+use $use/select_f020_active_for_costing_analysis_period.use
+
+
+sort   on docrev-doc-nbr ;	&
+;sorted on docrev-doc-nbr ;	&
+;; no sort needed on clinic- only clinic 22 selected
+;;     on docrev-clinic-1-2 ;      d ; DESCENDING
+
+subfile costing3_debug keep include &
+ docrev-doc-nbr of f050-doc-revenue-mstr-history
+
+output doc-totals-tmp add at docrev-doc-nbr
+  item doc-nbr final docrev-doc-nbr of f050-doc-revenue-mstr-history
+
+build $obj/costing3

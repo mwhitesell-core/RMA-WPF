@@ -1,0 +1,945 @@
+/alpha/rmabill/rmabill101/src
+Tue Mar 10 16:38:32 EST 2015
+ + + + Sourced in /alpha/rmabill/rmabill101/src + + +
+;Compiling program [/alpha/rmabill/rmabill101/src/u110_1.qts]
+Q T P   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ;#> PROGRAM-ID.     U110_1.QTS
+> ;
+> ;       ((C)) Dyad Technologies
+> ;
+> ;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+> ;             Create EARNINGS transactions in F110-COMPENSATION for
+> ;             the current EP-NBR using MTD values taken from F050-REVENUE-MSTR
+> ;
+> ;             STAGE 1 - create subfile of values from F050-REVENUE-MSTR
+> ;
+> ;    MODIFICATION HISTORY
+> ;        DATE    SAF #  WHO      DESCRIPTION
+> ;     93/JUN/01  ____   B.E.     - original
+> ;     93/AUG/02  ____   B.E.     - criteria for output of a transaction
+> ;				   changed from > 0 to <> 0 to allow
+> ;				   negative only transactions
+> ;     93/OCT/07  ____   B.E.     - change summing from YTD to MTD amounts
+> ;     93/OCT/11  ____   B.E.     - criteria for output of transactions changed
+> ;				   to force creation if any record found in
+> ;				   in F050
+> ;     94/FEB/17  ____   M.C.     - MODIFY PGM TO INCLUDE HSC LOCATION
+> ;     95/OCT/19  ----   M.C.     - PDR 631 - INCLUDE OMA CD 'MICV',
+> ;				   'MICM', 'MISJ', 'MISP', 'MOHR'
+> ;     99/feb/24  ----   B.E.     - add new miscellaneous payment codes of
+> ;				   'MICB', MIBR' and 'MINH'
+> ;     99/dec/20  ----   B.E.	 - added MHSC (also allow DHSC which was
+> ;				   mistakenly entered - s/b MHSC
+> ;     06/jul/11  ----   B.E.	 - added DHSC and then changed to DHSC
+> ;     06/sep/07  ----   b.e. 	 - added AGEP
+> ;     07/jul/03  ----   b.e.     - added MICA - MICL
+> ;     08/may/26  ----   M.C.     - original u110.qts has been splitted into u110_1 & u110_2
+> ;				   as per Brad's request, it only allows 30 subfiles
+> ;     14/May/01  ----   MC1      - remove global temp MICF - MICL as they have transferred to u110_2.qts
+> ; -------------------------------------------------------
+> ;       IF UPDATING THIS FILE ALSO UPDATE THE FOLLOWING FILES:
+> ;       costing_billing_codes_?.q?s
+> ;
+> ;       This program has an include:
+> ;	either - u110_rma_1.qts or u110_hsc.qts
+> ;
+> ;   NOTE:  in the future, if new codes to be included, please add to U110_2.qts &
+> ;          and/or u110_rma_2.qts for RMA
+> ; -------------------------------------------------------
+> 
+> cancel clear
+> set stacksize 10000
+> run u110
+> 
+> set default
+WORKSPACE and STACKSIZE can't be reset within a QTP run.
+> set process nolimit
+> ; MC1
+> set lock record update
+> ; MC1 - end
+> 
+> global temp   bill-seq    zoned*2
+> global temp   bill-type   char*1
+> global temp   bill-factor zoned*6
+> global temp  afpin-seq    zoned*2
+> global temp  afpin-type   char*1
+> global temp  afpin-factor zoned*6
+> global temp  afpout-seq    zoned*2
+> global temp  afpout-type   char*1
+> global temp  afpout-factor zoned*6
+> global temp  misc0-seq    zoned*2
+> global temp  misc0-type   char*1
+> global temp  misc0-factor zoned*6
+> global temp  misc1-seq    zoned*2
+> global temp  misc1-type   char*1
+> global temp  misc1-factor zoned*6
+> global temp  misc2-seq    zoned*2
+> global temp  misc2-type   char*1
+> global temp  misc2-factor zoned*6
+> global temp  misc3-seq    zoned*2
+> global temp  misc3-type   char*1
+> global temp  misc3-factor zoned*6
+> global temp  misc4-seq    zoned*2
+> global temp  misc4-type   char*1
+> global temp  misc4-factor zoned*6
+> global temp  misc5-seq    zoned*2
+> global temp  misc5-type   char*1
+> global temp  misc5-factor zoned*6
+> global temp  misc6-seq    zoned*2
+> global temp  misc6-type   char*1
+> global temp  misc6-factor zoned*6
+> global temp  misc7-seq    zoned*2
+> global temp  misc7-type   char*1
+> global temp  misc7-factor zoned*6
+> global temp  misc8-seq    zoned*2
+> global temp  misc8-type   char*1
+> global temp  misc8-factor zoned*6
+> global temp  misc9-seq    zoned*2
+> global temp  misc9-type   char*1
+> global temp  misc9-factor zoned*6
+> 
+> global temp  micv-seq     zoned*2
+> global temp  micv-type    char*1
+> global temp  micv-factor  zoned*6
+> global temp  micm-seq     zoned*2
+> global temp  micm-type    char*1
+> global temp  micm-factor  zoned*6
+> global temp  misj-seq     zoned*2
+> global temp  misj-type    char*1
+> global temp  misj-factor  zoned*6
+> global temp  misp-seq     zoned*2
+> global temp  misp-type    char*1
+> global temp  misp-factor  zoned*6
+> global temp  mohr-seq     zoned*2
+> global temp  mohr-type    char*1
+> global temp  mohr-factor  zoned*6
+> global temp  micb-seq     zoned*2
+> global temp  micb-type    char*1
+> global temp  micb-factor  zoned*6
+> global temp  mibr-seq     zoned*2
+> global temp  mibr-type    char*1
+> global temp  mibr-factor  zoned*6
+> global temp  minh-seq     zoned*2
+> global temp  minh-type    char*1
+> global temp  minh-factor  zoned*6
+> 
+> global temp  mhsc-seq     zoned*2
+> global temp  mhsc-type    char*1
+> global temp  mhsc-factor  zoned*6
+> 
+> global temp  dhsc-seq     zoned*2
+> global temp  dhsc-type    char*1
+> global temp  dhsc-factor  zoned*6
+> 
+> global temp  agep-seq     zoned*2
+> global temp  agep-type    char*1
+> global temp  agep-factor  zoned*6
+> 
+> global temp  mica-seq     zoned*2
+> global temp  mica-type    char*1
+> global temp  mica-factor  zoned*6
+> global temp  micc-seq     zoned*2
+> global temp  micc-type    char*1
+> global temp  micc-factor  zoned*6
+> global temp  micd-seq     zoned*2
+> global temp  micd-type    char*1
+> global temp  micd-factor  zoned*6
+> global temp  mice-seq     zoned*2
+> global temp  mice-type    char*1
+> global temp  mice-factor  zoned*6
+> 
+> request u111_a_get_bill                      &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "BILL"
+Choose viaindex COMP-CODE.
+> item   bill-seq   final  process-seq
+> item   bill-type  final  comp-type
+> item   bill-factor final  factor
+> 
+> request u111_a_get_afpin                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "AFPIN"
+Choose viaindex COMP-CODE.
+> item   afpin-seq    final  process-seq
+> item   afpin-type   final  comp-type
+> item   afpin-factor final  factor
+> 
+> request u111_a_get_afpout                    &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "AFPOUT"
+Choose viaindex COMP-CODE.
+> item   afpout-seq    final  process-seq
+> item   afpout-type   final  comp-type
+> item   afpout-factor final  factor
+> 
+> request u111_a_get_misc0                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC0"
+Choose viaindex COMP-CODE.
+> item  misc0-seq   final  process-seq
+> item  misc0-type  final  comp-type
+> item  misc0-factor final  factor
+> 
+> request u111_a_get_misc1                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC1"
+Choose viaindex COMP-CODE.
+> item  misc1-seq   final  process-seq
+> item  misc1-type  final  comp-type
+> item  misc1-factor final  factor
+> 
+> request u111_a_get_misc2                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC2"
+Choose viaindex COMP-CODE.
+> item  misc2-seq   final  process-seq
+> item  misc2-type  final  comp-type
+> item  misc2-factor final  factor
+> 
+> request u111_a_get_misc3                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC3"
+Choose viaindex COMP-CODE.
+> item  misc3-seq   final  process-seq
+> item  misc3-type  final  comp-type
+> item  misc3-factor final  factor
+> 
+> request u111_a_get_misc4                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC4"
+Choose viaindex COMP-CODE.
+> item  misc4-seq   final  process-seq
+> item  misc4-type  final  comp-type
+> item  misc4-factor final  factor
+> 
+> request u111_a_get_misc5                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC5"
+Choose viaindex COMP-CODE.
+> item  misc5-seq   final  process-seq
+> item  misc5-type  final  comp-type
+> item  misc5-factor final  factor
+> 
+> request u111_a_get_misc6                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC6"
+Choose viaindex COMP-CODE.
+> item  misc6-seq   final  process-seq
+> item  misc6-type  final  comp-type
+> item  misc6-factor final  factor
+> 
+> request u111_a_get_misc7                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC7"
+Choose viaindex COMP-CODE.
+> item  misc7-seq   final  process-seq
+> item  misc7-type  final  comp-type
+> item  misc7-factor final  factor
+> 
+> request u111_a_get_misc8                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC8"
+Choose viaindex COMP-CODE.
+> item  misc8-seq   final  process-seq
+> item  misc8-type  final  comp-type
+> item  misc8-factor final  factor
+> 
+> request u111_a_get_misc9                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISC9"
+Choose viaindex COMP-CODE.
+> item  misc9-seq   final  process-seq
+> item  misc9-type  final  comp-type
+> item  misc9-factor final  factor
+> 
+> request u111_a_get_micv                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MICV"
+Choose viaindex COMP-CODE.
+> item  micv-seq   final  process-seq
+> item  micv-type  final  comp-type
+> item  micv-factor final  factor
+> 
+> request u111_a_get_micm                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MICM"
+Choose viaindex COMP-CODE.
+> item  micm-seq   final  process-seq
+> item  micm-type  final  comp-type
+> item  micm-factor final  factor
+> 
+> request u111_a_get_misj                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISJ"
+Choose viaindex COMP-CODE.
+> item  misj-seq   final  process-seq
+> item  misj-type  final  comp-type
+> item  misj-factor final  factor
+> 
+> request u111_a_get_micb                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MICB"
+Choose viaindex COMP-CODE.
+> item  micb-seq   final  process-seq
+> item  micb-type  final  comp-type
+> item  micb-factor final  factor
+> 
+> request u111_a_get_mibr                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MIBR"
+Choose viaindex COMP-CODE.
+> item  mibr-seq   final  process-seq
+> item  mibr-type  final  comp-type
+> item  mibr-factor final  factor
+> 
+> request u111_a_get_minh                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MINH"
+Choose viaindex COMP-CODE.
+> item  minh-seq   final  process-seq
+> item  minh-type  final  comp-type
+> item  minh-factor final  factor
+> 
+> request u111_a_get_misp                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MISP"
+Choose viaindex COMP-CODE.
+> item  misp-seq   final  process-seq
+> item  misp-type  final  comp-type
+> item  misp-factor final  factor
+> 
+> request u111_a_get_mohr                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MOHR"
+Choose viaindex COMP-CODE.
+> item  mohr-seq   final  process-seq
+> item  mohr-type  final  comp-type
+> item  mohr-factor final  factor
+> 
+> request u111_a_get_mhsc                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "MHSC"
+Choose viaindex COMP-CODE.
+> item  mhsc-seq   final  process-seq
+> item  mhsc-type  final  comp-type
+> item  mhsc-factor final  factor
+> 
+> request u111_a_get_dhsc                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "DHSC"
+Choose viaindex COMP-CODE.
+> item  dhsc-seq   final  process-seq
+> item  dhsc-type  final  comp-type
+> item  dhsc-factor final  factor
+> 
+> request u111_a_get_agep                     &
+>                 on edit        errors report &
+>                 on calculation errors report
+> access f190-comp-codes
+> choose comp-code "AGEP"
+Choose viaindex COMP-CODE.
+> item  agep-seq   final  process-seq
+> item  agep-type  final  comp-type
+> item  agep-factor final  factor
+> 
+> 
+> ;-------------------------------------------------------------------------------
+> ;
+> request u110_process                            &
+>                 on edit        errors report    &
+>                 on calculation errors report
+> 
+> @if dg and hsc
+>_  use $pb_src/u110_hsc
+>_@elseif dg and rma
+>   use $pb_src/u110_rma_1
+> ; Program: u110_rma_1.qts
+> ; Purpose: Transfer 'payroll' transactions from revenue subsystem into payroll
+> ;
+> ; Logic:  Extract 'payroll' revenue transactions and create a BILL compensation
+> ;	  in u110.sf that will used by u111.qts to upload into payroll subsytem
+> ;
+> ; 1999/feb/24 B.E.	- added codes MICB/MIBR/MINH
+> ; 1999/dec/20 B.E.	- added codes MHSC (NHSC mistakenly entered - s/b MHSC)
+> ; 2003/dec/16 A.A.	- alpha doctor nbr
+> ; 2004/mar/01 b.e.	- added link to f090 to determine if clinic is one
+> ;			  of the 'new afp' clinics and needs to be passed
+> ;			  into the payroll system (flag stored in the
+> ;			  blue/yellow card colour field)
+> ;			- added link to f020 to check if doctor 'new afp' member
+> ;			  If new afp clinic then use AFPIN/AFPOUT as comp code
+> ;			  for revenue rather than the regular "BILL" comp code
+> ;			- changed out of "AFPIN/OUT" so that it's output for
+> ;			  'new afp' doctors only if it has non-zero amount
+> ; 2006/jul/11 b.e.	- changes related to NHSC and then made the code DHSC
+> ; 2006/jul/11 b.e.	- added AGEP comp code processing
+> ; 2006/oct/04 b.e.	- fixed DHSC variable for AGEP variable bug
+> ; 2007/jul/03 b.e.	- added MICA - thru MICL
+> ; 2008/may/26 M.C.      - create subfile with 'keep append' instead of 'keep'
+> ;			  because this copybook gets called from u110_1.qts & u110_2.qts
+> ;			- in $cmd/teb1, u110*sf* files must be deleted before the run of u110*
+> ; 2011/jan/25 MC1	- Yasemin would like to include clinic 23 to be same as clinic 22
+> ; 2012/jan/18 MC2	- Yasemin would like to include clinic 24 to be same as clinic 22
+> ; 2012/jun/20 MC3	- Yasemin would like to include clinic 25 to be same as clinic 22
+> ; 2015/mar/10 MC4	- Yasemin would like to include clinic 26 to be same as clinic 22
+> 
+> access f050-doc-revenue-mstr		&
+>    link docrev-doc-nbr			&
+>      to doc-nbr of f020-doctor-mstr	&
+>    link nconvert(docrev-clinic-1-2)	&
+>      to iconst-clinic-nbr-1-2  		&
+>      of iconst-mstr-rec
+> 
+> ; 'regular' payroll (ie.BILL type transaction use only clinic 22 however
+> ; 'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the
+> ;  clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the
+> ;  doctor belongs to an AFP group
+> 
+> ; 2011/01/25 - MC1
+> ;select if   docrev-clinic-1-2 = "22"                            &
+> ; 2012/01/18 - MC2
+> ;select if   (docrev-clinic-1-2 = "22"  or docrev-clinic-1-2 = "23")  &
+> select if   (    docrev-clinic-1-2 = "22"  			&
+> 	      or docrev-clinic-1-2 = "23"			&
+> 	      or docrev-clinic-1-2 = "24"			&
+> ; 2012/06/20 - MC3
+> 	      or docrev-clinic-1-2 = "25"			&
+> ; 2012/06/20 - end
+> ; MC4
+> 	      or docrev-clinic-1-2 = "26"			&
+> ; MC4 - end
+> 	    )  							&
+> ; 2012/01/18 - end
+> ; 2011/01/25 - end
+>          or (     iconst-clinic-card-colour = "Y"               &
+>              and  doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 	     and  (   docrev-clinic-1-2 <  "71"			&
+> 	           or docrev-clinic-1-2 >  "75"			&
+> 		  )						&
+> 	    )
+> 
+> 
+> sorted on docrev-clinic-1-2, docrev-dept, docrev-doc-nbr, docrev-location
+> 
+> temp mtd-bill  zoned*8 signed
+> item mtd-bill  =  mtd-bill                                              &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if docrev-location of f050-doc-revenue-mstr <> "MISC"    &
+>            else mtd-bill                                                &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc0 zoned*8 signed
+> item mtd-misc0 =  mtd-misc0                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC0" &
+>            else mtd-misc0                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc1 zoned*8 signed
+> item mtd-misc1 =  mtd-misc1                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC1" &
+>            else mtd-misc1                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc2 zoned*8 signed
+> item mtd-misc2 =  mtd-misc2                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC2" &
+>            else mtd-misc2                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc3 zoned*8 signed
+> item mtd-misc3 =  mtd-misc3                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC3" &
+>            else mtd-misc3                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc4 zoned*8 signed
+> item mtd-misc4 =  mtd-misc4                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC4" &
+>            else mtd-misc4                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc5 zoned*8 signed
+> item mtd-misc5 =  mtd-misc5                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC5" &
+>            else mtd-misc5                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc6 zoned*8 signed
+> item mtd-misc6 =  mtd-misc6                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC6" &
+>            else mtd-misc6                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc7 zoned*8 signed
+> item mtd-misc7 =  mtd-misc7                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC7" &
+>            else mtd-misc7                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc8 zoned*8 signed
+> item mtd-misc8 =  mtd-misc8                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC8" &
+>            else mtd-misc8                                               &
+>                            reset at docrev-doc-nbr
+> temp mtd-misc9 zoned*8 signed
+> item mtd-misc9 =  mtd-misc9                                             &
+>                 + docrev-mtd-in-rec                                     &
+>                 + docrev-mtd-out-rec                                    &
+>                         if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>                          and docrev-oma-cd   of f050-doc-revenue-mstr ="MISC9" &
+>            else mtd-misc9                                               &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-micv zoned*8 signed
+> item mtd-micv =  mtd-micv                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MICV" &
+>           else    mtd-micv                                      &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-micm zoned*8 signed
+> item mtd-micm =  mtd-micm                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MICM" &
+>           else    mtd-micm                                      &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-misj zoned*8 signed
+> item mtd-misj =  mtd-misj                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MISJ" &
+>           else    mtd-misj                                      &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-misp zoned*8 signed
+> item mtd-misp =  mtd-misp                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MISP" &
+>           else    mtd-misp                                      &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-mohr zoned*8 signed
+> item mtd-mohr =  mtd-mohr                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MOHR" &
+>           else    mtd-mohr                                      &
+>                            reset at docrev-doc-nbr
+> 
+> ; 1999/feb/24 B.E.	- added codes MICB/MIBR/MINH
+> temp mtd-micb zoned*8 signed
+> item mtd-micb =  mtd-micb                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MICB" &
+>           else    mtd-micb                                      &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-mibr zoned*8 signed
+> item mtd-mibr =  mtd-mibr                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MIBR" &
+>           else    mtd-mibr                                      &
+>                            reset at docrev-doc-nbr
+> 
+> temp mtd-minh zoned*8 signed
+> item mtd-minh =  mtd-minh                                      &
+>                 + docrev-mtd-in-rec                              &
+>                 + docrev-mtd-out-rec                             &
+>           if   docrev-location of f050-doc-revenue-mstr ="MISC"  &
+>            and docrev-oma-code of f050-doc-revenue-mstr ="MINH" &
+>           else    mtd-minh                                      &
+>                            reset at docrev-doc-nbr
+> 
+> ; 1999/dec/20 B.E.	- added codes MHSC and NHSC
+> ; 2006/jul/11 B.E.	- removed refer to NHSC as now used as code on it's own
+> temp mtd-mhsc zoned*8 signed
+> item mtd-mhsc =  mtd-mhsc                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="MHSC"   	&
+> ;           and (   docrev-oma-code of f050-doc-revenue-mstr ="MHSC" 	  &
+> ;                or docrev-oma-code of f050-doc-revenue-mstr ="NHSC")	  &
+>           else    mtd-mhsc                                      	&
+>                            reset at docrev-doc-nbr
+> 
+> ; 2006/jul/11 B.E.	- added DHSC
+> temp mtd-dhsc zoned*8 signed
+> item mtd-dhsc =  mtd-dhsc                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="DHSC" 	&
+>           else    mtd-dhsc                                      	&
+>                            reset at docrev-doc-nbr
+> 
+> ; 2006/sep/07 B.E.	- added AGEP
+> temp mtd-agep zoned*8 signed
+> item mtd-agep =  mtd-agep                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="AGEP" 	&
+>           else    mtd-agep                                      	&
+>                            reset at docrev-doc-nbr
+> 
+> ; 2007/jul/03 B.E.	- added MICA
+> temp mtd-mica zoned*8 signed
+> item mtd-mica =  mtd-mica                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="MICA" 	&
+>           else    mtd-mica                                      	&
+>                            reset at docrev-doc-nbr
+> ; 2007/jul/03 B.E.	- added MICC
+> temp mtd-micc zoned*8 signed
+> item mtd-micc =  mtd-micc                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="MICC" 	&
+>           else    mtd-micc                                      	&
+>                            reset at docrev-doc-nbr
+> ; 2007/jul/03 B.E.	- added MICD
+> temp mtd-micd zoned*8 signed
+> item mtd-micd =  mtd-micd                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="MICD" 	&
+>           else    mtd-micd                                      	&
+>                            reset at docrev-doc-nbr
+> ; 2007/jul/03 B.E.	- added MICE
+> temp mtd-mice zoned*8 signed
+> item mtd-mice =  mtd-mice                                      		&
+>                 + docrev-mtd-in-rec                              	&
+>                 + docrev-mtd-out-rec                             	&
+>           if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+>              and  docrev-oma-code of f050-doc-revenue-mstr ="MICE" 	&
+>           else    mtd-mice                                      	&
+>                            reset at docrev-doc-nbr
+> 
+> ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+> temp comp-code   char*6
+> temp comp-type   char*1
+> temp process-seq zoned*2 unsigned
+> temp factor      zoned*6 unsigned
+> temp mtd-billing zoned*8   signed
+> 
+> item comp-code      = "AFPIN" 						       &
+> 			   if    iconst-clinic-card-colour = "Y" 	       &
+> 		             and doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 		else  "AFPOUT"						       &
+> 		           if    doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 		else  "BILL"
+> 
+> item comp-type      = afpin-type					       &
+> 			   if    iconst-clinic-card-colour = "Y" 	       &
+> 		             and doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 		else  afpout-type					       &
+> 			   if   doc-afp-paym-group of f020-doctor-mstr <> " "  &
+> 		else  bill-type
+> 
+> item process-seq    = afpin-seq						       &
+> 			   if    iconst-clinic-card-colour = "Y" 	       &
+> 		             and doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 	        else  afpout-seq					       &
+> 			   if    doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 	        else  bill-seq
+> 
+> item factor         = afpin-factor					       &
+> 			   if    iconst-clinic-card-colour = "Y" 	       &
+> 		             and doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 	        else  afpout-factor					       &
+> 			   if    doc-afp-paym-group of f020-doctor-mstr <> " " &
+> 	        else  bill-factor
+> 
+> item mtd-billing        = mtd-bill
+> 
+> ; 2008/05/26 - MC
+> ;subfile u110_audit keep include &
+> subfile u110_audit keep append include &
+> ; 2008/05/26 - end
+>   docrev-doc-nbr, doc-afp-paym-group, mtd-billing, &
+>   comp-code , factor, process-seq, comp-type
+> 
+> ; 2008/05/26 - MC
+> ;subfile u110_audit_doc keep at docrev-doc-nbr include &
+> subfile u110_audit_doc keep append at docrev-doc-nbr include &
+> ; 2008/05/26 - end
+>   docrev-doc-nbr of f050-doc-revenue-mstr,  	&
+>   doc-afp-paym-group of f020-doctor-mstr , mtd-billing, &
+>   comp-code, factor, process-seq, comp-type
+> 
+> ; 2008/05/26 - MC
+> ;subfile u110                  keep        at docrev-doc-nbr     &
+> subfile u110         keep append          at docrev-doc-nbr     &
+> ; 2008/05/26 - end
+>  if    doc-afp-paym-group of f020-doctor-mstr  = " "		&
+>    or (    doc-afp-paym-group of f020-doctor-mstr <> " "	&
+>        and mtd-bill <> 0                                        &
+>       )								&
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,comp-code,comp-type,process-seq,factor,mtd-billing
+> 
+> 
+> @else
+>_  error - program must be compiled using conditional statements
+>_@endif
+> 
+> temp x-comp-code-misc0 char*6
+> item x-comp-code-misc0                    = "MISC0"
+> subfile u110 alias u110_misc0   append  at docrev-doc-nbr            &
+>   if mtd-misc0 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc0, misc0-type, misc0-seq, misc0-factor, mtd-misc0
+> 
+> temp x-comp-code-misc1 char*6
+> item x-comp-code-misc1                    = "MISC1"
+> subfile u110 alias u110_misc1   append  at docrev-doc-nbr            &
+>   if mtd-misc1 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc1, misc1-type, misc1-seq, misc1-factor, mtd-misc1
+> 
+> 
+> temp x-comp-code-misc2 char*6
+> item x-comp-code-misc2                    = "MISC2"
+> subfile u110 alias u110_misc2   append  at docrev-doc-nbr            &
+>   if mtd-misc2 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc2,misc2-type,misc2-seq,misc2-factor,mtd-misc2
+> 
+> 
+> temp x-comp-code-misc3 char*6
+> item x-comp-code-misc3                    = "MISC3"
+> subfile u110 alias u110_misc3   append  at docrev-doc-nbr            &
+>   if mtd-misc3 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc3,misc3-type, misc3-seq,misc3-factor,mtd-misc3
+> 
+> 
+> temp x-comp-code-misc4 char*6
+> item x-comp-code-misc4                    = "MISC4"
+> subfile u110 alias u110_misc4   append  at docrev-doc-nbr            &
+>   if mtd-misc4 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc4,misc4-type,misc4-seq,misc4-factor,mtd-misc4
+> 
+> 
+> temp x-comp-code-misc5 char*6
+> item x-comp-code-misc5                    = "MISC5"
+> subfile u110 alias u110_misc5   append  at docrev-doc-nbr            &
+>   if mtd-misc5 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc5,misc5-type,misc5-seq,misc5-factor,mtd-misc5
+> 
+> 
+> temp x-comp-code-misc6 char*6
+> item x-comp-code-misc6                    = "MISC6"
+> subfile u110 alias u110_misc6   append  at docrev-doc-nbr            &
+>   if mtd-misc6 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc6,misc6-type,misc6-seq,misc6-factor,mtd-misc6
+> 
+> 
+> temp x-comp-code-misc7 char*6
+> item x-comp-code-misc7                    = "MISC7"
+> subfile u110 alias u110_misc7   append  at docrev-doc-nbr            &
+>   if mtd-misc7 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc7,misc7-type,misc7-seq,misc7-factor,mtd-misc7
+> 
+> 
+> temp x-comp-code-misc8 char*6
+> item x-comp-code-misc8                    = "MISC8"
+> subfile u110 alias u110_misc8   append  at docrev-doc-nbr            &
+>   if mtd-misc8 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc8,misc8-type,misc8-seq,misc8-factor,mtd-misc8
+> 
+> 
+> temp x-comp-code-misc9 char*6
+> item x-comp-code-misc9                    = "MISC9"
+> subfile u110 alias u110_misc9   append  at docrev-doc-nbr            &
+>   if mtd-misc9 <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misc9,misc9-type,misc9-seq,misc9-factor,mtd-misc9
+> 
+> 
+> temp x-comp-code-micv char*6
+> item x-comp-code-micv                    = "MICV"
+> subfile u110 alias u110_micv   append  at docrev-doc-nbr            &
+>   if mtd-micv <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micv,micv-type,micv-seq,micv-factor,mtd-micv
+> 
+> 
+> temp x-comp-code-micm char*6
+> item x-comp-code-micm                    = "MICM"
+> subfile u110 alias u110_micm   append  at docrev-doc-nbr            &
+>   if mtd-micm <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micm,micm-type,micm-seq,micm-factor,mtd-micm
+> 
+> 
+> temp x-comp-code-misj char*6
+> item x-comp-code-misj                    = "MISJ"
+> subfile u110 alias u110_misj   append  at docrev-doc-nbr            &
+>   if mtd-misj <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misj,misj-type,misj-seq,misj-factor,mtd-misj
+> 
+> 
+> temp x-comp-code-misp char*6
+> item x-comp-code-misp                    = "MISP"
+> subfile u110 alias u110_misp   append  at docrev-doc-nbr            &
+>   if mtd-misp <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-misp,misp-type,misp-seq,misp-factor,mtd-misp
+> 
+> 
+> temp x-comp-code-mohr char*6
+> item x-comp-code-mohr                    = "MOHR"
+> subfile u110 alias u110_mohr   append  at docrev-doc-nbr            &
+>   if mtd-mohr <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mohr,mohr-type,mohr-seq,mohr-factor,mtd-mohr
+> 
+> 
+> temp x-comp-code-micb char*6
+> item x-comp-code-micb                    = "MICB"
+> subfile u110 alias u110_micb   append  at docrev-doc-nbr            &
+>   if mtd-micb <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micb,micb-type,micb-seq,micb-factor,mtd-micb
+> 
+> 
+> temp x-comp-code-mibr char*6
+> item x-comp-code-mibr                    = "MIBR"
+> subfile u110 alias u110_mibr   append  at docrev-doc-nbr            &
+>   if mtd-mibr <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mibr,mibr-type,mibr-seq,mibr-factor,mtd-mibr
+> 
+> 
+> temp x-comp-code-minh char*6
+> item x-comp-code-minh                    = "MINH"
+> subfile u110 alias u110_minh   append  at docrev-doc-nbr            &
+>   if mtd-minh <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-minh,minh-type,minh-seq,minh-factor,mtd-minh
+> 
+> 
+> temp x-comp-code-mhsc char*6
+> item x-comp-code-mhsc                    = "MHSC"
+> subfile u110 alias u110_mhsc   append  at docrev-doc-nbr            &
+>   if mtd-mhsc <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mhsc,mhsc-type,mhsc-seq,mhsc-factor,mtd-mhsc
+> 
+> temp x-comp-code-dhsc char*6
+> item x-comp-code-dhsc                    = "DHSC"
+> subfile u110 alias u110_dhsc   append  at docrev-doc-nbr            &
+>   if mtd-dhsc <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-dhsc,dhsc-type,dhsc-seq,dhsc-factor,mtd-dhsc
+> 
+> temp x-comp-code-agep char*6
+> item x-comp-code-agep                    = "AGEP"
+> subfile u110 alias u110_agep   append  at docrev-doc-nbr            &
+>   if mtd-agep <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-agep,agep-type,agep-seq,agep-factor,mtd-agep
+> 
+> 
+> temp x-comp-code-mica char*6
+> item x-comp-code-mica                    = "MICA"
+> subfile u110 alias u110_mica   append  at docrev-doc-nbr            &
+>   if mtd-mica <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mica,mica-type,mica-seq,mica-factor,mtd-mica
+> 
+> temp x-comp-code-micc char*6
+> item x-comp-code-micc                    = "MICC"
+> subfile u110 alias u110_micc   append  at docrev-doc-nbr            &
+>   if mtd-micc <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micc,micc-type,micc-seq,micc-factor,mtd-micc
+> 
+> temp x-comp-code-micd char*6
+> item x-comp-code-micd                    = "MICD"
+> subfile u110 alias u110_micd   append  at docrev-doc-nbr            &
+>   if mtd-micd <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-micd,micd-type,micd-seq,micd-factor,mtd-micd
+> 
+> temp x-comp-code-mice char*6
+> item x-comp-code-mice                    = "MICE"
+> subfile u110 alias u110_mice   append  at docrev-doc-nbr            &
+>   if mtd-mice <> 0                                                   &
+>      include docrev-doc-nbr of f050-doc-revenue-mstr,x-comp-code-mice,mice-type,mice-seq,mice-factor,mtd-mice
+> 
+> 
+> 
+> build $pb_obj/u110_1
+0 ERRORS  0 WARNINGS.
+The file /alpha/rmabill/rmabill101/obj/u110_1.qtc already exists. Ok to delete?
+> 
+Tue Mar 10 16:38:35 EST 2015

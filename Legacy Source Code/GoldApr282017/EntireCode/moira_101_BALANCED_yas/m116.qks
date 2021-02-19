@@ -1,0 +1,107 @@
+;#> PROGRAM-ID.     m116.qks
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : maintenance of f116-dept-expense-rules-hdr
+;
+;    MODIFICATION HISTORY
+;      DATE   WHO	DESCRIPTION
+; 2008/jun/04 M.C.	- original
+; 2008/oct/30 M.C.	- add upshift to doc-nbr field
+; 2015/Jun/24 MC1 	- allow entry of doc-nbr
+; 2016/Feb/09 MC2       - add designer 'EXCL' to populate the excluded tithe doctors records in f116-dtl
+
+can clear
+
+screen $pb_obj/m116
+
+file f116-dept-expense-rules-hdr     occurs 15
+   item doc-nbr initial '000'
+
+file f115-dept-expense-calc-codes reference
+   access viaindex dept-expense-calc-code using dept-expense-calc-code of f116-dept-expense-rules-hdr
+
+file f070-dept-mstr reference
+   access viaindex dept-nbr using dept-nbr of f116-dept-expense-rules-hdr
+
+file f020-doctor-mstr reference
+   access viaindex doc-nbr using doc-nbr of f116-dept-expense-rules-hdr
+
+temp w-check  occurs with f116-dept-expense-rules-hdr
+
+; MC2
+temp comline char*256
+; MC2 - end
+
+use $pb_src/std_hilite nol
+
+title "Dept Expense Rules     " at ,42
+title "Dept Expense            Dept   AFP    Doc   In/Ex"            at 4,4
+title "Calc Code               Nbr    Group  Nbr   Clude"            at 5,4
+
+skip to 7
+cluster occurs with f116-dept-expense-rules-hdr                   
+
+align (1,,4) (,,28)  (,,35) (,,42) (,,50)
+field dept-expense-calc-code of f116-dept-expense-rules-hdr required &
+      nochange lookup on f115-dept-expense-calc-codes upshift
+field dept-nbr of f116-dept-expense-rules-hdr id same                    	&
+	lookup on f070-dept-mstr
+field doc-afp-paym-group of f116-dept-expense-rules-hdr id same upshift
+; 2008/10/30 - MC
+;field doc-nbr of f116-dept-expense-rules-hdr id same predisplay noentry ;  &
+; MC1
+;field doc-nbr of f116-dept-expense-rules-hdr id same predisplay noentry  upshift ;  &
+field doc-nbr of f116-dept-expense-rules-hdr id same predisplay   upshift   
+; MC1 - end
+; 2008/10/20 - end
+;      lookup noton f116-dept-expense-rules-hdr via dept-expense-calc-code &
+;      , dept-nbr , doc-afp-paym-group , doc-nbr using &
+;      dept-expense-calc-code of f116-dept-expense-rules-hdr , dept-nbr of &
+;      f116-dept-expense-rules-hdr , doc-afp-paym-group of &
+;      f116-dept-expense-rules-hdr , doc-nbr of f116-dept-expense-rules-hdr
+field w-check silent							& 
+      lookup noton f116-dept-expense-rules-hdr via dept-expense-calc-code &
+      , dept-nbr , doc-afp-paym-group , doc-nbr using &
+      dept-expense-calc-code of f116-dept-expense-rules-hdr , dept-nbr of &
+      f116-dept-expense-rules-hdr , doc-afp-paym-group of &
+      f116-dept-expense-rules-hdr , doc-nbr of f116-dept-expense-rules-hdr
+field tithe-in-ex-clude-flag of f116-dept-expense-rules-hdr upshift
+cluster
+
+; MC1
+procedure edit doc-nbr
+begin
+   if doc-nbr <> '000'
+   then begin
+      get f020-doctor-mstr opt
+      if not accessok
+      then error 'Doctor nbr is not defined in doctor mstr' 
+      if doc-afp-paym-group of f116-dept-expense-rules-hdr <>		&
+	 doc-afp-paym-group of f020-doctor-mstr
+      then error 'Afp payment group entered is not the same for the doctor in doctor mstr' 
+      if dept-nbr of f116-dept-expense-rules-hdr <>			&      
+	 doc-dept of f020-doctor-mstr
+      then error 'Dept entered is not the same for the doctor in doctor mstr' 
+      end
+end
+
+; MC1 - end
+
+
+procedure designer dtl
+begin
+    run screen $pb_obj/m116b.qkc passing f116-dept-expense-rules-hdr mode f
+end
+
+; MC2
+procedure designer exclude help 'populate f116-dtl records for excluded doctors'
+begin
+     let comline = "$cmd/populate_exclude_dtl " +  " " + ascii(doc-dept,2)  + " " + doc-afp-paym-group
+     run command comline clear all response
+     information = "populate excluded doctors for selected dept/paym group in f116-dtl file " now response
+end
+; MC2 - end
+
+build detail list
+

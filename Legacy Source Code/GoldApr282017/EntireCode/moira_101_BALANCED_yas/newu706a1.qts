@@ -1,0 +1,216 @@
+
+;#> PROGRAM-ID.     NEWU706A1.QTS
+;
+;	((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE: SELECT "CORRECT" CLAIMS FROM THE SUSPENDED FILES
+;                  AND TRANSFER THEM INTO THE LIVE F002 CLAIMS MASTER.
+;
+; MODIFICATION HISTORY
+;    DATE    SMS #  WHO     DESCRIPTION
+;
+; 93/07/21	    M.C.    - SMS 142
+;			    - CLONE FROM U706A.QTS
+;			    - USE DOC-NBR TO LINK TO F020
+;			    - DO NOT REQUIRE TO PROMPT FOR DOC NBR
+;			    - WHEN CREATING RMA CLAIMS, ALSO CREATE
+;			      RECORDS IN F071-CLIENT-RMA-CLAIM-NBR
+; 93/08/31	    M.C.    - SMS 142
+;			    - ALSO DELETE "R"ESUBMIT CLAIMS IN REQUEST
+;			      U706A_DELETE_CLAIMS
+; 93/08/31          M.C.    - SMS 142
+;			    - SET CLMHDR-MANUAL-REVIEW FROM CLMHDR-
+;			      RELATIONSHIP OF F002-SUSPEND-HDR
+; 94/10/15	    B.E.    - ADDED CODE TO INITIALIZE FIELD CLMDTL-LINE-NO
+;			      WHEN CREATING CLAIM DETAIL RECORDS.
+;
+; 96/07/22	    M.C.    - PDR 649
+;			    - DIFFERENT SERVICE MONTH CAN BE IN A
+;			      DETAIL CLAIM
+;			    - CHANGE X-ACCOUNTING-NBR NOT TO INCLUDE
+;			      CLMDTL-SV-YY & CLMDTL-SV-MM
+; 96/08/19	    M.C.    - PDR 649 - REQUEST DELETE_CLAIMS DOES NOT
+;			      WORK ANYMORE, RECEIVE ERROR "RECORD HAS
+;			      BEEN CHANGED SINCE YOU FOUND IT", CONVERT
+;			      THE REQUEST INTO 3 INDIVIDUAL REQUESTS
+;			      DELETE_DETAIL, DELETE_ADDRESS, DELETE_HEADER
+; 98/02/19    B.E.    - A NEW BATCH NUMBER MUST BE CREATED WHEN
+;			      A DOCTOR"S CLINIC OR SPECIALTY CODE CHANGES.
+;			      IN REQUEST U706A_SELECT_COMPLETE_CLAIMS THE
+;			      SORT AND KEEP AT CHANGED SO THAT "W-COUNT"
+;			      IS RESET TO 1 IF CHANGE IN CLINIC/SPEC.
+;			      REQUEST U706A_GEN_CLAIM_NBRS CHANGED
+;			      TO BUILD BATCH NUMBER TAKING INTO CONSIDERATION
+;			      IF CLINIC/DOC NUMBER HAS CHANGED.
+; 98/04/17    M.C.    - CHANGE THE FORMULA FOR COUNTER-CLINIC-NBRS &
+;			COUNTER-SPEC-CODES, HOLD-CLINIC-NBR-1-2 &
+;			HOLD-SPEC-CD
+; 98/06/02    M.C.    - CHANGE THE FORMULA FOR COUNTER-CLINIC-NBRS &
+;			W-BATCH-NBR AND COMMENT OUT COUNTER-SPEC-CD
+;			IN U706A_PROCESS_CLAIM_DETAILS REQUEST,
+;			CHANGE THE SORTED AND OUTPUT F001-BATCH-
+;			CONTROL-FILE STATEMENTS
+; 98/09/14    B.E     - w-count was being reset a change in clinic/specialty
+;			which started batch number back at 1 again. If a 
+;			doctor had a large series of claims that increased
+;			batch number at each group of 99, then the reset
+;			caused the duplication of batch numbers. Code changed
+;			so that w-count reset only at change in doctor number
+;			so that it now counts all claims. This now calculates
+;			the next batch number correctly, however it doesn"t
+;			reset the claim-nbr within the batch back to 1.
+;			Therefore each time the clinic/spec/agent changes 
+;			the 1st claim within the batch will start at the
+;			next higher number than the last claim nbr in 
+;			in the last batch. This could eventually be
+;			be fixed but isn"t within this version of code.
+; also needs check if agent changed
+; 98/10/14    M.C.     - create "P" keys in header & detail records of
+;			 f002-claims-mstr   
+; 1999/jan/28 B.E./M.C.- y2k
+;                      - use key-p-clm-data instead of the 4 items when creating
+;                        p keys for claim header and detail records
+; 1999/May/21 S.B.     - Added the use file def_batctrl_batch_status.def
+;			 to remove any hardcoding of the 
+;			 batctrl-batch-status.
+; 1999/May/27 S.B.     - Added the use file
+;                        def_clmhdr_status.def to 
+;                        prevent hardcoding of clmhdr-status.
+; 1999/May/28 S.B.     - Removed the nconvert from the iconst-clinic-nbr.
+; 1999/Nov/08 M.C.     - output f071 record first before creating f002/f001
+;			 record in u706a_process_claim_headers request
+; 1999/Nov/12 M.C.     - reset batch nbr to 1 if ws-batch-nbr = 1000 in
+;                        u706a_gen_claim_nbrs request
+; 2000/Jan/18 M.C.     - include clinic nbr when creating f071 record in   
+;			 u706a_process_claim_headers request
+; 2000/Feb/08 B.A.     - Added code to put confidential-flag to 
+;         		 f002-claims-mstr and put a corresponding description
+; 2000/Feb/16 M.C.     - do not process f002-suspend-dtl where clmdtl-status
+;         	         equal to 'D' 
+; 2000/may/03 B.E.     - clmhdr-date-sys represents the date the claim
+;                        was "keyed". For diskette/web claims this date
+;                        was set at the time the file was uploaded into
+;                        suspense files. The newu706a pgm was changed to 
+;                        use the actual system date the day the suspend
+;                        record was loaded into the claims mstr instead
+;                        of the date it was loaded into suspense.
+; 2000/may/04 M.C.     - add clmhdr-doc-nbr in the sort/sorted statements of
+;                        request u706a_select_complete_claims, and       
+;                        u706a_gen_claim_nbrs 
+; 2000/jun/08 B.E.     - write out only 1 description rec for confidential
+;			 claims with message "NO VERIFICATION PLEASE"
+; 2000/jun/12 B.E.     - no defaulting of f002's "manual-revie"' based upon 
+;			 "confidentiality" field. Manual review is always
+;			 set to value of manual-review field in susp hdr.
+; 2000/sep/04 B.E.      - calculation of total nbr services now based
+;                         upon new redefined fields added to dictionary
+; 2000/sep/21 B.E.      - requests that delete hdr/dtl/address records
+;                         check clmhdr status. Added 'i'gnore status to select
+;			  deletion of transactions
+;			- added request to delete description records
+; 2000/sep/23 B.E.	- added request to upload description records into
+;			  claim description records
+; 2000/oct/02 B.E.	- updates claim header total oma/ohip amts with 
+;			  appropriate oma/ohip amt rather than putting ohip
+;			  amount into both fields
+;			- in request that deletes header record included
+;			  select of headers with 'delete' or 'ignore' status
+; 2000/oct/11 B.E.	- don't pickup description records unless header's
+;			  manual-review field = "Y" (some comments are passed
+;			  in from the web and are only for RMA staff to 
+;			  read - they don't need to be brought into f002
+; 2000/nov/07 M.C.	- change the definition when defining ws-batch-nbr
+;		        - add the new request u706a_gen_batch_nbrs,
+;			  u706a_sort_batch_rec, modify request
+;			  u706a_gen_claim_nbrs
+; 2002/may/06 M.C.      - if clinic is 85 with payroll-flag = 'B', set clmhdr-clinic to 22
+; 2002/jun/14 M.C.	-  add  'on errors report' at the end of each output statement
+; 2002/sep/30 M.C.	-  assign the correct next batch nbr based on the clinic nbr
+; 2003/jun/12 M.C.	-  change to sort on t-batch-nbr instead of w-batch-nbr
+; 2003/oct/23 M.C.	-  reset the next batch nbr to 1 if greater than 999 for
+;			   each clinic
+; 2003/dec/23 A.A.	-  alpha doctor nbr
+; 2004/jul/07 M.C.	-   reinstate the change on 2003/jun/12
+;			-   change back the sort on w-batch-nbr instead of t-batch-nbr
+;			-   change output on f001 at w-batch-nbr instead of t-batch-nbr
+; 2005/jan/04 M.C.	- split newu706a.qts into newu706a1/a2/a3.qts
+
+cancel clear
+
+run create_claims_from_suspense
+set lock file update
+set process nolimit
+
+;*******************************************************************************
+;
+request u706a_select_complete_claims on calculation errors report
+
+access f002-suspend-hdr					&
+	link clmhdr-doc-ohip-nbr,			&
+	     clmhdr-accounting-nbr			&
+	  to clmdtl-doc-ohip-nbr,			&
+	     clmdtl-accounting-nbr  of f002-suspend-dtl
+
+;S.B.
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+;select if clmhdr-status = "C"
+; (00/feb/16 - MC add clmdtl-status <> 'D')
+select if    clmhdr-status = clmhdr-status-complete	&
+	 and clmdtl-status <> clmdtl-status-delete
+
+;DEF X-ACCOUNTING-NBR CHAR*12 = CLMHDR-ACCOUNTING-NBR    + &
+;	ASCII(CLMDTL-SV-YY,2) + ASCII(CLMDTL-SV-MM,2)
+
+;2002/10/09 - MC  
+def w-convert-clinic zoned*2 unsigned = 22 if clmhdr-clinic-nbr-1-2 = 85	&
+			else clmhdr-clinic-nbr-1-2
+;2002/10/09 - end
+
+;BE 98/FEB/19 SORTED ON CLMHDR-DOC-OHIP-NBR, CLMHDR-ACCOUNTING-NBR
+;Be 98/sep/14 added agent to sort
+;2000/05/04 - MC - add doc-nbr to sort
+;sort	on clmhdr-doc-ohip-nbr,		&
+sort	on clmhdr-doc-nbr,		&
+	   clmhdr-doc-ohip-nbr,		&
+;2002/10/09 - MC  
+;	   clmhdr-clinic-nbr-1-2,	&
+	   w-convert-clinic,            &
+;2002/10/09 - end 
+	   clmhdr-doc-spec-cd,		&
+	   clmhdr-agent-cd,		&
+	   clmhdr-accounting-nbr
+
+temp w-count
+;BE ITEM W-COUNT COUNT AT CLMHDR-ACCOUNTING-NBR  RESET AT CLMHDR-DOC-OHIP-NBR
+item w-count count at clmhdr-accounting-nbr of f002-suspend-hdr 	&
+;BE		reset at clmhdr-doc-spec-cd
+;2000/05/04 - MC
+;		reset at clmhdr-doc-ohip-nbr
+		reset at clmhdr-agent-cd  
+
+temp clmhdr-tot-claim-ar-oma num*8
+  item clmhdr-tot-claim-ar-oma  subtotal clmdtl-fee-oma	&
+;	RESET AT X-ACCOUNTING-NBR
+	reset at clmhdr-accounting-nbr
+
+temp clmhdr-tot-claim-ar-ohip num*8
+  item clmhdr-tot-claim-ar-ohip subtotal clmdtl-fee-ohip	&
+;	RESET AT X-ACCOUNTING-NBR
+	reset at clmhdr-accounting-nbr
+
+;!def clmhdr-doc-nbr zoned*3 = mod((clmhdr-batch-nbr / 1000),1000)
+def clmhdr-doc-nbr  char*3 = (clmhdr-batch-nbr[3:3])
+
+subfile u706a_sel_susp_hdr keep at clmhdr-accounting-nbr of f002-suspend-hdr &
+	include clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr, w-count, &
+	clmhdr-pat-key-data, clmhdr-agent-cd,                   &
+	clmhdr-tot-claim-ar-oma, clmhdr-tot-claim-ar-ohip,	&
+; 2002/10/09 - MC
+;	clmhdr-clinic-nbr-1-2,	clmhdr-doc-spec-cd,		&
+        w-convert-clinic,	clmhdr-doc-spec-cd,		&
+; 2002/10/09 - end
+	clmhdr-doc-nbr
+
+build $pb_obj/newu706a1

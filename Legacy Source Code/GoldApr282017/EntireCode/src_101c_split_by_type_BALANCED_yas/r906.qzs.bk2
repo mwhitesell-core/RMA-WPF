@@ -1,0 +1,33 @@
+
+; 91/APR/19	M. CHAN		- SMS 138
+;				- MODIFY ACCESS STATEMENT
+;
+; 91/AUG/09	M. CHAN		- PDR 507, MODIFY THE LOGIC
+
+
+; TO CHECK IF THE CALCULATED CLAIM AMOUNT FROM THE DETAIL RECORDS
+; EQUAL TO THE CLAIM HEADER AMOUNT - SMS 107.1
+
+;ACCESS *SUB905 LINK (SORT-KEY + '000000') VIAINDEX      	&
+;              KEY-CLAIMS-MSTR TO F002-CLAIMS-MSTR
+access *sub905 link ('B', key-clm-batch-nbr,   		       	&
+                     key-clm-claim-nbr, '00000', '0')		&
+		to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+		   key-clm-serv-code, key-clm-adj-nbr 		&
+		of f002-claims-mstr
+
+define w-bal-due int*8 pic '^^^,^^^.^^' = clmhdr-tot-claim-ar-ohip + &
+                         clmhdr-manual-and-tape-payments
+define x-ast char*1 = '*' if clmhdr-date-cash-tape-payment = '      ' &
+                        or   clmhdr-date-cash-tape-payment = '000000'  &
+		else  ' '
+select if w-bal-due  <> 0  and clmdtl-fee-ohip <> w-bal-due  and   &
+   	  clmdtl-fee-ohip <> clmhdr-tot-claim-ar-ohip
+set default
+set report device disc name r906
+set report nolimit
+set report page length 60
+set report page width 132
+report sort-key clmdtl-fee-ohip of sub905 clmhdr-tot-claim-ar-ohip clmhdr-manual-and-tape-payments w-bal-due clmhdr-date-cash-tape-payment x-ast
+build $pb_obj/r906
+  

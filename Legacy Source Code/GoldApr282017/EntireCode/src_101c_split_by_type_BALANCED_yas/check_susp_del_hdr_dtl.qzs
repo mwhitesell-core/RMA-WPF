@@ -1,0 +1,87 @@
+; 2015/Jan/21	MC	check_susp_del_hdr_dtl.qzs
+
+cancel clear
+set rep nolimit
+
+; select 'D'eleted suspend header records
+
+access f002-suspend-hdr
+sel if clmhdr-status = 'D'
+rep clmhdr-doc-ohip-nbr clmhdr-accounting-nbr
+go
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; select 'D'eleted suspend detail records
+
+access f002-suspend-dtl                            &
+  link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr  &
+    to clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr  &
+                            of f002-suspend-hdr opt 
+
+; file   : def_clmhdr_status.def
+; purpose: define the suspended header record's status field
+
+; This USE file is called from the following programs:
+;   newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,
+;   r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs
+;   d705.qks
+; 00/oct/02 B.E. - change variable name from nocancel to not-completed
+;
+def clmhdr-status-complete	char*1	= "C"
+def clmhdr-status-delete	char*1	= "D"
+def clmhdr-status-cancel	char*1	= "Y"
+def clmhdr-status-resubmit	char*1	= "R"
+def clmhdr-status-error		char*1	= "X"
+def clmhdr-status-not-complete	char*1	= "N"
+def clmhdr-status-default	char*1	= " "
+def updated			char*1	= "U"
+def clmhdr-status-ignor		char*1	= "I"
+; file:    def_clmhdr_status.def
+; purpose: define the suspended detail record's status
+;
+def clmdtl-status-delete	char*1	= "D"
+def clmdtl-status-new      	char*1	= "N"
+def clmdtl-status-active 	char*1	= " "
+def clmdtl-status-updated	char*1	= "U"
+
+select if (   clmdtl-status = clmdtl-status-delete        &
+           or clmhdr-status = clmhdr-status-ignor         &
+          )
+
+sorted on clmdtl-doc-ohip-nbr on clmdtl-accounting-nbr 
+set subfile name delete_dtl keep at clmdtl-accounting-nbr
+rep summary                       &
+    clmdtl-doc-ohip-nbr clmdtl-accounting-nbr clmdtl-status clmhdr-status
+go
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; count how many deleted detail record per accounting nbr
+
+access *delete_dtl link to f002-suspend-dtl
+
+def rec-count = 1
+def del-count = 1 if clmdtl-status of f002-suspend-dtl = 'D'
+
+sorted on clmdtl-doc-ohip-nbr on clmdtl-accounting-nbr
+set subfile name delete_all_dtl keep at clmdtl-accounting-nbr
+
+rep summ clmdtl-doc-ohip-nbr clmdtl-accounting-nbr rec-count subt reset at clmdtl-accounting-nbr &
+         del-count subt reset at clmdtl-accounting-nbr clmhdr-status
+go
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; select if all detail records are 'D'eleted
+
+access *delete_all_dtl
+
+sel if rec-count = del-count
+
+rep all
+
+go
+
+exit
+

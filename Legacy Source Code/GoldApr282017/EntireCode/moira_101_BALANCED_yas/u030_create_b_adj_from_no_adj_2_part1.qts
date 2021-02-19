@@ -1,0 +1,175 @@
+
+
+can clear
+set default
+set process nolimit
+set lock record update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request determine_adjustment on calculation errors report on edit errors report
+  ; Determine if automatic 'B' Adjustment
+  ; is to be generated
+
+access *u030_no_adj                                                  &
+   link 'B', part-hdr-claim-id[1:8],         &
+        nconvert(part-hdr-claim-id[9:2]),             &
+       '00000', '0'                                    &
+    to   key-clm-type, key-clm-batch-nbr,              &
+        key-clm-claim-nbr, key-clm-serv-code,          &
+        key-clm-adj-nbr   of f002-claims-mstr  
+
+def x-claim-bal = (clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments) 
+
+def x-part-bal int*7 signed = x-claim-bal  
+
+def x-auto-adj char*1 = 'Y'                               	     &
+   if (    (x-claim-bal <= 1500)                                     &
+       and (part-hdr-explan-cd = '35')                               &
+      )   					     		     
+
+subfile u030_auto_adj keep if x-auto-adj = 'Y'          &
+   include u030_no_adj,   x-part-bal
+
+subfile u030_no_adj_new keep if x-auto-adj <> 'Y'              &
+   include u030_no_adj  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request summ_claim_serv_code on calculation errors report on edit errors report
+                 ; Summarize duplicate ohip code details
+                 ; into one record per claim
+
+access *u030_auto_adj                                &
+   link 'B', part-hdr-claim-id[1:8],         &
+        nconvert(part-hdr-claim-id[9:2])              &
+    to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr &
+        of f002-claims-mstr
+
+sel if clmdtl-oma-cd <> '0000' and clmdtl-oma-cd <> 'ZZZZ' &
+  and  clmdtl-adj-nbr = 0
+
+sorted on part-hdr-claim-id on key-clm-serv-code
+
+temp x-amt-billed int*7
+   item x-amt-billed = x-amt-billed + clmdtl-fee-ohip       &
+               reset at key-clm-serv-code
+
+; 2007/02/07 - MC - summarize the amt tech billed for the same ohip code details
+temp x-amt-dtl-tech-billed int*7
+item x-amt-dtl-tech-billed = x-amt-dtl-tech-billed + clmdtl-amt-tech-billed	&
+			reset at key-clm-serv-code
+; 2007/02/07 - end
+
+subfile u030_summ_serv_code keep at key-clm-serv-code   &
+   include x-amt-billed, key-clm-serv-code,          &
+          part-hdr-claim-id, part-hdr-claim-nbr,       &
+          part-hdr-clinic-nbr, clmdtl-diag-cd,         &
+          clmdtl-sv-date, clmdtl-line-no, x-part-bal,   &
+; 2007/02/07 - MC - x-amt-dtl-tech-billed
+	  x-amt-dtl-tech-billed
+; 2007/02/07 -end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request match_dtl on calculation errors report on edit errors report
+                   ; Match paid detail and claim detail, calculate
+                   ; the difference in payment for each match detail
+                   ; 91/12/16 - Select claim detail which has the
+                   ; balance not equal to 0
+
+
+access *u030_summ_serv_code                            &
+   link  part-hdr-clinic-nbr, part-hdr-claim-nbr, key-clm-serv-code &
+    to   part-dtl-clinic-nbr, part-dtl-claim-nbr, part-dtl-oma-cd   &
+;      of part-paid-dtl optional
+      of part-paid-dtl 
+
+sorted on part-hdr-claim-id
+
+; 2007/06/19 - MC - consider the reverse payment as well
+def x-bal-diff int*7 signed = x-amt-billed  - part-dtl-amt-paid	&
+;	if part-dtl-amt-paid > 0 				&
+	if part-dtl-amt-paid >= 0 				&
+      else part-dtl-amt-paid * -1
+; 2007/06/19 - end
+
+temp x-sel-dtl
+item x-sel-dtl = x-sel-dtl + 1 if x-bal-diff <> 0 and   &
+   record part-paid-dtl exist reset at part-hdr-claim-id
+
+temp x-tot-bal
+item x-tot-bal = x-tot-bal + x-bal-diff if x-bal-diff <> 0 and   &
+   record part-paid-dtl exist reset at part-hdr-claim-id
+
+def x-adj-serv-code char*5 = key-clm-serv-code
+
+subfile u030_auto_adjdtl keep if x-bal-diff <> 0 and      &
+    record part-paid-dtl exist                             &
+   include x-adj-serv-code,                             &
+          part-hdr-claim-id,                           &
+          clmdtl-diag-cd,                              &
+          clmdtl-sv-date, clmdtl-line-no, x-bal-diff,  &
+          part-dtl-explan-cd,				&
+; 2007/02/07 - MC
+	  x-amt-billed,	x-amt-dtl-tech-billed
+; 2007/02/07 - end
+
+; 2007/06/19 - the following subfile for ru030e report, display on
+; report if clmhdr balance (x-part-bal) is different from clmdtl balance (x-tot-bal)
+subfile u030_no_adjclm_created keep at part-hdr-claim-id &
+   include x-adj-serv-code,                              &
+          part-hdr-claim-id of u030_summ_serv_code,     &
+           clmdtl-diag-cd of u030_summ_serv_code,        &
+       clmdtl-sv-date of u030_summ_serv_code,        &
+         clmdtl-line-no of u030_summ_serv_code,       &
+          part-dtl-explan-cd of part-paid-dtl,         &
+          x-part-bal of u030_summ_serv_code,           &
+           x-tot-bal, x-sel-dtl
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request calc_batch_nbr on calculation errors report on edit errors report
+
+access *u030_auto_adjdtl
+
+sort on part-hdr-claim-id on x-adj-serv-code
+
+temp x-count
+  item x-count count
+
+temp x-batch-count
+  item x-batch-count = ceiling(x-count / 99)
+
+temp x-claim-bal int*7 signed
+  item x-claim-bal = x-claim-bal + x-bal-diff &
+                reset at part-hdr-claim-id
+
+; 2007/06/19 - MC - summarize amt tech billed and amt billed from each detail record for each claim
+temp x-hdr-amt-tech-billed int*7 signed
+item x-hdr-amt-tech-billed = x-hdr-amt-tech-billed + x-amt-dtl-tech-billed reset at part-hdr-claim-id
+
+temp x-hdr-amt-billed int*7 signed
+item x-hdr-amt-billed = x-hdr-amt-billed + x-amt-billed reset at part-hdr-claim-id
+; 2007/06/19 - end
+
+subfile u030_srt_adj keep include                         &
+        u030_auto_adjdtl,  x-count, x-batch-count
+
+; B.E. 98/Sep/10 Added explanation code to subfile
+subfile u030_update_clmhdr keep at part-hdr-claim-id include &
+    part-hdr-claim-id of u030_auto_adjdtl, 		     &
+    x-claim-bal,					     &
+    part-dtl-explan-cd of u030_auto_adjdtl,		     &
+; 2007/02/07 - MC
+; 2007/06/19 - MC- use the new temp x-hdr-amt-tech-billed & x-hdr-amt-billed
+;    x-amt-billed of u030_auto_adjdtl, 			     &
+;    x-amt-dtl-tech-billed of u030_auto_adjdtl
+    x-hdr-amt-billed,                            		&
+    x-hdr-amt-tech-billed
+; 2007/06/19 - end
+; 2007/02/07 - end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+build $obj/u030_create_b_adj_from_no_adj_2_part1

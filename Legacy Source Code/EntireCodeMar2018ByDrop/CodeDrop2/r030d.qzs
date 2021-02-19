@@ -1,0 +1,168 @@
+;#> PROGRAM-ID.     R030D.QZS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : PRINT THE UNMATCH CLAIMS ON RU030A REPORT
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/MAR/04 M.C.         - ORIGINAL (SMS 138)
+;     91/SEP/10 D.B.         - CHANGE PIC FOR FINAL FOOTING
+;     92/MAR/13 Y.B.	     - SAF 26
+;			     - PRINT PATIENT NAME AND HEALTH NBR
+;			       AND AGE CAT FOR EACH DETAIL
+;			     - MODIFY ACCESS STMT TO LINK PATIENT
+;			       MSTR TO EXTRACT PATIENT NAME
+;     92/MAR/17 Y.B.         - MODIFY **TOTAL** WITH TRAIL "-"
+;
+;     92/AUG/13 M.C.         - RESET THE GROUP NBR BACK TO THE
+;			       REAL ONE FOR CLINIC 61 TO 65
+;     97/SEP/17 M.C.	     - PDR 663
+;			     - USE X-GROUP-NBR INSTEAD OF RAT-145-GROUP-NBR
+;			     - USE SORT INSTEAD OF SORTED
+;			     - ADD FOOTING AT X-RAT-GROUP-NBR AND
+;			       ALSO SORT ON X-RAT-GROUP-NBR
+; 2002/09/05      yas        - add new clinic 95 (AA2K)  
+; 2003/may/03   yas   - add new clinics AA5V AA5W AA5X AA5Y 6317
+; 2004/mar/03   yas   - add new clinics 84 and 43               
+; 2004/mar/16   M.C.  - add constant mstr in the access statement
+;		      - modify x-rat-group-nbr definition 
+
+can clear
+set default
+set report nolim
+set rep dev disc name ru030a
+set page length 63 width 132
+set formfeed
+set noclose
+
+access *u030_unmatch link (nconvert(rat-145-health-ohip-nbr)) to &
+	pat-health-nbr of f010-pat-mstr opt			 &
+; 2004/03/16 - MC
+	link (nconvert(x-group-nbr))				 &
+	 to  iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+; 2004/03/16 - end
+
+
+;y2k
+def x-age-cat = days(sysdate) - days(rat-145-service-date)
+
+; 970917
+;DEF X-CLAIM-NBR CHAR*10 = RAT-145-GROUP-NBR[1:2] + RAT-145-ACCOUNT-NBR
+def x-claim-nbr char*10 = x-group-nbr  + rat-145-account-nbr
+
+;DEF X-CLINIC-NBR CHAR*2 = RAT-145-GROUP-NBR[1:2] - 970917
+
+def x-claim-reject char*5 = "*****" if x-oma-found = "N"	&
+	else " "
+
+def x-surname char*9 = rat-145-last-name[1:9] 			&
+	if rat-145-last-name <> " " else pat-surname[1:9]
+
+def x-first-name char*5 = rat-145-first-name[1:5] 		&
+	if rat-145-first-name <> " " else pat-given-name[1:5]
+
+def x-rat-145-name char*14 = pack(x-surname + ", " + x-first-name)
+
+; 2004/03/16 - MC 
+;def x-rat-group-nbr char*4 = "9595" if rat-145-group-nbr = "6195" &
+;                      else   "9598" if rat-145-group-nbr = "6298" &
+;                      else   "9607" if rat-145-group-nbr = "6307" &
+;                      else   "9619" if rat-145-group-nbr = "6419" &
+;                      else   "9632" if rat-145-group-nbr = "6532" &
+;                      else   "AA03" if rat-145-group-nbr = "8100" &
+;                      else   "AA21" if rat-145-group-nbr = "8200" &
+;                      else   "AA25" if rat-145-group-nbr = "8300" &
+;                      else   "AA5V" if rat-145-group-nbr = "9100" &
+;                      else   "AA5W" if rat-145-group-nbr = "9200" &
+;                      else   "AA5X" if rat-145-group-nbr = "9300" &
+;                      else   "AA5Y" if rat-145-group-nbr = "9400" &
+;                      else   "AA2K" if rat-145-group-nbr = "9500" &
+;                      else   "6317" if rat-145-group-nbr = "9600" &
+;                      else   "6072" if rat-145-group-nbr = "8400" &
+;                      else   "H055" if rat-145-group-nbr = "4300" &
+;                     else   rat-145-group-nbr
+
+def x-rat-group-nbr char*4 = iconst-clinic-nbr  
+; 2004/03/16 - end
+
+
+; SORTED ON RAT-145-ACCOUNT-NBR - 970917
+sort on x-rat-group-nbr  on rat-145-account-nbr
+
+page heading							&
+  tab   1 "RU030A/"						&
+  tab   8 x-rat-group-nbr         				&
+  tab  42 "UNMATCHED OHIP PAYMENTS - AS AT"                	&
+;y2k
+  tab  75 sysdate						&
+  tab 120 "PAGE"						&
+  tab 126 syspage						&
+skip 1								&
+  tab   1 "CLINIC NUMBER:"  					&
+  tab  16 x-rat-group-nbr         				&
+  tab  55 "R.  M.  A."						&
+skip 2								&
+  tab   1 "CLAIM NO       OMA     SERVICE     PAYMENT"		&
+  tab  46 "TECHNICAL   PROFESSIONAL   REGISTRATION"		&
+  tab  96 "HEALTH/OHIP          AGE   CLAIM" 			&
+skip 1								&
+  tab   1 "               CODE      DATE       AMOUNT"		&
+  tab  46 " PAYMENT       PAYMENT         NAME"			&
+  tab  96 "  NUMBER      TYPE   CAT   REJECT"  			&
+skip 2
+
+report								&
+  tab   1 x-claim-nbr                             		&
+  tab  16 rat-145-service-cd					&
+;y2k
+  tab  23 rat-145-service-date					&
+  tab  37 rat-145-amt-paid  					&
+  tab  48 x-tech-amt pic "^^,^^^.^^ " trail "-"			&
+  tab  61 x-prof-amt pic "^^,^^^.^^ " trail "-"			&
+  tab  75 x-rat-145-name                                 	&
+  tab  98 rat-145-health-ohip-nbr                             	&
+  tab 113 x-type                             			&
+  tab 119 x-age-cat pic "^^^"                              	&
+  tab 124 x-claim-reject
+
+footing at rat-145-account-nbr					&
+  tab  23 "*TOTAL*"  						&	
+  tab  33 rat-145-amt-paid subtotal pic "^^^,^^^.^^ " trail "-"  &
+skip 2
+
+footing at x-rat-group-nbr					&
+skip 2								&
+   tab   1 "      TOTAL CLINIC - "				&
+   tab  24 x-rat-group-nbr					&
+   tab  30 "UNMATCHED NUMBER"					&
+   tab  52 count at rat-145-account-nbr pic "^^^^^"		&
+   tab  62 "AMOUNT"						&
+   tab  72 rat-145-amt-paid subtotal pic "^^^,^^^.^^ "		&
+		trailing sign "-"  skip page
+
+final footing							&
+skip 2								&
+   tab   1 "FINAL TOTAL CLINIC - "				&
+;  TAB  24 X-CLINIC-NBR						&
+   tab  30 "UNMATCHED NUMBER"					&
+   tab  52 count at rat-145-account-nbr pic "^^^^^"		&
+   tab  62 "AMOUNT"						&
+   tab  72 rat-145-amt-paid subtotal pic "^^^,^^^.^^ "		&
+		trailing sign "-"
+
+build $pb_obj/r030d1
+
+access *u030_fully_paid
+set nohead
+
+
+final footing							&
+skip 2								&
+   tab 30 "FULLY PAID CLAIMS"					&
+   tab 52 count pic "^^^^^"                        	&
+   tab 62 "AMOUNT"						&
+   tab 70 x-tot-amt-paid subt pic "^,^^^,^^^.^^"
+
+build $pb_obj/r030d2
+

@@ -1,0 +1,128 @@
+; Program: r991a.qts 
+; Purpose: Check that audit totals for # claims and $ amounts stored in
+;	   f001 record match the actual values in the claim DETAIL records
+;	   associated with the batch.
+;
+;   DATE      WHOM   DESCRIPTION
+; 2000/mar/14 B.E.   - original
+;
+
+cancel clear
+set process nolimit
+set lock record update
+
+access f001-batch-control-file &
+        link floor(batctrl-batch-nbr / 10000000), batctrl-agent-cd      &
+        to   clinic-nbr, agent-cd of contract-dtl                       &
+        link "B"          , batctrl-batch-nbr                          &
+        to    key-clm-type, key-clm-batch-nbr of f002-claims-mstr      &
+        link floor(batctrl-batch-nbr / 10000000)                       &
+        to   iconst-clinic-nbr-1-2 of iconst-mstr-rec  opt
+
+define claim-ped-cutoff-date date = parm prompt "Check batches with PED >= what date: "
+
+use $use/def_batctrl_batch_status.def
+
+select							     & 
+ if   batctrl-date-period-end >= ascii(claim-ped-cutoff-date); &
+;   and moh-flag = "Y";&
+;  and batctrl-batch-type = "C"		   	  	      
+
+;select f001-batch-control-file if batctrl-batch-status =        &
+;        batctrl-batch-status-rev-updated
+select f002-claims-mstr					 & ; dtl recs only
+    if    clmhdr-adj-oma-cd <> "0000"			 &
+      and clmhdr-adj-oma-cd <> "ZZZZ"
+
+
+def flag-f001-missing char*1 				&
+    = "Y" if not  record f001-batch-control-file exists	&
+ else "N"
+
+sorted on clmdtl-orig-batch-nbr
+
+; keep running totals of A/R $ amt
+temp    x-clmdtl-fee-ohip
+item    x-clmdtl-fee-ohip 	&
+     =  x-clmdtl-fee-ohip	&
+      +   clmdtl-fee-ohip reset at clmdtl-orig-batch-nbr
+
+
+; keep running totals of # services
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '  '    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '00'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '0 '    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne ' 0'    &
+                   else 0
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '  '    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '0 '    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne ' 0'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '00'    &
+                   else 0
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '  '    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '0 '    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne ' 0'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '00'    &
+                   else 0
+
+def x-claims char*16 = clmdtl-id[1:16]
+
+temp x-svcs-in-batch-counter zoned*4 unsigned
+item   x-svcs-in-batch-counter  	       &
+     = x-svcs-in-batch-counter     + x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4 &
+        reset at clmdtl-orig-batch-nbr
+
+define x-batch      char*8 =   clmhdr-claim-id[1:2] 		&
+		             + clmhdr-claim-id[4:6]
+define x-temp-orig  char*9 = ascii(clmdtl-orig-batch-nbr)
+define x-orig-batch char*8 = x-temp-orig[1:2] 	&
+			   + x-temp-orig[4:6]
+subfile test keep at clmdtl-orig-batch-nbr & 
+include x-batch, clmhdr-claim-id, clmdtl-orig-batch-nbr
+subfile r991a  keep  at clmdtl-orig-batch-nbr		&;
+  if  flag-f001-missing ="Y"				&; f001 missing
+   or x-clmdtl-fee-ohip <> batctrl-calc-ar-due 		&; dtl $ <> 
+   or x-svcs-in-batch-counter <> batctrl-svc-act	&; dtl svcs <>
+ include 			 &
+  flag-f001-missing		,&
+
+  x-clmdtl-fee-ohip		,&
+  batctrl-calc-ar-due		,& 
+
+  x-svcs-in-batch-counter	,&
+  batctrl-svc-act		,& 
+
+  x-batch			,&
+  x-orig-batch			,&
+  batctrl-agent-cd		,&
+;  clmhdr-agent-cd		,&
+;  clmhdr-date-sys 		,&
+;  clmhdr-date-period-end	,&
+  CLMDTL-DATE-PERIOD-END	,&
+  CLMDTL-CYCLE-NBR		,&
+;  clmhdr-submit-date		,&
+;  clmhdr-cycle-nbr		,&	
+  batctrl-batch-nbr 		,& 
+  batctrl-batch-type
+
+build $pb_obj/r991a
+

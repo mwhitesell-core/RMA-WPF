@@ -1,0 +1,156 @@
+cancel clear
+; Program: r140_b2.qzs
+; Purpose: Generate grand total report (for Kevin S.) and individual
+;          department reports for the payments to doctors from the 
+;          MOH EFT file for Conversion payments
+;       This is the 2nd phase that generates the report from the subfile
+;	created by r140_b1
+
+; 2004/jul/01 b.e.	- original
+; 2004/aug/12 b.e.	- access f075 and use calculated amounts rather than the base amounts in the a2s file
+; 2004/sep/14 b.e.	- changed length of report from 60 to 50 so that when
+;			  report is imported into Word to be emailed that pages
+;			  fit within Word's default page length
+; 2004/oct/16 b.e.	- added afp-submit-amt to printout
+; 2004/dec/02 b.e.	- reads subfile rather that original database data
+; 2004/jan/13 b.e.	- added doctor's afp percentage in [] after name. This
+;			  is the split of monies between doctor numbers for
+;			  those doctors with more than 1 RMA doctor number.
+; 2005/mar/08 M.C.	- substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+; 2008/nov/04 M.C.	- print the actual  afp-payment-percentage passed from the governance file (a2s)
+;			- add the select statement
+
+set rep nolimit
+set report dev disc name r140_b
+;set page width 132 length 60
+set page width 132 length 50
+set rep nohead
+
+;access *r140_b1
+access *u140_d1
+
+sort	on afp-reporting-mth	&
+	on doc-afp-paym-group 	&
+	on dept-nbr		&
+	on x-doc-name
+
+; 2008/11/04 - MC
+select if     (afp-group-process-flag  = "R" and dept-nbr = 0)  &
+	   or  afp-group-process-flag = 'E'
+; 2008/11/04 - end
+
+use $pb_src/printer_codes.def  nol
+
+def x-doc-count = 1
+
+;def x-total-group-payment    = afp-payment-amt
+def x-total-group-payment    = x-conversion-amt
+;def x-total-group-submission = afp-submission-amt
+def x-total-group-submission = x-submission-amt
+;def x-total-dept-payment     = afp-payment-amt
+def x-total-dept-payment     = x-conversion-amt
+;def x-total-dept-submission  = afp-submission-amt
+def x-total-dept-submission  = x-submission-amt
+
+def x-doc-name-plus-percentage char*45 = &
+; 2005/03/08 - MC
+;        truncate(x-doc-name) + " [" + ascii(afp-payment-percentage) + "%]"
+        truncate(x-doc-name) + " [" + ascii(afp-multi-doc-ra-percentage,6)[1:3] + '.'  &
+		+	ascii(afp-multi-doc-ra-percentage,6)[4:3] + "%]"	&
+	if afp-multi-doc-ra-percentage = 100000					&
+  else  truncate(x-doc-name) + " [" + ascii(afp-multi-doc-ra-percentage,6)[2:2] + '.'  &
+		+	ascii(afp-multi-doc-ra-percentage,6)[4:3] + "%]"	
+; 2005/03/08 - end
+
+; 2008/11/04 - MC
+def x-pay-percentage char*5 = '10/60' if afp-payment-percentage = 0	&
+		else ' ' + ascii(afp-payment-percentage,2)
+; 2008/11/04 - end
+
+page heading 					&
+    tab 01 x-ff					&
+    tab 02 "r140_b"				&
+    tab 30 "Governance Detail Report"		&
+    tab 90 "Page: "				&
+    tab 95 syspage				&
+  skip 1
+
+heading at afp-reporting-mth 				&
+    tab 35 "for "					&
+    tab 39 afp-reporting-mth pic "^^^^/^^"		&
+  skip 2						&
+    tab 01 "Goverance Group: HAMILTON ACADEMIC HEALTH SCIENCES ORGANIZATION" &
+  skip 2
+
+heading at doc-afp-paym-group 		&
+    skip page				&
+    tab  1 "Group:"			&
+    tab  8 doc-afp-paym-group 		&
+    tab 12 "-"				&
+    tab 13 afp-group-name 		&
+  skip 1 
+
+heading at dept-nbr			&
+  skip 1				&
+    tab   5 "Dept:"			&
+    tab  11 dept-nbr			&
+    tab  13 "-"				&
+    tab  14 dept-name			&
+  skip 2				&
+    tab  11 "Physician"			&
+    tab  70 "Billing"			&
+    tab  80 "Conversion"		&
+    tab  95 "Conversion"		&
+    tab 111 "Submission" 		&
+  skip 1				&
+    tab  11 "Name"			&
+    tab  71 "Number"			&
+    tab  82 "Rate (%)"			&
+    tab  95 "Amount ($)"		&
+    tab 111 "Amount ($)"		&
+  skip 2
+
+rep								&
+;    tab  11 x-doc-name 						&
+    tab  11 x-doc-name-plus-percentage				&
+    tab  71 doc-afp-paym-solo					&
+;    tab  84 afp-payment-percentage 	pic "^^^.^^"		&
+; 2008/11/04 - MC 
+;    tab  84 "10"						&
+    tab  84 x-pay-percentage  					&
+; 2008/11/04 - end
+;    tab  90 afp-payment-amt    		pic " ^^^,^^^,^^^.^^ "	&
+    tab  90 x-conversion-amt   		pic " ^^^,^^^,^^^.^^ "	&
+;    tab 106 afp-submission-amt 		pic " ^^^,^^^,^^^.^^ "      
+    tab 106 x-submission-amt   		pic " ^^^,^^^,^^^.^^ "                       
+footing at dept-nbr                     				&
+    tab  90                                          "     ---------- "	&
+    tab 106                                          "     ---------- "	&
+  skip 1								&
+    tab  11 "Total Nbr Doctors in Dept:"				&
+    tab  38  x-doc-count subt pic "^^^"					&
+    tab  90 x-total-dept-payment subt reset at dept-nbr pic " ^^^,^^^,^^^.^^ " &
+    tab 106 x-total-dept-submission subt reset at dept-nbr pic " ^^^,^^^,^^^.^^ " &
+  skip 2
+
+footing at doc-afp-paym-group           &
+    skip 1                              &
+    tab   1 "Total for Group:"                     &
+    tab  19 doc-afp-paym-group           &
+    tab  90                                          "   ============ "	&
+    tab 106                                          "   ============ "	&
+  skip 1								&
+    tab  90 x-total-group-payment subt reset at doc-afp-paym-group  pic " ^^^,^^^,^^^.^^ " &
+    tab 106 x-total-group-submission subt reset at doc-afp-paym-group  pic " ^^^,^^^,^^^.^^ "                       
+
+final footing				&
+  skip 2				&
+    tab  90                                          "   ============ "	&
+    tab 106                                          "   ============ "	&
+  skip 1							 	&
+    tab  49 "Group Conversion Payment/Submission: "		 	&
+;    tab  90 afp-payment-amt	subt  pic " ^^^,^^^,^^^.^^ " 		&
+    tab  90 x-conversion-amt   subt  pic " ^^^,^^^,^^^.^^ " 		&
+;    tab 106 afp-submission-amt subt  pic " ^^^,^^^,^^^.^^ "          
+    tab 106 x-submission-amt   subt  pic " ^^^,^^^,^^^.^^ "                       
+build $obj/r140_b2

@@ -1,0 +1,34 @@
+; program: fixpkey.qts
+; finds any claim header record missing their "P" key 
+; and assigned the I key in data record
+
+cancel clear
+
+access f002-claims-mstr
+
+; select if header record and either "P" or "Z" missing
+;   	    or "P" is present but the i-key is 0
+select if    clmhdr-oma-suff-adj = "000000"      &
+         and (   (    key-p-clm-type  <> "P"     &
+                  and key-p-clm-type  <> "Z"	 &
+		 )				 &
+              or (    key-p-clm-type      = "P"  &
+                  and key-p-clm-batch-nbr = 0	 &
+		 )				 &
+	     )  
+
+; keep subfile of changed records	 
+subfile fixpkey keep include		&
+	key-claims-mstr,		&
+	key-p-claims-mstr,		&
+	clmhdr-claim-id
+
+output f002-claims-mstr update
+;   (update 'p' key to match i-key in data record)
+  item key-clm-type 	   final "P"
+  item key-p-clm-batch-nbr final nconvert(clmhdr-pat-key-data[1:9]) 
+  item key-p-clm-claim-nbr final nconvert(clmhdr-pat-key-data[10:2])
+  item key-p-clm-serv-code final clmhdr-pat-key-data[12:5]
+  item key-p-clm-adj-nbr   final " "
+
+build fixpkey

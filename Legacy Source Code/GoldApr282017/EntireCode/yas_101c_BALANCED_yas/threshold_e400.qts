@@ -1,0 +1,187 @@
+;doc     : threshold_e400.qts
+;purpose : find out which of the selected doctors reached their threshold
+;          exclude the additional exception codes from revenue 
+;          but if codes = e400 e401 e409 e410 
+;          exclude all the codes in that claim not just the E codes
+;who     : Leena
+
+
+;Date           Who             Description
+;2003/03/14     Yasemin         Original
+
+can clear
+set lock file update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr         &
+        link (nconvert(clmhdr-claim-id[4:3]))   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220004000 to 220004999,   &
+                                              220158000 to 220158999,   &
+                                              220188000 to 220188999,   &
+                                              220307000 to 220307999,   &
+                                              220344000 to 220344999,   &
+                                              220403000 to 220403999,   &
+                                              220448000 to 220448999,   &
+                                              220455000 to 220455999,   &
+                                              220459000 to 220459999,   &
+                                              220481000 to 220481999,   &
+                                              220620000 to 220620999,   &
+                                              220839000 to 220839999,   &
+                                              220869000 to 220869999,   &
+                                              220870000 to 220870999,   &
+                                              220871000 to 220871999,   &
+                                              220879000 to 220879999,   &
+                                              220891000 to 220891999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if     clmhdr-batch-type = 'C'   ;       &
+;  Yas - not sure if clmhdr-serv-date updated properly -  exclude the criteria for now
+;                           and clmhdr-serv-date >= 20010401     &
+;                           and clmhdr-serv-date <= 20030331 
+
+
+subfile threshold       keep include             &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+clmhdr-tot-claim-ar-oma      of f002-claims-mstr,&
+clmhdr-tot-claim-ar-ohip     of f002-claims-mstr,&
+clmhdr-serv-date             of f002-claims-mstr,&
+doc-dept                     of f020-doctor-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *threshold                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+select f002-claims-mstr if                     &
+               clmdtl-sv-date >= '20010401'    &
+      and      clmdtl-sv-date <= '20030331'    &
+      and      clmdtl-oma-cd      <> "0000"    & ; details only
+      and      clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+      and      clmdtl-oma-cd      <> "PAID"    & ; details only
+      and      clmdtl-oma-cd      <> "MICM"    & ; details only
+      and      clmdtl-oma-cd      <> "MISJ"    & ; details only
+      and      clmdtl-oma-cd      <> "MISC"    & ; details only
+      and      clmdtl-oma-cd      <> "MICV"    & ; details only
+      and      clmdtl-oma-cd      <> "MISP"    & ; details only
+      and      clmdtl-oma-cd      <> "MOHR"    & ; "  "
+      and      clmdtl-oma-cd      <> "MICB"    & ; "  "
+      and      clmdtl-oma-cd      <> "MIBR"    & ; "  "
+      and      clmdtl-oma-cd      <> "MINH"    & ; "  "
+      and      clmdtl-oma-cd      <> "MHSC"    & ; "  "
+      and      clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+
+def prem-code char*1 = 'Y'               &
+          if  clmdtl-oma-cd = "E400"     &
+          or  clmdtl-oma-cd = "E401"     &
+          or  clmdtl-oma-cd = "E409"     &
+          or  clmdtl-oma-cd = "E410"     
+
+subfile threshold_dtl       keep include             &
+threshold                                       ,&
+prem-code                             		,&
+clmdtl-sv-date
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *threshold_dtl
+
+sorted on clmhdr-claim-id 
+
+temp addon-dtl num*1
+item addon-dtl = addon-dtl + 1		&
+	if prem-code = 'Y'		&
+	reset at clmhdr-claim-id
+
+temp earliest-serv-date char*8
+item earliest-serv-date minimum clmdtl-sv-date &
+	reset at clmhdr-claim-id
+
+temp latest-serv-date char*8
+item latest-serv-date maximum clmdtl-sv-date &
+	reset at clmhdr-claim-id
+
+subfile threshold_clm 	keep at clmhdr-claim-id include &
+threshold_dtl			,	&
+addon-dtl			,	&
+earliest-serv-date		,	&
+latest-serv-date
+
+request four                            &
+        on edit        errors report    &
+        on calculation errors report
+
+access *threshold_clm
+
+; select the claim with add-on codes
+select if addon-dtl > 0
+
+sort on doc-nbr
+
+def x-comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+temp x-2001-min num*7
+item x-2001-min  = x-2001-min + clmhdr-tot-claim-ar-ohip /100   & 
+              if ( earliest-serv-date >= '20010401'     &
+               and earliest-serv-date <= '20020331')    &
+              reset at doc-nbr
+
+temp x-2002-min num*7
+item x-2002-min  = x-2002-min + clmhdr-tot-claim-ar-ohip /100   & 
+              if ( earliest-serv-date >= '20020401'     &
+               and earliest-serv-date <= '20030331')    &
+              reset at doc-nbr
+
+temp x-2001-max num*7
+item x-2001-max  = x-2001-max + clmhdr-tot-claim-ar-ohip /100   & 
+              if ( latest-serv-date >= '20010401'     &
+               and latest-serv-date <= '20020331')    &
+              reset at doc-nbr
+
+temp x-2002-max num*7
+item x-2002-max  = x-2002-max + clmhdr-tot-claim-ar-ohip /100   & 
+              if ( latest-serv-date >= '20020401'     &
+               and latest-serv-date <= '20030331')    &
+              reset at doc-nbr
+
+
+
+subfile threshold1 portable keep at doc-nbr include	&
+  doc-dept,                     &
+  x-comma,			&
+  doc-nbr,                      &
+  x-comma,			&
+  doc-name,                     &
+  x-comma,			&
+  doc-inits,                    &
+  x-comma,			&
+  x-2001-min,                   &
+  x-comma,			&
+  x-2002-min,                   &
+  x-comma,			&
+  x-2001-max,                   &
+  x-comma,			&
+  x-2002-max,                   &
+  x-cr
+
+
+build $pb_obj/threshold_e400

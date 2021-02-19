@@ -1,0 +1,1529 @@
+; m010.qks
+;#> PROGRAM-ID.     M010.QKS
+;
+;	((C)) DYAD TECHNOLOGIES
+;
+;   PROGRAM PURPOSE : TO ENTER PATIENT DATA
+;
+;   MODIFICATION HISTORY
+;        DATE       WHO        DESCRIPTION
+;	91/02/04   D.B.		-ORIGINAL (SMS 138)
+;	91/05/30   D.B.		-PDR 496 - CHANGE NUMBER FOR NT AND BC
+;	91/09/23   K.S.		-ADDED LOOKUP TABLE ON ACRONYM FIELD
+;				-ADDED PATH PROCEDURE
+;	91/11/07   Y.B.         -PDR 532 - CHANGE BC FROM 10 AND 11
+;				 DIGITS TO 10 AND SK FROM 8 DIGITS TO 9
+;	91/11/13   M.C.		-IF BIRTHDATE CHANGED, CHECK PAT-OHIP-MMYY
+;				 AND/OR PAT-CHART-NBR DOES NOT EXIST
+;	92/10/13   Y.B.         - CHANGE NT FIRST DIGIT ALPHA N/D/M OR T
+;				 THEN 7 NUMERIC
+;	93/03/29   Y.B.         - CHANGE PROV ONT. TO ON FOR MAILING
+;				  PURPOSES.
+;
+;	93/04/16   M.C.		- SMS 141
+;				- IF SPECIAL USER MODIFIES BIRTH DATE
+;				  OR VERSION CD, UPDATE PAT-DATE-LAST-
+;				  ELIG-MAIN TO SYSDATE, RESET MESS CODE
+;				  TO BLANK, RESET 0 TO PAT-NO-OF-LETTER-
+;				  SENT, UPDATE F086-PAT-ID FILE
+;
+;	93/05/18   M.C.		- PDR 572
+;				- IF USER ADDS OR CHANGES THE PATIENT
+;				  BIRTH DATE, AND IT DOES NOT MATCH TO
+;				  THE YYMM OF CHART NBR, DISPLAY A
+;				  WARNING MESSAGE
+;
+;	93/06/11   Y.B.		- ADD PORT DOVER 'PD' FOR CITY
+;
+;	93/07/14   M.C.		- TAKE OUT THE RESTRICTION ON LOGONID
+;				  REQUESTED BY Y.B.
+;
+;	93/07/30   M.C.		- PDR 583
+;				- CREATE A NEW DESIGNER PROCEDURE '10'
+;				  TO ALLOW USER TO CHANGE THE ADDRESS
+;				  INFO PROPERLY (IE. DO NOT ALLOW USERS
+;				  TO ENTER COUNTRY IF PROV-CD <> 'XX')
+;       93/09/21   M.C.		- WHEN DELETING A PATIENT, CHECK THE
+;				  OUTSTANDING CLAIMS INSTEAD OF TOTAL
+;				  CLAIMS
+;	94/03/21   M.C.		- EFFECTIVE 94/JAN/01, NOVA SCOTIA NBR
+;				  IS TEN DIGITS
+;	94/08/23   M.C.		- EFFECTIVE 94/JUL/01, ALBERTA NBR IS
+;				  NINE DIGITS (PDR 601)
+;	94/10/12   Y.B.		- MODIFY MANITOBA HEALTH NUMBER TO 9
+;	94/11/08   Y.B.		- MODIFY MANITOBA HEALTH NUMBER TO 6
+;	95/07/11   M.C.		- IN THE PREUPDATE PROCEDURE, CHECK TO
+;				  MAKE SURE ONE OF HEALTH NBR, OHIP NBR,
+;				  DIRECT ID OR CHART NBR MUST BE ENTERED
+;				  AND PATIENT NAME MUST BE ENTERED
+;	97/03/04   Y.B.		- MODIFY PE PAT-PROV-CD "PE" 9 TO 8
+;	98/03/94   M.C.		- SINCE HEALTH , OHIP & CHART KEY HAVE CHANGED
+;				  FROM UNIQUE TO REPEATING, COMMENT OUT THE
+;				  LOOKUP NOTON FILE ON FIELD STATEMENTS BUT
+;				  DO THE GET FILE OPTIONAL IN EDIT PROCEDURE
+;				  TO CHECK FOR DUPLICATE
+;	99/jan/15  B.E.		- y2k (birth date), upshift acronym
+;     1999/mar/25  B.E.         - allow change of ohip number to the 'dummy'
+;                                 number (same as i-key-nbr) so that the
+;                                 user can "blank" out the field. Note that
+;                                 they can't enter actual blanks due to the
+;                                 limitation on duplicate keys
+;                               - if birth date changed, do duplicate ohip/direct
+;                                 key edit check only if these numbers where
+;                                 affected by the birth date change
+;       99/07/28   Y.B.         -  add PAT-PROV-CD "NU" 9 digits
+;	00/02/09   B.E.		- edit that birth date can't be > sysdate
+;	00/05/29   B.E.		- rules for writing transactions to f086 to
+;				  track change in patient eligibility changed
+;				  to include change in health nbr
+; 01/jan/24 B.E.	- added MESS designer routine to allow user, after
+;			  giving correct password, to blank Message Code field
+;
+; 01/sep/18 B.E. - added pat-ohip-validation-status field 
+; 02/mar/27 M.C. - edit check on chart nbr to have prefix either 'K', 'M', 
+;		  'H', '0' and follow by 9 digits , 
+;		 - elininate the edit check against birth yymm  with chart nbr
+; 02/apr/02 M.C. - edit check on chart nbr to have prefix either 'K', 'M', 
+;		   'H', '1' or '5' and follow by 9 digits , 
+;		   if prefix is 'H', 1st 4 bytes must be either H002 or H003  
+; 02/apr/09 M.C. - General Hospital chart nbr should start with either 
+;		   0001 or 0005 and follow by 6 digits  
+; 02/apr/12 M.C. - Yas requests to include St. Joseph Chart nbr which should 
+;		   start with J0000 + 6 more digits  (11 characters in totals)
+; 02/apr/29 M.C. - Brad requests that if user enters less than 10 digits 
+;		   chart nbr where the first digit is either 0, 1 or 5, 
+;		   add leading zeroes to the entered chart nbr
+; 02/may/10 B.E. - chart nbr expanded from 1 field to 5 different fields with 
+;		   a different chart-nbr for each hospitals - see dictionary
+;		   for details
+; 		 - realignment of fields to fit in the additional chart nbrs
+;		 - defaulting of province if city recognized as ON
+;		 - added validation of subscr-prov-cd in dictionary 
+;		 - removed access of pat-country field
+;		 - subscr address line 1-3 increased in length
+; 02/may/28 M.C. - apply the appropriate pattern for each chart nbr
+;		   except pat-chart-nbr-5 which allows all patterns for
+;		   entry mode
+;		 - create edit/process procedures for chart nbr
+; 02/sep/16 B.E. - size of 3rd address line increased from 21 back to 30 and
+;		   relabelled CITY/CTRY(country)
+; 03/jan/14 M.C. - change to use temp fields for key fields
+;		 - suppress display key fields if they are same as ikey
+; 03/may/15 M.C. - switch the label for eligibility maintained and mailing
+; 03/sep/22 B.E. - St Joe's Chart nbr edit changed from J000+6 to J+10 digits
+; 04/jan/29 M.C. - change to check pat-prov-cd from NF to NL for Newfoundland
+; 04/feb/25 M.C. - make the neccessary changes for eligibility changes to be the
+;                  same as other pgms like d001, d003, u011 and newu703
+; 2005/05/11 yas   - modify manitoba health number to be 9 digits
+; 2005/06/08 M.C.  - modify to read pat-ohip-mmyy using fieldtext instead of
+;                    t-pat-ohip-mmyy, so that user can blank out the field
+; 2010/may/25 brad1- add reference to rejected-claims so that records in that file can be deleted
+;		     if the patient's version code is changed. This suppresses a letter being sent to the patient.
+; 2010/aug/04 MC1  - do the same as above brad1 if the patient's birth date is changed. 
+;		     This suppresses a letter being sent to the patient.
+
+set default
+set nesting 200
+
+
+screen $pb_obj/m010
+
+temp w-ch16 char*16 reset at startup
+;USED FOR LOOKUP ON ACRONYM
+
+
+; 2003/01/14 - mc
+temp t-pat-ohip-mmyy char*15
+temp t-pat-chart-nbr   char*10
+temp t-pat-chart-nbr-2 char*10
+temp t-pat-chart-nbr-3 char*10
+temp t-pat-chart-nbr-4 char*10
+temp t-pat-chart-nbr-5 char*11
+
+file f010-pat-mstr
+    access viaindex pat-acronym    using pat-acronym  		&
+	request pat-acronym
+    access viaindex key-pat-mstr using w-ch16
+    access viaindex pat-health-nbr using pat-health-nbr		&
+	request pat-health-nbr
+; 2003/01/14 - mc
+;    access viaindex pat-ohip-mmyy  using pat-ohip-mmyy		&
+;	request pat-ohip-mmyy
+    access viaindex pat-ohip-mmyy  using t-pat-ohip-mmyy		&
+	request t-pat-ohip-mmyy
+;    access viaindex pat-chart-nbr-5 using pat-chart-nbr-5	&
+;	request pat-chart-nbr-5
+    access viaindex pat-chart-nbr-5 using t-pat-chart-nbr-5	&
+	request t-pat-chart-nbr-5
+;    access viaindex pat-chart-nbr   using pat-chart-nbr		&
+;	request pat-chart-nbr
+    access viaindex pat-chart-nbr   using t-pat-chart-nbr		&
+	request t-pat-chart-nbr
+;    access viaindex pat-chart-nbr-2 using pat-chart-nbr-2	&
+;	request pat-chart-nbr-2
+    access viaindex pat-chart-nbr-2 using t-pat-chart-nbr-2	&
+	request t-pat-chart-nbr-2
+;    access viaindex pat-chart-nbr-3 using pat-chart-nbr-3	&
+;	request pat-chart-nbr-3
+    access viaindex pat-chart-nbr-3 using t-pat-chart-nbr-3	&
+	request t-pat-chart-nbr-3
+;    access viaindex pat-chart-nbr-4 using pat-chart-nbr-4	&
+;	request pat-chart-nbr-4
+    access viaindex pat-chart-nbr-4 using t-pat-chart-nbr-4	&
+	request t-pat-chart-nbr-4
+
+item pat-health-nbr initial 0
+item pat-ohip-mmyy initial ' '
+item pat-chart-nbr   initial ' '
+item pat-chart-nbr-2 initial ' '
+item pat-chart-nbr-3 initial ' '
+item pat-chart-nbr-4 initial ' '
+item pat-chart-nbr-5 initial ' '
+item pat-date-last-maint initial sysdate
+
+
+temp hosp-site char*1
+temp w-skip-subscr-prov-field char*1
+temp w-doc-nbr
+temp pat-ohip-mmyy-numeric num*15 
+temp w-port-id num*2
+temp x-pat-health-nbr
+temp w-pat-health-nbr
+temp w-pat-health-nbr-1
+temp w-pat-health-nbr-3
+temp w-pat-health-nbr-5
+temp w-pat-health-nbr-7
+temp w-pat-health-nbr-9
+temp w-prov-length
+temp w-msg-nbr char*2
+temp w-password char *5
+temp w-old-birth-date date
+temp w-old-version-cd char*2
+temp w-old-health-nbr zoned*10
+temp w-old-surname    char*15
+temp w-old-given-name char*12
+
+;2002/05/30 - MC
+;temp w-old-chart-nbr  char*12
+temp w-old-chart-nbr  char*10
+temp w-old-chart-nbr-2  char*10
+temp w-old-chart-nbr-3  char*10
+temp w-old-chart-nbr-4  char*10
+temp w-old-chart-nbr-5  char*11
+
+temp w-old-addr1      char*21
+temp w-old-addr2      char*21
+temp w-old-addr3      char*21
+temp w-old-pat-ohip-mmyy char*15
+temp w-old-pat-direct    char*15  
+
+; y2k
+temp w-ccyy     zoned*4
+temp w-cc00     zoned*4
+temp w-yy       zoned*2
+temp w-cc000000 zoned*8
+temp w-yymmdd   zoned*6
+
+def w-subscr-addr3 char*21 					&
+       = 'Hamilton' 		if subscr-addr3 = 'H'		&
+    else 'Stoney Creek'		if subscr-addr3 = 'STC'		&
+    else 'Dundas' 		if subscr-addr3 = 'D'		&
+    else 'Dunnville' 		if subscr-addr3 = 'DUN'		&
+    else 'Waterdown' 		if subscr-addr3 = 'WAT'		&
+    else 'St. Catharines' 	if subscr-addr3 = 'SC'		&
+    else 'Oakville' 		if subscr-addr3 = 'O'		&
+    else 'Grimsby' 		if subscr-addr3 = 'G'		&
+    else 'Fruitland' 		if subscr-addr3 = 'FR'		&
+    else 'Hannon'		if subscr-addr3 = 'HA'		&
+    else 'Flamboro' 		if subscr-addr3 = 'F'		&
+    else 'Niagara On The Lake' 	if subscr-addr3 = 'NOL'		&
+    else 'Niagara Falls' 	if subscr-addr3 = 'NF'		&
+    else 'Fort Erie' 		if subscr-addr3 = 'FE'		&
+    else 'Welland' 		if subscr-addr3 = 'W'		&
+    else 'Toronto' 		if subscr-addr3 = 'T'		&
+    else 'Don Mills' 		if subscr-addr3 = 'DM'		&
+    else 'Willowdale' 		if subscr-addr3 = 'WI'		&
+    else 'Burlington' 		if subscr-addr3 = 'B'		&
+    else 'Markham' 		if subscr-addr3 = 'MKM'		&
+    else 'Richmond Hill' 	if subscr-addr3 = 'RH'		&
+    else 'Thorold'		if subscr-addr3 = 'TH'		&
+    else 'Malton'		if subscr-addr3 = 'MA'		&
+    else 'Mississauga'		if subscr-addr3 = 'MI'		&
+    else 'Scarborough'		if subscr-addr3 = 'SCA'		&
+    else 'North York'		if subscr-addr3 = 'NY'		&
+    else 'Beamsville'		if subscr-addr3 = 'BEA'		&
+    else 'Brampton'		if subscr-addr3 = 'BR'		&
+    else 'Weston'		if subscr-addr3 = 'WE'		&
+    else 'Etobicoke'		if subscr-addr3 = 'ET'		&
+    else 'Brantford'		if subscr-addr3 = 'BRA'		&
+    else 'Georgetown'		if subscr-addr3 = 'GEO'		&
+    else 'Guelph'		if subscr-addr3 = 'GUE'		&
+    else 'Thornhill'		iF subscr-addr3 = 'THO'		&
+    else 'Downsview'		if subscr-addr3 = 'DO'		&
+    else 'Islington'		if subscr-addr3 = 'I'		&
+    else 'Rexdale'		if subscr-addr3 = 'RX'		&
+    else 'Agincourt'		if subscr-addr3 = 'A'		&
+    else 'Ancaster'		if subscr-addr3 = 'AN'		&
+    else 'Millgrove'		if subscr-addr3 = 'MIL'		&
+    else 'Caledonia'		if subscr-addr3 = 'C'		&
+    else 'Simcoe'		if subscr-addr3 = 'SIM'		&
+    else 'Hagersville'		if subscr-addr3 = 'HAG'		&
+    else 'Jarvis'		if subscr-addr3 = 'J'  		&
+    else 'Kitchener'		if subscr-addr3 = 'K'		&
+    else 'Campbellville'	if subscr-addr3 = 'CA'		&
+    else 'Copetown'		if subscr-addr3 = 'COP'		&
+    else 'Paris'		if subscr-addr3 = 'P'		&
+    else 'Waterford'		if subscr-addr3 = 'WF'		&
+    else 'Barrie'		if subscr-addr3 = 'BA'		&
+    else 'Cambridge'		if subscr-addr3 = 'CAM'		&
+    else 'Greensville'		if subscr-addr3 = 'GR'		&
+    else 'Binbrook'		if subscr-addr3 = 'BI'		&
+    else 'Caistor Centre'	if subscr-addr3 = 'CC'		&
+    else 'Carlisle'		if subscr-addr3 = 'CAR'		&
+    else 'Cayuga'		if subscr-addr3 = 'CY'		&
+    else 'Freelton'		if subscr-addr3 = 'FRE'		&
+    else 'Lynden'		if subscr-addr3 = 'L'		&
+    else 'Milton'		if subscr-addr3 = 'ML'		&
+    else 'Mount Hope'		if subscr-addr3 = 'MH'		&
+    else 'Ohsweken'		if subscr-addr3 = 'OH'		&
+    else 'Port Colborne'	if subscr-addr3 = 'PC'		&
+    else 'Port Dover'		if subscr-addr3 = 'PD'		&
+    else 'Puslinch'		if subscr-addr3 = 'PU'		&
+    else 'Sault Ste. Marie'	if subscr-addr3 = 'SSM'		&
+    else 'Smithville'		if subscr-addr3 = 'SM'		&
+    else 'Sudbury'		if subscr-addr3 = 'S'		&
+    else 'Thunder Bay'		if subscr-addr3 = 'TB'        	&
+    else 'Fonthill'		if subscr-addr3 = 'FO'		&
+    else 'Wainfleet'		if subscr-addr3 = 'WA'		&
+    else 'Crystal Beach'	if subscr-addr3 = 'CB'      	&
+    else 'Vinemount'		if subscr-addr3 = 'V' 		&
+    else 'Vineland'		if subscr-addr3 = 'VI'		&
+    else 'Waterloo'		if subscr-addr3 = 'WL'		&
+    else 'Winona'		if subscr-addr3 = 'WIN'		&
+    else subscr-addr3
+
+file f010-pat-mstr alias f010-pat-keys reference
+
+file constants-mstr-rec-5 designer
+
+;brad1
+file rejected-claims designer open 1
+		access viaindex clmhdr-pat-ohip-id-or-chart using key-pat-mstr of f010-pat-mstr 
+
+file f094-msg-mstr reference
+    access via msg-sub-key-1,msg-sub-key-23 using 'M',subscr-msg-nbr
+
+file f086-pat-id designer
+;
+; 2004/02/26 - MC
+file f011-pat-mstr-elig-history  designer
+; 2004/02/26 - end
+
+
+use $pb_src/std_hilite.qks nol
+
+title 'PATIENT MASTER MAINTENANCE' at 1,54
+
+skip to 3
+align ( 1, 4, 21 )
+field pat-prov-cd of f010-pat-mstr predisplay label "PROVINCE CODE  :"
+field pat-acronym   of f010-pat-mstr display  label "ACRONYM        :" &
+	upshift
+field pat-health-nbr of f010-pat-mstr    label  "HEALTH NBR     :" &
+	bwz
+; 2003/01/14 - MC 
+;field pat-ohip-mmyy of f010-pat-mstr     &
+field t-pat-ohip-mmyy upshift		&
+        label "OHIP/DIRECT NBR:"
+; 2003/01/14 - MC 
+;field pat-chart-nbr-5   of f010-pat-mstr     			&
+field t-pat-chart-nbr-5   upshift				&
+;        help "ST. Joe must start with J0000 plus 6 digits"      &
+        help "St. Joe must start with 'J' + 10 digits"      &
+        label "CHART NBR-STJOE:"				&
+	pattern "((M|K|H)#########)|(#@)|J##########"    
+; 2003/01/14 - MC 
+;field pat-chart-nbr   of f010-pat-mstr      			&
+field t-pat-chart-nbr   upshift 				&
+        help "MUMC must start with 'M' plus 9 digits"           &
+        label "         -MUMC :"				&	
+	pattern "M#########"    				&
+	id same noentry
+; 2003/01/14 - MC 
+;field pat-chart-nbr-2 of f010-pat-mstr      			&
+field t-pat-chart-nbr-2  upshift				&
+        help "Chedoke must start with 'K' plus 9 digits"        &
+        label "         -CHED :"				&	
+	pattern "K#########"					&
+	id same noentry
+;field pat-chart-nbr-3 of f010-pat-mstr      			&
+field t-pat-chart-nbr-3 upshift					&
+        help "Henderson must start with H002 or H003 plus 6 digits" &
+        label "         -HEND :"				&	
+	pattern "H#########"    				&
+	id same noentry
+;field pat-chart-nbr-4 of f010-pat-mstr      			&
+field t-pat-chart-nbr-4 upshift					&
+        help "General must start with 0001 or 0005 plus 6 digits" &
+        label "         -GEN  :"				&	
+	pattern "#@"    					&
+	id same noentry
+
+skip 1
+align (1,4,19)
+field pat-surname of f010-pat-mstr required   label "SURNAME      :"
+field pat-given-name of f010-pat-mstr required label "GIVEN NAME   :"
+field pat-init of f010-pat-mstr required      label "INITIALS     :"
+align (1,4,19) (,,30)
+field pat-birth-date of f010-pat-mstr required label "BIRTH DATE   :"
+field pat-last-birth-date of f010-pat-mstr display bwz
+align (,4,19)
+field pat-sex of f010-pat-mstr required       label "SEX          :"
+align (1,4,19)
+field pat-health-65-ind of f010-pat-mstr      label "HEALTH 65 IND:"
+align (,4,19) (,22,24)
+field pat-version-cd of f010-pat-mstr         label "VERSION CODE :"
+field pat-last-version-cd of f010-pat-mstr    label "/" display
+align (,4,19)
+field pat-expiry-date of f010-pat-mstr        label "EXPIRY DATE  :"
+align (1,4,19)
+field pat-phone-nbr of f010-pat-mstr          label "PHONE NBR    :"
+
+skip to 3
+align ( 37, 40, 50)
+field subscr-addr1 of f010-pat-mstr required  label "ADDRESS 1:"
+align (,40,50)
+field subscr-addr2 of f010-pat-mstr           label "        2:"
+field subscr-addr3 of f010-pat-mstr required  label "CITY/CTRY:" &
+	UPSHIFT
+align (,40,50) (,57,71)
+field subscr-prov-cd of f010-pat-mstr required  if w-skip-subscr-prov-field = 'N'	&
+	label "PROV     :" &
+	UPSHIFT predisplay
+field subscr-postal-cd of f010-pat-mstr       label "POSTAL CD:"	&
+	UPSHIFT
+
+skip 1
+align (37,40,57) (,61,68)
+field subscr-msg-nbr of f010-pat-mstr         label "Msg nbr         :"
+field subscr-date-msg-nbr-effective-to of f010-pat-mstr			&
+					      label "until:" &
+				required if subscr-msg-nbr <> '00'    
+align (37,40,57)
+field subscr-auto-update of f010-pat-mstr     label "AUTO UPDATE     :" &
+	predisplay
+field pat-dialysis of f010-pat-mstr           label "DIALYSIS        :"	&
+					      UPSHIFT			&
+					      default "N"	
+field pat-ohip-validation-status				&
+					label "MOH Eligibility:" display
+skip 2
+title "---- LAST ------" at ,43
+align (40,43,60)
+field pat-location-field of f010-pat-mstr  display   label "LOCATION/DOCTOR:"
+align (,64,65) (,74,79)
+field pat-last-doc-nbr-seen of f010-pat-mstr display label "/"
+field pat-in-out of f010-pat-mstr            label "I/O:" display
+
+align (40,43,59)
+field pat-date-last-visit of f010-pat-mstr   label "VISIT/ADMIT DT :" display
+align (,69,70) 
+field pat-date-last-admit of f010-pat-mstr   label "/"	              display
+
+align (40,43,59)
+field pat-date-last-maint of f010-pat-mstr   label "MAINTENANCE DT :" display
+
+;2003/05/15 - MC
+;field pat-date-last-elig-mailing of f010-pat-mstr label "ELIG MAINT/MAIL:"    &
+field pat-date-last-elig-mailing of f010-pat-mstr label "ELIG MAIL/MAINT:"    &
+									display
+align (,,70) 
+field pat-date-last-elig-maint of f010-pat-mstr 			display 
+
+align (40,43,62)
+field pat-mess-code of f010-pat-mstr label '" MESS / # LTRS:'		display
+align (,,74) 
+field pat-no-of-letter-sent of f010-pat-mstr          			display
+
+align (40,43,59)
+field pat-total-nbr-visits of f010-pat-mstr  label "TOT VISITS/CLMS:"          &
+									display
+align (,,70)
+field pat-total-nbr-claims of f010-pat-mstr 				display
+
+align (40,43,60)
+field pat-nbr-outstanding-claims of f010-pat-mstr label "UNPAID CLAIMS  :"     &
+					display
+align (40,43,59)
+field key-pat-mstr of f010-pat-mstr          display	&
+                                             label "I-KEY          :"
+align (,,76)
+field w-password nolabel noecho display
+
+procedure postfind
+begin
+  let w-old-birth-date = pat-birth-date of f010-pat-mstr
+  let w-old-version-cd = pat-version-cd of f010-pat-mstr
+  let w-old-health-nbr = pat-health-nbr of f010-pat-mstr
+  let w-old-surname    = pat-surname 	of f010-pat-mstr
+  let w-old-given-name = pat-given-name of f010-pat-mstr
+  let w-old-chart-nbr  = pat-chart-nbr  of f010-pat-mstr
+
+;2002/05/30 -- MC - include 4 more chart nbr
+  let w-old-chart-nbr-2  = pat-chart-nbr-2  of f010-pat-mstr
+  let w-old-chart-nbr-3  = pat-chart-nbr-3  of f010-pat-mstr
+  let w-old-chart-nbr-4  = pat-chart-nbr-4  of f010-pat-mstr
+  let w-old-chart-nbr-5  = pat-chart-nbr-5  of f010-pat-mstr
+
+  let w-old-addr1      = subscr-addr1   of f010-pat-mstr
+  let w-old-addr2      = subscr-addr2   of f010-pat-mstr
+  let w-old-addr3      = subscr-addr3   of f010-pat-mstr
+
+; 2003/01/14 - MC - if the keys are the same as ikey, blank it out before display
+  if pat-ohip-mmyy of f010-pat-mstr = key-pat-mstr of f010-pat-mstr [4:12]
+  then let t-pat-ohip-mmyy = ' '
+  else let t-pat-ohip-mmyy = pat-ohip-mmyy of f010-pat-mstr 
+  
+  if pat-chart-nbr   of f010-pat-mstr = key-pat-mstr of f010-pat-mstr [6:10]
+  then let t-pat-chart-nbr   = ' '  
+  else let t-pat-chart-nbr   = pat-chart-nbr   of f010-pat-mstr
+
+  if pat-chart-nbr-2 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr [6:10]
+  then let t-pat-chart-nbr-2   = ' '  
+  else let t-pat-chart-nbr-2   = pat-chart-nbr-2   of f010-pat-mstr
+
+  if pat-chart-nbr-3 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr [6:10]
+  then let t-pat-chart-nbr-3   = ' '  
+  else let t-pat-chart-nbr-3   = pat-chart-nbr-3   of f010-pat-mstr
+
+  if pat-chart-nbr-4 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr [6:10]
+  then let t-pat-chart-nbr-4   = ' '  
+  else let t-pat-chart-nbr-4   = pat-chart-nbr-4   of f010-pat-mstr
+
+  if pat-chart-nbr-5 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr [5:11]
+  then let t-pat-chart-nbr-5   = ' '  
+  else let t-pat-chart-nbr-5   = pat-chart-nbr-5   of f010-pat-mstr
+
+  end
+
+procedure internal mod_10_check_digit
+begin
+
+let w-pat-health-nbr-1 =	&
+	     floor(x-pat-health-nbr / 1000000000) * 2
+
+if w-pat-health-nbr-1 < 10
+  then let w-pat-health-nbr-1 = w-pat-health-nbr-1
+  else let w-pat-health-nbr-1 = floor(w-pat-health-nbr-1 / 10)	&
+	   + mod(w-pat-health-nbr-1,10)
+
+let w-pat-health-nbr-3 =	&
+	floor(mod(x-pat-health-nbr,100000000) / 10000000) * 2
+
+if w-pat-health-nbr-3 < 10
+  then let w-pat-health-nbr-3 = w-pat-health-nbr-3
+  else let w-pat-health-nbr-3 = floor(w-pat-health-nbr-3 / 10)	&
+	   + mod(w-pat-health-nbr-3,10)
+
+let w-pat-health-nbr-5 =	&
+	floor(mod(x-pat-health-nbr,1000000) / 100000) * 2
+
+if w-pat-health-nbr-5 < 10
+  then let w-pat-health-nbr-5 = w-pat-health-nbr-5
+  else let w-pat-health-nbr-5 = floor(w-pat-health-nbr-5 / 10)	&
+	   + mod(w-pat-health-nbr-5,10)
+
+let w-pat-health-nbr-7 =	&
+	floor(mod(x-pat-health-nbr,10000) / 1000) * 2
+
+if w-pat-health-nbr-7 < 10
+  then let w-pat-health-nbr-7 = w-pat-health-nbr-7
+  else let w-pat-health-nbr-7 = floor(w-pat-health-nbr-7 / 10)	&
+	   + mod(w-pat-health-nbr-7,10)
+
+let w-pat-health-nbr-9 =	&
+	floor(mod(x-pat-health-nbr,100) / 10) * 2
+
+if w-pat-health-nbr-9 < 10
+  then let w-pat-health-nbr-9 = w-pat-health-nbr-9
+  else let w-pat-health-nbr-9 = floor(w-pat-health-nbr-9 / 10)	&
+	   + mod(w-pat-health-nbr-9,10)
+
+let w-pat-health-nbr =		&
+	     floor(mod(x-pat-health-nbr,1000000000) / 100000000)+ &
+	     floor(mod(x-pat-health-nbr,10000000) / 1000000)	+ &
+	     floor(mod(x-pat-health-nbr,100000) / 10000)	+ &
+	     floor(mod(x-pat-health-nbr,1000) / 100)	+	&
+	     w-pat-health-nbr-1				+	&
+	     w-pat-health-nbr-3				+	&
+	     w-pat-health-nbr-5				+	&
+	     w-pat-health-nbr-7				+	&
+	     w-pat-health-nbr-9
+
+let w-pat-health-nbr = mod(w-pat-health-nbr,10)
+
+if w-pat-health-nbr > 0
+  then let w-pat-health-nbr = 10 - w-pat-health-nbr
+
+end
+
+procedure input pat-health-nbr
+begin
+  if fieldtext <> ' ' and 10 <> (size(fieldtext))
+  then error 'Patient Health Number must be 10 digits long'
+  end
+
+; 2003/01/14 - MC - change from pat-ohip-mmyy to t-pat-ohip-mmyy
+procedure edit pat-health-nbr
+begin
+  if pat-health-nbr <> 0 and pat-prov-cd <> 'ON'
+    then error 'Health Nbr is not allowed for Out of Province Patient'
+  if pat-health-nbr <> 0 and pat-prov-cd  = 'ON'
+    then begin
+      if t-pat-ohip-mmyy <> ' ' and		&
+         t-pat-ohip-mmyy[1:1] >= 'A' and t-pat-ohip-mmyy[1:1] <= 'Z'
+         then error "Bill Direct Nbr already assigned, Health Nbr is not allowed"
+      let x-pat-health-nbr = pat-health-nbr
+      do internal mod_10_check_digit
+      if w-pat-health-nbr <> (mod(pat-health-nbr, 10))
+        then  error "Invalid Health Care Nbr"
+      get f010-pat-keys optional viaindex pat-health-nbr using pat-health-nbr
+      if accessok 
+        then error = "HEALTH NBR is already assigned to ANOTHER PATIENT"  
+      end
+  end
+; 2003/01/14 - end
+
+; 2003/01/14 - MC - change from pat-ohip-mmyy to t-pat-ohip-mmyy
+
+;procedure edit pat-ohip-mmyy
+procedure edit t-pat-ohip-mmyy
+begin
+  if t-pat-ohip-mmyy <> ' ' and pat-prov-cd = 'ON'
+    then begin
+      if t-pat-ohip-mmyy[1:1] < 'A'
+; y2k
+	then error "Error - OHIP number is no longer valid for Ontario residents"
+
+      else begin
+  	 if pat-health-nbr <> 0
+    	  then error "Bill Direct is not allowed with Health Nbr"
+         if pat-surname <> ' '
+           then begin
+             if t-pat-ohip-mmyy[1:3] <> pat-surname-first3
+               then error "First 3 letters of Direct Id does not match Surname"
+             end
+         if pat-birth-date <> 0
+           then begin
+; y2k
+      	     let w-cc000000 = (floor(pat-birth-date / 1000000)) * 1000000
+	     let w-yymmdd   = pat-birth-date - w-cc000000
+             if  w-yymmdd <> nconvert(t-pat-ohip-mmyy[4:6])
+               then error "Birth date doesn't match Direct Date - change birth date first"
+             end
+      end
+    end
+  if pat-prov-cd <> 'ON'
+    then begin
+      let w-prov-length = size(truncate(t-pat-ohip-mmyy))
+        if w-prov-length <> 9  and (pat-prov-cd = 'AB')
+          then error "ALBERTA's    number must have 9  digits"
+        if w-prov-length <> 9  and (pat-prov-cd = 'NU')
+          then error "Territory of NUNAVUT's  number must have 9  digits"
+        if w-prov-length <> 10 and (pat-prov-cd = 'NS')
+          then error "NOVA SCOTIA's number must have 10 digits"
+        if pat-prov-cd = 'BC' and w-prov-length <> 10   &
+           and t-pat-ohip-mmyy [1:1] eq '9'
+          then error "B.C.'s number must have 10 digits AND start with numeric 9"
+        if pat-prov-cd = 'MB' and w-prov-length <> 9
+          then error "MANITOBA'S number must have 9 digits"
+; 2004/01/29 - MC
+;       if pat-prov-cd = 'NF' and w-prov-length <> 12
+        if pat-prov-cd = 'NL' and w-prov-length <> 12
+; 2004/01/29 - end
+          then error "NEWFOUNDLAND's number must have 12 digits"
+        if pat-prov-cd = 'PE' and w-prov-length <> 8
+          then error "PRINCE EDWARD ISLAND's number must have 8 digits"
+        if w-prov-length <> 9 and 			&
+	  (pat-prov-cd = 'NB' or pat-prov-cd = 'YT' or pat-prov-cd = 'SK')
+          then error "REGISTRATION Number must have 9 digits"
+        if pat-prov-cd = 'NT'                             &
+           and (t-pat-ohip-mmyy [1:1] ne 'N' and          &
+                t-pat-ohip-mmyy [1:1] ne 'D' and          &
+                t-pat-ohip-mmyy [1:1] ne 'M' and          &
+                t-pat-ohip-mmyy [1:1] ne 'T')
+          then error "N.T. number must start with D, N, M OR T plus 7 digits"
+        if pat-prov-cd = 'NT' and w-prov-length <> 8   
+          then error "N.T. number must have  8 alpha numeric" 
+      end
+; 2005/06/08 - MC
+;      get f010-pat-keys optional viaindex pat-ohip-mmyy using t-pat-ohip-mmyy  
+      get f010-pat-keys optional viaindex pat-ohip-mmyy using fieldtext 
+; 2005/06/08 - end
+      if accessok 
+        then error = "OHIP/DIRECT NBR IS ALREADY ASSIGNED TO ANOTHER PATIENT"
+  end
+; 2003/01/14 - end
+
+
+
+;2002/05/28 - MC - add internal for pat-chart-nbr
+
+procedure internal chart_nbr_input_entry
+begin
+    if 7 > size(fieldtext)		&
+      and (fieldtext[1:1] = '0'  or	&
+	   fieldtext[1:1] = '1'  or  &
+	   fieldtext[1:1] = '5')
+    then error "Entered General Chart nbr cannot be less than 7 digits"
+
+    if 10 < size(fieldtext) 	&
+      and (fieldtext[1:1] = '0'  or	&
+	   fieldtext[1:1] = '1'  or  &
+	   fieldtext[1:1] = '5')
+    then error "Entered General Chart nbr cannot be more than 10 digits"
+
+    if 7 =   size(fieldtext) 	&
+      and (fieldtext[1:1] = '0'  or	&
+	   fieldtext[1:1] = '1'  or  &
+	   fieldtext[1:1] = '5')
+   then let fieldtext = '000' + fieldtext
+
+    if 8 =   size(fieldtext) 	&
+      and (fieldtext[1:1] = '0'  or	&
+	   fieldtext[1:1] = '1'  or  &
+	   fieldtext[1:1] = '5')
+   then let fieldtext = '00' + fieldtext
+
+    if 9 =   size(fieldtext) 	&
+      and (fieldtext[1:1] = '0'  or	&
+	   fieldtext[1:1] = '1'  or  &
+	   fieldtext[1:1] = '5')
+   then let fieldtext = '0' + fieldtext
+
+end
+
+; 2003/01/14 - MC - change from pat-chart-nbr-5 to t-pat-chart-nbr-5
+procedure internal chart_nbr_edit_entry
+begin
+  if t-pat-chart-nbr-5 <> ' '
+  then begin
+    if  t-pat-chart-nbr-5[1:1] <> 'M'		&
+    and t-pat-chart-nbr-5[1:1] <> 'H'		&
+    and t-pat-chart-nbr-5[1:1] <> 'K'		&
+    and t-pat-chart-nbr-5[1:1] <> 'J'		&	
+    and t-pat-chart-nbr-5[1:1] <> '0'		&
+    and t-pat-chart-nbr-5[1:1] <> '1'		&
+    and t-pat-chart-nbr-5[1:1] <> '5'		
+     then error "Chart Nbr must start with 'M' or 'H' or 'K' or 'J' or '0' or '1' or '5'  "
+
+    if t-pat-chart-nbr-5[1:1] = 'H'	and 	&
+       t-pat-chart-nbr-5[2:3] <> '002' and	&
+       t-pat-chart-nbr-5[2:3] <> '003'
+    then error "Henderson chart nbr must start with either H002 or H003"
+
+    if t-pat-chart-nbr-5[1:1] = '0'	and 	&
+       t-pat-chart-nbr-5[2:3] <> '001' and	&
+       t-pat-chart-nbr-5[2:3] <> '005'
+    then error "General   chart nbr must start with either 0001 or 0005"
+
+;    if t-pat-chart-nbr-5[1:1] = 'J'	and 	&
+;       t-pat-chart-nbr-5[2:4] <> '0000'
+;    then error "St. Joseph chart nbr must start with J0000"
+
+;verify chart nbr
+    if t-pat-chart-nbr-5[1:1] = 'M'
+    then begin
+      let hosp-site = 'M'
+      get f010-pat-keys optional viaindex pat-chart-nbr using t-pat-chart-nbr-5  
+      if accessok 
+        then error = "MUMC CHART NBR is already assigned to another patient"
+    end
+    
+    if t-pat-chart-nbr-5[1:1] = 'K'
+    then begin
+      let hosp-site = 'K'
+      get f010-pat-keys optional viaindex pat-chart-nbr-2 using t-pat-chart-nbr-5  
+      if accessok 
+        then error = "Chedoke CHART NBR is already assigned to another patient"
+    end
+    
+    if t-pat-chart-nbr-5[1:1] = 'H'
+    then begin
+      let hosp-site = 'H'
+      get f010-pat-keys optional viaindex pat-chart-nbr-3 using t-pat-chart-nbr-5
+      if accessok 
+        then error = "Henderson CHART NBR is already assigned to another patient"
+    end
+
+    if t-pat-chart-nbr-5[1:1] = '0'	or	&
+       t-pat-chart-nbr-5[1:1] = '1' or	&
+       t-pat-chart-nbr-5[1:1] = '5'
+    then begin
+      let hosp-site = 'G'
+      get f010-pat-keys optional viaindex pat-chart-nbr-4 using t-pat-chart-nbr-5
+      if accessok 
+        then error = "General CHART NBR is already assigned to another patient"
+    end
+
+    if t-pat-chart-nbr-5[1:1] = 'J'
+    then begin
+      let hosp-site = 'J'
+      get f010-pat-keys optional viaindex pat-chart-nbr-5 using t-pat-chart-nbr-5
+      if accessok 
+        then error = "St. Joseph CHART NBR is already assigned to another patient"
+    end
+
+  end
+end
+
+;2002/05/28 - end
+
+procedure input t-pat-chart-nbr-5
+begin
+;2002/05/28 - MC - transfer the original input procedure to internal chart_nbr_input_entry procedure
+    if newrecord
+     then do chart_nbr_input_entry
+;2002/05/28 - end
+
+end
+
+procedure edit t-pat-chart-nbr-5
+begin
+;2002/05/28 - MC - transfer the original edit procedure to internal chart_nbr_edit_entry procedure
+    if newrecord
+     then do chart_nbr_edit_entry
+    else  begin
+       if  t-pat-chart-nbr-5[1:1] <> 'J'		
+       then error "ST. Joseph Chart Nbr must start with 'J'" 
+;       if t-pat-chart-nbr-5[1:1] = 'J' and & 
+;          t-pat-chart-nbr-5[2:4] <> '0000'
+;       then error "St. Joseph chart nbr must be 'J' plus 10 digits"
+      
+       get f010-pat-keys optional viaindex pat-chart-nbr-5 using t-pat-chart-nbr-5
+       if accessok 
+       then error = "St. Joseph CHART NBR is already assigned to another patient"
+    end
+;2002/05/28 - end
+end
+
+
+;2002/05/28 - MC - add process procedure for t-pat-chart-nbr-5 to define correct chart nbr
+;		   based on hosp-site for entry mode
+procedure process t-pat-chart-nbr-5
+begin
+   if newrecord
+   then begin
+	if hosp-site = 'M'
+	then begin
+	   let t-pat-chart-nbr = t-pat-chart-nbr-5
+	   display t-pat-chart-nbr
+	   let t-pat-chart-nbr-5 = ' '
+	   display t-pat-chart-nbr-5
+           end
+	if hosp-site = 'K'
+	then begin 
+	   let t-pat-chart-nbr-2 = t-pat-chart-nbr-5
+	   display t-pat-chart-nbr-2
+	   let t-pat-chart-nbr-5 = ' '
+	   display t-pat-chart-nbr-5
+           end
+	if hosp-site = 'H'
+	then begin
+   	   let t-pat-chart-nbr-3 = t-pat-chart-nbr-5
+	   display t-pat-chart-nbr-3
+	   let t-pat-chart-nbr-5 = ' '
+	   display t-pat-chart-nbr-5
+           end
+	if hosp-site = 'G'	
+	then begin
+	   let t-pat-chart-nbr-4 = t-pat-chart-nbr-5
+	   display t-pat-chart-nbr-4
+	   let t-pat-chart-nbr-5 = ' '
+	   display t-pat-chart-nbr-5
+           end
+     end
+end	
+;2002/05/28 - end
+; 2033/01/14 - end
+
+
+
+
+;2002/05/28 - MC - add edit procedure for additional chart nbr (1 to 4)
+
+; 2003/01/14 - MC - change from pat-chart-nbr/-n to t-pat-chart-nbr/-n
+
+procedure edit t-pat-chart-nbr
+begin
+    get f010-pat-keys optional viaindex pat-chart-nbr using t-pat-chart-nbr
+    if accessok 
+    then error = "MUMC CHART NBR is already assigned to another patient"
+end
+
+procedure edit t-pat-chart-nbr-2
+begin
+    get f010-pat-keys optional viaindex pat-chart-nbr-2 using t-pat-chart-nbr-2  
+    if accessok 
+    then error = "Chedoke CHART NBR is already assigned to another patient"
+end
+
+procedure edit t-pat-chart-nbr-3
+begin
+    if t-pat-chart-nbr-3[1:1] = 'H'	and 	&
+       t-pat-chart-nbr-3[2:3] <> '002' and	&
+       t-pat-chart-nbr-3[2:3] <> '003'
+    then error "Henderson chart nbr must start with either H002 or H003 plus 6 digits"
+      
+    get f010-pat-keys optional viaindex pat-chart-nbr-3 using t-pat-chart-nbr-3
+    if accessok 
+    then error = "Henderson CHART NBR is already assigned to another patient"
+end
+
+procedure input t-pat-chart-nbr-4
+begin
+   do internal chart_nbr_input_entry
+end
+
+procedure edit t-pat-chart-nbr-4
+begin
+   if t-pat-chart-nbr-4[1:1] <> '0'		
+     then error "General Chart Nbr must start with '0'"
+
+    if t-pat-chart-nbr-4[1:1] = '0'	and 	&
+       t-pat-chart-nbr-4[2:3] <> '001' and	&
+       t-pat-chart-nbr-4[2:3] <> '005'
+    then error "General chart nbr must start with either 0001 or 0005 plus 6 digits"
+      
+    get f010-pat-keys optional viaindex pat-chart-nbr-4 using t-pat-chart-nbr-4
+    if accessok 
+    then error = "General CHART NBR is already assigned to another patient"
+end
+; 2003/01/14 - end
+
+;2002/05/28 - end 
+
+procedure edit pat-surname
+begin
+; 2003/01/15 - MC - change from pat-ohip-mmyy to t-pat-ohip-mmyy
+;  if pat-ohip-mmyy <> ' '
+  if t-pat-ohip-mmyy <> ' '
+    then begin
+;      if pat-direct-alpha[1:1] >= 'A' and pat-direct-alpha[1:1] <= 'Z'
+      if t-pat-ohip-mmyy[1:1] >= 'A' and t-pat-ohip-mmyy[1:1] <= 'Z'
+        then begin
+
+; For non 'NT' patients only. When a patient is entered with direct-ID
+; check to make sure first three letters of direct-ID and Surname are
+; the same. We do not check for the 'NT' patient because the
+; registration number is alphanumeric.
+
+;          if newrecord and pat-direct-alpha <> pat-surname[1:3]	&
+          if newrecord and t-pat-ohip-mmyy[1:3] <> pat-surname[1:3]	&
+             and pat-prov-cd <> 'NT'
+            then error "Surname must start with the same first 3 letters of Direct Id"
+          if changemode or correctmode
+            then begin
+;              let pat-direct-alpha = pat-surname[1:3]
+              let t-pat-ohip-mmyy =  pat-surname[1:3] + t-pat-ohip-mmyy[4:12]
+              let pat-acronym = pat-surname[1:6] + pat-given-name[1:3]
+;	      display pat-ohip-mmyy
+	      display t-pat-ohip-mmyy
+	      display pat-acronym
+;
+; Added by M.C. to check the changed BILL DIRECT ID does not exist
+;
+;	      get f010-pat-keys optional viaindex pat-ohip-mmyy using pat-ohip-mmyy
+	      get f010-pat-keys optional viaindex pat-ohip-mmyy using t-pat-ohip-mmyy
+; 2003/01/15 - end
+	      if accessok
+	 	then error 'The changed DIRECT Id is already assigned to another patient'
+              end
+            end
+      end
+    end
+
+procedure process pat-surname
+begin
+  let pat-acronym = pat-surname[1:6] + pat-given-name[1:3]
+  display pat-acronym
+  end
+
+procedure process pat-given-name
+begin
+  let pat-acronym = pat-surname[1:6] + pat-given-name[1:3]
+  display pat-acronym
+  end
+
+procedure edit pat-birth-date
+begin
+  if pat-birth-date > sysdate
+  then 
+    error "Birth date can't be in the future - ie. greater than today's date"
+
+; 2003/01/15 - MC - change from pat-ohip-mmyy to t-pat-ohip-mmyy
+;  if newrecord and pat-prov-cd = 'ON' and pat-ohip-mmyy <> ' '
+  if newrecord and pat-prov-cd <> 'NT' and t-pat-ohip-mmyy <> ' '
+    then begin
+;      if pat-direct-alpha[1:1] < 'A'
+      if t-pat-ohip-mmyy[1:1] < 'A'
+        then begin
+             let w-ccyy =  floor(pat-birth-date / 10000)
+             let w-cc00 = (floor(pat-birth-date / 1000000)) * 100
+             let w-yy   =  w-ccyy - w-cc00
+;;             if  w-yy  <> pat-yy
+;;               then error "Birth Year does not match Ohip Year"
+;;             if pat-mm <> floor(mod(pat-birth-date,10000) / 100)
+;;               then error "Birth Month does not match Ohip Month"
+             end
+        else begin
+;brad        if pat-direct-bdate <> pat-birth-date
+;brad           then error "Birth Date does not match Direct Date"
+; y2k
+             let w-cc000000 = (floor(pat-birth-date / 1000000)) * 1000000
+             let w-yymmdd   = pat-birth-date - w-cc000000
+;             if  pat-direct-bdate <> w-yymmdd
+             if  w-yymmdd <> nconvert(t-pat-ohip-mmyy[4:6])
+               then error "Birth date does not match Direct Date"
+             end 
+      end
+; 2003/01/15 - end
+
+; 2003/01/15 - MC - the following if condition is no longer applied
+
+;;  if newrecord and pat-prov-cd = 'ON' and pat-chart-nbr <> ' '
+;;    then begin
+; y2k
+;     if pat-chart-yy <> floor(pat-birth-date / 10000)	&
+;;      let w-ccyy =  floor(pat-birth-date / 10000)
+;;      let w-cc00 = (floor(pat-birth-date / 1000000)) * 100
+;;      let w-yy   =  w-ccyy - w-cc00
+;     info = ascii(w-ccyy,4) + " " + ascii(w-cc00,4) 	&
+;            + " " + ascii(w-yy,2) now response
+;2002/03/28 - MC
+;      if   pat-chart-yy <> w-yy
+;        then warning "*Warning* Birth Year does not match Chart Date"
+
+;      if pat-chart-mm <> floor(mod(pat-birth-date,10000) / 100)
+;        then warning "*Warning* Birth Month does not match Chart Date"
+;2002/03/28 - end
+
+;;  end
+; 2003/01/15 - end
+
+
+; 2003/01/15 - MC - the following if condition is no longer applied
+
+;;  if (changemode or correctmode) and pat-prov-cd = 'ON' and pat-chart-nbr <> ' '
+;;    then begin
+; y2k
+;     if pat-chart-yy <> floor(pat-birth-date / 10000)  &
+;;      let w-ccyy =  floor(pat-birth-date / 10000)
+;;      let w-cc00 = (floor(pat-birth-date / 1000000)) * 100
+;;      let w-yy   =  w-ccyy - w-cc00 
+;     info = ascii(w-ccyy,4) + " " + ascii(w-cc00,4) 		&
+;     + " " + ascii(w-yy,2) now response
+;2002/03/28 - MC
+;     if   pat-chart-yy <> w-yy
+;        then warning "*Warning* Birth Year does not match Chart Date"
+
+;      if pat-chart-mm <> floor(mod(pat-birth-date,10000) / 100)
+;        then warning "*Warning* Birth Month does not match Chart Date"
+;2002/03/28  -  end
+;; end
+; 2003/01/15 - end
+
+
+; IF (CHANGEMODE OR CORRECTMODE) AND PAT-PROV-CD = 'ON' AND PAT-CHART-NBR <> ' '
+;   THEN BEGIN
+;     LET PAT-CHART-YY = FLOOR(PAT-BIRTH-DATE / 10000)
+;     LET PAT-CHART-MM = FLOOR(MOD(PAT-BIRTH-DATE,10000) / 100)
+;     DISPLAY PAT-CHART-NBR
+;
+; Added by M.C. to check the changed chart nbr does not exist
+;
+;     GET F010-PAT-KEYS OPTIONAL VIAINDEX PAT-CHART-NBR USING PAT-CHART-NBR
+;     IF ACCESSOK
+;       THEN ERROR 'The changed CHART Nbr is already assigned to another patient'
+;     END
+
+; 2003/01/15 - MC - change from pat-ohip-mmyy to t-pat-ohip-mmyy
+;  if (changemode or correctmode) and pat-prov-cd = 'ON' and pat-ohip-mmyy <> ' '
+  if (changemode or correctmode) and pat-prov-cd <> 'NT' and t-pat-ohip-mmyy <> ' '
+    then begin
+;       (save old values to test if they get changed)
+;        let w-old-pat-ohip-mmyy = pat-ohip-mmyy
+;        let w-old-pat-direct    = pat-direct-id
+        let w-old-pat-ohip-mmyy = t-pat-ohip-mmyy
+        let w-old-pat-direct    = t-pat-ohip-mmyy   
+;       (99/mar/25 B.E. update only if the value isn't the 'dummy' i-key)
+;        let  pat-ohip-mmyy-numeric = nconvert(pat-ohip-mmyy)
+        let  pat-ohip-mmyy-numeric = nconvert(t-pat-ohip-mmyy)
+        if    pat-ohip-mmyy-numeric <> pat-i-nbr
+        then begin
+;          if pat-direct-alpha[1:1] < 'A'
+          if t-pat-ohip-mmyy[1:1] < 'A'
+            then begin
+;;              let pat-mm = floor(mod(pat-birth-date,10000) / 100)
+; y2k
+;;              let w-ccyy =  floor(pat-birth-date / 10000)
+;;              let w-cc00 = (floor(pat-birth-date / 1000000)) * 100
+;             let pat-yy = floor(pat-birth-date / 10000)
+;;              let pat-yy =  w-ccyy - w-cc00 
+;	      display pat-ohip-mmyy
+	      display t-pat-ohip-mmyy
+              end
+          else begin
+;y2k 
+;             let pat-direct-bdate = pat-birth-date    
+;	      (direct id's birth date yymmdd while patient's birth date is ccyymmdd)
+              let w-cc000000 = (floor(pat-birth-date / 1000000)) * 1000000
+              let w-yymmdd   = pat-birth-date - w-cc000000
+;;            let pat-direct-bdate = w-yymmdd
+;;	      display pat-ohip-mmyy
+              let t-pat-ohip-mmyy = t-pat-ohip-mmyy[1:3] +  ascii(w-yymmdd,6)
+	      display t-pat-ohip-mmyy
+              end
+	  end
+;
+;       (99/mar/25 B.E. only do check if values have changed and aren't 'dummy' i-key)
+;;        let  pat-ohip-mmyy-numeric = nconvert(pat-ohip-mmyy)
+        let  pat-ohip-mmyy-numeric = nconvert(t-pat-ohip-mmyy)
+        if    pat-ohip-mmyy-numeric <> pat-i-nbr                &
+;;          and (   w-old-pat-ohip-mmyy  <> pat-ohip-mmyy         &
+;;               or w-old-pat-direct     <> pat-direct-id         &
+          and (   w-old-pat-ohip-mmyy  <> t-pat-ohip-mmyy       &
+               or w-old-pat-direct     <> t-pat-ohip-mmyy       &
+              )
+      then begin
+;         (Added by M.C. to check the changed PAT-OHIP-MMYY does not exist)
+;;          get f010-pat-keys optional viaindex pat-ohip-mmyy using pat-ohip-mmyy
+          get f010-pat-keys optional viaindex pat-ohip-mmyy using t-pat-ohip-mmyy
+          if accessok
+            then error 'The changed OHIP/DIRECT Nbr is already assigned to another patient'
+          end
+      end
+  end
+
+procedure process subscr-addr3
+begin
+  if w-subscr-addr3 <> ' '
+    then let subscr-addr3 = w-subscr-addr3
+; (preset Province if city recognized as Ontario)
+  if    subscr-addr3 = "Hamilton" 			&
+     or subscr-addr3 = "Dundas" 			&
+     or subscr-addr3 = 'Hamilton' 			&
+     or subscr-addr3 = 'Stoney Creek'		&
+     or subscr-addr3 = 'Dundas' 			&
+     or subscr-addr3 = 'Dunnville' 	&
+     or subscr-addr3 = 'Waterdown' 	&	
+     or subscr-addr3 = 'St. Catharines'		&
+     or subscr-addr3 = 'Oakville' 			&
+     or subscr-addr3 = 'Grimsby' 			&
+     or subscr-addr3 = 'Fruitland'			&
+     or subscr-addr3 = 'Hannon'				&
+     or subscr-addr3 = 'Flamboro' 			&
+     or subscr-addr3 = 'Niagara On The Lake'&	
+     or subscr-addr3 = 'Niagara Falls'	&
+     or subscr-addr3 = 'Fort Erie' 			&
+     or subscr-addr3 = 'Welland' 	        &
+     or subscr-addr3 = 'Toronto' 	        &
+     or subscr-addr3 = 'Don Mills' 	        &
+     or subscr-addr3 = 'Willowdale' 	&
+     or subscr-addr3 = 'Burlington' 	    &
+     or subscr-addr3 = 'Markham' 	        &
+     or subscr-addr3 = 'Richmond Hill'      &
+     or subscr-addr3 = 'Thorold'	    &
+     or subscr-addr3 = 'Malton'		&
+     or subscr-addr3 = 'Mississauga'	    &
+     or subscr-addr3 = 'Scarborough'	    &
+     or subscr-addr3 = 'North York'	        &
+     or subscr-addr3 = 'Beamsville'	        &
+     or subscr-addr3 = 'Brampton'	        &
+     or subscr-addr3 = 'Weston'	            &
+     or subscr-addr3 = 'Etobicoke'	        &
+     or subscr-addr3 = 'Brantford'	        &
+     or subscr-addr3 = 'Georgetown'			&
+     or subscr-addr3 = 'Guelph'	            &
+     or subscr-addr3 = 'Thornhill'	        &
+     or subscr-addr3 = 'Downsview'	        &
+     or subscr-addr3 = 'Islington'	        &
+     or subscr-addr3 = 'Rexdale'	        &
+     or subscr-addr3 = 'Agincourt'	        &
+     or subscr-addr3 = 'Ancaster'	        &
+     or subscr-addr3 = 'Millgrove'	        &
+     or subscr-addr3 = 'Caledonia'			&
+     or subscr-addr3 = 'Simcoe'	            &
+     or subscr-addr3 = 'Hagersville'		&
+     or subscr-addr3 = 'Jarvis'		        &
+     or subscr-addr3 = 'Kitchener'		    &
+     or subscr-addr3 = 'Campbellville'	    &
+     or subscr-addr3 = 'Copetown'		    &
+     or subscr-addr3 = 'Paris'		        &
+     or subscr-addr3 = 'Waterford'		    &
+     or subscr-addr3 = 'Barrie'				&
+     or subscr-addr3 = 'Cambridge'			&
+     or subscr-addr3 = 'Greensville'		&	
+     or subscr-addr3 = 'Binbrook'			&
+     or subscr-addr3 = 'Caistor Centre'		&
+     or subscr-addr3 = 'Carlisle'	    	&
+     or subscr-addr3 = 'Cayuga'	        	&
+     or subscr-addr3 = 'Freelton'			&
+     or subscr-addr3 = 'Lynden'		        &
+     or subscr-addr3 = 'Milton'	            &
+     or subscr-addr3 = 'Mount Hope'	        &
+     or subscr-addr3 = 'Ohsweken'		    &
+     or subscr-addr3 = 'Port Colborne'		&
+     or subscr-addr3 = 'Port Dover'			&
+     or subscr-addr3 = 'Puslinch'			&
+     or subscr-addr3 = 'Sault Ste. Marie'	&
+     or subscr-addr3 = 'Smithville'			&
+     or subscr-addr3 = 'Sudbury'			&
+     or subscr-addr3 = 'Thunder Bay'		&
+     or subscr-addr3 = 'Fonthill'		 	&
+     or subscr-addr3 = 'Wainfleet'			&
+     or subscr-addr3 = 'Crystal Beach'	    &
+     or subscr-addr3 = 'Vinemount'			&
+     or subscr-addr3 = 'Vineland'			&
+     or subscr-addr3 = 'Waterloo'			&
+     or subscr-addr3 = 'Winona'
+  then 
+	begin
+	  let subscr-prov-cd = "ON"
+	  display subscr-prov-cd
+;	  (set flag to skip over province field since it can be defaulted)
+	  let w-skip-subscr-prov-field = "Y"
+	end
+  else
+;	  (set flag to force entry of province field since it can be defaulted)
+	  let w-skip-subscr-prov-field = "N"
+  end
+
+procedure input subscr-msg-nbr
+begin
+  if fieldtext eq "."
+  then begin
+    let w-msg-nbr = " "
+    run screen $pb_obj/sy030 passing w-msg-nbr mode f
+    let fieldtext = w-msg-nbr
+  end
+end
+
+procedure edit subscr-msg-nbr
+begin
+  if subscr-msg-nbr <> '00'
+    then begin
+      get f094-msg-mstr optional
+      if not accessok
+        then error "*Error* Message Number not defined. Use . to search."
+      end
+  end
+
+procedure process subscr-msg-nbr
+begin
+  if subscr-msg-nbr = '00'
+    then begin
+      let subscr-date-msg-nbr-effective-to = 0
+      display  subscr-date-msg-nbr-effective-to
+      end
+  end
+
+procedure input subscr-date-msg-nbr-effective-to
+begin
+  if (changemode) and subscr-msg-nbr <> '00' 		&
+    and 0 = size(fieldtext) and subscr-date-msg-nbr-effective-to = 0
+    then error "Msg Effective Date must be entered"
+  end
+
+procedure edit subscr-date-msg-nbr-effective-to
+begin
+  if subscr-msg-nbr <> '00'
+    then begin
+      if subscr-date-msg-nbr-effective-to < sysdate
+        then error "Effective Date must be greater than System Date"
+      end
+  end
+
+procedure designer 12   help 'Change Address Info'
+begin
+   accept subscr-addr1     of f010-pat-mstr
+   accept subscr-addr2     of f010-pat-mstr
+   accept subscr-addr3     of f010-pat-mstr
+;  (skip entry of province field if it was defaulted based upon city)
+   if w-skip-subscr-prov-field = "N" 
+   then
+ 	accept subscr-prov-cd   of f010-pat-mstr
+
+   accept subscr-postal-cd of f010-pat-mstr
+;   if pat-prov-cd = 'XX'
+;   then  accept pat-country of f010-pat-mstr
+end
+
+
+procedure designer mess help "Use this to BLANK Message Code - (use d003 to add new Message Code)"
+begin
+  accept w-Password
+  if   w-password = 'MC' & 	; 'M'aria 'C'osta
+    or w-password = 'mc' 
+    then begin
+      let     pat-mess-code = " " 
+      display pat-mess-code
+    end
+end
+
+
+procedure designer oclm help "Enter Password to override Outstanding Claim"
+begin
+  accept w-password
+  if w-password = 'GCN'
+    then begin
+      accept pat-nbr-outstanding-claims
+      end
+   end
+
+procedure path
+  begin
+	request pat-acronym of f010-pat-mstr
+	if promptok
+	then
+	  begin
+
+	  if pat-acronym = "."
+	  then
+	     begin
+		let w-ch16 = " "
+		run screen $pb_obj/m010_acr mode f passing w-ch16
+		if w-ch16 gt " "
+		then let path = 2
+	     end
+	  else let path = 1
+	  end
+
+	if path = 0
+   	  then begin
+		request pat-health-nbr of f010-pat-mstr
+		if promptok
+			then let path = 3
+	  end
+
+; 2003/01/15 - MC - change to use temp items instead on request
+
+	if path = 0
+  	  then begin
+;		request pat-ohip-mmyy of f010-pat-mstr
+		request t-pat-ohip-mmyy 
+		if promptok
+			then let path = 4
+	   end
+
+	if path = 0
+  	  then begin
+;		request pat-chart-nbr-5 of f010-pat-mstr
+		request t-pat-chart-nbr-5 
+		if promptok
+			then let path = 5
+	  end
+
+	if path = 0
+  	  then begin
+;		request pat-chart-nbr of f010-pat-mstr
+		request t-pat-chart-nbr 
+		if promptok
+			then let path = 6
+	  end
+
+	if path = 0
+  	  then begin
+;		request pat-chart-nbr-2 of f010-pat-mstr
+		request t-pat-chart-nbr-2 
+		if promptok
+			then let path = 7
+	  end
+
+	if path = 0
+  	  then begin
+;		request pat-chart-nbr-3 of f010-pat-mstr
+		request t-pat-chart-nbr-3 
+		if promptok
+			then let path = 8
+	  end
+
+	if path = 0
+  	  then begin
+;		request pat-chart-nbr-4 of f010-pat-mstr
+		request t-pat-chart-nbr-4 
+		if promptok
+			then let path = 9
+	  end
+
+	if path = 0
+	  then error = "Key Required."
+end
+; 2003/01/15 - end
+
+
+procedure preupdate
+begin
+
+; 2003/01/15 - MC - use temp items instead  
+  if not deletedrecord
+    then begin
+      if    pat-health-nbr = 0 			&
+	and t-pat-ohip-mmyy = ' ' 		&
+	and t-pat-chart-nbr = ' '			&
+;2002/05/28 - MC
+	and t-pat-chart-nbr-2 = ' '		&
+	and t-pat-chart-nbr-3 = ' '		&
+	and t-pat-chart-nbr-4 = ' '		&
+	and t-pat-chart-nbr-5 = ' '		
+;2002/05/28 - end
+          then error "One of Health Nbr, Ohip Nbr, Direct Id or Chart Nbr must be entered"
+      if pat-surname = ' ' or pat-given-name = ' '
+        then error "Both patient's given name and surname must be entered"
+      end
+
+  if deletedrecord and pat-nbr-outstanding-claims > 0
+    then error "PATIENT HAS ACTIVE CLAIMS - CANNOT BE DELETED"
+
+  if newrecord
+    then begin
+;mf   info = "port id =" + portid[10:2] + "=" now response
+      get constants-mstr-rec-5 viaindex const-rec-nbr using 5
+      for const-invisible-key
+        begin
+;mf       if const-con-nbr = nconvert(portid[4:2])
+;mf	  info = "const # / port id =" + 		&
+;	  ascii(const-con-nbr,3) + "/"  + portid[10:2] + "=" now response
+	  let w-port-id = nconvert(portid[10:2]) + 1
+;mf          if const-con-nbr = nconvert(portid[10:2])
+          if const-con-nbr = w-port-id 
+            then begin
+              let pat-con-nbr = const-con-nbr
+              let pat-i-nbr = const-nx-avail-pat
+              display key-pat-mstr
+              let const-nx-avail-pat = const-nx-avail-pat + 1
+              end
+          end
+      put constants-mstr-rec-5
+      end
+
+  if alteredrecord and changemode
+    then begin
+      let pat-date-last-maint = sysdate
+
+      if w-old-birth-date <> pat-birth-date
+      then let pat-last-birth-date of f010-pat-mstr = w-old-birth-date
+
+      if w-old-version-cd <> pat-version-cd
+      then let pat-last-version-cd of f010-pat-mstr = w-old-version-cd
+
+; 2010/08/04 - MC1 - include if birth date changed besides version cd changed
+;	brad1
+;      if     w-old-version-cd <> pat-version-cd 
+      if     w-old-version-cd <> pat-version-cd 	&
+         or  w-old-birth-date <> pat-birth-date
+; 2010/08/04 - end
+	then begin
+	    ;brad1
+	    ;(if record(s) for patient in letter driver file then delete it)
+            while retrieving rejected-claims via  clmhdr-pat-ohip-id-or-chart using key-pat-mstr of f010-pat-mstr
+	    begin
+	 	let logically-deleted-flag = "Y" 
+            	put rejected-claims
+	    end
+	 end
+
+;     (2000/may/29 B.E. - added test for health-nbr)
+      if (   w-old-birth-date <> pat-birth-date 	&
+          or w-old-version-cd <> pat-version-cd		&
+	  or w-old-health-nbr <> pat-health-nbr		&
+	 )
+        then begin
+	   let pat-date-last-elig-maint = sysdate
+           let pat-mess-code = ' '
+	   let pat-no-of-letter-sent = 0
+	   let clmhdr-pat-ohip-id-or-chart of f086-pat-id = &
+		key-pat-mstr of f010-pat-mstr
+	   let pat-last-birth-date of f086-pat-id =         &
+		pat-last-birth-date of f010-pat-mstr
+	   let pat-last-version-cd of f086-pat-id =         &
+		pat-last-version-cd of f010-pat-mstr
+	   let pat-old-surname of f086-pat-id =		    &
+		w-old-surname
+ 	   let pat-old-given-name of f086-pat-id = 	    &
+		w-old-given-name
+	   let pat-old-health-nbr of f086-pat-id  =         &
+		w-old-health-nbr
+	   let pat-old-chart-nbr of f086-pat-id   =          &
+		w-old-chart-nbr
+;2002/05/30 - MC - include 4 more chart nbr
+	   let pat-old-chart-nbr-2 of f086-pat-id   =          &
+		w-old-chart-nbr-2
+	   let pat-old-chart-nbr-3 of f086-pat-id   =          &
+		w-old-chart-nbr-3
+	   let pat-old-chart-nbr-4 of f086-pat-id   =          &
+		w-old-chart-nbr-4
+	   let pat-old-chart-nbr-5 of f086-pat-id   =          &
+		w-old-chart-nbr-5
+;2002/05/30 - end
+  	   let pat-old-addr1 of f086-pat-id       =         &
+		w-old-addr1
+  	   let pat-old-addr2 of f086-pat-id       =         &
+		w-old-addr2
+  	   let pat-old-addr3 of f086-pat-id       =         &
+		w-old-addr3
+	   put f086-pat-id
+; 2004/02/26 - MC - add the elements for f011 file
+           let key-pat-mstr of f011-pat-mstr-elig-history =     &
+               key-pat-mstr of f010-pat-mstr
+           let pat-date-last-maint of f011-pat-mstr-elig-history = sysdate
+           let entry-time-long of f011-pat-mstr-elig-history = systime
+           let pat-expiry-date of f011-pat-mstr-elig-history =  &
+               pat-expiry-date of f010-pat-mstr
+           let pat-health-nbr of f011-pat-mstr-elig-history =   &
+               pat-health-nbr of f010-pat-mstr
+           let pat-last-health-nbr of f011-pat-mstr-elig-history =      &
+               pat-health-nbr  of f010-pat-mstr
+           let pat-version-cd of f011-pat-mstr-elig-history =   &
+               pat-version-cd of f010-pat-mstr
+           let pat-last-version-cd of f011-pat-mstr-elig-history = &
+               pat-last-version-cd of f010-pat-mstr
+           let pat-birth-date of f011-pat-mstr-elig-history =   &
+               pat-birth-date of f010-pat-mstr
+           let pat-birth-date-last of f011-pat-mstr-elig-history =      &
+               pat-last-birth-date of f010-pat-mstr
+           put f011-pat-mstr-elig-history
+; 2004/02/26 - end
+           end
+       end
+
+; 2003/01/14 - MC - check if keys are blank or zero, if so, set to ikey
+
+  if not deletedrecord
+    then begin
+ 	let pat-ohip-mmyy of f010-pat-mstr  = t-pat-ohip-mmyy
+	let pat-chart-nbr   of f010-pat-mstr = t-pat-chart-nbr
+	let pat-chart-nbr-2 of f010-pat-mstr = t-pat-chart-nbr-2
+	let pat-chart-nbr-3 of f010-pat-mstr = t-pat-chart-nbr-3
+	let pat-chart-nbr-4 of f010-pat-mstr = t-pat-chart-nbr-4
+	let pat-chart-nbr-5 of f010-pat-mstr = t-pat-chart-nbr-5
+
+	if t-pat-ohip-mmyy = ' '
+	then let pat-ohip-mmyy of f010-pat-mstr = key-pat-mstr of f010-pat-mstr[4:12]
+	if t-pat-chart-nbr = ' '
+	then let pat-chart-nbr of f010-pat-mstr = key-pat-mstr of f010-pat-mstr[6:10]
+	if t-pat-chart-nbr-2 = ' '
+	then let pat-chart-nbr-2 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr[6:10]
+	if t-pat-chart-nbr-3 = ' '
+	then let pat-chart-nbr-3 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr[6:10]
+	if t-pat-chart-nbr-4 = ' '
+	then let pat-chart-nbr-4 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr[6:10]
+	if t-pat-chart-nbr-5 = ' '
+	then let pat-chart-nbr-5 of f010-pat-mstr = key-pat-mstr of f010-pat-mstr[5:11]
+        end
+
+; 2003/01/14 - end
+
+  end
+
+build 

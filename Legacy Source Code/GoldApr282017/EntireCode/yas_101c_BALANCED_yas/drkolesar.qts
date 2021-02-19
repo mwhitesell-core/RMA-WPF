@@ -1,0 +1,159 @@
+;doc     : drkolesar.qts
+;purpose : report minimum/maximum/average amount for weekday-day, weekday-after-hour, weekend-day, weekend-after-hours
+;	   weekday-day 		= claims with NO E400C or E401C  
+;	   weekday-after-hours  = claims with E400C or E401C  
+;	   weekend-day 		= claims with E400C  
+;	   weekend-after-hours  = claims with E401C  
+;        
+;who     : Dr. Kolesar  - Chief of Anesthesia at HHS
+;
+;  2013/Jun/25	 MC	- original
+;			- choose clinic 22, 23, 25, 32, 42, 98
+;			- select location M461 and department 2/13/21/26 and department 14 with specialty 01 only
+;			  and serv date >= 20110701
+;			- exclude adjustment (clmdtl-adj-nbr = 1) when calculating min/max/avg - separate pass
+;  2013/Jul/08   MC	- they only want ohip billings no bill direct; hence exclude clinic 98 
+;			  since this clinic should only contain agent 6
+;			- add selection in first request for agent <> 6 for other clinics
+; *************************************************************
+;  2013/Jul/23   MC	- instead of using clmdtl-sv-date to determine weekday or weekend, use clmhdr-serv-date
+;			  for the claim, do not require to explode the consecutive date
+;			  write record at claim nbr level
+;   NOTE: Extend the year if needed - now work for 5 years, modify serv-yr define statement in request two below
+;
+;  2013/Jul/30   MC     - Yasemin requested to exclude selected doctors because they can't get a consent from them
+;			  Dr. Forero    ohip# 24614  doc#V63
+;			  Dr. Hakim     ohip# 28527  doc# 37B and 72C
+;			  Dr. Thomas    ohip# 26538  doc# 622, 52A and 318 
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   		&
+	link key-clm-batch-nbr[3:3]			&
+	 to  doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  			&
+	key-clm-batch-nbr '22@', '23@', '25@', '32@', '42@', 	&
+ 	key-clm-claim-nbr, 			&
+	key-clm-serv-code '00000', 		&
+	key-clm-adj-nbr '0'
+
+select f002-claims-mstr if       clmhdr-batch-type = 'C'    	&
+			    and  clmhdr-serv-date >= 20110701   &
+                            and  clmhdr-loc =  "M461"		&
+                            and  clmhdr-agent-cd <> 6 		&
+			    and (    clmhdr-doc-dept  = 02	&
+				  or clmhdr-doc-dept  = 13	&
+				  or clmhdr-doc-dept  = 21	&
+				  or clmhdr-doc-dept  = 26	&
+				  or (    clmhdr-doc-dept  = 14	&
+				      and clmhdr-doc-spec-cd = 01 &
+				     )				&
+				)				&
+			    and  clmhdr-tot-claim-ar-ohip <> 0
+	
+subfile kolesar_1     keep include                  	&
+clmhdr-claim-id               of f002-claims-mstr,	&
+key-clm-batch-nbr             of f002-claims-mstr,	&
+key-clm-claim-nbr             of f002-claims-mstr,	&
+clmhdr-loc                    of f002-claims-mstr,	&
+clmhdr-doc-dept		      of f002-claims-mstr,	&
+clmhdr-serv-date              of f002-claims-mstr,	&
+clmhdr-adj-cd-sub-type        of f002-claims-mstr,	&
+clmhdr-date-period-end        of f002-claims-mstr,	&
+clmhdr-tot-claim-ar-ohip      of f002-claims-mstr,	&
+doc-name
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *kolesar_1                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select  f002-claims-mstr if 		     &
+	    clmdtl-sv-date      >= '20110701'   &	
+       and  clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "AGEP"     &
+       and  clmdtl-oma-cd      <> "MOHD"     &   
+       and  clmdtl-oma-cd      <> "MICA"     &
+       and  clmdtl-oma-cd      <> "MICC"     &
+       and  clmdtl-oma-cd      <> "MICD"     &
+       and  clmdtl-oma-cd      <> "MICE"     &
+       and  clmdtl-oma-cd      <> "MICF"     &
+       and  clmdtl-oma-cd      <> "MICG"     &
+       and  clmdtl-oma-cd      <> "MICH"     &
+       and  clmdtl-oma-cd      <> "MICJ"     &
+       and  clmdtl-oma-cd      <> "MICK"     &
+       and  clmdtl-oma-cd      <> "MICL"     &
+       and  clmdtl-oma-cd      <> "T995"     
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+def x-day-hdr   zoned*1 unsigned = mod(days(clmhdr-serv-date),7)	&
+				if clmhdr-serv-date <> 0	&
+			else    9
+
+def  weekday   zoned*1 unsigned  = 1					&
+                      if    (     x-day-hdr   > 0			&   
+			      and x-day-hdr   < 6       		&
+			    )						
+
+def  weekend   zoned*1 unsigned =  1 					&
+                      if    (     x-day-hdr   = 0			&   
+			      or  x-day-hdr   = 6       		&
+			    )						
+
+; if count > 1 means there is B adjustment in the claim
+temp e400-count  zoned*2 unsigned
+item e400-count = e400-count + 1 if clmdtl-oma-cd = 'E400'              &
+                           and      clmdtl-oma-suff = 'C'               &
+                        reset at key-clm-claim-nbr
+
+; if count > 1 means there is B adjustment in the claim
+temp e401-count  zoned*2 unsigned
+item e401-count = e401-count + 1 if clmdtl-oma-cd = 'E401'              &
+                           and      clmdtl-oma-suff = 'C'               &
+                        reset at key-clm-claim-nbr
+
+; extend the year if needed - now work for 5 years
+def serv-yr zone*1 unsigned 	=  			                            &
+             1  if clmhdr-serv-date of kolesar_1   <  20120701                      &
+        else 2  if clmhdr-serv-date of kolesar_1   <  20130701                      &
+        else 3  if clmhdr-serv-date of kolesar_1   <  20140701                      &
+        else 4  if clmhdr-serv-date of kolesar_1   <  20150701                      &
+        else 5  if clmhdr-serv-date of kolesar_1   <  20160701 
+
+subfile kolesar_clm     keep  at key-clm-claim-nbr include      &
+kolesar_1                                ,&
+weekday					 ,&
+weekend					 ,&
+e400-count				 ,&
+e401-count				 ,&
+serv-yr
+
+build $obj/drkolesar
+

@@ -1,0 +1,102 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE R128A.QTS
+COMMENT "#> PROGRAM-ID.     r128a.qts "
+COMMENT "((C)) Dyad Infosys LTD "
+COMMENT "PURPOSE: first pass for inactive doctors that do not have earnings for 3 most recent months"
+COMMENT "STAGE 1 - create subfile of values from f119-doctor-ytd-history"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "2014/Jul/16  ____   M.C.     - original "
+COMMENT "- Doctor terminated and do not notify RMA.  This is especially a problem"
+COMMENT "with the non-GFT physicians"
+COMMENT "2015/Jun/18  MC1  - change the selection criteria as requested by Brad"
+COMMENT "- select on  no activity  - if BILL and AFPIN and AFPOUT <= 0 for the"
+COMMENT "current EP and 2 previous EP's for all dept and pay code"
+COMMENT "- only doctors with claims balance due <> 0"
+COMMENT "- this program will be run as part of $cmd/teb3 instead of $cmd/teb2"
+COMMENT "because current-ep-nbr has increased by 1 from u126.qts"
+COMMENT "2015/Oct/26  MC2  - apply the same selection criteria as in u110_rma_1/2.qts  when determine"
+COMMENT "claims that have balance due because we only consider the claims for the clinics"
+COMMENT "that go into payroll subsystem"
+CANCEL CLEAR
+RUN U128_INACTIVE_DOCTORS
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+GLOBAL TEMP W-CURRENT-EP-NBR NUMERIC
+GLOBAL TEMP W-LAST-3-EP-NBR NUMERIC
+COMMENT "-------------------------------------------------------------------------------"
+REQUEST GET_CONSTANTS_VALUES_EP_NBR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6
+CHOOSE CONST-REC-NBR 6
+DEF EP-MM = MOD(CURRENT-EP-NBR,100)
+ITEM W-CURRENT-EP-NBR = CURRENT-EP-NBR
+ITEM W-LAST-3-EP-NBR = CURRENT-EP-NBR - 3 IF EP-MM >= 4 ELSE CURRENT-EP-NBR - 90 IF EP-MM <= 3
+COMMENT "-------------------------------------------------------------------------------"
+REQUEST ACCESS_F119_HIST ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F119-DOCTOR-YTD-HISTORY LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR
+CHOOSE DOC-NBR, EP-NBR (W-LAST-3-EP-NBR TO W-CURRENT-EP-NBR), REC-TYPE 'A'
+SORT ON DOC-NBR ON EP-NBR
+COMMENT "MC1"
+COMMENT "(comp-code = 'TOTINC'  and amt-mtd <= 0) &"
+COMMENT "or (comp-code = 'INCEXP'  and amt-mtd <= 0) &"
+COMMENT "or (comp-code = 'PAYEFT'  and amt-mtd <= 0) &"
+COMMENT "or (comp-code = 'ADVOUT'  and amt-mtd >  0)"
+SEL F119-DOCTOR-YTD-HISTORY IF (COMP-CODE = 'BILL' ) OR (COMP-CODE = 'AFPIN' ) OR (COMP-CODE = 'AFPOUT' )
+COMMENT "sel f020-doctor-mstr if     &"
+COMMENT "(doc-dept = 14 or doc-dept =15)    &"
+COMMENT "and doc-ep-pay-code = '2'"
+TEMP X-BILL
+ITEM X-BILL = X-BILL + 1 IF COMP-CODE = 'BILL' AND AMT-MTD > 0 RESET AT DOC-NBR
+TEMP X-AFPIN
+ITEM X-AFPIN = X-AFPIN + 1 IF COMP-CODE = 'AFPIN' AND AMT-MTD > 0 RESET AT DOC-NBR
+TEMP X-AFPOUT
+ITEM X-AFPOUT = X-AFPOUT + 1 IF COMP-CODE = 'AFPOUT' AND AMT-MTD > 0 RESET AT DOC-NBR
+DEF X-BILL-AFPIN-AFPOUT = X-BILL + X-AFPIN + X-AFPOUT
+COMMENT "subfile r128a            keep            include &"
+COMMENT "MC1 - end"
+COMMENT "MC1"
+COMMENT "ep-nbr of f119-doctor-ytd-history,   &"
+COMMENT "comp-code, amt-mtd,  amt-ytd"
+SUBFILE R128A KEEP AT DOC-NBR INCLUDE DOC-NBR OF F119-DOCTOR-YTD-HISTORY, DOC-DEPT, DOC-NAME, DOC-DATE-FAC-START, DOC-DATE-FAC-TERM, DOC-EP-PAY-CODE, DOC-EP-PAY-SUB-CODE, X-BILL, X-AFPIN, X-AFPOUT, X-BILL-AFPIN-AFPOUT
+COMMENT "MC1 - end"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "MC1 - add this new request to select the inactive doctors for last 3 ep-nbr"
+REQUEST SELECT_INACTIVE ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *R128A
+COMMENT "sel no activity"
+SEL IF X-BILL-AFPIN-AFPOUT = 0
+SUBFILE R128A_INACTIVE KEEP INCLUDE R128A
+COMMENT "-------------------------------------------------------------------------------"
+REQUEST CHECK_CLAIM_BALANCE ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "MC2"
+ACCESS F002-OUTSTANDING LINK KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, '00000', '0' TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR LINK NCONVERT(KEY-CLM-BATCH-NBR[1:2]) TO ICONST-CLINIC-NBR-1-2 OF ICONST-MSTR-REC LINK KEY-CLM-BATCH-NBR[3:3] TO DOC-NBR OF F020-DOCTOR-MSTR
+DEF DOC-NBR CHAR*3 = KEY-CLM-BATCH-NBR[3:3]
+COMMENT "MC2"
+COMMENT "'regular' payroll (ie.BILL type transaction use only clinic 22 however"
+COMMENT "'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the"
+COMMENT "clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the"
+COMMENT "doctor belongs to an AFP group"
+DEF CLINIC-NBR CHAR*2 = KEY-CLM-BATCH-NBR[1:2]
+SELECT IF ( CLINIC-NBR = "22" OR CLINIC-NBR = "23" OR CLINIC-NBR = "24" OR CLINIC-NBR = "25" OR CLINIC-NBR = "26" ) OR ( ICONST-CLINIC-CARD-COLOUR = "Y" AND DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR <> " " AND ( CLINIC-NBR < "71" OR CLINIC-NBR > "75" ) )
+COMMENT "MC2 - end"
+SORT ON DOC-NBR
+TEMP X-CLAIM-BAL ZONED*10 NUMERIC
+ITEM X-CLAIM-BAL = X-CLAIM-BAL + CLMHDR-TOT-CLAIM-AR-OHIP + CLMHDR-MANUAL-AND-TAPE-PAYMENTS RESET AT DOC-NBR
+OUTPUT TMP-COUNTERS-ALPHA ADD AT DOC-NBR ON ERRORS REPORT
+ITEM TMP-COUNTER-KEY-ALPHA FINAL DOC-NBR
+ITEM TMP-COUNTER-1 FINAL X-CLAIM-BAL
+SUBFILE R128A_CLAIM_DOC KEEP AT DOC-NBR INCLUDE DOC-NBR, X-CLAIM-BAL
+COMMENT "-------------------------------------------------------------------------------"
+REQUEST SELECT_INACTIVE_DOC_WITH_CLM ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS *R128A_INACTIVE LINK DOC-NBR TO TMP-COUNTER-KEY-ALPHA OF TMP-COUNTERS-ALPHA
+SUBFILE R128A_INACTIVE_DOC_WITH_CLM KEEP INCLUDE R128A_INACTIVE, TMP-COUNTER-1 ALIAS X-CLAIM-BAL
+COMMENT "MC1 - end "
+BUILD $OBJ/R128A
+ENDMODULE R128A.QTS

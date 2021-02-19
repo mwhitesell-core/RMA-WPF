@@ -1,0 +1,123 @@
+; Program: moh1d_icu.qzs
+;
+; 90/09/18	M.C.	- ORIGINAL - SMS 1
+;			- ALTERNATIVE FUNDING CLAIMS STATISTIC - DETAIL
+; 92/04/14      M.C.    - EXTEND THE PICTURE FIELD FOR TOTAL
+;
+; 94/05/27      M.C.	- THIS IS THE ORIGINAL VERSION FROM HSC
+;			- MAKE THE NECCESSARY CHANGES FOR RMA CLINIC 81
+;			  AGENT 8
+; 94/06/02	M.C.	- CHANGE THE SORT SEQUENCE
+;
+; 95/01/19	YAS 	- HARD CODE CLINIC 81 AA03
+;
+; 1999/May/06	S.B.	- Fixed headings for Y2K.
+; 2000/01/18	B.E.	- changed from 1 character clmhdr-hosp to
+;			  for digit w-clmhdr-hosp and added use file
+;			  to translate into w-clmhdr-hosp-desc
+
+cancel clear
+
+set default
+set report device disc name moh1a_icu
+set page length 60 width 132
+set report nolimit
+set formfeed
+	
+access *moh1cicu
+
+use $use/hospital_code_desc.def nol
+
+define x-sel-from-ped date = sel-from-ped
+define x-sel-to-ped   date = sel-to-ped
+define x-clm-ped      date = nconvert(clmdtl-date-period-end)
+define x-svc-date     date = nconvert(clmdtl-sv-date)
+define x-clmdtl-claim-nbr char*2 = ascii(clmdtl-claim-nbr,2)
+
+;SORTED  ON SEL-CLINIC-NBR ON CLMDTL-DATE-PERIOD-END 	&
+;    ON CLMDTL-DOC-NBR ON X-SVC-DATE ON PATIENT-KEY
+sorted  on sel-clinic-nbr 				&
+	on w-clmhdr-hosp                            	&
+	on clmdtl-doc-nbr 				&
+	on x-svc-date 					&
+	on patient-key
+
+page heading 						&
+	tab  1 "MOH1A_ICU"				&
+        tab 25 "I.C.U. ALTERNATIVE FUNDING CLAIMS STATISTICS - DETAIL" &
+	tab 86 "RUN DATE:"				&
+ 	tab 97 sysdate					&
+	tab 108 "PG:"  tab 112 syspage pic "^^^^"	&
+ skip 2 tab  1 "------------SELECTION CRITERIA--------------" &
+ skip 1 tab  1 "CLINIC                            :"	&
+;       TAB 37 SEL-CLINIC-NBR				&
+        tab 37 "AA03"                                   &
+ skip 1 tab  1 "CLAIMS ENTERED FOR PERIOD END DATE:"	&
+   	tab 37 x-sel-from-ped 				&
+ skip 1 tab  1 "                              THRU:"	&
+        tab 37 x-sel-to-ped 				&
+ skip 2 tab  1 "HOSPITAL: "				&
+;	tab 18 clmhdr-hosp				&
+	tab 11 w-clmhdr-hosp-desc			&
+ skip 2	tab  1 "  PHYSICIAN'S CLASS OHIP NBR   NAME"	&
+	tab 53 "NBR"					&
+ skip 1 tab 17 doc-full-part-ind			&
+	tab 21 doc-ohip-nbr pic "^^^^^^"		&
+	tab 32 x-doc-name				&
+	tab 52 clmdtl-doc-nbr				&
+ skip 2 tab  5 "SERVICE     CLAIM NBR   PATIENT OHIP"   &
+	tab 42 "PATIENT FULL NAME"			&
+	tab 68 "IN/OUT LOCA. CODE  #SVC'S   AMOUNT"	&
+ skip 2
+
+;HEADING AT CLMDTL-DATE-PERIOD-END			&
+;SKIP PAGE
+
+heading at clmdtl-doc-nbr				&
+ skip page
+
+report							&
+	tab  5 x-svc-date print at x-svc-date		&
+	tab 17 clmdtl-batch-key pic "^^^^^^^^"		&
+	tab 25 "-" 					&
+	tab 26 x-clmdtl-claim-nbr          		&
+	tab 29 x-pat-ohip-nbr               		&
+	tab 42 x-pat-name				&
+	tab 70 clmhdr-i-o-pat-ind			&
+	tab 75 clmhdr-loc				&
+	tab 81 clmdtl-oma-cd				&
+	tab 90 x-clmdtl-nbr-serv			&
+	tab 93 clmdtl-fee-ohip pic "^^,^^^.^^"
+
+footing at clmdtl-doc-nbr				&
+ skip 2 tab  3 "PHYSICIAN TOTALS - ENCOUNTERS"		&
+	tab 35 count at patient-key pic "^^^,^^^"	&
+ skip 1 tab 13 "       - SERVICES"			&
+	tab 35 x-clmdtl-nbr-serv subtotal pic "^^^,^^^" &
+ skip 1 tab 13 "       - AMOUNT"			&
+	tab 32 clmdtl-fee-ohip subtotal pic "^^,^^^,^^^.^^" &
+ skip page
+
+;FOOTING AT CLMDTL-DATE-PERIOD-END			&
+;	TAB  1 "PERIOD END DATE TOTALS - ENCOUNTERS"	&
+;	TAB 39 COUNT AT PATIENT-KEY PIC "^^^,^^^"	&
+;SKIP 1 TAB  8 X-CLM-PED FORMAT YYMMMDD	        	&
+;       TAB 24 "- SERVICES"				&
+;	TAB 39 X-CLMDTL-NBR-SERV SUBTOTAL PIC "^^^,^^^"	&
+;SKIP 1 TAB 24 "- AMOUNT"				&
+;	TAB 36 CLMDTL-FEE-OHIP SUBTOTAL PIC "^^,^^^,^^^.^^" &
+;SKIP PAGE
+
+footing at sel-clinic-nbr				&
+ skip page						&
+	tab  1 "CLINIC TOTALS          - ENCOUNTERS"	&
+ 	tab 39 count at patient-key pic "^^^,^^^"	&
+ skip 1 tab  1 "                       - SERVICES"	&
+	tab 39 x-clmdtl-nbr-serv subtotal pic "^^^,^^^"	&
+ skip 1 tab  1 "                       - AMOUNT"	&
+	tab 39 clmdtl-fee-ohip subtotal pic "^^,^^^,^^^.^^"
+
+
+build $pb_obj/moh1d_icu
+
+  

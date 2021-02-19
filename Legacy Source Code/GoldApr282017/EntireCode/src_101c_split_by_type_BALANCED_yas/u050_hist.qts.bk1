@@ -1,0 +1,367 @@
+;> PROGRAM-ID.     u050_hist.qts  
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :update doc revenue/cash mstr from f002-dtl-before (reverse)
+;			and f002-dtl-after
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2002/Mar/06 M.C.         - ORIGINAL (clone from u010dailyreverse.qts)
+;			     'C'ash type 'P'ayments, update cash only
+;			     'M'isc type 'P'ayments, update cash and revenue
+;			     and all others update revenue only
+;			     - exclude Adjustment A type records
+;			     - translated clinic only for f050/f050tp
+;   2002/May/24 M.C.	    - update f050 history if batch status = 4
+can clear
+
+set process nolimit
+set lock file update
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request select_rev_cash_reverse on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash   (reverse)
+
+access f002-dtl-before			&
+   link (nconvert(clmdtl-date-period-end) / 100)  & 
+     to ped-yyyymm of f191-earnings-period opt                   
+
+
+sel  if ( batctrl-batch-type <> 'A' or batctrl-adj-cd     <> 'A')  &
+	and batctrl-batch-status = '4'
+
+sort on clmhdr-batch-nbr on clmhdr-claim-nbr on clmdtl-oma-cd on clmdtl-oma-suff on ep-nbr 
+
+def x-ep-yr zoned*4 unsigned = ep-nbr of f191-earnings-period / 100
+def x-ep-nbr char*6 = ascii(ep-nbr of f191-earnings-period,6)
+
+subfile u050_before keep if x-ep-nbr[5:2] <> '06'	&
+ include f002-dtl-before, x-ep-yr
+
+subfile u050_before_sel keep if x-ep-nbr[5:2] = '06'	&
+ include f002-dtl-before, x-ep-yr, x-ep-nbr
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_unique_record    on calculation errors report on edit errors report
+
+access *u050_before_sel
+
+sorted on clmhdr-batch-nbr on clmhdr-claim-nbr on clmdtl-oma-cd on clmdtl-oma-suff on x-ep-nbr
+
+subfile u050_before append at x-ep-nbr include 	&
+    BATCTRL-BATCH-STATUS                ,&
+    BATCTRL-BATCH-TYPE                  ,&  
+    BATCTRL-ADJ-CD                       ,&
+    CLMHDR-CLINIC-NBR-1-2                ,&
+    CLMHDR-BATCH-NBR                     ,&
+    CLMHDR-CLAIM-NBR                     ,&
+    CLMHDR-DOC-NBR                       ,&
+    CLMHDR-DOC-DEPT                      ,&
+    CLMHDR-LOC                          ,&
+    CLMHDR-AGENT-CD                     ,&   
+    CLMHDR-MANUAL-AND-TAPE-PAYMENTS     ,&
+    CLMHDR-AMT-TECH-PAID                ,&
+    CLMHDR-I-O-PAT-IND                  ,&
+    CLMHDR-ADJ-CD-SUB-TYPE              ,&
+    CLMHDR-ADJ-CD                       ,&
+    CLMHDR-PAYROLL                     ,&
+    CLMDTL-OMA-CD                    ,&
+    CLMDTL-OMA-SUFF                  ,&
+    CLMDTL-FEE-OHIP                 ,&
+    CLMDTL-NBR-SERV                ,&
+    CLMDTL-AMT-TECH-BILLED         ,&
+    CLMDTL-DATE-PERIOD-END 	   ,&
+    x-ep-yr 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_rev_hist_reverse on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash   (reverse)
+
+access *u050_before   			&
+   link clmhdr-doc-nbr, 			&
+	clmhdr-clinic-nbr-1-2,			&	
+	clmhdr-payroll	 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt
+
+
+def x-suff char*1 						&
+      = clmhdr-adj-cd-sub-type					&
+		if     clmhdr-adj-cd-sub-type <= '9' 		&
+	   	   and batctrl-adj-cd = 'M'			&
+  else '0' 	if batctrl-adj-cd = 'M'				&
+  else clmdtl-oma-suff
+			
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-prof-fee zoned*8 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+def x-clmdtl-nbr-serv zoned*4 signed = 0 if batctrl-batch-type = 'A'	&
+	else clmdtl-nbr-serv
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else ascii(clmhdr-clinic-nbr-1-2,2)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;'C'laims, 'A'djustment and 'M'isc type 'P'ayments, update 'revenue' records
+output f050-doc-revenue-mstr-history  update		&
+    if  batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')  &
+	via ep-yr, iconst-date-period-end, docrev-key				&
+	using  x-ep-yr, nconvert(clmdtl-date-period-end[1:6] + '01'),	&
+	       (x-translated-clinic +		&
+		ascii(clmhdr-doc-dept,2) +	&
+		ascii(clmhdr-doc-nbr,3) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff)				&
+	on errors report
+
+   item docrev-mtd-in-svc  subtotal x-clmdtl-nbr-serv   negative if x-i-o-ind = 'I'	 
+   item docrev-mtd-in-rec  subtotal clmdtl-fee-ohip 	negative if x-i-o-ind = 'I'		 
+   item docrev-mtd-out-svc subtotal x-clmdtl-nbr-serv   negative if x-i-o-ind = 'O'	 
+   item docrev-mtd-out-rec subtotal clmdtl-fee-ohip 	negative if x-i-o-ind = 'O'		 	
+   item docrev-ytd-in-svc  subtotal x-clmdtl-nbr-serv   negative if x-i-o-ind = 'I'
+   item docrev-ytd-in-rec  subtotal clmdtl-fee-ohip 	negative if x-i-o-ind = 'I'
+   item docrev-ytd-out-svc subtotal x-clmdtl-nbr-serv   negative if x-i-o-ind = 'O'
+   item docrev-ytd-out-rec subtotal clmdtl-fee-ohip 	negative if x-i-o-ind = 'O'
+
+
+
+output f050tp-doc-revenue-mstr-history  update		&
+    if  x-translated-clinic[1:1] = '6'	and	&
+       (batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')) &
+	via ep-yr, iconst-date-period-end, docrevtp-key	        & 					
+	using  x-ep-yr, nconvert(clmdtl-date-period-end[1:6] + '01'),	&
+	       (x-translated-clinic +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff +			&
+		ascii(clmhdr-doc-nbr,3)) 	&
+	on errors report
+   
+   item docrevtp-out-tech-nbr-svc(1) subtotal x-clmdtl-nbr-serv negative &
+	   if clmdtl-amt-tech-billed <> 0  				
+   item docrevtp-out-prof-nbr-svc(1) subtotal x-clmdtl-nbr-serv negative &
+	   if x-prof-fee  <> 0 						 
+   item docrevtp-out-tech-amt-billed(1) subtotal clmdtl-amt-tech-billed negative 	&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'		
+   item docrevtp-out-prof-amt-billed(1) subtotal x-prof-fee negative  			&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'		
+   item docrevtp-out-tech-amt-adjusts(1) subtotal clmdtl-amt-tech-billed negative	&
+	  if batctrl-batch-type = 'A'						
+   item docrevtp-out-prof-amt-adjusts(1) subtotal x-prof-fee negative			&
+	  if batctrl-batch-type = 'A'					
+   item docrevtp-out-tech-nbr-svc(2) subtotal x-clmdtl-nbr-serv negative 		&
+	   if clmdtl-amt-tech-billed <> 0  
+   item docrevtp-out-prof-nbr-svc(2) subtotal x-clmdtl-nbr-serv negative		&
+	   if x-prof-fee  <> 0  
+   item docrevtp-out-tech-amt-billed(2) subtotal clmdtl-amt-tech-billed negative	&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-prof-amt-billed(2) subtotal x-prof-fee negative			&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-tech-amt-adjusts(2) subtotal clmdtl-amt-tech-billed negative 	&
+	  if batctrl-batch-type = 'A'
+   item docrevtp-out-prof-amt-adjusts(2) subtotal x-prof-fee negative			&
+	  if batctrl-batch-type = 'A'
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+request select_rev_hist_update  on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash   (reverse)
+
+access f002-dtl-after 			&
+   link (nconvert(clmdtl-date-period-end) / 100)  & 
+     to ped-yyyymm of f191-earnings-period opt                   
+
+
+sel  if ( batctrl-batch-type <> 'A' or batctrl-adj-cd     <> 'A' ) &
+	and batctrl-batch-status = '4'
+
+sort on clmhdr-batch-nbr on clmhdr-claim-nbr on clmdtl-oma-cd on clmdtl-oma-suff on ep-nbr 
+
+def x-ep-yr zoned*4 unsigned = ep-nbr of f191-earnings-period / 100
+def x-ep-nbr char*6 = ascii(ep-nbr of f191-earnings-period,6)
+
+subfile u050_after keep if x-ep-nbr[5:2] <> '06'	&
+ include f002-dtl-after, x-ep-yr
+
+subfile u050_after_sel keep if x-ep-nbr[5:2] = '06'	&
+ include f002-dtl-after, x-ep-yr, x-ep-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sel_unique_record    on calculation errors report on edit errors report
+
+access *u050_after_sel
+
+sorted on clmhdr-batch-nbr on clmhdr-claim-nbr on clmdtl-oma-cd on clmdtl-oma-suff on x-ep-nbr
+
+subfile u050_after append at x-ep-nbr include 	&
+    BATCTRL-BATCH-STATUS                ,&
+    BATCTRL-BATCH-TYPE                  ,&  
+    BATCTRL-ADJ-CD                       ,&
+    CLMHDR-CLINIC-NBR-1-2                ,&
+    CLMHDR-BATCH-NBR                     ,&
+    CLMHDR-CLAIM-NBR                     ,&
+    CLMHDR-DOC-NBR                       ,&
+    CLMHDR-DOC-DEPT                      ,&
+    CLMHDR-LOC                          ,&
+    CLMHDR-AGENT-CD                     ,&   
+    CLMHDR-MANUAL-AND-TAPE-PAYMENTS     ,&
+    CLMHDR-AMT-TECH-PAID                ,&
+    CLMHDR-I-O-PAT-IND                  ,&
+    CLMHDR-ADJ-CD-SUB-TYPE              ,&
+    CLMHDR-ADJ-CD                       ,&
+    CLMHDR-PAYROLL                     ,&
+    CLMDTL-OMA-CD                    ,&
+    CLMDTL-OMA-SUFF                  ,&
+    CLMDTL-FEE-OHIP                 ,&
+    CLMDTL-NBR-SERV                ,&
+    CLMDTL-AMT-TECH-BILLED         ,&
+    CLMDTL-DATE-PERIOD-END 	   ,&
+    x-ep-yr 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_rev_hist on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash  
+
+
+access *u050_after      	&
+   link clmhdr-doc-nbr, 			&
+	Clmhdr-clinic-nbr-1-2,			&	
+	clmhdr-payroll	 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt
+
+
+def x-suff char*1 						&
+      = clmhdr-adj-cd-sub-type					&
+		if     clmhdr-adj-cd-sub-type <= '9' 		&
+	   	   and batctrl-adj-cd = 'M'			&
+  else '0' 	if batctrl-adj-cd = 'M'				&
+  else clmdtl-oma-suff
+			
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-prof-fee zoned*8 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+def x-clmdtl-nbr-serv zoned*4 signed = 0 if batctrl-batch-type = 'A'	&
+	else clmdtl-nbr-serv
+
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else ascii(clmhdr-clinic-nbr-1-2,2)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;'C'laims, 'A'djustment and 'M'isc type 'P'ayments, update 'revenue' records
+output f050-doc-revenue-mstr-history  update add	&
+    if  batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')  &
+	via ep-yr, iconst-date-period-end, docrev-key				&
+	using  x-ep-yr, nconvert(clmdtl-date-period-end[1:6] + '01'),   &
+		(x-translated-clinic +     	&
+		ascii(clmhdr-doc-dept,2) +	&
+		ascii(clmhdr-doc-nbr,3) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff)				&
+	on errors report
+   item ep-yr initial x-ep-yr
+   item iconst-date-period-end initial nconvert(clmdtl-date-period-end[1:6] + '01')
+   item docrev-clinic-1-2 initial x-translated-clinic
+   item docrev-dept initial clmhdr-doc-dept
+   item docrev-doc-nbr initial clmhdr-doc-nbr
+   item docrev-location initial clmhdr-loc
+   item docrev-oma-cd initial clmdtl-oma-cd
+   item docrev-oma-suff initial x-suff
+
+   item docrev-mtd-in-svc  subtotal x-clmdtl-nbr-serv   if x-i-o-ind = 'I'	
+   item docrev-mtd-in-rec  subtotal clmdtl-fee-ohip   	if x-i-o-ind = 'I'	
+   item docrev-mtd-out-svc subtotal x-clmdtl-nbr-serv   if x-i-o-ind = 'O'  
+   item docrev-mtd-out-rec subtotal clmdtl-fee-ohip   	if x-i-o-ind = 'O'	
+   item docrev-ytd-in-svc  subtotal x-clmdtl-nbr-serv   if x-i-o-ind = 'I'
+   item docrev-ytd-in-rec  subtotal clmdtl-fee-ohip   	if x-i-o-ind = 'I'
+   item docrev-ytd-out-svc subtotal x-clmdtl-nbr-serv   if x-i-o-ind = 'O'
+   item docrev-ytd-out-rec subtotal clmdtl-fee-ohip   	if x-i-o-ind = 'O'
+
+
+output f050tp-doc-revenue-mstr-history update	add	&
+    if  x-translated-clinic[1:1] = '6'	and	&
+       (batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')) &
+	via ep-yr, iconst-date-period-end, docrevtp-key	        & 					
+	using  x-ep-yr, nconvert(clmdtl-date-period-end[1:6] + '01'),	&
+	       (x-translated-clinic +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff +			&
+		ascii(clmhdr-doc-nbr,3)) 	&
+	on errors report
+   
+   item ep-yr initial x-ep-yr
+   item iconst-date-period-end initial nconvert(clmdtl-date-period-end[1:6] + '01')
+   item docrevtp-clinic-nbr initial nconvert(x-translated-clinic)
+   item docrevtp-agent-cd initial ascii(clmhdr-agent-cd,1)
+   item docrevtp-loc-cd initial clmhdr-loc
+   item docrevtp-oma-cd initial (clmdtl-oma-cd + x-suff)
+   item docrevtp-doc-nbr initial clmhdr-doc-nbr
+
+   item docrevtp-out-tech-nbr-svc(1) subtotal x-clmdtl-nbr-serv		&
+	   if clmdtl-amt-tech-billed <> 0  				
+   item docrevtp-out-prof-nbr-svc(1) subtotal x-clmdtl-nbr-serv		&
+	   if x-prof-fee  <> 0 						 
+   item docrevtp-out-tech-amt-billed(1) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'		
+   item docrevtp-out-prof-amt-billed(1) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'		
+   item docrevtp-out-tech-amt-adjusts(1) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'A'						
+   item docrevtp-out-prof-amt-adjusts(1) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'A'						
+   item docrevtp-out-tech-nbr-svc(2) subtotal x-clmdtl-nbr-serv		&
+	   if clmdtl-amt-tech-billed <> 0  
+   item docrevtp-out-prof-nbr-svc(2) subtotal x-clmdtl-nbr-serv		&
+	   if x-prof-fee  <> 0  
+   item docrevtp-out-tech-amt-billed(2) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-prof-amt-billed(2) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-tech-amt-adjusts(2) subtotal clmdtl-amt-tech-billed 	&
+	  if batctrl-batch-type = 'A'
+   item docrevtp-out-prof-amt-adjusts(2) subtotal x-prof-fee 			&
+	  if batctrl-batch-type = 'A'
+
+
+build $pb_obj/u050_hist

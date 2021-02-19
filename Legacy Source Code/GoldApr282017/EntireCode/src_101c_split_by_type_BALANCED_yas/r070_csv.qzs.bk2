@@ -1,0 +1,326 @@
+; DOC: R070_CSV.QZS
+; DOC: ACCOUNTS RECEIVABLE
+;
+;PROGRAM PURPOSE : ACCOUNTS RECEIVABLE (DETAIL REPORT IN EXCEL)
+;		  
+
+;DATE       	BY WHOM  DESCRIPTION
+;2015/Nov/17 	MC     	 original  (clone from r070atp.qzs)
+;
+
+can clear
+set default
+set rep nolimit
+
+access f002-claims-mstr        	                	&
+   link (nconvert(key-clm-batch-nbr[1:2]))           	&
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec        &
+   link ((key-clm-batch-nbr[3:3]))           		&
+     to doc-nbr of f020-doctor-mstr opt                 &
+   link clmhdr-pat-ohip-id-or-chart                     &
+     to key-pat-mstr of f010-pat-mstr   opt            
+
+; select claim header records
+choose key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, 	&
+	key-clm-serv-code '00000',  key-clm-adj-nbr '0'
+
+; note: payments stored as negative number, therefore add to find difference
+def x-balance-due zoned*7 signed 				&
+     =  clmhdr-tot-claim-ar-ohip				&
+      + clmhdr-manual-and-tape-payments 
+
+select f002-claims-mstr	if  clmhdr-batch-type = 'C'		  &
+      			and x-balance-due  <>  0
+
+define x-monthend char*1 = parm prompt 'Enter Monthend (1,2,3): '
+
+sel if    iconst-monthend = x-monthend            
+
+def x-pat-id-info char*12					&
+      = pat-ohip-mmyy  if    record f010-pat-mstr exists 	&
+			 and pat-health-nbr =  0		&
+   else ascii(pat-health-nbr,10) if    record f010-pat-mstr exists &
+				   and pat-health-nbr ne 0     &
+   else pat-chart-nbr
+
+def x-sort-record-status num*1 = 9 if    x-balance-due > -86    &
+                                     and x-balance-due <  86    &
+                          else   0
+
+def x-age-yy num*4 = (iconst-date-period-end-yy   &
+                  -  (floor(clmhdr-date-period-end / 10000)))
+
+def x-age-mm num*2 = (iconst-date-period-end-mm   &
+                    - mod(floor(clmhdr-date-period-end / 100),100))
+
+def x-mth-old num*3 = (x-age-yy * 12) + x-age-mm
+
+def x-age-category num*1 = 0 if x-mth-old < 1     &
+                    else   1 if x-mth-old < 2     &
+                    else   2 if x-mth-old < 3     &
+                    else   3 if x-mth-old < 4     &
+                    else   4
+
+def x-day-old cha*3 = 'CUR' if x-mth-old < 1     &
+               else   '30'  if x-mth-old < 2     &
+               else   '60'  if x-mth-old < 3     &
+               else   '90'  if x-mth-old < 4     &
+               else   '120' if x-mth-old < 5	 &
+	       else   '150' if x-mth-old < 6	 &
+	       else   '180'
+
+def x-sub-nbr num*1 = nconvert(clmhdr-sub-nbr)  &
+                   if clmhdr-agent-cd = 6       &
+                 else 0
+
+def x-clm-id cha*10 = clmhdr-claim-id[1:10]
+
+def x-prof-bill zoned*7 signed = clmhdr-tot-claim-ar-ohip  &
+                               - clmhdr-amt-tech-billed
+
+def x-prof-paid zoned*7 signed = (clmhdr-manual-and-tape-payments  &
+                                + clmhdr-amt-tech-paid) * -1
+
+def x-prof-due zoned*7  signed = x-prof-bill - x-prof-paid
+
+def x-tech-due zoned*6 signed = clmhdr-amt-tech-billed   &
+                              - clmhdr-amt-tech-paid
+
+; 'regular' payroll (ie.BILL type transaction use only clinic 22 however
+; 'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the
+;  clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the
+;  doctor belongs to an AFP group
+
+def x-incl-payroll char*1 =					         &
+        'Y' if   (    iconst-clinic-nbr-1-2 =  22                        &
+                   or iconst-clinic-nbr-1-2 =  23                        &
+                   or iconst-clinic-nbr-1-2 =  24                        &
+                   or iconst-clinic-nbr-1-2 =  25                        &
+                   or iconst-clinic-nbr-1-2 =  26                        &
+                 )                                                       &
+              or (     iconst-clinic-card-colour =  'Y'                  &
+                  and  doc-afp-paym-group of f020-doctor-mstr <> ' '     &
+                  and  (   iconst-clinic-nbr-1-2 <   71                  &
+                        or iconst-clinic-nbr-1-2 >   75                  &
+                       )                                                 &
+                 )						         &
+   else 'N'
+
+
+;sorted on x-clm-id
+
+;set subfile name  r070a  keep at x-clm-id
+set subfile name  r070a_csv  keep 
+
+report summary	           	    &
+    x-sort-record-status            &
+    clmhdr-agent-cd                 &
+;   x-age-category                  &
+    iconst-clinic-nbr-1-2           &
+;   iconst-clinic-nbr               &
+;   iconst-clinic-name              &
+;   iconst-date-period-end          &
+    clmhdr-pat-acronym              &
+    x-pat-id-info                   &
+    x-clm-id                        &
+    clmhdr-doc-dept                 &
+    clmhdr-status-ohip		    &
+    x-sub-nbr                       &
+    clmhdr-tot-claim-ar-ohip	    &
+    clmhdr-manual-and-tape-payments &
+    x-balance-due                   &
+    clmhdr-date-period-end          &
+    clmhdr-serv-date		    &
+    x-day-old                       &
+    clmhdr-tape-submit-ind	    &
+    clmhdr-reference                &
+    x-incl-payroll
+; below are for 60's & 70's
+;    clmhdr-amt-tech-billed          &
+;    clmhdr-amt-tech-paid            &
+;    x-tech-due                      &
+;    x-prof-bill                     &
+;    x-prof-paid                     &
+;    x-prof-due                      &
+
+build $pb_obj/r070a_csv
+  
+set rep nolimit
+set rep dev disc name r070_csv
+set rep page width 180
+set rep page length 0
+set noformfeed
+set nohead
+
+access *r070a_csv 			&
+	link clmhdr-doc-dept		&
+	 to dept-nbr of f070-dept-mstr opt 
+	
+
+;---------------------------------------------------------
+def x-delimiter char*1 = "~"
+
+def x-period char*1 = "."
+
+def x-ohip-fee-sign char*1 = "-"                   		    if clmhdr-tot-claim-ar-ohip < 0       &
+                else " "
+def x-ohip-fee-dollars = abs(clmhdr-tot-claim-ar-ohip) / 100        if clmhdr-tot-claim-ar-ohip <> 0      &
+                else  0
+def x-ohip-fee-cents   = mod(abs(clmhdr-tot-claim-ar-ohip),100)     if clmhdr-tot-claim-ar-ohip <> 0      &
+                else  0
+
+def x-ohip-fee-alpha char*10 =  pack(trunc(lj(x-ohip-fee-sign +                   &
+                                              ascii(x-ohip-fee-dollars) +        &
+                                              x-period +                        &
+                                              ascii(x-ohip-fee-cents,2))))
+;
+; payment amount is stored in negative value 
+def x-paid-amt-sign char*1 = " "                   		    	   if clmhdr-manual-and-tape-payments <= 0      &
+	                else "-"
+def x-paid-amt-dollars = abs(clmhdr-manual-and-tape-payments) / 100        if clmhdr-manual-and-tape-payments <> 0      &
+        	        else  0
+def x-paid-amt-cents   = mod(abs(clmhdr-manual-and-tape-payments),100)     if clmhdr-manual-and-tape-payments <> 0      &
+                	else  0
+
+def x-paid-amt-alpha char*10 =  pack(trunc(lj(x-paid-amt-sign +                   &
+                                              ascii(x-paid-amt-dollars) +         &
+                                              x-period +                          &
+                                              ascii(x-paid-amt-cents,2))))
+
+def x-balance-due-sign char*1 = "-"                         if x-balance-due < 0       &
+                else " "
+def x-balance-due-dollars = abs(x-balance-due) / 100        if x-balance-due <> 0      &
+                else  0
+def x-balance-due-cents   = mod(abs(x-balance-due),100)     if x-balance-due <> 0      &
+                else  0
+
+def x-balance-due-alpha char*10 =  pack(trunc(lj(x-balance-due-sign +                   &
+                                              ascii(x-balance-due-dollars) +            &
+                                              x-period +                        	&
+                                              ascii(x-balance-due-cents,2))))
+
+def x-record-status char*3 = '"' + ascii(x-sort-record-status,1) + '"'
+def x-doc-nbr       char*5 = '"' + x-clm-id[3:3]   + '"'
+def x-agent-cd      char*3 = '"' + ascii(clmhdr-agent-cd,1)      + '"'
+def x-clinic       char*2  =  ascii(iconst-clinic-nbr-1-2,2) 
+def x-dept         char*4  = '"' + ascii(clmhdr-doc-dept,2) + '"'
+def x-explan-cd    char*2  =  clmhdr-status-ohip        if clmhdr-status-ohip <> '00'		   
+def x-subdivision   char*1 =  ascii(x-sub-nbr)          if x-sub-nbr <> 0
+
+
+def x-line char*150 =                                   &
+    		x-record-status   	+	         &
+                x-delimiter  +                                   &
+    		x-doc-nbr        	+	         &
+                x-delimiter  +                                   &
+    		x-clinic                +		&
+                x-delimiter  +                                   &
+    		x-agent-cd 		+                &
+                x-delimiter  +                                   &
+    		ascii(dept-company)     +                &
+                x-delimiter  +                                   &
+    		clmhdr-pat-acronym      +	        &
+                x-delimiter  +                                   &
+	lj(pack(					&
+    		x-pat-id-info   	+               &
+                x-delimiter  +                                   &
+	    	x-clm-id                + 	        &
+                x-delimiter  +                                   &
+    		x-dept                  +	        &
+                x-delimiter  +                                   &
+    		x-explan-cd       	+          	&
+                x-delimiter  +                                   &
+    		x-subdivision           +               &
+                x-delimiter  +                                   &
+    		x-ohip-fee-alpha        	+       &
+                x-delimiter  +                                   &
+    		x-paid-amt-alpha                +	&
+                x-delimiter  +                                   &
+    		x-balance-due-alpha             +	         &
+                x-delimiter  +                                   &
+    		ascii(clmhdr-date-period-end)   +       &
+                x-delimiter  +                                   &
+    		ascii(clmhdr-serv-date)  +	        &
+                x-delimiter  +                                   &
+    		x-day-old                +	        &
+                x-delimiter  +                                   &
+    		clmhdr-tape-submit-ind	 +		&
+                x-delimiter  +                                   &
+    		clmhdr-reference         +	        &
+                x-delimiter  +                                   &
+    		x-incl-payroll		 			 &
+	      ))
+
+
+def x-head char*180 =                                           &
+                'Writeoff'                               	&
+         +      x-delimiter                                    &
+         +    'Doc#'                                        	&
+         +    x-delimiter                                     &
+         +    'Clinic'                                        &
+         +    x-delimiter                                     &
+         +    'Agent'                                         &
+         +    x-delimiter                                     &
+         +    'Company'                                       &
+         +    x-delimiter                                     &
+         +    'Acronym'                                       &
+         +    x-delimiter                                     &
+         +    'Pat Id'                                        &
+         +    x-delimiter                                     &
+         +    'Claim Id'                                      &
+         +    x-delimiter                                     &
+         +    'Dept'                                          &
+         +    x-delimiter                                     &
+         +    'Explan Cd'                                     &
+         +    x-delimiter                                     &
+         +    'Sub'           				&
+         +    x-delimiter                                     &
+         +    'Ohip Amt'      				&
+         +    x-delimiter                                     &
+         +    'Paid Amt'      				&
+         +    x-delimiter                                     &
+         +    'Balance'       				&
+         +    x-delimiter                                     &
+         +    'Period End Date'				&	
+         +   x-delimiter                                     &
+         +   'Service Date'  				&
+         +   x-delimiter                                     &
+         +   'Days Old'      				&
+         +   x-delimiter                                     &
+         +   'Tape Sub'      				&
+         +   x-delimiter                                     &
+         +   'Action Taken' 					& 
+         +   x-delimiter                                     &
+         +   'Include Payroll'				
+
+initial heading  tab 01  x-head                                   	
+
+report tab 01 x-line
+
+
+;---------------------------------------------------------
+
+build $pb_obj/r070b_csv
+
+
+access *r070a_csv
+
+set rep device disc name r070_all
+set rep page length 60 width 80
+
+page heading                                            &
+        tab  1  'R070_all'                              &
+        tab  20 'Accounts Receivable for all clinics'   &
+        tab  60 'Run Date:'                             &
+        tab  70 sysdate                                 &
+        skip 2
+
+final footing                                           &
+        tab  1  'Ohip Amt:'                             &
+        tab 11  clmhdr-tot-claim-ar-ohip  subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+skip 1  tab  1  'Paid Amt:'                             &
+        tab 11  clmhdr-manual-and-tape-payments subt pic '^^^,^^^,^^^.^^ ' trail '-'                               &
+skip 1  tab  1  'Balance:'      				&
+        tab 11  x-balance-due subt pic '^^^,^^^,^^^.^^ ' trail '-' 
+
+build $obj/r070c_csv

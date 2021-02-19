@@ -1,0 +1,94 @@
+;#> program-id.     d119tithe.qks
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician Tithe Calculations 'D' type transaction
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 2008/may/21 M.C.      - original, cloned from d119.qks
+;
+
+can clear
+screen $pb_obj/d119tithe.qkc on line 6 for 18 message on line 24             &
+        receiving w-doc-nbr,                                    &
+                  constants-mstr-rec-6, f020-doctor-mstr
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 master
+
+temp w-doc-nbr char*3
+temp x-srch-code char*6
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query the Physician tithe "	 &
+"       Calculation transactions.                                       " &
+"                                                                      "
+
+
+file  f119-doctor-ytd  primary  occurs 15
+     access  viaindex f119-doc-ohip-nbr    using doc-ohip-nbr  of f020-doctor-mstr
+     select if rec-type        = "D" 			&
+           and (     doc-nbr of f119-doctor-ytd = w-doc-nbr  &
+	         or  doc-nbr of f119-doctor-ytd = ' ')
+
+item      rec-type initial  "D"
+item      doc-ohip-nbr initial doc-ohip-nbr of f020-doctor-mstr
+
+file f190-comp-codes      reference
+     access viaindex comp-code using comp-code of f119-doctor-ytd
+
+define x-screen-name char*44 = "Earnings - Tithe Calculation transactions"
+use $use/scrtitle.use  nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+"    -------COMP---------- GROUP STMNT  ---------AMOUNT----------               " &
+        at ,1
+skip
+title &
+"   --CODE/DESCRIPTION---- CODE   SEQ             MTD         YTD                " &
+        at ,1
+
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 XXXXXX-xxxxxxxxxxxxxxx  X      99   9,999,999.99- 9,999,999.99-
+align (1,,4) (,10,11) (,,28) (,,35) (,,40) (,,54)
+cluster occurs with f119-doctor-ytd
+field comp-code         of f119-doctor-ytd                      &
+      lookup on f190-comp-codes                                 &
+      message "Error -  Invalid COMPENSATION Code."
+field desc-short        of f190-comp-codes label "-" display
+
+field comp-code-group   of f119-doctor-ytd
+field process-seq       of f119-doctor-ytd
+
+field amt-mtd           of f119-doctor-ytd 
+field amt-ytd           of f119-doctor-ytd
+
+procedure input comp-code
+begin
+  if fieldtext = "."
+  then begin
+    let x-srch-code = " "
+    run screen $pb_obj/sy033.qkc clear lines 13 to 23 passing x-srch-code mode f
+    if x-srch-code ne " "
+    then let fieldtext = x-srch-code
+    else error "Error - A Compensation Code is required."
+  end
+end
+
+
+procedure process comp-code
+begin
+  display desc-short      of f190-comp-codes
+  let     process-seq     of f119-doctor-ytd = reporting-seq    of f190-comp-codes
+  display process-seq     of f119-doctor-ytd
+  let comp-code-group     of f119-doctor-ytd = comp-code-group  of f190-comp-codes
+  display comp-code-group of f119-doctor-ytd
+end
+
+build

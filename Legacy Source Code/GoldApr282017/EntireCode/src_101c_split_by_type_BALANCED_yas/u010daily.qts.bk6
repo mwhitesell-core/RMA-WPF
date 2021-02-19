@@ -1,0 +1,414 @@
+;#> PROGRAM-ID.     u010daily.qts  
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :update doc revenue/cash mstr from balanced batches
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2001/Oct/11 M.C.         - ORIGINAL (convert from u010daily.cbl)
+;			     'C'ash type 'P'ayments, update cash only
+;			     'M'isc type 'P'ayments, update cash and revenue
+;			     and all others update revenue only
+;   2001/Oct/18 M.C.	     -Brad requested to link to f923 for clinic nbr
+;			      translation before update to f050 & f051 files
+;   2001/nov/06 B.E.	     -added copybook to allow definition of batch
+;			      control batch status without hardcoding values
+;   2001/nov/08 B.E.	- changed program's access of f923 to reflect the
+;			  change in that file to use clmhdr-payroll field
+;			  rather than agent-cd
+;   2002/jan/14 B.E.	- added subfile u010daily_payroll_feed which feeds
+;			  calculations for ICU payrolli. Values are tranferred
+;			  daily into the default compensation file so that
+;			  at any time Users can determined what values 
+;			  payroll would be based upon.
+;   2002/jan/14 M.C.	- include clmdtl-nbr-serv in u010daily_payroll_feed subfile   
+;			- also include clmhdr-pat-ohip-id-or-chart in extf001f002
+;			  subfile
+; 2003/dec/10 b.e.	- alpha doctor number
+
+can clear
+
+set process nolimit
+set lock file update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request select_balanced_batches		&
+	 on calculation errors report on edit errors report
+
+access f001-batch-control-file		
+
+sorted on batctrl-batch-nbr
+
+use $use/def_batctrl_batch_status.def nol
+select f001-batch-control-file 		&
+	if batctrl-batch-status = batctrl-batch-status-balanced
+; select f001-batch-control-file if batctrl-batch-status = '1'
+
+subfile extf001non_aa keep                      			& 
+  if   batctrl-batch-type of f001-batch-control-file <> 'A' 		&
+    or batctrl-adj-cd     of f001-batch-control-file <> 'A'  include   	& 
+	batctrl-batch-nbr,			&
+	batctrl-agent-cd,			&
+	batctrl-adj-cd,				&
+	batctrl-cycle-nbr,			&
+	batctrl-date-period-end,		&
+	batctrl-batch-type,			&
+	batctrl-manual-pay-tot,			&
+	batctrl-calc-ar-due,			&
+	batctrl-calc-tot-rev
+
+subfile extf001aa    keep 						&
+if    batctrl-batch-type of f001-batch-control-file = 'A' 		&
+  and batctrl-adj-cd     of f001-batch-control-file = 'A'  include    	&	
+	batctrl-batch-nbr of f001-batch-control-file,			&
+	batctrl-agent-cd of f001-batch-control-file,			&
+	batctrl-calc-ar-due of f001-batch-control-file
+
+output f001-batch-control-file update on errors report
+   item batctrl-batch-status final batctrl-batch-status-rev-updated
+;  item batctrl-batch-status final '2'
+
+subfile extf001  keep        at batctrl-batch-nbr  include		&
+	batctrl-batch-nbr of f001-batch-control-file  
+	
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+request extract_f002_hdr          		&
+	 on calculation errors report on edit errors report
+
+access *extf001non_aa        		&
+	link 'B', batctrl-batch-nbr 	&
+	to key-clm-type, key-clm-batch-nbr of f002-claims-mstr opt
+
+sel if    key-clm-serv-code = '00000'					&
+      and batctrl-date-period-end = asci(clmhdr-date-period-end,8)	&
+      and batctrl-batch-nbr       = clmhdr-orig-batch-nbr      
+	
+
+def clmhdr-clinic-nbr char*2 = clmhdr-claim-id[1:2]
+;!def clmhdr-doc-nbr char*3 = clmhdr-claim-id[4:3]
+def clmhdr-doc-nbr char*3 = clmhdr-claim-id[3:3]
+
+subfile extf001f002  keep        include        & 
+	batctrl-batch-nbr,			&
+	batctrl-agent-cd,			&
+	batctrl-adj-cd,				&
+	batctrl-cycle-nbr,			&
+	batctrl-date-period-end,		&
+	batctrl-batch-type,			&
+	batctrl-manual-pay-tot,			&
+	batctrl-calc-ar-due,			&
+	batctrl-calc-tot-rev,			&
+	clmhdr-doc-dept,			&
+	clmhdr-manual-and-tape-payments,	&
+	clmhdr-amt-tech-paid,           	&
+	clmhdr-i-o-pat-ind,			&
+	clmhdr-agent-cd,			&
+	clmhdr-adj-cd,				&
+	clmhdr-adj-cd-sub-type,			&
+	clmhdr-loc,   				&
+	clmhdr-orig-batch-nbr,			&
+	clmhdr-orig-claim-nbr,			&
+	clmhdr-clinic-nbr,			&
+	clmhdr-doc-nbr,				&
+	key-clm-claim-nbr,			&
+	clmhdr-payroll,				&
+;2002/01/14 - MC 
+	clmhdr-pat-ohip-id-or-chart
+;2002/01/14 - end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request extf002dtl     on calculation errors report on edit errors report
+
+access *extf001f002					&
+   link  'B', 						&
+	batctrl-batch-nbr, 				&
+	key-clm-claim-nbr      				&
+    to  key-clm-type, 					&
+	key-clm-batch-nbr, 				&
+	key-clm-claim-nbr of f002-claims-mstr  opt
+
+sel if    clmdtl-oma-cd <> '0000' 				&
+      and clmdtl-oma-cd <> 'ZZZZ'				&
+      and clmdtl-orig-batch-nbr = clmhdr-orig-batch-nbr		&
+      and clmdtl-orig-claim-nbr-in-batch = clmhdr-orig-claim-nbr		
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)              &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+def x-nbr-serv zoned*2 unsigned					& 
+	=  clmdtl-nbr-serv 					&
+	 + x-sv-nbr2						&
+	 + x-sv-nbr3						&
+	 + x-sv-nbr4						
+
+subfile extf001f002dtl keep include			&
+	extf001f002,					&
+
+;       (2002/jan/14 B.E. added service date(s) needed in payroll calculations
+;	 later derived from subfile u010daily_payroll_feed
+	clmdtl-sv-date,					&
+	clmdtl-consec-dates-r,				&
+	clmdtl-nbr-serv,				&
+	clmdtl-fee-ohip,				&
+	clmdtl-amt-tech-billed,				&
+	clmdtl-oma-cd,					&
+	clmdtl-oma-suff,				&
+	clmdtl-line-no, 				&
+	x-nbr-serv
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_rev_cash on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash  
+
+access *extf001f002dtl 				&
+;!   link nconvert(clmhdr-doc-nbr), 		&
+   link          clmhdr-doc-nbr , 		&
+	nconvert(clmhdr-clinic-nbr), 		&
+	clmhdr-payroll	 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt
+
+sorted on batctrl-batch-nbr on key-clm-claim-nbr
+
+def x-suff char*1 						&
+      = clmhdr-adj-cd-sub-type					&
+		if     clmhdr-adj-cd-sub-type <= '9' 		&
+	   	   and batctrl-adj-cd = 'M'			&
+  else '0' 	if batctrl-adj-cd = 'M'				&
+  else clmdtl-oma-suff
+			
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-prof-fee zoned*8 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+def x-nbr-svc zoned*4 signed = 0 if batctrl-batch-type = 'A'	&
+	else x-nbr-serv
+
+def x-payments zoned*8 signed = 0 - clmhdr-manual-and-tape-payments	&
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-manual-and-tape-payments if batctrl-batch-type = 'P'
+
+def x-tech-paid zoned*8 signed = 0 - clmhdr-amt-tech-paid               & 
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-amt-tech-paid     if batctrl-batch-type = 'P'
+
+def x-prof-paid zoned*8 signed = x-payments - x-tech-paid  		&	 
+	if batctrl-batch-type = 'P' 
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else clmhdr-clinic-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+temp x-rev-upd zoned*8 signed 
+item x-rev-upd = x-rev-upd + clmdtl-fee-ohip	&
+	if batctrl-batch-type <> 'P' or batctrl-adj-cd <> 'C'		&
+	reset at batctrl-batch-nbr
+
+temp x-cash-upd zoned*8 signed 
+item x-cash-upd = x-cash-upd + x-payments 	&
+	if batctrl-batch-type  = 'P'		&
+	at key-clm-claim-nbr			&
+	reset at batctrl-batch-nbr
+
+temp x-rev-rec      zoned*6 unsigned
+item x-rev-rec      = x-rev-rec   + 1 		&
+	if batctrl-batch-type <> 'P' or batctrl-adj-cd <> 'C'		&
+	reset at batctrl-batch-nbr
+
+temp x-cash-rec     zoned*6 unsigned
+item x-cash-rec      = x-cash-rec      + 1      &
+	if batctrl-batch-type = 'P'		&
+	at key-clm-claim-nbr			&
+	reset at batctrl-batch-nbr
+
+def x-nbr-processed zoned*6 unsigned = x-rev-rec + x-cash-rec
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;'C'laims, 'A'djustment and 'M'isc type 'P'ayments, update 'revenue' records
+output f050-doc-revenue-mstr add update		&
+    if  batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')  &
+	via docrev-key				&
+	using  (x-translated-clinic +		&
+		ascii(clmhdr-doc-dept,2) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff)				&
+	on errors report
+   item docrev-clinic-1-2 	initial x-translated-clinic
+   item docrev-dept 		initial clmhdr-doc-dept
+;!   item docrev-doc-nbr 		initial nconvert(clmhdr-doc-nbr)
+   item docrev-doc-nbr 		initial          clmhdr-doc-nbr
+   item docrev-location 	initial clmhdr-loc
+   item docrev-oma-cd 		initial clmdtl-oma-cd
+   item docrev-oma-suff 	initial x-suff
+   item docrev-mtd-in-svc  subtotal x-nbr-svc       if x-i-o-ind = 'I'
+   item docrev-mtd-in-rec  subtotal clmdtl-fee-ohip if x-i-o-ind = 'I'
+   item docrev-ytd-in-svc  subtotal x-nbr-svc       if x-i-o-ind = 'I'
+   item docrev-ytd-in-rec  subtotal clmdtl-fee-ohip if x-i-o-ind = 'I'
+   item docrev-mtd-out-svc subtotal x-nbr-svc       if x-i-o-ind = 'O'
+   item docrev-mtd-out-rec subtotal clmdtl-fee-ohip if x-i-o-ind = 'O'
+   item docrev-ytd-out-svc subtotal x-nbr-svc       if x-i-o-ind = 'O'
+   item docrev-ytd-out-rec subtotal clmdtl-fee-ohip if x-i-o-ind = 'O'
+
+
+;For clinic 60's, 'C'laims, 'A'djustment and 'M'isc type 'P'ayments, 
+;update 'revenue' records
+output f050tp-doc-revenue-mstr add update	&
+    if  x-translated-clinic[1:1] = '6'	and	&
+       (batctrl-batch-type = 'C'	or	&
+        batctrl-batch-type = 'A'        or	&
+       (batctrl-batch-type = 'P' and batctrl-adj-cd = 'M')) &
+	via docrevtp-key			&
+	using  (x-translated-clinic +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmdtl-oma-cd +			&
+		x-suff +			&
+		clmhdr-doc-nbr) 		&
+	on errors report
+   item docrevtp-clinic-nbr 	initial nconvert(x-translated-clinic)
+   item docrevtp-agent-cd 	initial ascii(clmhdr-agent-cd,1)
+   item docrevtp-loc-cd   	initial clmhdr-loc
+   item docrevtp-oma-code 	initial clmdtl-oma-cd
+   item docrevtp-oma-suffix 	initial x-suff
+;!   item docrevtp-doc-nbr 	initial nconvert(clmhdr-doc-nbr)
+   item docrevtp-doc-nbr 	initial          clmhdr-doc-nbr
+   item docrevtp-out-tech-nbr-svc(1) subtotal x-nbr-svc		&
+	 if clmdtl-amt-tech-billed <> 0  
+   item docrevtp-out-tech-nbr-svc(2) subtotal x-nbr-svc		&
+	 if clmdtl-amt-tech-billed <> 0  
+   item docrevtp-out-prof-nbr-svc(1) subtotal x-nbr-svc		&
+	 if x-prof-fee  <> 0  
+   item docrevtp-out-prof-nbr-svc(2) subtotal x-nbr-svc		&
+	 if x-prof-fee  <> 0  
+   item docrevtp-out-tech-amt-billed(1) subtotal clmdtl-amt-tech-billed &
+	if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-tech-amt-billed(2) subtotal clmdtl-amt-tech-billed &
+	if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-prof-amt-billed(1) subtotal x-prof-fee 		&
+	if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-prof-amt-billed(2) subtotal x-prof-fee 		&
+	if batctrl-batch-type = 'C' or batctrl-batch-type = 'P'
+   item docrevtp-out-tech-amt-adjusts(1) subtotal clmdtl-amt-tech-billed&
+	if batctrl-batch-type = 'A'
+   item docrevtp-out-tech-amt-adjusts(2) subtotal clmdtl-amt-tech-billed&
+	if batctrl-batch-type = 'A'
+   item docrevtp-out-prof-amt-adjusts(1) subtotal x-prof-fee 		&
+	if batctrl-batch-type = 'A'
+   item docrevtp-out-prof-amt-adjusts(2) subtotal x-prof-fee 		&
+	if batctrl-batch-type = 'A'
+
+;'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051-doc-cash-mstr    add update at key-clm-claim-nbr		&
+    if  batctrl-batch-type = 'P'	  	&
+	via docash-key				&
+	using  (x-translated-clinic +		&
+		ascii(clmhdr-doc-dept,2) +	&
+		clmhdr-doc-nbr +		&
+		clmhdr-loc +			&
+		ascii(clmhdr-agent-cd,1))	&
+	on errors report
+   item docash-clinic-1-2 	initial x-translated-clinic
+   item docash-dept 		initial clmhdr-doc-dept
+;!   item docash-doc-nbr 		initial nconvert(clmhdr-doc-nbr)
+   item docash-doc-nbr 		initial          clmhdr-doc-nbr
+   item docash-location 	initial clmhdr-loc
+   item docash-agency-type 	initial ascii(clmhdr-agent-cd,1)
+   item docash-mtd-in-rec  	subtotal x-payments  
+   item docash-ytd-in-rec  	subtotal x-payments  
+
+;for clinic 60's, 'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051tp-doc-cash-mstr    add update at key-clm-claim-nbr		&
+    if  x-translated-clinic[1:1] = '6'	and	&
+        batctrl-batch-type = 'P'	  	&
+	via docashtp-key			&
+	using  (x-translated-clinic +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmhdr-doc-nbr) 		&
+	on errors report
+   item docashtp-clinic-nbr 	initial nconvert(x-translated-clinic)
+   item docashtp-agent-cd   	initial ascii(clmhdr-agent-cd,1)
+   item docashtp-loc-cd  	initial clmhdr-loc
+;!   item docashtp-doc-nbr 	initial nconvert(clmhdr-doc-nbr)
+   item docashtp-doc-nbr 	initial          clmhdr-doc-nbr
+   item docashtp-tech-out-mtd   subtotal  x-tech-paid
+   item docashtp-tech-out-ytd   subtotal  x-tech-paid
+   item docashtp-prof-out-mtd   subtotal  x-prof-paid
+   item docashtp-prof-out-ytd   subtotal  x-prof-paid
+
+subfile r010daily keep at batctrl-batch-nbr include  &
+	batctrl-batch-nbr,			&
+	batctrl-agent-cd,			&
+	batctrl-adj-cd,				&
+	batctrl-cycle-nbr,			&
+	batctrl-date-period-end,		&
+	batctrl-batch-type,			&
+	batctrl-manual-pay-tot,			&
+	batctrl-calc-ar-due,			&
+	batctrl-calc-tot-rev,			&
+	clmhdr-doc-dept,			&
+	clmhdr-clinic-nbr,			&
+     	x-rev-upd,				&
+        x-cash-upd,				&
+        x-nbr-processed 
+
+; this subfile added to capture claims/adjustments
+; so that the ICU payroll values can be captured
+; daily and loaded into 'default compensation'. Each
+; daily run either adds or updates existing 
+; compensation  records. Note that this subfile
+; contains payments and adjustments as well as
+; claims so some filtered may be done in the 
+; payroll area to select appropriate records
+subfile u010daily_payroll_feed keep include	&
+	extf001f002dtl ,			&
+	x-translated-clinic
+
+subfile f923_translation_audit keep append 	&
+	if record f923-doc-revenue-translation exists include	&
+	batctrl-batch-nbr of extf001f002dtl,	&
+	key-clm-claim-nbr of extf001f002dtl,	&
+	clmhdr-doc-nbr of extf001f002dtl,	&
+	clmdtl-oma-cd of extf001f002dtl,	&
+	clmdtl-line-no of extf001f002dtl,	&
+	clmhdr-agent-cd of extf001f002dtl,	&
+	clmhdr-clinic-nbr   of extf001f002dtl,	&
+	clinic-nbr-translated		
+
+
+build $pb_obj/u010daily

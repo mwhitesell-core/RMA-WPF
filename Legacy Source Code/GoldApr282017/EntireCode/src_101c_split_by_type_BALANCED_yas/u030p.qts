@@ -1,0 +1,157 @@
+
+;#> PROGRAM-ID.     U030P.QTS
+;
+; ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : consoldate the u030-rat-145-file cfrom linic 31-36 & 41-48 (14 clinics)
+;                    for claims that were entered prior 20080624 for agent 0 & 2 only
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     08/Aug/14 M.C.         - ORIGINAL 
+
+can clear
+set default
+set process nolimit
+set lock record update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request edit_records on calculation errors report on edit errors report
+                            ;Edit the account nbrs, make sure they
+                            ;are 8 digits.  If invalid, put them
+                            ;into the unmatch subfile; otherwise
+                            ;put into a good subfile
+
+access u030-tape-145-file                                       &
+  link  'B', 							&
+             rat-145-group-nbr[1:2] 				&
+	   + rat-145-account-nbr[1:6] , 			&
+             nconvert(rat-145-account-nbr[7:2]) , 		&
+        '00000', 						&
+	'0'       						&
+   to key-clm-type, 						&
+      key-clm-batch-nbr, 					&
+      key-clm-claim-nbr,      					&
+      key-clm-serv-code, 					&
+      key-clm-adj-nbr of f002-claims-mstr opt 			&
+   link rat-145-account-nbr[1:3]				&
+    to  doc-nbr of f020-doctor-mstr opt				&
+  link rat-145-account-nbr 					&
+    to accounting-nbr of f099-group-claim-mstr opt
+
+def x-group-nbr char*2 						&
+      = rat-145-group-nbr[1:2]     				&
+       	     if record f002-claims-mstr exists       		&
+   else claim-id of f099-group-claim-mstr[1:2] 			&
+	     if record f099-group-claim-mstr exists
+
+define good-rec char*1 = 'Y'                      &
+       if matchpattern(rat-145-account-nbr,'???#####') &
+	and  doc-ohip-nbr = rat-145-doc-nbr		&
+       else 'N'
+
+define x-type char*1 = 'H'
+define x-oma-found char*1  = ' '
+define x-tech-amt int*7 signed = 0
+define x-prof-amt int*7 signed = 0
+
+subfile u030_good_145_rec      if good-rec = 'Y' &
+      include u030-tape-145-file, x-group-nbr
+
+subfile u030_unmatch keep if good-rec = 'N' &
+      include u030-tape-145-file, x-group-nbr, x-type, x-oma-found, &
+         x-tech-amt, x-prof-amt
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sort_good_records on calculation errors report on edit errors report
+                        ; sort the record by account nbr from
+                        ; food subfile
+
+access *u030_good_145_rec
+
+sort on x-group-nbr on rat-145-account-nbr 
+
+subfile u030_sort_145_file keep include u030_good_145_rec
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request extract_claims on calculation errors report on edit errors report
+                
+
+access *u030_sort_145_file                                      &
+  link 'B', x-group-nbr + rat-145-account-nbr[1:6], 		&
+  nconvert(rat-145-account-nbr[7:2]) , '00000', '0'       	&
+   to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,       &
+      key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt     &     
+  link rat-145-account-nbr[1:3]					&
+   to doc-nbr of f020-doctor-mstr opt
+
+sorted on rat-145-account-nbr
+
+def x-rat-145-amt-paid int*7 signed = rat-145-amt-paid * -1
+
+temp x-tot-amt-paid int*7 signed
+   item x-tot-amt-paid subtotal rat-145-amt-paid              &
+       if (    record f002-claims-mstr exists                 &
+           and (   clmhdr-agent-cd = 0 			      &
+                or clmhdr-agent-cd = 2                        &
+	       )					      &	 
+;	   and  clmhdr-date-sys < '20080624' 		      &
+	   and  clmhdr-date-sys < '20080705' 		      &
+	  )						      &
+       reset at rat-145-account-nbr
+
+temp x-tot-amt-bill int*7 signed
+   item x-tot-amt-bill subtotal rat-145-amount-sub            &
+       if (    record f002-claims-mstr exists                 &
+           and (   clmhdr-agent-cd = 0 			      &
+                or clmhdr-agent-cd = 2                        &
+	       )					      &	 
+;	   and  clmhdr-date-sys < '20080624' 		      &
+	   and  clmhdr-date-sys < '20080705' 		      &
+	  )						      &
+       reset at rat-145-account-nbr
+
+
+subfile u030_paid_amt_clinic keep at rat-145-account-nbr      &
+       if (    record f002-claims-mstr exists                 &
+           and (   clmhdr-agent-cd = 0 			      &
+                or clmhdr-agent-cd = 2                        &
+	       )					      &	 
+;	   and  clmhdr-date-sys < '20080624' 		      &
+	   and  clmhdr-date-sys <='20080705' 		      &
+	  )						      &
+include x-group-nbr of u030_sort_145_file,             	      &
+       rat-145-account-nbr of u030_sort_145_file,             &
+       clmhdr-doc-dept, doc-nbr, doc-name,                    &
+       x-tot-amt-paid, x-tot-amt-bill, clmhdr-agent-cd
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request summarize_doc_paid   on  calculation errors report on edit errors report
+                
+access *u030_paid_amt_clinic
+
+sort on x-group-nbr on clmhdr-doc-dept on doc-nbr
+
+temp tot-amt-paid int*7 signed
+   item tot-amt-paid subtotal x-tot-amt-paid           &
+	reset at doc-nbr
+
+temp tot-amt-bill int*7 signed
+   item tot-amt-bill subtotal x-tot-amt-bill           &
+	reset at doc-nbr
+
+subfile u030_doc_paid keep at doc-nbr include		&
+	x-group-nbr,					&
+	clmhdr-doc-dept,				&
+	doc-nbr,					&
+	doc-name,					&
+	tot-amt-paid,					&
+	tot-amt-bill
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+build $pb_obj/u030p          

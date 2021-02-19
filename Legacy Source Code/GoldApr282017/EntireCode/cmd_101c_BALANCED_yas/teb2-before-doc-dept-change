@@ -1,0 +1,235 @@
+# teb2
+# NOTE: clinic 22 - "normal" clinic 22 payroll
+#	clinic 99 - "MP" / Manual Payments payroll
+#	clinic 81 - used to be ICU payroll but moved to it's own macro
+#
+# 99/dec/16 B.E. - added test of $clinic_nbr to perform conditional processing
+# 00/jan/24 B.E. - split u119 into u119/u119b
+# 00/nov/17 B.E. - run special version of r124b.qzs depending upon clinic
+#		   being processed. Note that clinic 99 used for MP payroll
+# 01/jan/02 B.E. - run special version of r124a for clinic 99 (MP payroll)
+# 02/dec/19 B.E. - removed references to clinic 81 
+# 03/oct/27 b.e. - added call to utl0020 to create spreadsheet download files
+# 03/nov/25 b.e. - made call utl0020 conditional for clinic 22
+# 04/jan/23 b.e. - removed utl0020 and put into teb3
+# 04/sep/01 b.e. - added new paramter "PORTAL" as 1st parameter for r124a_rma 
+# 06/jan/17 b.e. - setup "PORTAL" parameter stuff for clinic 99(mp) same as 
+#		   for clinic 22 in previous change
+# 06/jun/22 b.e. - added utl0100.qtc and utl0101.qzc to look for duplicate
+#		   entries in f119 - a bug that appears once a year around july
+
+echo "--- u115a u115b u115c u116 u117 u118 u119 u119b u121 and u122 ---"
+qtp << QTP_EXIT
+cancel clear
+set default
+execute $obj/u115a
+cancel clear
+set default
+execute $obj/u115b
+cancel clear
+set default
+execute $obj/u115c
+cancel clear
+set default
+execute $obj/u116
+cancel clear
+set default
+execute $obj/u117
+cancel clear
+set default
+execute $obj/u118
+cancel clear
+set default
+execute $obj/u119
+cancel clear
+set default
+execute $obj/u119b
+cancel clear
+set default
+execute $obj/u121
+cancel clear
+set default
+execute $obj/u122
+QTP_EXIT
+
+echo
+echo Looking for DUPLICATES in the f119 file and if found delete them
+rm f119_duplicates.sf*
+qtp << QTP_EXIT2
+use $src/utl0100.qts
+exit
+QTP_EXIT2
+
+quiz auto=$obj/utl0101.qzc
+echo The following report should be EMPTY!
+pg utl0101.txt
+echo
+echo
+
+# PAREN SET DEFAULT -- MOVE PAREN ABOVE DOWN 2 LINES!!
+# PAREN EXE U125
+echo "--- cobol program r123 ---"
+$cmd/r123
+rm r123*_${1}.txt 1>/dev/null 2>&1 
+mv r123a r123a_${1}.txt
+mv r123b r123b_${1}.txt
+mv r123c r123c_${1}.txt
+echo "--- PH program r123d ---"
+quiz auto=$obj/r123d1.qzc
+quiz auto=$obj/r123d1a.qzc
+mv r123d.txt r123d_${1}.txt
+mv r123d1a.txt r123d1a_${1}.txt
+lp r123ef
+lp r123ef
+
+echo "--- generate_r120 ---"
+$cmd/generate_r120 $1
+
+rm r123a.sf*
+rm r124b.txt
+
+if [ $clinic_nbr = "99" ]
+then
+
+echo "---   r124a_mp ---"
+quiz auto=$obj/r124a_mp.qzc
+
+else
+
+echo "---   r124a ---"
+quiz auto=$obj/r124a.qzc
+
+fi
+
+
+
+if [ $clinic_nbr = "22" ]
+then
+
+echo "---  and  r124b_rma -- PORTAL VERSION  ---"
+quiz << QUIZ_EXIT
+execute $obj/r124b_rma
+PORTAL
+REGULAR 
+;YEAREND
+QUIZ_EXIT
+
+mv r124b.txt r124b_portal_22.txt
+
+echo "---  and  r124b_rma -- PRINT VERSION  ---"
+quiz << QUIZ_EXIT
+execute $obj/r124b_rma
+PRINT 
+REGULAR 
+;YEAREND 
+QUIZ_EXIT
+
+else
+
+if [ $clinic_nbr = "99" ]
+then
+
+echo "---  and  r124b_rma -- PORTAL VERSION  ---"
+quiz << QUIZ_EXIT
+execute $obj/r124b_mp
+PORTAL
+QUIZ_EXIT
+
+mv r124b.txt r124b_portal_mp.txt
+
+echo "---  and  r124b_rma -- PRINT VERSION  ---"
+quiz << QUIZ_EXIT
+execute $obj/r124b_mp
+PRINT
+QUIZ_EXIT
+
+
+
+fi
+fi
+
+# KEEP BACKUP OF SUBFILE IN CASE STATEMENTS NEED TO BE RE-GENERATED
+
+if [ $clinic_nbr = "22" ]
+then
+
+rm r124a_${1}.sf 1>/dev/null 2>&1
+mv r124a.sf r124a_${1}.sf
+rm r124a_${1}.sfd 1>/dev/null 2>&1
+mv r124a.sfd r124a_${1}.sfd
+rm r124b_${1}.txt 1>/dev/null 2>&1
+mv r124b.txt r124b_${1}.txt
+
+else
+
+if [ $clinic_nbr = "99" ]
+then
+
+rm r124a_${1}.sf 1>/dev/null 2>&1
+mv r124a.sf r124a_mp_${1}.sf
+rm r124a_${1}.sfd 1>/dev/null 2>&1
+mv r124a.sfd r124a_mp_${1}.sfd
+rm r124b_${1}.txt 1>/dev/null 2>&1
+mv r124b.txt r124b_mp_${1}.txt
+
+fi
+fi
+
+echo "--- u126 and u127 ---"
+qtp << QTP_EXIT
+set default
+execute $obj/u126
+execute $obj/u127
+QTP_EXIT
+
+echo "--- r125 debugu114 debugu116 dumpf119 dumpf119ytd check94 ---"
+rm r125.txt 1>/dev/null 2>&1
+quiz << QUIZ_EXIT
+execute $obj/r125
+execute $obj/debugu114
+execute $obj/debugu116cd1
+execute $obj/debugu116cd2
+execute $obj/debugu116cd34
+execute $obj/dumpf119
+execute $obj/dumpf119ytd
+;execute $obj/check94
+QUIZ_EXIT
+
+echo
+
+#if [ $clinic_nbr = "22" ]
+#then
+#
+#echo "--- utl0020 ---"
+#$cmd/utl0020.com
+#
+#fi
+
+
+rm debugu114_${1}.txt 1>/dev/null 2>&1
+mv debugu114.txt debug114_${1}.txt
+rm debugu116cd1_${1}.txt 1>/dev/null 2>&1
+mv debugu116cd1.txt debug116cd1_${1}.txt
+rm debugu116cd2_${1}.txt 1>/dev/null 2>&1
+mv debugu116cd2.txt debug116cd2_${1}.txt
+rm debugu116cd34_${1}.txt 1>/dev/null 2>&1
+mv debugu116cd34.txt debug116cd34_${1}.txt
+rm dumpf119_${1}.txt 1>/dev/null 2>&1
+mv dumpf119.txt dumpf119_${1}.txt
+rm dumpf119ytd_${1}.txt 1>/dev/null 2>&1
+mv dumpf119ytd.txt dumpf119ytd_${1}.txt
+rm u110_${1}.sf* 1>/dev/null 2>&1
+mv u110.sf u110_${1}.sf
+mv u110.sfd u110_${1}.sfd
+
+lp r125.txt
+#lp r111b_${1}.txt
+lp r123d_${1}.txt
+lp r123d1a_${1}.txt
+#lp check94.txt
+#echo
+#echo "Load Tape to create tape backup ..."
+#echo 
+#$cmd/backup_earnings_monthend ${1} 
+#echo
+#echo

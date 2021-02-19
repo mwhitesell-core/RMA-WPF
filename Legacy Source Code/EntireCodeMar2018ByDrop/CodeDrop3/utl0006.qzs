@@ -1,0 +1,105 @@
+; DOC: UTL0006.QZS
+; DOC: REP CASH APPLIED BY DOC/DEPT/LOCATION/TECH/PROF/TOTAL  TOTALS AT
+; DOC: DOCTOR NUMBER FOR ALL AGENTS (CLINIC 60 ONLY)
+; DOC: RUN FOR: ACCOUNTING DEPT MARY BROWNRIDGE
+;
+;PROGRAM PURPOSE : COMPUTERIZE THE REPORT WHICH WAS CREATED MANUALLY
+
+;DATE       WHO       DESCRIPTION
+;92/02/24   Y.B.      ORIGINAL
+;92/11/07   Y.B.      FOOTING AT CLINIC INSTEAD OF LOCATION
+;99/12/15   B.E.      - y2k review, recompile
+;03/01/15   yas       - print rma physicians only utl0006a will print rma inc. 
+;03/dec/17  A.A.      - alpha doctor nbr
+;2010/02/04 yas	      - add new clinic 66 		
+
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name utl0006
+set formfee
+
+
+access f051tp-doc-cash-mstr                          &
+   link docashtp-doc-nbr                             &
+to doc-nbr of f020-doctor-mstr opt                   &
+   link docashtp-clinic-nbr                          &
+to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt      &
+  link doc-dept to dept-nbr of f070-dept-mstr  opt   
+
+choose docashtp-key "60@" to "66@"
+
+;select if dept-company = 1
+
+;SELECT IF DOCASHTP-LOC-CD NE "MISC"
+
+;SORT ON DOCASHTP-DOC-NBR ON DOCASHTP-LOC-CD
+ sort on docashtp-doc-nbr on docashtp-clinic-nbr
+
+def x-tech zoned*8 signed = (docashtp-tech-in-mtd + docashtp-tech-out-mtd)
+def x-prof zoned*8 signed = (docashtp-prof-in-mtd + docashtp-prof-out-mtd)
+def x-total zoned*8 signed = (x-tech + x-prof)
+
+def x-clinic zoned*4 unsigned = 6008   if docashtp-clinic-nbr =  60    &
+                           else 9595   if docashtp-clinic-nbr =  61    &
+                           else 9598   if docashtp-clinic-nbr =  62    &
+                           else 9607   if docashtp-clinic-nbr =  63    &
+                           else 9619   if docashtp-clinic-nbr =  64    &
+                           else 9632   if docashtp-clinic-nbr =  65    &
+                           else 9098   if docashtp-clinic-nbr =  66
+
+select if       dept-company = 1   &
+           and (x-prof ne 0 or x-tech ne 0)
+
+page heading                                          &
+	tab 1  "P.E.D"				      &
+	tab 7  iconst-date-period-end                 &
+	tab 35 sysname				      &
+	tab 85 "RUN DATE:"                            &
+	tab 96 sysdate                                &
+        tab 108 "PAGE:" tab 113 syspage pic "^^^"     &
+skip 2  tab 47 "CASH APPLIED" skip 2                  &
+        tab 1   "DOC #"                                &
+        tab 10  "DEPT"                                 &
+        tab 16  "DOC NAME"                             &
+        tab 40  "INITS"                                &
+;       TAB 52  "LOCATION"                             &
+        tab 54  "CLINIC"                               &
+        tab 69  "TECHNICAL"                            &
+        tab 82  "PROFESSIONAL"                         &
+        tab 106 "TOTALS"                               &
+skip 2
+
+report
+
+;FOOTING AT DOCASHTP-LOC-CD                           &
+ footing at docashtp-clinic-nbr                       &
+;!  tab 1   docashtp-doc-nbr fill "0" print at docashtp-doc-nbr  &
+  tab 1   docashtp-doc-nbr print at docashtp-doc-nbr  &
+  tab 10  doc-dept         print at docashtp-doc-nbr &
+  tab 16  doc-name         print at docashtp-doc-nbr &
+  tab 41  doc-inits        print at docashtp-doc-nbr &
+; TAB 54  DOCASHTP-LOC-CD                            &
+  tab 54  x-clinic                                   &
+  tab 67  x-tech  subtotal pic "^^^^,^^^.^^"          &
+  tab 84  x-prof  subtotal pic "^^^^,^^^.^^"          &
+  tab 102 x-total subtotal pic "^^^,^^^.^^"
+
+footing at docashtp-doc-nbr skip 2                      &
+  tab 59  "TOTALS:"                                     &
+  tab 67  x-tech  subtotal pic "^^^^,^^^.^^"             &
+  tab 84  x-prof  subtotal pic "^^^^,^^^.^^"             &
+  tab 102 x-total subtotal pic "^^^,^^^.^^"             &
+skip 2
+
+final footing                                           &
+  tab 47  "GRAND TOTALS:"                               &
+  tab 67  x-tech  subtotal pic "^^^^,^^^.^^"             &
+  tab 84  x-prof  subtotal pic "^^^^,^^^.^^"             &
+  tab 102 x-total subtotal pic "^^^,^^^,^^^.^^"    &
+skip 2
+
+build $pb_obj/utl0006
+
+
+  

@@ -1,0 +1,181 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE D705C.QKS
+COMMENT "#> program-id.     d705c.qks"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "program purpose : to allow entry/correction of web  manual review "
+COMMENT "comments (placed into claim  description  records)"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE   WHO  DESCRIPTION"
+COMMENT "00/sep/14 B.E. - original"
+COMMENT "00/sep/25 B.E. - added warning if description text longer than what fits"
+COMMENT "into 5 claim description recs"
+COMMENT "00/oct/13 B.E. - clmdtl-line-no made display field, added designer procedure"
+COMMENT "'line' to allow input of clmdtl-line-no"
+COMMENT "- if any description records found, then clmhdr-manual-review"
+COMMENT "flag set to 'y'es"
+CAN CLEAR
+SCREEN $PB_OBJ/D705C RECEIVING W-CLMHDR-DOC-OHIP-NBR, W-CLMHDR-ACCOUNTING-NBR, F002-SUSPEND-HDR ON LINE 19 FOR 5 MESSAGE ON LINE 24
+TEMP W-CLMHDR-DOC-OHIP-NBR
+TEMP W-CLMHDR-ACCOUNTING-NBR CHAR*8
+TEMP X-NBR-DESC-RECS
+TEMP X-WARN-FLAG CHAR*1
+BEGININCLUDE T:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+COMMENT "file   : def_clmhdr_status.def"
+COMMENT "purpose: define the suspended header record's status field"
+COMMENT "This USE file is called from the following programs:"
+COMMENT "newu706a.qts, r702.qzs, r709b.qzs, r711.qzs, r712.qzs,"
+COMMENT "r715.qzs, u706a.qzs, u708.qts, u710.qts, u714.qts r716a.qzs"
+COMMENT "d705.qks"
+COMMENT "00/oct/02 B.E. - change variable name from nocancel to not-completed"
+DEF CLMHDR-STATUS-COMPLETE CHAR*1 = "C"
+DEF CLMHDR-STATUS-DELETE CHAR*1 = "D"
+DEF CLMHDR-STATUS-CANCEL CHAR*1 = "Y"
+DEF CLMHDR-STATUS-RESUBMIT CHAR*1 = "R"
+DEF CLMHDR-STATUS-ERROR CHAR*1 = "X"
+DEF CLMHDR-STATUS-NOT-COMPLETE CHAR*1 = "N"
+DEF CLMHDR-STATUS-DEFAULT CHAR*1 = " "
+DEF UPDATED CHAR*1 = "U"
+DEF CLMHDR-STATUS-IGNOR CHAR*1 = "I"
+ENDINCLUDE T:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMHDR_STATUS.DEF
+BEGININCLUDE T:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+COMMENT "file:    def_clmhdr_status.def"
+COMMENT "purpose: define the suspended detail record's status"
+DEF CLMDTL-STATUS-DELETE CHAR*1 = "D"
+DEF CLMDTL-STATUS-NEW CHAR*1 = "N"
+DEF CLMDTL-STATUS-ACTIVE CHAR*1 = " "
+DEF CLMDTL-STATUS-UPDATED CHAR*1 = "U"
+ENDINCLUDE T:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_CLMDTL_STATUS.DEF
+FILE F002-SUSPEND-HDR MASTER
+FILE F002-SUSPEND-DESC PRIMARY OCCURS 4
+ACCESS VIAINDEX SUSPEND-DTL-ID USING W-CLMHDR-DOC-OHIP-NBR, W-CLMHDR-ACCOUNTING-NBR
+ITEM CLMDTL-DOC-OHIP-NBR INITIAL W-CLMHDR-DOC-OHIP-NBR FIXED
+ITEM CLMDTL-ACCOUNTING-NBR INITIAL W-CLMHDR-ACCOUNTING-NBR FIXED
+ITEM CLMDTL-STATUS INITIAL ' '
+FILE F002-SUSPEND-DESC ALIAS F002-DESC-VERIFY DESIGNER
+ACCESS VIAINDEX SUSPEND-DTL-ID USING W-CLMHDR-DOC-OHIP-NBR, W-CLMHDR-ACCOUNTING-NBR
+FILE CONSTANTS-MSTR-REC-2 REFERENCE
+ACCESS USING "2"
+TITLE "OHIP message ends 2nd !line at exclamation in this msg" AT ,25
+COMMENT "skip 1"
+COMMENT "align (1,4,35)"
+COMMENT "field clmdtl-doc-ohip-nbr of f002-suspend-desc          nochange   &"
+COMMENT "pic  ^^^^^^  label  Doctor Nbr (OHIP)  predisplay display"
+COMMENT "field clmdtl-accounting-nbr of f002-suspend-desc        nochange &"
+COMMENT "id same label  Remote Site's Accounting Nbr  predisplay  display"
+COMMENT "skip 1"
+COMMENT "title   Line              at ,2"
+COMMENT "skip"
+COMMENT "title    Nbr Description  at ,2"
+COMMENT "skip 1"
+CLUSTER OCCURS WITH F002-SUSPEND-DESC
+ALIGN (1,,4) (,,7) (,,80)
+FIELD CLMDTL-LINE-NO DISPLAY
+FIELD CLMDTL-SUSPEND-DESC
+FIELD CLMDTL-STATUS DISPLAY
+BEGININCLUDE T:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\D705_VERIFY_DESC_LENGTH.USE
+COMMENT "field clmdtl-status  of  f002-suspend-desc label  DETAIL STATUS  display"
+COMMENT "file :d705_verify_desc_length.use"
+COMMENT "purpose: warning user if the length of description text is too long"
+COMMENT "currently a claim can only have 5 description recs, each of length 22"
+COMMENT "so a maximum of 110 characters will be uploaded into the claims file."
+COMMENT "Warn user if descriptions 3 or 4 exist or if descr #2 if greater"
+COMMENT "than 39 characters (110 = 70 of desc#1 + 1 blank + 39 of desc#2"
+PROCEDURE INTERNAL WARN-DESC-MAX-LENGTH
+BEGIN
+LET X-NBR-DESC-RECS = 0
+LET X-WARN-FLAG = "N"
+WHILE RETRIEVING F002-DESC-VERIFY
+BEGIN
+LET X-NBR-DESC-RECS = X-NBR-DESC-RECS + 1
+COMMENT "info =  rec#=  + ascii(x-nbr-desc-recs) +     + ascii(size(truncate(pack(clmdtl-suspend-desc of f002-desc-verify)))) now response"
+COMMENT "info =  text=   + clmdtl-suspend-desc of f002-desc-verify now response"
+IF X-NBR-DESC-RECS = 2
+THEN
+BEGIN
+COMMENT "(text past column 39 on 2nd rec never get processed)"
+IF 39 < SIZE(TRUNCATE(PACK(CLMDTL-SUSPEND-DESC OF F002-DESC-VERIFY)))
+THEN
+LET X-WARN-FLAG = "Y"
+END
+COMMENT "(desc records 3 and 4 never get processed)"
+IF X-NBR-DESC-RECS = 3 OR X-NBR-DESC-RECS = 4
+THEN
+BEGIN
+IF CLMDTL-SUSPEND-DESC OF F002-DESC-VERIFY <> " "
+THEN
+LET X-WARN-FLAG = "Y"
+END
+END
+IF X-WARN-FLAG = "Y"
+THEN
+INFO "WARNING! There are comments longer than 110 characters that will be ignored" NOW RESPONSE
+END
+ENDINCLUDE T:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\D705_VERIFY_DESC_LENGTH.USE
+PROCEDURE DESIGNER LINE
+BEGIN
+FOR F002-SUSPEND-DESC
+BEGIN
+ACCEPT CLMDTL-LINE-NO
+PUT F002-SUSPEND-DESC
+END
+END
+PROCEDURE PREUPDATE
+BEGIN
+LET X-NBR-DESC-RECS = 0
+FOR F002-SUSPEND-DESC
+BEGIN
+COMMENT "(if not specified, ensure that line-no field matches record's sequence)"
+IF CLMDTL-LINE-NO = 0
+THEN
+LET CLMDTL-LINE-NO = OCCURRENCE
+COMMENT "(set status of record)"
+IF CLMDTL-STATUS <> CLMDTL-STATUS-DELETE AND ALTEREDRECORD
+THEN
+BEGIN
+LET CLMDTL-STATUS = CLMDTL-STATUS-UPDATED
+DISPLAY CLMDTL-STATUS
+END
+IF CLMDTL-STATUS <> CLMDTL-STATUS-DELETE AND NEWRECORD
+THEN
+BEGIN
+LET CLMDTL-STATUS = CLMDTL-STATUS-NEW
+DISPLAY CLMDTL-STATUS
+END
+COMMENT "(count the number of description records so that this counter"
+COMMENT "can be updated into the hdr rec)"
+IF CLMDTL-SUSPEND-DESC <> " " AND CLMDTL-STATUS <> CLMDTL-STATUS-DELETE AND NOT DELETEDRECORD
+THEN
+LET X-NBR-DESC-RECS = OCCURRENCE
+END
+COMMENT "00/oct/05 B.E. change in use of this field"
+COMMENT "(always place a '1' in nbr recrods instead of actual nbr of desc recs."
+COMMENT "This field can then be used to  S elect on to get any claim with a desc"
+COMMENT "which can't be done if the actual number of records is used"
+COMMENT "let clmhdr-nbr-suspend-desc-recs of f002-suspend-hdr = x-nbr-desc-recs"
+LET CLMHDR-NBR-SUSPEND-DESC-RECS OF F002-SUSPEND-HDR = 1
+IF X-NBR-DESC-RECS > 0
+THEN
+BEGIN
+IF CLMHDR-MANUAL-REVIEW <> "Y"
+THEN
+BEGIN
+INFO = "*WARNING* - setting 'manual review' flag to 'Y'es" NOW RESPONSE
+LET CLMHDR-MANUAL-REVIEW = "Y"
+END
+END
+LET CLMHDR-STATUS OF F002-SUSPEND-HDR = UPDATED
+PUT F002-SUSPEND-HDR
+END
+PROCEDURE INITIALIZE
+BEGIN
+COMMENT "(warn user if comments are to large to fit into a single claim's descr recs)"
+DO WARN-DESC-MAX-LENGTH
+END
+BUILD
+ENDMODULE D705C.QKS

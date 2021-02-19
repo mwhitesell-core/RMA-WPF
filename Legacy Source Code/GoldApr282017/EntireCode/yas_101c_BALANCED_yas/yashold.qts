@@ -1,0 +1,184 @@
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                  
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220094000 to 220094999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+;select f002-claims-mstr if      clmhdr-batch-type = "C"   
+
+subfile one  keep include                    &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr,&
+clmhdr-hosp                  of f002-claims-mstr
+
+request ten                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *one                                                              &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+    to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr               &
+    of  f002-claims-mstr opt                                             
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20030101' & 
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-oma-code cha*5 = clmdtl-id[12:5]
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[1:1])    &
+        if (clmdtl-consec-dates-r[2:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[2:2] <> 'OP') &
+        and clmdtl-consec-dates-r[1:1] <> '0'
+
+def x-sv-nbr3 zoned*2 =                         &
+        nconvert(clmdtl-consec-dates-r[4:1])    &
+        if (clmdtl-consec-dates-r[5:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[5:2] <> 'OP') &
+        and clmdtl-consec-dates-r[4:1] <> '0'
+
+def x-sv-nbr4 zoned*2=                          &
+        nconvert(clmdtl-consec-dates-r[7:1])    &
+        if (clmdtl-consec-dates-r[8:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[8:2] <> 'OP') &
+        and clmdtl-consec-dates-r[7:1] <> '0'
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee         
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee  
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee 
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee 
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2]
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2]
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2]
+
+
+subfile yashold keep include              &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+clmhdr-loc            of one             ,&
+x-sv-date-1                              ,&
+x-sv-nbr1	                         ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code	                         ,& 
+x-clmdtl-fee-ohip-1                      
+
+subfile yashold alias yashold_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+clmhdr-loc            of one             ,&
+x-sv-date-2                              ,&
+x-sv-nbr2                                ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code                               ,&
+x-clmdtl-fee-ohip-2                     
+
+subfile yashold alias yashold_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+clmhdr-loc            of one             ,&
+x-sv-date-3                              ,&
+x-sv-nbr3                                ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code                               ,&
+x-clmdtl-fee-ohip-3                      
+
+subfile yashold alias yashold_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-doc-nbr                                ,&
+clmhdr-loc            of one             ,&
+x-sv-date-4                              ,&
+x-sv-nbr4                                ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-oma-code                               ,&
+x-clmdtl-fee-ohip-4                      
+
+request two
+
+access *yashold				 		  &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr, '00000' , '0'	  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	  &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt &
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr opt
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+ 
+subfile yashold1 keep include             &
+clmdtl-id       of yashold               ,&
+comma                                    ,&
+clmhdr-loc      of yashold               ,&
+comma                                    ,&
+pat-surname                              ,&
+comma                                    ,&
+pat-given-name                           ,&
+comma                                    ,&
+pat-health-nbr                           ,&
+comma                                    ,&
+PAT-CHART-NBR                            ,&
+comma                                    ,&
+pat-version-cd                           ,&
+comma                                    ,&
+pat-birth-date                           ,&
+comma                                    ,&
+x-sv-date-1                              ,&
+comma                                    ,&
+x-sv-nbr1	                         ,& 
+comma                                    ,&
+clmdtl-diag-cd of yashold                ,&
+comma                                    ,&
+x-oma-code	                         ,& 
+comma                                    ,&
+x-clmdtl-fee-ohip-1                      ,&
+x-cr
+
+build $obj/yashold

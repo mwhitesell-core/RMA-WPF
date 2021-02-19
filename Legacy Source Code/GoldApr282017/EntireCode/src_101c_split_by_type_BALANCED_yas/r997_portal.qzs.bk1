@@ -1,0 +1,252 @@
+;#> PROGRAM-ID.     R997_PORTAL.QZS
+;
+;	((C)) Dyad Technologies
+;
+
+;    PROGRAM PURPOSE : PRODUCE R.A. REPORT
+;
+;    MODIFICATION HISTORY
+;	DATE	SMS #	WHO	DESCRIPTION
+;     90.09.11	131	D.B.	ORIGINAL
+;     90.12.12  PDR467  M.C.	MODIFY THE R997B SECTION TO SPLIT INTO
+;				TWO PARTS, THERE IS A SORT ERROR DUE
+;				TO NOT ENOUGH CONTIGUOUS DISK BLOCK;
+;				HENCE EXTRACT THE REQUIRED FIELDS FROM
+;				DOCTOR MASTER BEFORE SORTING.
+;     90.12.13  PDR469  M.C.	CHANGE THE TOTAL LINE OF UNMATCHED OHIP
+;				PAYMENTS TO BE THE SAME AS THE REGULAR
+;				DOC TOTAL
+;     91.03.09  SMS138  D.B.	MODIFY ACCORDING TO NEW MRO
+;     92.10.14  SRA152  Y.B.	ADD TOTAL FEE PAID (R997H) TO FINAL TOTALS
+;     97.10.27  PDR 663 M.C.	IN R997I, CHANGE TO PRINT TOTAL CLAIMS
+;				PAYABLE AT FOOTING INSTEAD OF HEADING
+;     98.10.16          B.E.	added set report statement 
+;     99.12.09          M.C.	set noclose is no longer valid, define each
+;				report with a separate name and merge them 
+;				together before printing
+;				y2k - extend date fields
+;     03/dec/16		A.A.	alpha doctor nbr
+;     04/dec/01  	M.C.	in r997d, use u997_rmb_good instead of
+;				u030-tape-rmb-file
+;     05/may/30 	M.C.    clone from r997.qzs
+;     05/jul/05		M.C.	create r997_portal_a.qzc for detail
+;				and r997_portal_b.qzc for total
+
+;     06/jan/19  	M.C.	- add '~' before and after doc nbr & doc dept at the end of each report line
+
+can clear
+
+
+access *u997_good_srt
+
+def x-pay-pgm = 2 if rat-145-pay-prog = 'RMB'	&
+	else    1
+
+; 2006/01/19 - MC
+def x-doc-dept-nbr char*7= '~' + doc-nbr + ascii(doc-dept,2) + '~'
+; 2006/01/19 - end
+
+sort on doc-nbr, w-rat-145-clinic-nbr,  x-pay-pgm,     &
+        w-rat-145-last-name,	&
+	w-rat-145-first-name, rat-145-health-ohip-nbr,	&
+	rat-145-account-nbr
+
+set rep dev disc name r997_portal
+set report nolimit
+;set page width 137 length 63
+set page width 140 length 63
+set formfeed
+
+page heading	&
+  tab   1 'RUN DATE:'		&
+  tab  12 sysdate		&
+  tab 127 syspage		&
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip 1	&
+  tab  10 'DEPARTMENT'		&
+  tab  21 'DOCTOR #'		&
+  tab  33 'DOCTOR NAME'		&
+  tab  60 'INITIAL'		&
+  tab  72 'CLINIC'		&
+  tab  82 'PRACTITIONER #'	&
+  tab 100 'SPECIALITY'		&
+  tab 114 'PAY DATE'		&
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip				&
+  tab  14 doc-dept		&
+  tab  23 doc-nbr 		&
+  tab  33 doc-name		&
+  tab  62 doc-inits		&
+  tab  73 w-rat-145-clinic-nbr	&
+  tab  86 doc-ohip-nbr pic '^^^^^^'	&
+  tab 104 doc-spec-cd		&
+  tab 114 rat-145-payment-date pic '^^^^.^^.^^'	&
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip 2				&
+  tab  45 'REMITTANCE ADVICE (COPY OF PAYMENTS RECEIVED FROM OHIP)' &
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip 2				&
+  tab   5 "ACCT'G"		&
+  tab  13 "PATIENT'S NAME"	&
+  tab  31 'PROV REGISTRATION'	&
+  tab  51 'VER- CONVERTED'	&
+  tab  67 'PAY CLAIM NUMBER'	&
+  tab  84 'SERVICE NO. OF'	&
+  tab  99 'SERV. ELIG'		&
+  tab 112 'FEE'			&
+  tab 121 'AMOUNT'		&
+  tab 130 'EX'			&
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip				&
+  tab   5 'NUMBER'		&
+  tab  13 'LAST      FIRST'	&
+  tab  31 'INCE    NUMBER'	&
+  tab  51 'SION HEALTH NO.'	&
+  tab  67 'PGM'			&
+  tab  85 "DATE   SERV'S"	&
+  tab  99 'CODE  IND.'		&
+  tab 111 'SUBMIT'		&
+  tab 122 'PAID'		&
+  tab 130 'CD'			&
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip 2
+
+report						&
+  tab   1 count reset at doc-nbr pic '^^'	&
+  tab   4 rat-145-account-nbr			&
+ 		print at rat-145-account-nbr	&
+  tab  13 w-rat-145-last-name			&
+		print at rat-145-account-nbr	&
+  tab  23 w-rat-145-first-name			&
+		print at rat-145-account-nbr	&
+  tab  32 rat-145-prov-cd			&
+		print at rat-145-account-nbr	&
+  tab  36 rat-145-health-ohip-nbr		&
+  tab  52 rat-145-version-cd			&
+  tab  56 rat-145-conv-health-nbr		&
+  tab  67 rat-145-pay-prog			&
+		print at rat-145-account-nbr	&
+  tab  71 rat-145-claim-nbr			&
+		print at rat-145-account-nbr	&
+  tab  85 rat-145-service-date pic '^^^^^^^^'	&
+  tab  95 rat-145-nbr-of-serv			&	
+  tab  99 rat-145-service-cd			&
+  tab 106 rat-145-eligibility-ind		&
+  tab 110 rat-145-amount-sub			&
+  tab 120 rat-145-amt-paid			&
+  tab 130 rat-145-explan-cd			&
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	
+; 2006/01/19 - end
+
+footing at x-pay-pgm				&
+skip 2						&
+  tab  30 'TOTAL CLAIMS FOR PRACTITIONER ='	&
+  tab  64 count at rat-145-account-nbr		&
+  tab  75 'PRACTITIONER TOTALS'			&
+  tab 109 rat-145-amount-sub subtotal pic '^^,^^^.^^ ' trailing sign '-' &
+  tab 119 rat-145-amt-paid subtotal   pic '^^,^^^.^^ ' trailing sign '-' &
+; 2006/01/19 - MC
+; tab 133 doc-nbr 		&
+; tab 136 doc-dept  fill '0'    &
+  tab 133 x-doc-dept-nbr 	&
+; 2006/01/19 - end
+skip 3      
+
+footing at doc-nbr skip page
+
+build $pb_obj/r997_portal_a
+
+
+
+
+cancel clear
+
+access *u997_good_srt
+
+sort on doc-nbr, w-rat-145-clinic-nbr,                 &
+        w-rat-145-last-name,	&
+	w-rat-145-first-name, rat-145-health-ohip-nbr,	&
+	rat-145-account-nbr
+
+set rep dev disc name r997_portal_total
+set report nolimit
+set page width 132 length 63
+set formfeed
+
+page heading	&
+  tab   1 'RUN DATE:'		&
+  tab  12 sysdate		&
+  tab 127 syspage		&
+skip 1	&
+  tab  10 'DEPARTMENT'		&
+  tab  21 'DOCTOR #'		&
+  tab  33 'DOCTOR NAME'		&
+  tab  60 'INITIAL'		&
+  tab  72 'CLINIC'		&
+  tab  82 'PRACTITIONER #'	&
+  tab 100 'SPECIALITY'		&
+  tab 114 'PAY DATE'		&
+skip 2				&
+  tab  45 'REMITTANCE ADVICE (COPY OF PAYMENTS RECEIVED FROM OHIP)' &
+skip 2				&
+  tab   5 "ACCT'G"		&
+  tab  13 "PATIENT'S NAME"	&
+  tab  31 'PROV REGISTRATION'	&
+  tab  51 'VER- CONVERTED'	&
+  tab  67 'PAY CLAIM NUMBER'	&
+  tab  84 'SERVICE NO. OF'	&
+  tab  99 'SERV. ELIG'		&
+  tab 112 'FEE'			&
+  tab 121 'AMOUNT'		&
+  tab 130 'EX'			&
+skip				&
+  tab   5 'NUMBER'		&
+  tab  13 'LAST      FIRST'	&
+  tab  31 'INCE    NUMBER'	&
+  tab  51 'SION HEALTH NO.'	&
+  tab  67 'PGM'			&
+  tab  85 "DATE   SERV'S"	&
+  tab  99 'CODE  IND.'		&
+  tab 111 'SUBMIT'		&
+  tab 122 'PAID'		&
+  tab 130 'CD'			&
+skip
+
+
+final footing 					&
+skip 2						&
+  tab  1  'TOTAL CLAIMS FOR ALL PRACTITIONERS ='	&
+  tab  40 count at rat-145-account-nbr		&
+  tab  55 'GRAND  TOTALS'        	&
+  tab  80 rat-145-amount-sub subtotal pic '^^^,^^^,^^^.^^ ' trailing sign '-' &
+  tab 100 rat-145-amt-paid subtotal   pic '^^^,^^^,^^^.^^ ' trailing sign '-' &
+skip 3      
+
+build $obj/r997_portal_b

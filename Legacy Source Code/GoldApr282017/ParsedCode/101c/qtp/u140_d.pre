@@ -1,0 +1,138 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U140_D.QTS
+COMMENT "Program: u140_d.qts"
+COMMENT "Purpose: Calculate individual doctor AFP conversion payment /submission amounts "
+COMMENT "factoring values sent from MOH by the RA payments"
+COMMENT "For doctors whose group is  R eport only, there is no existing"
+COMMENT "doctor record in f075 so add with zero RMA doctor number and"
+COMMENT "payment to 100% for that transaction"
+COMMENT "modification history"
+COMMENT "2004/jul/01 b.e. - original"
+COMMENT "2004/aug/12 b.e. - add record to f075 if payment comes in for doctor not on file .. "
+COMMENT "2004/oct/16 b.e. - store afp-submission-amt in tmp-counter-2"
+COMMENT "2005/mar/08 M.C. - substitute afp-payment-percentage with afp-multi-doc-ra-percentage"
+COMMENT "2005/apr/08 b.e. - set lock update statement"
+COMMENT "2005/jun/09 M.C. - change def factored with zoned*11 numeric"
+COMMENT "2007/feb/26 b.e. - add logic to process doctors not already in f075 whose"
+COMMENT "afp group's process flag is not  R eport only"
+COMMENT "2007/may/01 b.e. - changed select to include if afp file has <> 0 payment"
+COMMENT "2007/may/01 b.e. - undo above change - hard code doctor"
+COMMENT "2007/jul/25 M.C. - reference doc-afp-paym-group of f075-afp-doc-mstr instead of f020-doctor-mstr"
+COMMENT "- include file qualifier on sort and output statements"
+COMMENT "2007/aug/19 b.e. - undo moira's change in select stmnt - check afp group in f020 not f075"
+COMMENT "2007/sep/10 M.C. - uncomment the afp-conversion-amt <> 0   in the selection criteria"
+COMMENT "Brad mentioned: Try uncommenting the commented out line - ie if non-zero "
+COMMENT "afp-conversion-payment then include ..  if the doctor isn't terminated we want "
+COMMENT "to see payment but if he's terminated and there is either an RA payment or conversion payment then include .. "
+COMMENT "- when storing afp-reporting-mth in u140_d1, use from f074 instead of f075"
+COMMENT "2008/jun/26 M.C. - comment out the last part of the select statement, Yasemin would like to display what is coming"
+COMMENT "from the incoming file regardless the status of the doctors or the amount."
+COMMENT "2008/sep/04 M.C. - comment out the check of afp-group-process-flag of f074-afp-group-mstr =  E "
+COMMENT "2008/oct/14 M.C. - undo comment the check of afp-group-process-flag of f074-afp-group-mstr =  E  above"
+COMMENT "2008/oct/20 M.C. - comment out the check of afp-group-process-flag of f074-afp-group-mstr =  E "
+COMMENT "2008/nov/03 M.C. - undo comment the check of afp-group-process-flag of f074-afp-group-mstr =  E  above"
+COMMENT "we should only pick up 'E'arnings type groups, 'R'eporting type groups have been extracted"
+COMMENT "from u140_k.qzs which will add to u140_d1 subfile.  Without the change, it will print double"
+COMMENT "the amount for 'R'eporting type groups."
+COMMENT "2008/nov/04 M.C. - reinstate back to 2008/Oct/20, we should pick up all groups; otherwise, NONRBP will not be "
+COMMENT "generated for 'R'eporting Only groups, eliminate the execution of u140_k.qzs will not print"
+COMMENT "double the amount on r140_b.txt for 'R'eporting Only groups"
+COMMENT "2012/Feb/23 MC1  - change the access, select and sort statement and add define item"
+CANCEL CLEAR
+SET PROCESS NOLIMIT
+RUN U140_D
+COMMENT "set lock file update "
+SET LOCK RECORD UPDATE
+COMMENT "-------------------------------------------------------"
+REQUEST U140_D1_GET_TRANS_IN_A2S ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS AFP-A2S-FILE LINK (NCONVERT(DOC-AFP-PAYM-SOLO)) TO DOC-OHIP-NBR OF F020-DOCTOR-MSTR OPT LINK DOC-NBR OF F020-DOCTOR-MSTR TO DOC-NBR OF F075-AFP-DOC-MSTR OPT LINK DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-MSTR OPT LINK DOC-DEPT TO DEPT-NBR OF F070-DEPT-MSTR OPT
+COMMENT "select  E arning type afp groups and doctors that are either still active or have RA payments"
+COMMENT "2007/07/25 - MC"
+COMMENT "= doc-afp-paym-group of f020-doctor-mstr                 &"
+COMMENT "2007/07/25 - end"
+COMMENT "&"
+SELECT IF ( DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE = DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR )
+COMMENT "2012/02/23 - MC1"
+COMMENT "2008/10/20 - MC - include 'R'eporting only groups"
+COMMENT "and (afp-group-process-flag of f074-afp-group-mstr =  E ) ; &"
+COMMENT "2008/11/03 - MC - must select 'E'arning type ONLY"
+COMMENT ";        and (afp-group-process-flag of f074-afp-group-mstr =  E ) ; &"
+COMMENT "2008/11/03 - end"
+COMMENT "2008/10/20 - end"
+COMMENT "2008/06/26 - MC - comment out"
+COMMENT "and (   doc-date-fac-term   = 0        &"
+COMMENT "or ra-payment-amt     <> 0     &"
+COMMENT "or afp-conversion-amt <> 0     &"
+COMMENT "or doc-afp-paym-solo =  269993     &"
+COMMENT ")"
+DEF X-DOC-NAME CHAR*35 = PACK( DOC-NAME + ", " + DOC-INITS + " (" + DOC-NBR OF F020-DOCTOR-MSTR + ")" )
+DEF X-CONVERSION-AMT-UNFACTORED ZONED*11 NUMERIC = AFP-CONVERSION-AMT IF AFP-CONVERSION-SIGN = " " ELSE 0 - AFP-CONVERSION-AMT
+DEF X-CONVERSION-AMT ZONED*11 NUMERIC = ROUND( X-CONVERSION-AMT-UNFACTORED * ( AFP-MULTI-DOC-RA-PERCENTAGE OF F075-AFP-DOC-MSTR / 100000 ) )
+DEF X-SUBMISSION-AMT-UNFACTORED ZONED*11 NUMERIC = AFP-SUBMISSION-AMT IF AFP-SUBMISSION-SIGN = " " ELSE 0 - AFP-SUBMISSION-AMT
+DEF X-SUBMISSION-AMT ZONED*11 NUMERIC = ROUND( X-SUBMISSION-AMT-UNFACTORED * ( AFP-MULTI-DOC-RA-PERCENTAGE OF F075-AFP-DOC-MSTR / 100000 ) )
+COMMENT "2012/02/23 - MC1 - add define"
+DEF X-TERM-DATE DATE = 20991231 IF DOC-DATE-FAC-TERM = 0 ELSE DOC-DATE-FAC-TERM
+COMMENT "2012/02/23 - end"
+COMMENT "2007/07/25 - MC"
+COMMENT "on doc-afp-paym-group  &"
+COMMENT "2007/07/25 - end"
+COMMENT "2012/02/23 - MC1 - include x-term-date in the sort"
+COMMENT "2012/02/23 - end"
+SORT ON DOC-AFP-PAYM-SOLO ON DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE ON X-TERM-DATE ON DOC-NBR OF F020-DOCTOR-MSTR
+COMMENT "subfile u140_d1   append   keep at doc-afp-paym-solo   include &"
+COMMENT "2007/apr/5"
+COMMENT "afp-a2s-file,                                                        &"
+COMMENT "2007/09/10 - MC"
+COMMENT "afp-reporting-mth of f075-afp-doc-mstr"
+SUBFILE U140_D1 APPEND KEEP AT DOC-NBR OF F020-DOCTOR-MSTR INCLUDE AFP-TRANSACTION-ID, AFP-RECORD-ID , DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE , AFP-GROUP-NAME, DOC-AFP-PAYM-SOLO , DOC-NBR OF F020-DOCTOR-MSTR, AFP-SOLO-NAME , X-DOC-NAME, DEPT-NBR, DEPT-NAME, AFP-PAYMENT-PERCENTAGE , AFP-MULTI-DOC-RA-PERCENTAGE OF F075-AFP-DOC-MSTR, AFP-PAYMENT-AMT OF F075-AFP-DOC-MSTR, AFP-SUBMISSION-AMT OF F075-AFP-DOC-MSTR, X-CONVERSION-AMT, X-SUBMISSION-AMT, AFP-GROUP-PROCESS-FLAG, DOC-DATE-FAC-TERM, AFP-REPORTING-MTH OF F074-AFP-GROUP-MSTR
+COMMENT "2007/09/10 - end"
+OUTPUT TMP-DOCTOR-ALPHA ALIAS TMP-DOC-GROUP-EARNINGS ADD ON ERRORS REPORT
+ITEM DOC-OHIP-NBR FINAL NCONVERT(DOC-AFP-PAYM-SOLO OF AFP-A2S-FILE)
+ITEM DOC-NBR FINAL DOC-NBR OF F020-DOCTOR-MSTR
+ITEM TMP-ALPHA-FIELD-1 FINAL DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE
+ITEM TMP-COUNTER-1 FINAL X-CONVERSION-AMT
+ITEM TMP-COUNTER-2 FINAL X-SUBMISSION-AMT
+COMMENT "2012/02/28 - MC1"
+COMMENT "output f075-afp-doc-mstr alias f075-update update &"
+COMMENT "if record f075-afp-doc-mstr exists on errors report"
+OUTPUT F075-AFP-DOC-MSTR UPDATE IF RECORD F075-AFP-DOC-MSTR EXISTS ON ERRORS REPORT
+COMMENT "2012/02/28 - end"
+ITEM AFP-REPORTING-MTH FINAL AFP-REPORTING-MTH OF F074-AFP-GROUP-MSTR
+ITEM AFP-PAYMENT-AMT-TOTAL FINAL X-CONVERSION-AMT-UNFACTORED
+ITEM AFP-PAYMENT-AMT FINAL X-CONVERSION-AMT
+ITEM AFP-SUBMISSION-AMT FINAL X-SUBMISSION-AMT
+OUTPUT F075-AFP-DOC-MSTR ALIAS F075-ADD ADD IF NOT RECORD F075-AFP-DOC-MSTR EXISTS ON ERRORS REPORT
+COMMENT "2007/07/25 - MC"
+COMMENT "item doc-nbr          final doc-nbr "
+ITEM DOC-NBR FINAL DOC-NBR OF F020-DOCTOR-MSTR
+COMMENT "2007/07/25 - end"
+ITEM DOC-OHIP-NBR FINAL NCONVERT(DOC-AFP-PAYM-SOLO OF AFP-A2S-FILE)
+COMMENT "2012/02/23 - MC1"
+COMMENT "item doc-afp-paym-group      final doc-afp-paym-group of u140_d1"
+ITEM DOC-AFP-PAYM-GROUP FINAL DOC-AFP-PAYM-GROUP OF AFP-A2S-FILE
+COMMENT "2012/02/23 - end"
+ITEM AFP-REPORTING-MTH FINAL AFP-REPORTING-MTH OF F074-AFP-GROUP-MSTR
+ITEM AFP-PAYMENT-AMT-TOTAL FINAL X-CONVERSION-AMT-UNFACTORED
+ITEM AFP-PAYMENT-AMT FINAL X-CONVERSION-AMT
+ITEM AFP-SUBMISSION-AMT FINAL X-SUBMISSION-AMT
+COMMENT "-------------------------------------------------------"
+COMMENT "additional pass to ensure each doctor in f020, if even terminated but has"
+COMMENT "RA amounts is stamped with the reporting month so that it is reported on"
+REQUEST U140_D5_UPDATE_F075_INCLUDE_TERMED_DOC_WITH_RA_AMT ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F020-DOCTOR-MSTR LINK DOC-NBR TO DOC-NBR OF F075-AFP-DOC-MSTR LINK DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-MSTR OPT
+COMMENT "select if     doc-date-fac-term <> 0   &"
+COMMENT "and (    ra-payment-amt       <> 0  &"
+COMMENT ")"
+COMMENT "select if not terminated OR RA payments are found"
+SELECT IF DOC-DATE-FAC-TERM = 0 OR RA-PAYMENT-AMT <> 0
+OUTPUT F075-AFP-DOC-MSTR UPDATE ON ERRORS REPORT
+ITEM AFP-REPORTING-MTH FINAL AFP-REPORTING-MTH OF F074-AFP-GROUP-MSTR
+COMMENT "may delete the doctor f075 recorfd here if all values are zero and reporint mth not set"
+BUILD $OBJ/U140_D
+ENDMODULE U140_D.QTS

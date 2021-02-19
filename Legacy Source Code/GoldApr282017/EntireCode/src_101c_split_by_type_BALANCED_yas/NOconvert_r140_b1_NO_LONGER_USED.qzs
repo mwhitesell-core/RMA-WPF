@@ -1,0 +1,74 @@
+
+no longer used - this logic included after u140_d
+Cancel clear
+; Program: r140_b1.qzs
+; Purpose: Generate grand total report (for Kevin S.) and individual
+;	   department reports for the payments to doctors from the 
+;	   MOH EFT file for Conversion payments
+;	This is the 1st phase that gathers the 'R'eporting only group doctors
+;	and adds them to the 'E'arnings group doctors already in u140_d1
+;
+; 2004/jul/01 b.e.	- original
+; 2004/aug/12 b.e.	- access f075 and use calcualted amounts rather than the base amounts in the a2s file
+; 2004/sep/14 b.e.	- changed length of report from 60 to 50 so that when
+;			  report is imported into Word to be emailed that pages
+;			  fit within Word's default page length
+; 2004/oct/16 b.e.	- added afp-submit-amt to printout
+; 2004/dec/02 b.e.	- changed from report program to just gather data
+;			  in subfile
+; 2004/dec/20 b.e.	- print doctor even if zero payment amount
+; 2005/jan/14 b.e.	- don't select unless found on this months MOH file a
+;			  which is signified by the date field being setup
+;			  to the current process month
+; 2005/mar/08 M.C.	- substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+
+
+set rep nolimit
+;set report dev disc name r140_b
+set page width 132 length 50
+set rep nohead
+
+;use $use/r140_b.use 
+access afp-a2s-file					&
+	link doc-afp-paym-group 			&
+	to   doc-afp-paym-group  of f074-afp-group-mstr
+
+select if  AFP-GROUP-PROCESS-FLAG  of f074-afp-group-mstr  = "R"
+
+def doc-nbr char*3 = "000"
+def x-doc-name char*35 = pack(afp-solo-name)
+def dept-nbr zoned*2 unsigned = 00
+def dept-name char*30 = "Non-RMA doctor - No Deparment"
+
+def x-conversion-amt    zoned*11 numeric        &
+        = afp-conversion-amt                    &
+                if afp-conversion-sign = " "    &
+    else  0 - afp-conversion-amt
+
+def x-submission-amt    zoned*11 numeric        &
+        = afp-submission-amt                    &
+                if afp-submission-sign = " "    &
+    else  0 - afp-submission-amt
+
+set subfile name r140_b1 keep append
+rep summary						&
+  afp-transaction-id                                   	&
+  afp-record-id                                         &
+  doc-afp-paym-group of afp-a2s-file                    &
+  afp-group-name                                        &
+  doc-afp-paym-solo                                     &
+  doc-nbr						&
+  afp-solo-name                                         &
+  x-doc-name                                            &
+  dept-nbr                                              &
+  dept-name                                             &
+  afp-payment-percentage                                &
+  afp-multi-doc-ra-percentage				&
+  afp-payment-amt					&
+  afp-submission-amt					&
+  x-conversion-amt                                      &
+  x-submission-amt                                      &
+  afp-group-process-flag				&
+  afp-reporting-mth					
+
+build $obj/r140_b1

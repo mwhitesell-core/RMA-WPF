@@ -1,0 +1,146 @@
+; PROGRAM: d087_dtl.qks
+; PURPOSE:
+;	allow the entry of claims that have been submittedly rejected by the
+;	local OHIP office. No electronic file can be obtained from OHIP so the
+;	claims must be entered by hand from the hard copy report.
+;   Note that originally only the doctor number was entered (when this database
+;	was kep in LOTUS 123.  Therefore the claim number entry is optional
+;	but the doctor number must be entered. If a claim number is entered
+;	the doctor number is extracted and the doctor nbr field defaulted.
+;	The PED is defaulted from the Constants master but can be changed since
+;	some entry is done after month end.
+
+; MODIFICATION HISTORY
+;
+; DATE        WHO	WHY
+; 3002/oct/10 b.e.	- original
+
+cancel clear
+
+screen $pb_obj/d087_dtl					&
+	receiving w-claim-id,				&
+		  w-ped,				&
+		  w-edt-process-date,			&
+		  f087-submitted-rejected-claims-hdr
+		  
+temp w-claim-id char*11
+temp w-ped date
+temp w-edt-process-date date
+
+file f087-submitted-rejected-claims-dtl primary occurs 5 times
+    access viaindex submitted-rejected-claim			   	&
+    via submitted-rejected-claim,					&	
+      	ped,							   	&
+      	edt-process-date					   	&
+    using 								&
+	w-claim-id,							&
+ 	w-ped,								&
+	w-edt-process-date	
+
+
+;   field entry-date       initial sysdate
+;   field entry-time-long  initial systime
+;   field entry-user-id    initial signonuser
+;
+;   field last-mod-date    final sysdate
+;   field last-mod-time    final systime/10000
+;   field last-mod-user-id final signonuser
+
+file f087-submitted-rejected-claims-hdr master
+
+;file f093-ohip-error-msg-mstr reference
+
+;temp x-name char*20 occurs with submitted-rejected-claims-hdr
+;field x-name            display
+;          let x-name = pack(pat-surname of f010find + ', '      &
+;          display x-name
+;         let x-name = pack(pat-surname of f010-pat-mstr + ', ' +        &
+;         display x-name
+
+; NOTE: when user enters claim they don't type the leading '0' of doctor nbr
+;       so the using clause adds '0' 
+
+;file f002-claims-mstr reference
+;   access via key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+;	      key-clm-serv-code, key-clm-adj-nbr      		  &
+;    using 'B',                                                    &
+;    nconvert((submitted-rejected-claim[1:2]) +submitted-rejected-claim[3:7]), &
+;    nconvert(submitted-rejected-claim[10:2]), '00000', '0'
+
+;file f002-claims-mstr alias f002find designer occurs with &
+;	submitted-rejected-claims-hist
+;   access via key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+;	      key-clm-serv-code, key-clm-adj-nbr      		  &
+;    using 'B',                                                    &
+;    clmhdr-batch-nbr of submitted-rejected-claims-hist,     	  &   
+;    clmhdr-claim-nbr of submitted-rejected-claims-hist, '00000', '0'
+
+;file f010-pat-mstr reference
+;   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002-claims-mstr
+
+;file f010-pat-mstr alias f010find designer occurs with 		  &
+;	submitted-rejected-claims-hist
+;   access via key-pat-mstr using clmhdr-pat-ohip-id-or-chart of f002find
+
+
+temp found char*1
+	
+temp w-date date initial sysdate
+title "SUBMISSION Time rejected Claim - Details" at 1,28
+align (,,70)
+field w-date display predisplay
+
+skip to 3
+align (,1,8) (,20,21) (,41,60) (,63,64) (,68,69) (,73,74) (,77,78)
+field clmhdr-batch-nbr label "Claim:" display pic "^^ ^ ^^^ ^^^"
+field clmhdr-claim-nbr label '-'      display pic "^^"
+field edt-err-h-cd-1            label "H Error 1/2/3/4/5:"	display
+field edt-err-h-cd-2            label "/"			display
+field edt-err-h-cd-3            label "/"			display
+field edt-err-h-cd-4            label "/"			display
+field edt-err-h-cd-5            label "/"			display
+skip
+align (,1,17)
+field edt-process-date		label "Processed Date:"		display
+skip
+
+;field submitted-rejected-claim required nochange lookup on f002-claims-mstr, &
+;				       noton submitted-rejected-claims-hist
+;field ohip-err-code  lookup  on f093-ohip-error-msg-mstr	&
+;	default "EH2"
+
+skip to 6
+title &
+  " OHIP   Service  Nbr     Dtl  Ex  Er#1  Er#2  Er#3  Er#4  Er#5  Last Mod" at ,4
+skip
+title &
+  " Code     Date   Svc     Amt  cd    cd    cd    cd    cd    cd  Date/User" at ,4
+;         1         2         3         4         5         6         7        
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....
+;01 xxxxA yyyy/mm/dd 99 9,999.99  xx   xxx   xxx   xxx   xxx   xxx  yyyy/mm/dd
+align (1,,4) (,,10) (,,21)(,,24) (,,34) (,,39) (,,45) (,,51) (,,57) (,,63) (,,68)
+ 
+cluster occurs with f087-submitted-rejected-claims-dtl at 9,1
+
+;field key-dtl-seq-nbr
+field edt-oma-service-cd-and-suffix		;display
+field edt-service-date				;display
+;field edt-dtl-diag-cd
+field edt-nbr-serv				;display
+field edt-amount-submitted			;display
+field edt-dtl-err-explan-cd			;display
+field edt-dtl-err-cd-1				;display
+field edt-dtl-err-cd-2				;display
+field edt-dtl-err-cd-3				;display
+field edt-dtl-err-cd-4				;display
+field edt-dtl-err-cd-5				;display
+field last-mod-user-id display size 10		;display
+skip 
+align (,4,9)(,11,12) (,,68)
+field edt-dtl-err-8-explan-cd label "Expl:"	;display
+field edt-dtl-err-8-explan-desc label "/"	;display
+field last-mod-date  				;display
+
+skip 1
+
+build detail list 

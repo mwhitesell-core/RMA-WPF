@@ -1,0 +1,46 @@
+    . ./fix_slr.com f001_batch_control_file.slr
+    . ./fix_slr.com f002_claims_mstr.slr
+    . ./fix_slr.com f010_new_patient_mstr.slr
+    . ./fix_slr.com f010_new_patient_mstr_hc.slr
+    . ./fix_slr.com f010_new_patient_mstr_od.slr
+    . ./fix_slr.com f010_new_patient_mstr_chrt.slr
+    . ./fix_slr.com f010_new_patient_mstr_acr.slr
+    . ./fix_slr.com f020_doctor_mstr.slr
+    . ./fix_slr.com f040_oma_fee_mstr.slr
+    . ./fix_slr.com f090_constants_mstr.slr
+    . ./fix_slr.com f091_diagnostic_codes.slr
+    . ./fix_slr.com f094_msg_sub_mstr.slr
+    . ./fix_slr.com f001_batch_control_file.fd
+    . ./fix_slr.com f002_d001_claims_mstr.fd
+    . ./fix_slr.com f010_patient_mstr.fd
+    . ./fix_slr.com f010_patient_mstr_hc.fd
+    . ./fix_slr.com f010_patient_mstr_od.fd
+    . ./fix_slr.com f010_patient_mstr_chrt.fd
+    . ./fix_slr.com f010_patient_mstr_acr.fd
+    . ./fix_slr.com f020_doctor_mstr.fd
+    . ./fix_slr.com f040_oma_fee_mstr.fd
+    . ./fix_slr.com f090_constants_mstr.fd
+    . ./fix_slr.com f090_const_mstr_rec_2.ws
+    . ./fix_slr.com f091_diagnostic_codes.fd
+    . ./fix_slr.com f086_pat_id.fd
+    . ./fix_slr.com f094_msg_sub_mstr.fd
+. ./fix_slr.com mth_desc_max_days.ws
+. ./fix_slr.com sysdatetime.ws
+. ./fix_slr.com check_digit.ws
+. ./fix_slr.com check_digit_10.ws
+. ./fix_slr.com def_agents.ws
+. ./fix_slr.com linkage.ws
+. ./fix_slr.com def_claim_source.ws
+. ./fix_slr.com m010_table.ws
+. ./fix_slr.com f001_key_batctrl_file.ws
+. ./fix_slr.com f002_key_claims_mstr.ws
+. ./fix_slr.com f002_claims_hdr_rec.ws
+. ./fix_slr.com f010_patient_mstr.ws
+    . ./fix_slr.com f094_msg_sub_mstr.fw
+    . ./fix_slr.com f094_msg_sub_mstr.ds
+    . ./fix_slr.com db0_mod10_check_digit.rtn
+    . ./fix_slr.com db0a_mod10_check_digit_10.rtn
+. ./fix_slr.com dc0_mod10_check_digit_alt.rtn
+    . ./fix_slr.com d001_d003_confidentiality_check
+    . ./fix_slr.com hospital.dc
+

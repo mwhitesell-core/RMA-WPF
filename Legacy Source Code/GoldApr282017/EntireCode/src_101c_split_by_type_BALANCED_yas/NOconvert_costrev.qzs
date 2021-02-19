@@ -1,0 +1,97 @@
+; DOC: costrev.qzs
+; DOC: 
+; DOC: 
+; DOC: RUN FOR: run for Chris Costanza
+;
+;PROGRAM PURPOSE : all clinics doc ytd revenue for 1998
+;                 
+;
+;DATE       BY WHOM   DESCRIPTION
+;99/03/26   YASEMIN   ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set rep nohead
+set rep device disc name costrev
+
+access f050-doc-revenue-mstr                             &
+  link docrev-doc-nbr 					 &
+    to doc-nbr of f020-doctor-mstr   opt                 
+
+;select   f020-doctor-mstr if    doc-date-fac-term = 00000000         &
+;                             or doc-date-fac-term > 20020630         
+
+;----------
+
+; you can choose the clinic instead of select below
+choose docrev-key '22@' to '59@', '78@' to '99@'
+
+; if select f020 exists, then take out the opt from the access statement above
+
+;select if     record f020-doctor-mstr exists     
+
+; change from 'or' to 'and'        below
+
+;select if    (     DOCREV-CLINIC-1-2 ne "61"      &
+;               and DOCREV-CLINIC-1-2 ne "62"      &
+;               and DOCREV-CLINIC-1-2 ne "63"      &
+;               and DOCREV-CLINIC-1-2 ne "64"      &
+;               and DOCREV-CLINIC-1-2 ne "65"      &
+;               and DOCREV-CLINIC-1-2 ne "66"      &
+;               and DOCREV-CLINIC-1-2 ne "71"      &
+;               and DOCREV-CLINIC-1-2 ne "72"      &
+;               and DOCREV-CLINIC-1-2 ne "73"      &
+;               and DOCREV-CLINIC-1-2 ne "74"      &
+;               and DOCREV-CLINIC-1-2 ne "75"      &
+;             )                                          
+;---------
+
+               
+sort on docrev-doc-nbr on DOCREV-CLINIC-1-2 
+
+def x-amt-ytd      zoned*8 signed = docrev-ytd-in-rec + docrev-ytd-out-rec &
+                                   if docrev-location ne "MISC"
+
+def x-misc-amt-ytd zoned*8 signed = docrev-ytd-out-rec  &
+             if docrev-location = "MISC" and docrev-oma-code ne "MOHR"
+
+def x-mohr-amt-ytd zoned*8 signed = docrev-ytd-out-rec  &
+               if docrev-location = "MISC" and docrev-oma-code = "MOHR"
+
+def x-amt-total-ytd zoned*8 signed=(x-amt-ytd + x-misc-amt-ytd + x-mohr-amt-ytd)
+
+def x-coma cha*1 = ","
+
+footing at DOCREV-CLINIC-1-2                  &
+  tab 1    DOCREV-CLINIC-1-2                  &
+  tab 4    x-coma                             &
+  tab 5    doc-dept                           &
+  tab 7    x-coma                             &
+  tab 8    doc-name                           &
+  tab 29   x-coma                             &
+  tab 30   doc-inits                          &
+  tab 33   x-coma                             & 
+  tab 37   x-amt-ytd  subtotal     pic " ^^^^^^.^^"         & 
+  tab 47   x-coma                                           & 
+  tab 48   x-misc-amt-ytd subtotal pic " ^^^^^^.^^"         & 
+  tab 58   x-coma                                           & 
+  tab 59   x-mohr-amt-ytd subtotal pic " ^^^^^^.^^"         & 
+  tab 69   x-coma                                           & 
+  tab 70   x-amt-total-ytd subtotal pic " ^^^^^^.^^"        & 
+skip 1
+ 
+final footing   &
+  tab 27   x-amt-ytd  subtotal      pic " ^^^^^^^^.^^"        &
+  tab 39   x-coma                                             &
+  tab 40   x-misc-amt-ytd subtotal  pic " ^^^^^^^^.^^"        &
+  tab 52   x-coma                                             &
+  tab 53   x-mohr-amt-ytd subtotal  pic " ^^^^^^^^.^^"        &
+  tab 65   x-coma                                             &
+  tab 66   x-amt-total-ytd subtotal pic " ^^^^^^^^.^^"        &
+skip 1
+
+build $obj/costrev
+
+
+  

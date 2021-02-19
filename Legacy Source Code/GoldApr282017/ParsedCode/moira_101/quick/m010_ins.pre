@@ -1,0 +1,168 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE M010_INS.QKS
+COMMENT "#>  PROGRAM-ID.      M010_ins.QKS"
+COMMENT "((C)) DYAD TECHNOLOGIES"
+COMMENT "PROGRAM PURPOSE : patient's claims that are possible paid by the insurance company"
+COMMENT "this program is called from m010.qks from designer 'ins'  or"
+COMMENT "is called from d003.cbl from option 'I'"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE          WHO           DESCRIPTION"
+COMMENT "2013/May/29    M.C.     original      "
+SCREEN $PB_OBJ/M010_INS RECEIVING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR, W-CALL-PGM
+DESCRIPTION OF SCREEN "                                                                      " "       This screen allows user to enter patients's claims that are    " "       possible paid by the insurance company.                        " "                                                                      " "       This screen is called either from m010.qks from designer 'ins' " "       or is called from d003.cbl from option 'I'.                    " "                                                                      " "       If entered from patient screen, then clalim-nbr will be blank. " "       If entered from claim query screen, then claim nbr should be   " "       the same as the claim nbr from d003.  			       " "                                             	 		       " "       User can enter '.' under ins acronym to find the insurance     " "       company lookup.                                                " "                                                                      "
+TEMP W-PAT-IKEY CHAR*15
+TEMP W-BATCH-NBR CHAR*8
+TEMP W-CLAIM-NBR ZONED*2 UNSIGNED
+TEMP W-CALL-PGM CHAR*4
+TEMP W-INS-IKEY ZONED*5 UNSIGNED
+TEMP W-PERCENTAGE-TOTAL ZONED*3 UNSIGNED
+TEMP W-PAT-NAME CHAR*30
+FILE F010-INS OCCURS 6
+COMMENT "access viaindex f010-priority-key via  key-pat-mstr using w-pat-ikey "
+ACCESS VIAINDEX F010-INS-KEY VIA KEY-PAT-MSTR, CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR USING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR
+ITEM KEY-PAT-MSTR INITIAL W-PAT-IKEY
+ITEM CLMHDR-BATCH-NBR INITIAL W-BATCH-NBR
+ITEM CLMHDR-CLAIM-NBR INITIAL W-CLAIM-NBR
+ITEM PERCENTAGE-TO-PAY SUM INTO W-PERCENTAGE-TOTAL
+COMMENT "temp w-ins-acronym char*10 occurs with f010-ins"
+TEMP W-INS-ACRONYM CHAR*5 OCCURS WITH F010-INS
+TEMP W-INS-NAME CHAR*30 OCCURS WITH F010-INS
+FILE F010-INS ALIAS F010-INS-FIND DESIGNER OPEN 1
+ACCESS VIA KEY-PAT-MSTR USING W-PAT-IKEY
+FILE F076-INSURANCE-MSTR REFERENCE
+ACCESS VIA INS-ACRONYM USING W-INS-ACRONYM
+FILE F076-INSURANCE-MSTR ALIAS F076-FIND DESIGNER OCCURS WITH F010-INS OPEN 1
+COMMENT "access via ins-ikey using ins-ikey of f010-ins"
+ACCESS VIA INS-ACRONYM USING INS-ACRONYM OF F010-INS
+FILE F010-PAT-MSTR DESIGNER OPEN 1
+ACCESS VIA KEY-PAT-MSTR USING W-PAT-IKEY
+TITLE 'Patient Insurance Company' AT 1,30
+SKIP 1
+ALIGN (,4,15) (,,35)
+FIELD W-PAT-IKEY LABEL "PATIENT:" DISPLAY
+FIELD W-PAT-NAME DISPLAY
+COMMENT "title  Ins Acronym  Priority Seq  % to pay  Policy Nbr   at 5,4"
+COMMENT "title  Claim Nbr   Ins Acronym  Priority Seq  % to pay  Policy Nbr   at 5,4"
+TITLE "Claim Nbr   Ins Acronym   % to pay  Policy Nbr " AT 5,4
+COMMENT "align (1,,4) (,,20)  (,,33) (,,41)"
+COMMENT "align (1,,4) (,,12) (,,16) (,,32)  (,,45) (,,53)"
+ALIGN (1,,4) (,,12) (,,16) (,,32) (,,40)
+CLUSTER OCCURS WITH F010-INS
+FIELD CLMHDR-BATCH-NBR DISPLAY
+FIELD CLMHDR-CLAIM-NBR DISPLAY FILL '0' BWZ
+COMMENT "field w-ins-acronym lookup on f076-insurance-mstr,  &"
+COMMENT "via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr, ins-ikey  &"
+COMMENT "using w-pat-ikey, w-batch-nbr, w-claim-nbr, ins-ikey of f076-insurance-mstr upshift"
+FIELD INS-ACRONYM LOOKUP ON F076-INSURANCE-MSTR, NOTON F010-INS VIA KEY-PAT-MSTR, CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR, INS-ACRONYM USING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR, INS-ACRONYM OF F076-INSURANCE-MSTR UPSHIFT
+COMMENT "field priority-seq required default 1  predisplay value 1 to 3 &"
+COMMENT "field priority-seq required default 1                           &"
+COMMENT "lookup noton f010-ins      &"
+COMMENT "via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr, priority-seq &"
+COMMENT "using w-pat-ikey, w-batch-nbr, w-claim-nbr, priority-seq of f010-ins"
+FIELD PERCENTAGE-TO-PAY REQUIRED DEFAULT 100 PREDISPLAY
+FIELD POLICY-NBR REQUIRED
+ALIGN (,,4)
+FIELD W-INS-NAME DISPLAY
+SKIP 1
+COMMENT "procedure input  w-ins-acronym"
+PROCEDURE INPUT INS-ACRONYM
+BEGIN
+IF FIELDTEXT = "."
+THEN BEGIN
+LET W-INS-ACRONYM = ' '
+RUN SCREEN $PB_OBJ/M010_INS_F MODE F PASSING W-INS-ACRONYM
+LET FIELDTEXT = W-INS-ACRONYM
+END
+END
+COMMENT "procedure process w-ins-acronym"
+PROCEDURE PROCESS INS-ACRONYM
+BEGIN
+COMMENT "let  ins-ikey of f010-ins = ins-ikey of f076-insurance-mstr"
+LET W-INS-NAME = INS-FULL-NAME OF F076-INSURANCE-MSTR
+DISPLAY W-INS-NAME
+END
+PROCEDURE PROCESS PERCENTAGE-TO-PAY
+BEGIN
+COMMENT "info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay) + ',' + ascii(w-percentage-total)  now response"
+IF W-PERCENTAGE-TOTAL > 100
+THEN ERROR 'Total percentage to pay cannot be greater than 100%'
+END
+COMMENT "procedure initialize"
+COMMENT "begin"
+COMMENT "get f010-pat-mstr opt via key-pat-mstr using w-pat-ikey"
+COMMENT "let w-pat-name = truncate(pack(pat-given-name)) + ' ' + pack(pat-surname) "
+COMMENT "display w-pat-name"
+COMMENT "display w-pat-ikey"
+COMMENT "end"
+PROCEDURE INTERNAL GET_DISPLAY_NAME
+BEGIN
+GET F076-FIND OPT
+COMMENT "let w-ins-acronym = ins-acronym of f076-find     "
+LET W-INS-NAME = INS-FULL-NAME OF F076-FIND
+COMMENT "display w-ins-acronym"
+DISPLAY W-INS-NAME
+LET W-PERCENTAGE-TOTAL = W-PERCENTAGE-TOTAL + PERCENTAGE-TO-PAY
+COMMENT "info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay) + ',' + ascii(w-percentage-total)  now response"
+END
+PROCEDURE FIND
+BEGIN
+GET F010-PAT-MSTR OPT VIA KEY-PAT-MSTR USING W-PAT-IKEY
+LET W-PAT-NAME = TRUNCATE(PACK(PAT-GIVEN-NAME)) + ' ' + PACK(PAT-SURNAME)
+DISPLAY W-PAT-NAME
+DISPLAY W-PAT-IKEY
+IF W-CALL-PGM = 'M010'
+THEN BEGIN
+FOR MISSING F010-INS
+BEGIN
+COMMENT "get f010-ins viaindex f010-priority-key via key-pat-mstr using w-pat-ikey    "
+GET F010-INS VIAINDEX F010-INS-KEY VIA KEY-PAT-MSTR USING W-PAT-IKEY
+DO GET_DISPLAY_NAME
+END
+END
+IF W-CALL-PGM = 'D003'
+THEN BEGIN
+FOR MISSING F010-INS
+BEGIN
+GET F010-INS VIAINDEX F010-INS-KEY VIA KEY-PAT-MSTR, CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR USING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR
+DO GET_DISPLAY_NAME
+END
+END
+END
+PROCEDURE PREENTRY
+BEGIN
+GET F010-PAT-MSTR OPT VIA KEY-PAT-MSTR USING W-PAT-IKEY
+LET W-PAT-NAME = TRUNCATE(PACK(PAT-GIVEN-NAME)) + ' ' + PACK(PAT-SURNAME)
+DISPLAY W-PAT-NAME
+DISPLAY W-PAT-IKEY
+WHILE RETRIEVING F010-INS-FIND
+LET W-PERCENTAGE-TOTAL = W-PERCENTAGE-TOTAL + PERCENTAGE-TO-PAY OF F010-INS-FIND
+COMMENT "info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay of f010-ins-find) + ',' + ascii(w-percentage-total)  now response"
+END
+PROCEDURE PREUPDATE
+BEGIN
+COMMENT "not deletedrecord means delete all lines, then below if condition will not execute"
+COMMENT "otherwise, if delete one line only, then below if condition will execute - not sure why??"
+LET W-PERCENTAGE-TOTAL = 0
+COMMENT "while retrieving f010-ins-find"
+COMMENT "begin"
+COMMENT "let w-percentage-total = w-percentage-total + percentage-to-pay of f010-ins-find"
+COMMENT "info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay of f010-ins-find) + ',' + ascii(w-percentage-total)  now response"
+FOR F010-INS
+BEGIN
+IF NOT DELETEDRECORD
+THEN BEGIN
+LET W-PERCENTAGE-TOTAL = W-PERCENTAGE-TOTAL + PERCENTAGE-TO-PAY OF F010-INS
+COMMENT "info = ' running % = '+ ascii(occurrence) + ',' + ascii(percentage-to-pay of f010-ins) + ',' + ascii(w-percentage-total)  now response"
+END
+IF W-PERCENTAGE-TOTAL > 100
+THEN ERROR 'Error-Total percentage to pay cannot be greater than 100%'
+END
+END
+BUILD DETAIL LIST
+ENDMODULE M010_INS.QKS

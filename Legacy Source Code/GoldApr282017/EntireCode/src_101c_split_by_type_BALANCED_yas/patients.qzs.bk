@@ -1,0 +1,70 @@
+; doc: patients.qzs
+;
+;PROGRAM PURPOSE : extract patient information for a doctor to be uploaded into 
+;                  web
+;
+;DATE       BY WHOM   DESCRIPTION
+;98/12/16   YASEMIN   ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set report dev disc name patients
+set page length 0
+set page width 177
+set nohead
+
+access f002-claims-mstr                                 &
+        link clmhdr-pat-ohip-id-or-chart                        &
+          to   key-pat-mstr of f010-pat-mstr
+
+choose key-clm-type 'B',                &
+        key-clm-batch-nbr parm prompt 'From Doc # (batch nbr): ' &
+                        range toprompt 'To Doc # (batch nbr): ', &
+        key-clm-claim-nbr, key-clm-serv-code '00000'
+
+sort on pat-health-nbr 
+
+
+def x-province cha*21 =      "Ontario"               if pat-prov-cd = "ON"   &
+                        else "Alberta"               if pat-prov-cd = "AB"   & 
+                        else "British Columbia"      if pat-prov-cd = "BC"   &
+                        else "Manitoba"              if pat-prov-cd = "MB"   &
+                        else "Newfoundland"          if pat-prov-cd = "NF"   &
+                        else "New Brunswick"         if pat-prov-cd = "NB"   &
+                        else "Northwest Territories" if pat-prov-cd = "NT"   &
+                        else "Nova Scotia"           if pat-prov-cd = "NS"   &
+                        else "Prince Edward Island"  if pat-prov-cd = "PE"   &
+                        else "Saskatchewan"          if pat-prov-cd = "SK"   &
+                        else "Yukon"                 if pat-prov-cd = "YT"   &
+                        else "Quebec"                if pat-prov-cd = "PQ"
+ 
+def x-address char*42 = pack(subscr-addr1+" "+subscr-addr2)
+
+def x-chart cha*9 = ((pat-chart-nbr[2:4])+("0")+(pat-chart-nbr[6:4])) &
+                 if pat-chart-nbr[1:1] = "M" else " "      
+
+def x-rmb-nbr char*16 = pat-ohip-mmyy if pat-health-nbr = 0 & 
+                        else " "
+
+footing at pat-health-nbr           &
+tab 1   pat-surname                 &
+tab 16  pat-given-name              &
+tab 28  pat-init                    &
+tab 31  pat-health-nbr              &
+tab 41  pat-version-cd              &
+tab 43  pat-prov-cd                 &
+tab 45  x-chart                     &
+tab 54  x-rmb-nbr                   &
+tab 70  "19"                        &
+tab 72  pat-birth-date pic "^^^^^^" fill "0" &
+tab 78  "905"                       & 
+tab 81  pat-phone-nbr pic "^^^^^^^" &
+tab 88  pat-sex                     &
+tab 89  x-address                   &
+tab 131 subscr-addr3                &
+tab 152 pat-country                 &
+tab 172 subscr-postal-cd            &
+skip 1 
+
+build $obj/patients

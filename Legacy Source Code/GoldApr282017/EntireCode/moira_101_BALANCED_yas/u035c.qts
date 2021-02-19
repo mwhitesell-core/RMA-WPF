@@ -1,0 +1,69 @@
+;#> PROGRAM-ID.     U035C.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : To print the direct bill invoices
+;		       This pgm is the third series of the 3 pgms     
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2001/APR/18 M.C.         - ORIGINAL (convert from u035c.cbl)
+;				update claim header records
+;   2013/May/14 MC1          - create a new request to create record in f010-crm per patient 
+
+can clear
+set lock file update
+set process  nolimit
+
+request update-u035c on calculation errors report		&
+	             on edit errors report
+
+access *u035a             					&
+  link 'B', clm-shadow-batch-nbr, clm-shadow-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+output f002-claims-mstr update on errors report
+   item clmhdr-reprint-flag final 'N'
+   item clmhdr-reference final ascii(sysdate,8) 	&
+	if clmhdr-auto-logout = 'Y'
+
+
+request update_clmhdr    on calculation errors report		&
+		   	 on edit errors report
+
+
+access *u035pay           					&
+  link 'B', clm-shadow-batch-nbr, clm-shadow-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+sorted on clm-shadow-batch-nbr on clm-shadow-claim-nbr 
+
+output f002-claims-mstr update at clm-shadow-claim-nbr on errors report
+   item clmhdr-curr-payment final 0    
+
+; 2013/05/14 - MC1
+request create_f010_crm  on calculation errors report		&
+		   	 on edit errors report
+
+
+access *u035a             					
+
+sorted on clmhdr-pat-ohip-id-or-chart
+
+temp clm-count
+item clm-count = clm-count + 1 reset at clmhdr-pat-ohip-id-or-chart
+
+output f010-crm add  at clmhdr-pat-ohip-id-or-chart  on errors report
+   item key-pat-mstr final clmhdr-pat-ohip-id-or-chart
+   item clmhdr-batch-nbr final clm-shadow-batch-nbr
+   item clmhdr-claim-nbr final clm-shadow-claim-nbr
+   item ghost-date-descending final  (20991231 - sysdate)
+   item date-assigned final sysdate
+   item time-assigned final (1000000 - (systime / 100))
+   item key-dtl-seq-nbr final 1
+   item action-code final 'IS'
+   item followup-action final ascii(clm-count) + ' invoices sent - ' + clm-shadow-batch-nbr + ascii(clm-shadow-claim-nbr,2)
+
+build $pb_obj/u035c

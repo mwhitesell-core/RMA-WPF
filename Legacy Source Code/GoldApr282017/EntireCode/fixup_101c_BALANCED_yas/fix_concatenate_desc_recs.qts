@@ -1,0 +1,43 @@
+cancel clear
+set lock record update
+set process nolimit
+
+access f002-claims-mstr
+select if CLMHDR-ADJ-OMA-CD = "ZZZZ"
+
+sorted on key-clm-batch-nbr	&
+       on key-clm-claim-nbr 
+
+temp w-desc char*110
+temp w-batch-nbr 
+temp w-claim-nbr
+temp w-desc-rec-counter
+temp w-last-batch-nbr
+temp w-last-claim-nbr
+
+define w-same-claim char*1 						&
+    = "Y" if     key-clm-batch-nbr = w-last-batch-nbr	&
+	     and key-clm-claim-nbr = w-last-claim-nbr	&
+ else "N"
+
+item  w-desc-rec-counter 				&
+    = w-desc-rec-counter + 1				&
+		if w-same-claim = "Y"			&
+  else 1
+
+item w-desc 						&
+    = clmdtl-desc 					&
+		if w-desc-rec-counter = 1		&
+ else w-desc[1:22] + clmdtl-desc			&
+		if w-desc-rec-counter = 2		&
+ else w-desc[1:44] + clmdtl-desc			&
+		if w-desc-rec-counter = 3		&
+ else w-desc[1:66] + clmdtl-desc			&
+		if w-desc-rec-counter = 4		&
+ else w-desc[1:88] + clmdtl-desc
+
+item w-last-batch-nbr = key-clm-batch-nbr
+item w-last-claim-nbr = key-clm-claim-nbr 
+
+subfile desc_recs keep at key-clm-claim-nbr		&
+ include key-clm-batch-nbr, key-clm-claim-nbr, w-desc

@@ -1,0 +1,66 @@
+;doc     : f119hist
+;purpose : report by doc AFPCON and AFPAJD  afpin for yearend 200713
+;who     : yas        
+
+;
+; *************************************************************
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history                        &
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     
+
+choose doc-nbr, ep-nbr 201112, rec-type 'A'
+
+select if    (   comp-code = "TOTINC"    &
+              or comp-code = "RMACHR"    &
+              or comp-code = "RMAEXR")   &
+         and     ep-nbr = 201112
+
+sort on doc-nbr 
+
+temp x-totinc  zoned*9 signed
+item x-totinc  = x-totinc  + amt-ytd          &
+               if comp-code = "TOTINC"        &
+               reset at doc-nbr
+
+temp x-rmachr  zoned*9 signed
+item x-rmachr  = x-rmachr  + amt-ytd          &
+               if comp-code = "RMACHR"        &
+               reset at doc-nbr
+
+temp x-rmaexr  zoned*9 signed
+item x-rmaexr  = x-rmaexr  + amt-ytd          &
+               if comp-code = "RMAEXR"        &
+               reset at doc-nbr
+  
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile costingf119 portable keep at doc-nbr include &
+doc-clinic-nbr                                      ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr             of f119-doctor-ytd-history      ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-totinc                                            ,&
+comma                                               ,&
+x-rmachr                                            ,&
+comma                                               ,&
+x-rmaexr                                            ,&
+x-cr
+
+build $obj/f119hist

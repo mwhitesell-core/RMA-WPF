@@ -1,0 +1,88 @@
+; Program: maria_rejects.qzs
+; Purpose: total manual rejections stored in the f087 manual rejects
+;	   history file
+; Mod Hist
+; 2000/may/06 Y.B.
+;
+cancel clear
+
+set rep nolimit
+set page length 0
+set page width 80
+set rep nohead
+set rep device disc name maria_rejects
+
+access manual-rejected-claims-hist                       &
+  link ohip-err-code                                     &
+    to f093-ohip-error-msg-mstr opt			 &
+  link clmhdr-doc-nbr					 &
+    to doc-nbr of f020-doctor-mstr opt
+
+select if    ohip-err-cat-code = "E"    &
+         and ped > 19990630
+
+def x-ped   cha*8 = ascii(ped,8)
+
+def x-mm    cha*2 = x-ped[5:2]
+
+def x-dd    cha*2 = x-ped[7:2]
+
+def x-yyyy  cha*4 = x-ped[1:4]
+
+def x-mmm   cha*9 = "January"   if x-mm  = "07"      &
+               else "February"  if x-mm  = "08"      &
+               else "March"     if x-mm  = "09"      &
+               else "April"     if x-mm  = "10"      &
+               else "May"       if x-mm  = "11"      &
+               else "June"      if x-mm  = "12"      &
+               else "July"      if x-mm  = "01"      &
+               else "August"    if x-mm  = "02"      &
+               else "September" if x-mm  = "03"      &
+               else "October"   if x-mm  = "04"      &
+               else "November"  if x-mm  = "05"      &
+               else "December"  if x-mm  = "06"
+
+sort on x-mm			&
+     on doc-dept		&
+     on ohip-err-cat-code 
+
+;page heading 					 &
+;tab 1  "Month"					 &
+;tab 10 "Dept"					 &
+;tab 15 "  Error    "				 &
+;tab 30 "  Error    "				 &
+;tab 40 "  Dept     "				 &
+;tab 50 "  Month    "				 &
+;skip 1						 &
+;tab 30 "  Total    "				 &
+;tab 40 "  Total    "				 &
+;tab 50 "  Total    "				 &
+;skip 2
+
+footing at ohip-err-cat-code                     &
+tab 1   x-mmm print at x-mm          		 &
+tab 12  doc-dept print at doc-dept pic "^^"	 &
+tab 15  ohip-err-cat-code 		 	 &
+tab 30  count					 &
+skip 1
+
+footing at doc-dept                              &
+tab 15  "Dept total"				 &
+tab 30  "----->"				 &
+tab 40  count                 			 &
+skip 1
+
+footing at x-mm 				 &
+tab 15  "Month total"				 &
+tab 30  "----->"				 &
+tab 50  count                 			 &
+skip 2
+
+final footing                     		 &
+tab 15 "Grand total"				 &
+tab 60  count                 			 &
+skip 2
+
+build $obj/maria_rejects
+
+go

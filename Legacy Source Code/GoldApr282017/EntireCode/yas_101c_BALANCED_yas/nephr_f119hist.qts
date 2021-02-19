@@ -1,0 +1,145 @@
+;doc     : nephr_f119hist
+;purpose : report bill and misc codes                 
+;who     : Dr. Russell
+
+;
+; *************************************************************
+
+;Date		Who		Description
+;2006/04/19	Yasemin	        original
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history                        &
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     
+
+select if                       &
+   (    doc-nbr = "055"  &
+     or doc-nbr = "078"  &
+     or doc-nbr = "188"  &
+     or doc-nbr = "279"  &
+     or doc-nbr = "403"  &
+     or doc-nbr = "425"  &
+     or doc-nbr = "448"  &
+     or doc-nbr = "455"  &
+     or doc-nbr = "459"  &
+     or doc-nbr = "481"  &
+     or doc-nbr = "524"  &
+     or doc-nbr = "662"  &
+     or doc-nbr = "733"  &; acct only by need it for this       
+     or doc-nbr = "792"  &
+     or doc-nbr = "832"  &
+     or doc-nbr = "839"  &
+     or doc-nbr = "879"  &
+     or doc-nbr = "928"  &
+     or doc-nbr = "967"  &
+     or doc-nbr = "C16"  &
+     or doc-nbr = "C18"  &
+     or doc-nbr = "D69"  &
+     or doc-nbr = "J26"  &
+     or doc-nbr = "D80") &
+and (   comp-code = "BILL"   &
+     or comp-code = "AFPIN"  &
+     or comp-code = "AFPOUT" &
+     or comp-code = "MISC"   &
+     or comp-code = "MISC0"  &
+     or comp-code = "MISC1"  &
+     or comp-code = "MISC2"  &
+     or comp-code = "MISC3"  &
+     or comp-code = "MISC4"  &
+     or comp-code = "MISC5"  &
+     or comp-code = "MISC6"  &
+     or comp-code = "MISC7"  &
+     or comp-code = "MISC8"  &
+     or comp-code = "MISC9"  &
+     or comp-code = "MICM"   &
+     or comp-code = "MISJ"   &
+     or comp-code = "MISC"   &
+     or comp-code = "MICV"   &
+     or comp-code = "MISP"   &
+     or comp-code = "MICB"   &
+     or comp-code = "MIBR"   &
+     or comp-code = "MINH"   &
+     or comp-code = "MHSC"   &
+     or comp-code = "NHSC"   &       
+     or comp-code = "MOHR")  
+
+;;;; MOHR is retro adjustment the 2% raise ministry gave doc in one lump sum
+def x-code cha*6 = "Y" if (   comp-code = "BILL"    &
+                           or comp-code = "AFPIN"   &
+                           or comp-code = "AFPOUT"  &
+                           or comp-code = "MOHR")   &
+                   else "N"
+sort on doc-nbr 
+
+;;;;if code = comp-code "BILL"
+temp x-jun05-b      zoned*9 signed
+item x-jun05-b      = x-jun05-b + amt-mtd/100                   &
+                    if (ep-nbr = 200412 or ep-nbr = 200413)     &
+                    and x-code = "Y"                            &
+                    reset at doc-nbr
+
+;;;;if code = Miscellanous comp-codes
+temp x-jun05-m      zoned*9 signed
+item x-jun05-m      = x-jun05-m + amt-mtd/100                   &
+                    if (ep-nbr = 200412 or ep-nbr = 200413)     &
+                    and x-code = "N"                            &
+                    reset at doc-nbr
+
+temp x-jul-dec04-b  zoned*9 signed
+item x-jul-dec04-b  = x-jul-dec04-b + amt-ytd/100               &
+                    if ep-nbr = 200406 and x-code = "Y"         &    
+                    reset at doc-nbr
+
+temp x-jul-dec04-m  zoned*9 signed
+item x-jul-dec04-m  = x-jul-dec04-m + amt-ytd/100               &
+                    if ep-nbr = 200406 and x-code = "N"         &    
+                    reset at doc-nbr
+
+temp x-jul-dec05-b  zoned*9 signed
+item x-jul-dec05-b  = x-jul-dec05-b + amt-ytd/100               &
+                    if ep-nbr = 200506 and x-code = "Y"         &    
+                    reset at doc-nbr
+
+temp x-jul-dec05-m  zoned*9 signed
+item x-jul-dec05-m  = x-jul-dec05-m + amt-ytd/100               &
+                    if ep-nbr = 200506 and x-code = "N"         &
+                    reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+;subfile nephrf119 portable keep at final include     &
+subfile nephrf119 portable keep at doc-nbr include     &
+doc-clinic-nbr                                      ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr             of f119-doctor-ytd-history      ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-jun05-b                                           ,&
+comma                                               ,&
+x-jun05-m                                           ,&
+comma                                               ,&
+x-jul-dec04-b                                       ,&
+comma                                               ,&
+x-jul-dec04-m                                       ,&
+comma                                               ,&
+x-jul-dec05-b                                       ,&
+comma                                               ,&
+x-jul-dec05-m                                       ,&
+x-cr
+
+build $obj/nephr_f119hist

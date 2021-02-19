@@ -1,0 +1,92 @@
+; 2008/nov/05	M.C.	- modify first request to add choose & sorted & output statement 
+;			- modify second request for access and sorted statements
+;			- add 2 new requests
+cancel clear
+set process nolimit
+set lock record update 
+
+request r140w_check_if_incoming_records_exists_in_f075  &
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access tmp-governance-payments-file			&
+	link doc-ohip-nbr 				&
+	 to  doc-ohip-nbr of f075-afp-doc-mstr 
+
+; 2008/11/05 - MC
+choose doc-afp-paym-group,   doc-ohip-nbr
+
+sorted on doc-afp-paym-group on doc-ohip-nbr
+; 2008/11/05 - end
+
+select if doc-afp-paym-group of tmp-governance-payments-file  &
+	= doc-afp-paym-group of f075-afp-doc-mstr
+
+
+; update record if there is a match
+; 2008/11/05 - MC
+;output tmp-governance-payments-file update  on errors report
+output tmp-governance-payments-file update  at doc-ohip-nbr on errors report
+; 2008/11/05 - end
+
+  item reported_in_r140b_report final 'Y'
+
+request r140w_check_if_doc_exists_in_incoming_file	&
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access f075-afp-doc-mstr 				&
+; 2008/11/05 - MC
+;	link doc-ohip-nbr				&
+;	 to doc-ohip-nbr of tmp-governance-payments-file opt
+	link doc-afp-paym-group,			&
+	     doc-ohip-nbr				&
+	 to doc-afp-paym-group,				&
+	    doc-ohip-nbr of tmp-governance-payments-file opt
+
+; 2008/11/25 - MC
+;sorted on doc-ohip-nbr
+sort on doc-afp-paym-group on doc-ohip-nbr
+; 2008/11/05 - MC
+
+select if not record tmp-governance-payments-file exists
+
+; create a record if doctor does not exist from the incoming governance file
+output tmp-governance-payments-file alias tmp-gov-add add at doc-ohip-nbr on errors report
+   item doc-ohip-nbr final doc-ohip-nbr of f075-afp-doc-mstr
+   item doc-afp-paym-group final doc-afp-paym-group of f075-afp-doc-mstr
+   item reported_in_r140b_report final 'M'
+
+; 2008/11/04 - MC - add the 2 new requests
+request r140w_check_if_doc_terminated_in_f020     	&
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access f075-afp-doc-mstr 				&
+ 	link doc-nbr					&
+ 	 to doc-nbr of f020-doctor-mstr                 
+
+;select terminated doctors
+select if doc-date-fac-term  <> 0
+
+subfile r140w_term_f075_doctors keep include		&
+	f075-afp-doc-mstr
+
+request r140w_set_terminated_doctors_from_F075    	&
+                on edit        errors report   	 	&
+                on calculation errors report
+
+access *r140w_term_f075_doctors				&
+	link doc-afp-paym-group,                     	&
+	     doc-ohip-nbr                      	&
+	 to doc-afp-paym-group,				&
+	    doc-ohip-nbr of tmp-governance-payments-file 
+
+sort on doc-afp-paym-group on doc-ohip-nbr
+
+; update file if terminated doctors  
+output tmp-governance-payments-file update at doc-ohip-nbr on errors report
+   item reported_in_r140b_report final 'T'		&
+	if reported_in_r140b_report = 'M'
+
+build $obj/r140w2    

@@ -1,0 +1,137 @@
+;doc     : leena_rmb    
+;purpose : create report for clinic 31-48 agent 2 and rmb claims only   
+;who     : Leena                                                
+
+;
+; *************************************************************
+
+;Date		Who		Description
+;2007/Mar  	Yasemin	        
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link clmhdr-pat-ohip-id-or-chart        &
+    to key-pat-mstr of f010-pat-mstr opt  &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "31@",                 &
+                                              "32@",                 &
+                                              "33@",                 &
+                                              "34@",                 &
+                                              "35@",                 &
+                                              "36@",                 &
+                                              "37@",                 &
+                                              "41@",                 &
+                                              "42@",                 &
+                                              "43@",                 &
+                                              "44@",                 &
+                                              "45@",                 &
+                                              "46@",                 &
+                                              "48@",                 &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if     clmhdr-batch-type  = 'C'   
+
+def x-payment cha*3 = "HCP" if pat-prov-cd = "ON"    &
+                 else "RMB"
+
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile leenarmb     keep include              &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-agent-cd		     of f002-claims-mstr,&
+clmhdr-batch-type	     of f002-claims-mstr,&
+doc-name                     of f020-doctor-mstr,&
+x-clinic                                        ,&
+x-payment                                       ,&
+clmhdr-serv-date 
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *leenarmb                                                       &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr                                            
+
+select f002-claims-mstr if                                              &
+            clmdtl-sv-date     >= '20080701'                            &
+       and  clmdtl-oma-cd      <> "0000"     &; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     &; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     &; no payments
+       and  clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "AGEP"     &
+       and  clmdtl-oma-cd      <> "MICA"     &
+       and  clmdtl-oma-cd      <> "MICC"     &
+       and  clmdtl-oma-cd      <> "MICD"     &
+       and  clmdtl-oma-cd      <> "MICE"     &
+       and  clmdtl-oma-cd      <> "MICF"     &
+       and  clmdtl-oma-cd      <> "MICG"     &
+       and  clmdtl-oma-cd      <> "MICH"     &
+       and  clmdtl-oma-cd      <> "MICJ"     &
+       and  clmdtl-oma-cd      <> "MICK"     &
+       and  clmdtl-oma-cd      <> "MICL"   
+
+def x-doc-nbr cha*3 = clmdtl-id[3:3]
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]        
+
+
+sort on x-doc-nbr on key-clm-batch-nbr on key-clm-claim-nbr
+
+temp x-rmb         num*7
+item x-rmb          = x-rmb   + clmdtl-fee-ohip/100       &
+                    if        x-payment = "RMB"           &
+                      and     clmhdr-agent-cd = 0         &
+                    reset at x-doc-nbr
+
+
+temp x-agent2      num*7
+item x-agent2       = x-agent2 + clmdtl-fee-ohip/100       &
+                    if  clmhdr-agent-cd = 2                &
+                    reset at x-doc-nbr
+
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile leenarmba portable keep at x-doc-nbr include & 
+x-clinic                                            ,&
+comma                                               ,&
+x-doc-nbr                                           ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+x-rmb                                               ,&
+comma                                               ,&
+x-agent2                                            ,&
+x-cr
+
+build $obj/leenarmb

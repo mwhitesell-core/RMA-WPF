@@ -1,0 +1,215 @@
+
+; 2006/04/10 	M.C.	- extend email address from x(30) to x(50)
+
+cancel clear
+set process nolimit
+request one                                     &
+                on edit        errors report    &
+                on calculation errors report
+
+access *wb &
+  link 	" "	,					&
+	doc-nbr	,					&
+	"D"						&
+    to filler	,					&
+	doc-nbr	,					&
+	contacts-type of f027-contacts-mstr 		&
+				alias f027-doc     	&
+  link 	" "	,					&
+	doc-nbr	,					&
+	"D"	,					&
+  	"H"						&  
+    to filler	,					&
+	doc-nbr	,					&
+	contacts-type	,				&
+	contacts-location of f028-contacts-info-mstr	&
+				alias f028-doc-home     &
+  link 	" " 	,					&
+	doc-nbr	,					&
+	"D"	,					&
+  	"O"						&  
+    to filler	,					&
+	doc-nbr	,					&
+	contacts-type,					&
+	contacts-location of f028-contacts-info-mstr 	&
+				alias f028-doc-office     &
+    link doc-nbr					&
+    to   doc-nbr of f020-doctor-extra opt		
+
+
+;DOCTOR
+; 2006/04/10 - MC
+;def x-doc-home-email char*30						&
+def x-doc-home-email char*50						&
+; 2006/04/10 -end
+   = email-doctor1 							&
+	 if    not matchpattern(downshift(email-doctor1),"@master.ca@") &
+	   and not matchpattern(downshift(email-doctor1),"@hhsc.ca@") 	&
+	   and not matchpattern(downshift(email-doctor1),"@stjosham.on.ca@")&
+ else " "
+
+; 2006/04/10 - MC
+;def x-doc-office-email char*30					&
+def x-doc-office-email char*50					&
+; 2006/04/10 -end
+   = email-doctor1 						&
+	 if        matchpattern(downshift(email-doctor1),"@master.ca@") 	&
+	    or     matchpattern(downshift(email-doctor1),"@hhsc.ca@") 	&
+	    or     matchpattern(downshift(email-doctor1),"@stjosham.on.ca@")	&
+ else " "
+
+def x-doc-office-newsletter-flag char*1				&
+   = "E" if     (news-by-mail = "E" or news-by-mail = "e")	&
+	    and  x-doc-office-email <> " "			&
+else "H" if     news-by-mail = "H" or news-by-mail = "h"	&
+else " "
+def x-doc-home-newsletter-flag char*1	&
+   = "E" if     (news-by-mail = "E" or news-by-mail = "e")	&
+	    and x-doc-office-newsletter-flag = " "		&
+else "H" if     (news-by-mail = "H" or news-by-mail = "h")	&
+	    and x-doc-office-newsletter-flag = " "		&
+else " "
+
+def x-doc-paper char*1		&
+   = "Y" if paper <> " "	&
+else " "
+def x-doc-diskette char*1	&
+   = "Y" if diskette <> " "	&
+else " "
+def x-doc-web-test char*1	&
+   = "Y" if web <> " "		&
+else " "
+def x-doc-web-live char*1	&
+   = "Y" if web <> " "		&	
+else " "
+def x-doc-rev-only char*1	&
+   = "Y" if rev-web <> " "	&
+else " "
+
+def x-chair char*1			&
+   = "Y" if chair = "Y" or chair = "y"	&
+else " "
+def x-abe char*1			&
+   = "Y" if abe = "Y" or abe = "y"	&
+else " "
+def x-med-prof char*1					&
+   = "Y" if matchpattern(email-doctor1,"@PROF@")  	&
+else " "
+
+def x-oma-nbr char*9						&
+   = oma-nbr[1:3] + oma-nbr[5:4] + oma-nbr[10:2]		&
+		if oma-nbr[4:1] = "-" and oma-nbr[9:1] = "-"	&
+else								&
+     oma-nbr[1:3] + oma-nbr[5:4]				&
+		if oma-nbr[4:1] = "-"				&
+else oma-nbr
+
+def x-phone-nbr zoned*10					&
+   = nconvert(  doctor-phone-nbr[1:3] 				&
+	      + doctor-phone-nbr[5:3]				&
+	      + doctor-phone-nbr[9:4]				&
+	     )							&
+		if     doctor-phone-nbr[4:1] = "-" 		&
+		   and doctor-phone-nbr[8:1] = "-"		&
+else 0
+
+def x-pager-nbr zoned*10					&
+   = nconvert(  pager-nbr[1:3] 				&
+	      + pager-nbr[5:3]				&
+	      + pager-nbr[9:4]				&
+	     )							&
+		if     pager-nbr[4:1] = "-" 		&
+		   and pager-nbr[8:1] = "-"		&
+else nconvert(pager-nbr[1:4])				&
+		if    pager-nbr[1:1] <> " "		&
+		  and pager-nbr[5:1] = " "		&
+else 0
+
+def x-fax-nbr zoned*10					&
+   = nconvert(  fax-nbr[1:3] 				&
+	      + fax-nbr[5:3]				&
+	      + fax-nbr[9:4]				&
+	     )							&
+		if     fax-nbr[4:1] = "-" 		&
+		   and fax-nbr[8:1] = "-"		&
+else nconvert(fax-nbr[1:4])				&
+		if    fax-nbr[1:1] <> " "		&
+		  and fax-nbr[5:1] = " "		&
+else 0
+
+;TODO - get cell from fax field
+
+output f020-doctor-extra                         update	
+  item billing-via-paper-flag		final x-doc-paper
+  item billing-via-diskette-flag	final x-doc-diskette
+  item billing-via-web-test-flag	final x-doc-web-test
+  item billing-via-web-live-flag 	final x-doc-web-live
+  item web-user-revenue-only-flag	final x-doc-rev-only
+;  date-start-diskette        
+;  date-start-paper           
+;  date-start-web-live        
+;  date-start-web-test         
+  item leave-description           	final rl-loa-mat of wb
+
+;  item leave-date-start   		final          
+;  item leave-date-end                	final 
+;  item manager-flag                  	final "?"
+
+  item doc-med-prof-corp		final x-med-prof 
+  item chair-flag                     	final x-chair
+  item abe-user-flag                  	final x-abe
+  item cpso-nbr                       	final cpso-nbr of wb
+  item cmpa-nbr                    	final cmpa-nbr of wb
+  item oma-nbr                        	final x-oma-nbr 
+  item cfpc-nbr                       	final cfpc-nbr of wb
+  item rcpsc-nbr                      	final rcpsc-nbr of wb
+  item doc-med-prof-corp              	final " "
+  item mcmaster-employee-id 		final 0
+
+; DOCTOR 
+output f027-contacts-mstr   update 
+;  item filler			final	" "
+;  item doc-nbr			final	doc-nbr of f020-doctor-mstr
+;  item contacts-type		final	"D"
+;  item contacts-surname		final 	doc-name                
+  item contacts-given-names	final   given-name  of wb	
+  item contacts-inits      	final   init	of wb
+  item contacts-title		final 	"Dr."
+  item CONTACTS-SEX        	final   gender of wb
+  item billing-entry-flag   	final   " "
+  item logon-username  		final   " "
+
+output f028-doc-home         update 
+;  item filler			final	" "
+;  item doc-nbr			final	doc-nbr of f020-doctor-mstr
+;  item contacts-type		final	"D"
+;  item contacts-location	final	"H"
+;  item contacts-addr-1		final 	doc-addr-home-1     
+;  item contacts-addr-2		final 	doc-addr-home-2     
+;  item contacts-addr-3		final 	doc-addr-home-3     
+;  item postal-code		final	doc-addr-home-pc  
+   item contacts-email-addr	final x-doc-home-email
+   item contacts-phone-nbr 	final 0
+   item contacts-phone-ext 	final 0
+   item contacts-pager-nbr 	final 0
+   item contacts-cell-nbr 	final 0
+   item contacts-fax-nbr  	final x-fax-nbr
+   item newsletter-flag 	final x-doc-home-newsletter-flag
+
+output f028-doc-office  update
+;  item filler			final	" "
+;  item doc-nbr			final	doc-nbr of f020-doctor-mstr
+;  item contacts-type		final	"D"
+;  item contacts-location	final	"O"
+;  item contacts-addr-1		final 	doc-addr-office-1     
+;  item contacts-addr-2		final 	doc-addr-office-2     
+;  item contacts-addr-3		final 	doc-addr-office-3     
+;  item postal-code		final	doc-addr-office-pc  
+   item contacts-email-addr	final x-doc-office-email
+   item contacts-phone-nbr 	final x-phone-nbr
+   item contacts-phone-ext 	final nconvert(doctor-phone-ext)
+   item contacts-pager-nbr 	final x-pager-nbr
+   item contacts-cell-nbr 	final 0 ;x-cell-nbr
+   item contacts-fax-nbr  	final 0
+   item newsletter-flag 	final x-doc-office-newsletter-flag
+

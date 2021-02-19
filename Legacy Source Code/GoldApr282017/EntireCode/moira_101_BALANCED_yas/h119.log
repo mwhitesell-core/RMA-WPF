@@ -1,0 +1,214 @@
+/alpha/rmabill/rmabill101/dvlp/moira
+Wed Nov 21 18:23:11 EST 2012
+ + + + Sourced in /alpha/rmabill/rmabill101/dvlp/moira + + +
+;Compiling program [/alpha/rmabill/rmabill101/dvlp/moira/h119.qks]
+Q D E S I G N   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-DEVELOPMENT for customer: 0057360001 DYAD Systems Inc. UNIX
+
+> cancel clear
+> set verify errors
+> ;#> PROGRAM-ID.     H119.QKS
+> ;
+> ;       ((C)) Dyad Technologies
+> ;
+> ;    PURPOSE: Query Physician YTD Audit/Statements File
+> ;
+> ;    MODIFICATION HISTORY
+> ;        DATE    SAF #  WHO      DESCRIPTION
+> ;     95/JUN/29  ____   B.M.L.	- original  COPIED FROM D119.QKS
+> ;     95/NOV/07  ----   M.C.	- USE W-EP-NBR-FROM INSTEAD OF W-EP-NBR-YY
+> ;     96/NOV/26  ----   M.C.	- PDR 653 - ALLOW USER TO CHANGE
+> ;   1999/Jun/07         S.B.     - Altered the call to scrtitle.use and
+> ;                                  stdhilite.use to be called from $use
+> ;                                  instead of src.
+> ;                                - Removed the call to secfile.use because
+> ;                                  it was not doing anything.
+> ; 2003/nov/10 b.e.    	- alpha doctor nbr
+> ; 2004/sep/02 b.e.      - made all fields display so that data can't be
+> ;                         accidently changed
+> ;                       - added new designer procedcure FIX to allow change
+> ;                         of each field only after a 'secret' password has
+> ;                         been entered
+> ; 2004/sep/22 b.e.	- add new record entry ability if password is correct
+> ; 2006/apr/10 b.e.      - allow for 9 digit amt-mtd and amt-ytd
+> ; 2012/nov/21 MC1	- correct for the ability to add more than 1 record at a time
+> 
+> screen $pb_obj/h119.qkc						&
+> 	on line 6 for 18				&
+> ;	activities find, change, entry 			&
+> 	message on line 24             			&
+>         receiving 	w-doc-nbr,			&
+> 			w-ep-nbr-from,			&
+> 			constants-mstr-rec-6,		&
+> 			f020-doctor-mstr
+> 
+> file f020-doctor-mstr     master
+> file constants-mstr-rec-6 master
+> temp w-doc-nbr char*3
+> temp w-ep-nbr-from
+> temp x-srch-code char*6
+> temp w-password date
+> temp w-sysdate date initial sysdate
+> 
+> description of screen                                                 &
+> "                                                                    "&
+> "       This screen allows a User to query the Physician  YTD  Audit/"&
+> "       History File.                                                "&
+> "                                                                    "
+> 
+> file  f119-doctor-ytd-history  primary  occurs 14
+Item DOC-NBR initialized (fixed) to DOC-NBR OF F020-DOCTOR-MSTR.
+>         access  viaindex f119-doctor-ytd-history 	&
+> 		via doc-nbr, ep-nbr			&
+> 	using w-doc-nbr, w-ep-nbr-from
+> select if rec-type        = "A"
+> 
+> file f190-comp-codes      reference
+>      access viaindex comp-code using comp-code of f119-doctor-ytd-history
+> 
+> define x-screen-name char*55 = "Earnings - YTD History File"
+> use $use/scrtitle.use  nol nod
+> use $use/stdhilite.use nol nod
+> 
+> skip to 2
+> skip
+> title &
+> "    -------COMP---------- GROUP STMNT  ---------AMOUNT----------               " &
+>         at ,1
+> skip
+> title &
+> "   --CODE/DESCRIPTION---- CODE   SEQ             MTD         YTD               " &
+>         at ,1
+> 
+> ;         1         2         3         4         5         6         7         8
+> ;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+> ;01 XXXXXX-xxxxxxxxxxxxxxx  X      99   9,999,999.99- 9,999,999.99-
+> align (1,,4) (,10,11) (,,28) (,,35) (,,40) (,,54)
+> cluster occurs with f119-doctor-ytd-history
+> field comp-code         of f119-doctor-ytd-history display
+> field desc-short        of f190-comp-codes label "-" display
+> field comp-code-group   of f119-doctor-ytd-history display
+> field process-seq       of f119-doctor-ytd-history display
+> field amt-mtd           of f119-doctor-ytd-history
+> field amt-ytd           of f119-doctor-ytd-history
+> 
+> cluster
+> field w-password noid noech
+> 
+> procedure designer fix help "Use this 'secret' function to make corrections to data"
+> begin
+>   if w-password <> w-sysdate
+>   then begin
+>     accept w-password
+>   end
+>   if w-password = w-sysdate
+>   then begin
+>     accept comp-code
+>     accept desc-short
+>     accept comp-code-group
+>     accept process-seq
+>     accept amt-mtd
+>     accept amt-ytd
+>   end
+> end
+> 
+> 
+> ; 2012/11/21 - MC1
+> procedure internal accept-values
+>   begin
+>         let rec-type		of f119-doctor-ytd-history = "A"
+>         let doc-nbr		of f119-doctor-ytd-history	&
+> 	      = w-doc-nbr
+>         let ep-nbr 		of f119-doctor-ytd-history	&
+>               = w-ep-nbr-from
+>         accept comp-code
+>         display desc-short	of f190-comp-codes
+>         let comp-code-group 	of f119-doctor-ytd-history	&
+>              = comp-code-group 	of f190-comp-codes
+>         display comp-code-group 	of f119-doctor-ytd-history
+>         let process-seq     	of f119-doctor-ytd-history	&
+>              = process-seq     	of f190-comp-codes
+>         display process-seq    	of f119-doctor-ytd-history
+>         accept amt-mtd		of f119-doctor-ytd-history
+>         accept amt-ytd		of f119-doctor-ytd-history
+>   end
+> 
+> procedure append
+>   begin
+>      do accept-values
+>      end
+> ; 2012/11/21 - end
+> 
+> ;
+> procedure entry
+>   begin
+>     if w-password <> w-sysdate
+>     then begin
+>       accept w-password
+>     end
+> 
+>     if w-password = w-sysdate
+>     then begin
+>       for f119-doctor-ytd-history
+> ; 2012/11/21 - MC1
+> 	begin
+>            perform append
+>         end
+> ; 2012/11/21 - end
+>     end
+>   end
+> 
+> Build detail list
+> 
+> PROCEDURE PATH
+>   BEGIN
+>     LET PATH = 1
+>     END
+> PROCEDURE FIND
+>   BEGIN
+>     FOR MISSING F119-DOCTOR-YTD-HISTORY
+>       BEGIN
+>         GET F119-DOCTOR-YTD-HISTORY VIAINDEX F119-DOCTOR-YTD-HISTORY &
+>               VIA DOC-NBR , EP-NBR USING W-DOC-NBR , W-EP-NBR-FROM
+>         END
+>     END
+> PROCEDURE UPDATE
+>   BEGIN
+>     FOR F119-DOCTOR-YTD-HISTORY
+>       BEGIN
+>         PUT F119-DOCTOR-YTD-HISTORY
+>         END
+>     PUT F020-DOCTOR-MSTR
+>     PUT CONSTANTS-MSTR-REC-6
+>     END
+> PROCEDURE DELETE
+>   BEGIN
+>     DELETE F119-DOCTOR-YTD-HISTORY
+>     END
+> ALLDONE
+MODE:x ACTION:xxxxxxxxx  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    -------COMP---------- GROUP STMNT  ---------AMOUNT----------
+   --CODE/DESCRIPTION---- CODE   SEQ             MTD         YTD
+01 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+02 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+03 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+04 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+05 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+06 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+07 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+08 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+09 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+10 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+11 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+12 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+13 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+14 xxxxxx-xxxxxxxxxxxxxxx  x      xx   xxxxxxxxxxxxx xxxxxxxxxxxxx
+   xxxxxxxxxx
+ 
+ 
+ 
+ 
+ 
+0 ERRORS  0 WARNINGS. Delete old screen /alpha/rmabill/rmabill101/obj/h119.qkc?
+Wed Nov 21 18:23:16 EST 2012

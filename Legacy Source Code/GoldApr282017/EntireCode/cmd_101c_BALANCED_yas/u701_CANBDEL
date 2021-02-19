@@ -1,0 +1,145 @@
+#   NAME: u701
+# 
+#   PURPOSE: OHIP DISKETTE INPUT INTO RMA SYSTEM
+#            THIS MACRO WILL TAKE A FILE FOR A SPECIFIED DOCTOR
+# 		  AND MOVE ALL CLAIMS INTO THE SUSPENSE FILES, APPLY
+# 		  THE PATIENTS WITHIN BATCH AGAINST THE PATIENT/SUBSCRIBER
+# 		  MASTERS, AND FINALLY UPDATE THE SUSPENSE RECORDS WITH THE
+# 		  ID'S OF THE PATIENTS.
+#
+#   MODIFICATION HISTORY
+#      DATE   PERSON        DESCRIPTION (PDR/SMS #)
+#   90/jul/01 B. ELLIOTT    - ORIGINAL
+#   90/oct/31 Y. BOCCIA     - ADD QPRINT R707.TXt
+#   98/Jan/21 KEVIN MILES   - CONVERTED TO UNIX
+#   98/Aug/11 B. E.         - incoming file is variable length and must be
+#			      converted to fixed length records. Added
+#		 	      pad_to_240_bytes.awk command
+
+
+if [ "$1" = "" ]
+then
+	echo 
+	echo 
+	echo  "**ERROR**"
+	echo  You must supply the 6 digit doctor ohip number for the batch to be processed!
+	echo 
+	echo  Valid format:   u701  bx999999
+        exit
+else
+	if [ ! -f f002_submit_disk_${1}.in ]
+	then
+		echo 
+		echo
+		echo "**ERROR** No such batch found!"
+		echo 
+		exit
+	else
+		if [ -f submit_disk_susp.in ]
+		then
+		  echo 
+		  echo
+		  echo 
+		  echo "**ERROR** Unprocessed suspense batch found !"
+		  echo You must manually re-process the batch submit_disk_susp.in
+		  echo before re-running u701
+		  echo 
+		  exit
+		else
+#		  (incoming file is variable length - pad to 240 bytes)
+#		  mv f002_submit_disk_${1}.in submit_disk_susp.in
+		  rm >/dev/null  2>/dev/null  submit_disk_susp.var
+		  mv f002_submit_disk_${1}.in submit_disk_susp.var
+		  awk -f $cmd/pad_to_240_bytes.awk < submit_disk_susp.var > submit_disk_susp.in
+		  echo 
+		  echo 
+		  echo  place claims into suspense files ...
+		  cobrun $obj/u701
+		  echo 
+		  echo  print status report ...
+		  ls -laF ru701
+#		  lp ru701
+		  cat  >/dev/null  2>/dev/null ru701_cycle ru701 >/usr/tmp/ru701_cycle.tmp  
+		  mv /usr/tmp/ru701_cycle.tmp  ru701_cycle
+		  printf "Continue? "
+		  read garbage
+		  echo 
+		  echo 
+		  echo  Select resubmit claims
+		  echo 
+		  qtp auto=$obj/u714.qtc
+		  echo 
+		  echo  Report selected resubmit claims
+		  echo 
+		  rm r715.txt 1>/dev/null 2>&1
+		  quiz auto=$obj/r715.qzc
+#                 lp r715.txt 
+		  echo 
+		  echo 
+		  echo  Select special oma codes
+		  qtp auto=$obj/u710.qtc
+		  echo 
+		  echo  report selected special oma codes
+		  rm r711.txt 1>/dev/null 2>&1
+		  quiz auto=$obj/r711.qzc
+		  echo 
+		  ls -laF r711.txt
+#		  lp      r711.txt
+		  echo 
+		  echo 
+		  echo  report duplicate claims
+		  rm  r712.txt 1>/dev/null 2>&1
+		  quiz auto=$obj/r712.qzc
+		  echo 
+		  ls -laF r712.txt
+#		  lp      r712.txt
+		  echo 
+		  echo 
+		  echo  extract batch\'s Patient data
+		  rm submit_disk_pat_in.sf* 1>/dev/null 2>&1
+		  quiz auto=$obj/r702.qzc
+		  echo 
+		  echo  extracted patient data file:
+		  ls -laF submit_disk_pat_in.sf*
+		  printf "Continue? "
+		  read garbage
+		  echo 
+		  echo 
+		  echo  Process batch\'s Patient data against RMA\'s patient/subscriber database
+		  echo 
+		  rm submit_disk_pat_out 1>/dev/null 2>&1
+		  cobrun $obj/u703
+		  ls -laF ru703*
+#		  lp ru703a
+#		  lp ru703c
+		  printf "Continue? "
+		  read garbage
+		  echo 
+		  echo  processed patient data:
+		  ls -laF submit_disk_pat_out
+		  echo 
+		  echo 
+		  echo  Apply processed patients against suspense files
+		  echo 
+		  qtp auto=$obj/u704.qtc
+		  echo 
+		  rm r707.txt 1>/dev/null 2>&1
+		  quiz auto=$obj/r707.qzc
+#		  lp r707.txt
+		  printf "Continue? "
+		  read garbage
+		  echo 
+		  qtp auto=$obj/u705.qtc
+		  echo 
+		  echo  Cleanup: rename input file as successfully processed
+		  mv submit_disk_susp.in submit_disk_${1}.out
+		  lp ru703c.txt 1>/dev/null 2>&1
+		fi
+	fi
+fi
+echo 
+echo 
+printf "Continue? "
+read garbage
+echo 
+echo 

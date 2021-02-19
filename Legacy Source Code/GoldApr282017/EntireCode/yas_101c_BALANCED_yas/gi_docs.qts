@@ -1,0 +1,171 @@
+;doc     : gi_docs.qts     
+;purpose : create a oma and diagnostic codes used by gi docs               
+;	   Report oma code description, diag code and description           
+;          report code and diag code once only 
+;who     : GI-docs that are going on OSCAR
+
+;
+; *************************************************************
+
+;Date		Who		Description
+;2012/11/21	Yasemin	        gidoc
+;2012/11/21	MC              modify accordingly
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22G52@",                  &
+                                              "34G52@",                  &
+                                              "98G52@",                  &
+                                              "22K20@",                  &
+                                              "34K20@",                  &
+                                              "98K20@",                  &
+                                              "22M16@",                  &
+                                              "34M16@",                  &
+                                              "98M16@",                  &
+                                              "22J58@",                  &
+                                              "34J58@",                  &
+                                              "98J58@",                  &
+                                              "22V02@",                  &
+                                              "34V02@",                  &
+                                              "98V02@",                  &
+                                              "2239A@",                  &
+                                              "3439A@",                  &
+                                              "9839A@",                  &
+                                              "22P79@",                  &
+                                              "34P79@",                  &
+                                              "98P79@",                  &
+                                              "22M26@",                  &
+                                              "34M26@",                  &
+                                              "98M26@",                  &
+                                              "22K96@",                  &
+                                              "34K96@",                  &
+                                              "98K96@",                  &
+                                              "22K69@",                  &
+                                              "34K69@",                  &
+                                              "98K69@",                  &
+                                              "22588@",                  &
+                                              "34588@",                  &
+                                              "98588@",                  &
+                                              "22200@",                  &
+                                              "34200@",                  &
+                                              "98200@",                  &
+                                              "22770@",                  &
+                                              "34770@",                  &
+                                              "98770@",                  &
+                                              "22G05@",                  &
+                                              "34G05@",                  &
+                                              "98G05@",                  &
+                                              "22939@",                  &
+                                              "34939@",                  &
+                                              "98939@",                  &
+                                              "22T99@",                  &
+                                              "34T99@",                  &
+                                              "98T99@",                  &
+                                              "22V06@",                  &
+                                              "34V06@",                  &
+                                              "98V06@",                  &
+                                              "2212B@",                  &
+                                              "3412B@",                  &
+                                              "9812B@",                  &
+                                              "22989@",                  &
+                                              "34989@",                  &
+                                              "98989@",                  &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if       clmhdr-batch-type = 'C'    
+
+subfile gidoc     keep include                    &
+key-clm-batch-nbr             of f002-claims-mstr,&
+key-clm-claim-nbr             of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *gidoc                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20110701' &
+       and  clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "AGEP"     &
+       and  clmdtl-adj-nbr     =  0
+
+
+subfile gidoc1     keep include           &
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *gidoc1                                                          &
+  link clmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt                 
+
+sort on clmdtl-oma-cd
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile gidoc2 portable keep at clmdtl-oma-cd include                &
+clmdtl-oma-cd                                      ,&
+comma                                              ,&
+fee-desc     	                                   ,&
+comma                                              ,&
+FEE-CURR-A-FEE-1                                 ,&
+x-cr
+
+request four                            &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *gidoc1                                                          &
+  link (ascii(clmdtl-diag-cd,3)) to diag-cd of f091-diag-codes-mstr opt  
+
+sel if clmdtl-diag-cd <> 0
+
+sort on clmdtl-diag-cd  
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile gidoc3 portable keep at clmdtl-diag-cd include                &
+clmdtl-diag-cd                                      ,&
+comma                                               ,&
+diag-cd-desc                                        ,&
+x-cr
+
+build $obj/gidoc

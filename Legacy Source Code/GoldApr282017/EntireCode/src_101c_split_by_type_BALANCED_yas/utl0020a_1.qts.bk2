@@ -1,0 +1,283 @@
+;#> PROGRAM-ID.   utl0020a_1.qts
+;
+;	((C)) Dyad Technologies
+;
+;    R.M.A. VERSION
+;
+;    PROGRAM PURPOSE :
+;			- extract data from the payroll system and download to 
+;			  PC for upload into spreadsheet
+;			- in this program individual requests gather different
+;			  information for the doctor and place it into a 
+;			  unique record for the doctor within 
+;			  file tmp-pc-download-file 
+;
+;  MODIFICATION HISTORY
+;    DATE   WHO   DESCRIPTION
+; 2003/SEP/25 b.e - re-write logic so that information is gathered into a unique
+;		    record within file tmp-pc-download-file for each doctor
+;		  - that file is then downloaded to the PC and places 
+;		    into spreadsheet
+; 2003/sep/28 b.e.- incorporate new fields after RMA requested changes
+;	  	    use mtd paypot + ytdear instead of ytd paypot
+; 2003/oct/05 b.e. - new selection criteria - added doc start date to extract
+; 2003/oct/07 b.e. - added depchr
+; 2003/oct/14 b.e. - added doctor classification (full/partime ind)
+;		   - added PED of clinic 22
+;		   - added subfile to save costing ped and pass to further proc's
+; 2003/dec/24 A.A. - alpha doctor nbr
+; 2004/jul/21 b.e. - numerous data conversion errors and then final core dump
+;		     so increased stacksize from 10000 to 15000 core dump
+;		     error disappeared
+;		   - added choose statement to select only rec 6
+; 2004/sep/29 b.e.  added doc-nbr, ep-nbr to subfile debug_utl0020a
+; 2006/sep/15 b.e. - split utl0020a.qts into _1 and _2 .. _1 contains the
+;		     original logic while access of all revenue compensation
+;		     codes was put into _2.qts
+; 2006/oct/03 b.e. - added access to PAYEFT trans in f119 to add to tmp file
+; 2006/nov/28 b.e. - added RMAEXR and GST to file
+;
+
+can clear
+
+run download_to_pc_1
+
+set default
+set stacksize 15000
+set verify errors
+set process nolimit
+set lock record update
+
+;-------------------------------------------------------------------------------
+
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+;-------------------------------------------------------------------------------
+request download_doc_1  on edit        errors report &
+                        on calculation errors report
+;
+;-------------------------------------------------------------------------------
+
+access constants-mstr-rec-6                             &
+    	link 22                       			&
+	to   iconst-clinic-nbr-1-2  of iconst-mstr-rec	&
+        link (current-ep-nbr - 1)                       &
+        viaindex f112-ep-doc-nbr                        &
+        to   ep-nbr of f112-pycdceilings                &
+        link doc-nbr of f112-pycdceilings               &
+        to   doc-nbr of f020-doctor-mstr		&
+        link doc-nbr of f112-pycdceilings               &
+        to 	 doc-nbr of f020-doctor-extra opt	&
+        link doc-nbr of f112-pycdceilings,              &
+             "TOTINC"                                   &
+        to   doc-nbr,                                   &
+             comp-code     of f119-doctor-ytd           &
+                        alias f119-totinc       optional&
+        link doc-nbr of f112-pycdceilings,              &
+             "INCEXP"                                   &
+        to   doc-nbr,                                   &
+             comp-code     of f119-doctor-ytd           &
+                        alias f119-incexp       optional&
+        link doc-nbr of f112-pycdceilings,              &
+             "PAYPOT"                                   &
+        to   doc-nbr,                                   &
+             comp-code     of f119-doctor-ytd           &
+                        alias f119-paypot       optional&
+        link doc-nbr of f112-pycdceilings,              &
+             "YTDEAR"                                   &
+        to   doc-nbr,                                   &
+             comp-code     of f119-doctor-ytd           &
+                        alias f119-ytdear       optional&
+        link doc-nbr of f112-pycdceilings,              &
+             "GTYPEA"                                   &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-gtypea       optional&
+        link doc-nbr of f112-pycdceilings,              &
+             "DEPEXM"                                   &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-depexm       optional&
+        link doc-nbr of f112-pycdceilings,              &
+   	     "DEPEXR"                                   &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-depexr       optional&		
+        link doc-nbr of f112-pycdceilings,              &
+   	     "DEPCHR"                                   &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-depchr       optional&
+        link doc-nbr of f112-pycdceilings,              &
+   	     "PAYEFT"                                   &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-payeft       optional&
+        link doc-nbr of f112-pycdceilings,              &
+   	     "RMAEXR"                                   &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-rmaexr       optional&
+        link doc-nbr of f112-pycdceilings,              &
+   	     "GST"                                      &
+        to   doc-nbr,                                   &
+             comp-code    of f119-doctor-ytd            &
+                        alias f119-gst          optional
+
+
+choose const-rec-nbr 6
+
+; remove selection until 'reporting' section where revenue can be
+; checked
+
+;use $use/select_f020_active_for_costing_analysis_period.use
+
+sorted on iconst-clinic-nbr-1-2
+
+def x-current-ep-nbr-minus-1				&
+    =   current-ep-nbr  of constants-mstr-rec-6		&
+      - 1
+
+output tmp-pc-download-file add update
+
+; constants master
+   item current-ep-nbr  final	 x-current-ep-nbr-minus-1
+
+; iconstants master clinic 22
+;   item iconst-date-period-end						&
+;			final	iconst-date-period-end of iconst-mstr-rec     
+   
+; f020 doctor master
+   item doc-nbr 	final	doc-nbr 	of f020-doctor-mstr
+   item doc-name	final 	doc-name 	of f020-doctor-mstr
+   item doc-inits	final	doc-inits	of f020-doctor-mstr		
+   item doc-dept	final	doc-dept	of f020-doctor-mstr		
+   item doc-ohip-nbr	final	doc-ohip-nbr	of f020-doctor-mstr		
+   item doc-sin-nbr	final	doc-sin-nbr	of f020-doctor-mstr		
+   item doc-clinic-nbr	final	doc-clinic-nbr	of f020-doctor-mstr		
+   item doc-spec-cd	final	doc-spec-cd	of f020-doctor-mstr		
+   item doc-yrly-ceiling-computed					  &
+			final	doc-yrly-ceiling-computed of f020-doctor-mstr
+   item doc-date-fac-start					     	  &
+			final	doc-date-fac-start of f020-doctor-mstr
+   item doc-date-fac-term						  &
+			final	doc-date-fac-term of f020-doctor-mstr
+   item doc-full-part-ind						  &
+			final	doc-full-part-ind of f020-doctor-mstr	
+;;  (preset misc text as term date if present)
+;   item text-misc	final	ascii(doc-date-fac-term of f020-doctor-mstr) &
+;	if doc-date-fac-term of f020-doctor-mstr <> 0
+
+; f020 doctor extra
+   item doc-yrly-require-revenue					&
+   			final	doc-yrly-require-revenue of f020-doctor-extra
+
+; f112 paycode ceiling
+    item doc-pay-code		final	doc-pay-code	 of f112-pycdceilings
+    item doc-pay-sub-code	final   doc-pay-sub-code of f112-pycdceilings
+
+; f119 doctor ytd
+   item amt-ytd-totinc	final	amt-ytd of f119-totinc
+   item amt-ytd-incexp	final	amt-ytd of f119-incexp
+
+;;   item amt-ytd-paypot	final	amt-ytd of f119-paypot
+   item amt-mtd-paypot	final	amt-mtd of f119-paypot
+   item amt-ytd-ytdear	final	amt-ytd of f119-ytdear
+
+   item amt-ytd-depexm	final	amt-ytd of f119-depexm
+
+; 2006/oct/20 b.e.
+   item amt-mtd-payeft	final	amt-mtd of f119-payeft
+   item amt-mtd-gtypea	final	amt-mtd of f119-gtypea
+
+
+  item amt-ytd-depexr	final	amt-ytd of f119-depexr
+  item amt-ytd-depchr	final	amt-ytd of f119-depchr
+; 2006/nov/25 added 2 new expense
+  item amt-ytd-rmaexr	final	amt-ytd of f119-rmaexr
+  item amt-ytd-gst	final	amt-ytd of f119-gst
+
+
+subfile utl0020a_parms keep at iconst-clinic-nbr-1-2	&
+ include 						&		
+   x-current-ep-nbr-minus-1
+
+
+;-------------------------------------------------------------------------------
+request download_doc_2 on edit        errors report &
+                        on calculation errors report
+;
+;-------------------------------------------------------------------------------
+
+access f110-compensation						&
+	link 	 6     							&
+	to	 const-rec-nbr of constants-mstr-rec-6			&
+        link doc-nbr of f110-compensation				&
+        to   doc-nbr of f020-doctor-mstr
+
+def x-current-ep-nbr-minus-1				&
+    =   current-ep-nbr  of constants-mstr-rec-6		&
+      - 1
+select 								&
+   if    ep-nbr of f110-compensation 				&
+		= x-current-ep-nbr-minus-1 			&
+     and (   comp-code of f110-compensation = "CEIEXP"		&
+          or comp-code of f110-compensation = "YTDCEX"		&
+         )
+
+;use $use/select_f020_active_for_costing_analysis_period.use
+
+output tmp-pc-download-file add update  alias tmp-ceiexp	&
+  if comp-code of f110-compensation = "CEIEXP"
+; f110 compensation
+    item amt-gross-ceiexp       final   amt-gross of f110-compensation
+
+output tmp-pc-download-file add update  alias tmp-ytdcex	&
+  if comp-code of f110-compensation = "YTDCEX"
+; f110 compensation
+    item amt-net-ytdcex         final   amt-net   of f110-compensation
+
+;-------------------------------------------------------------------------------
+request download_doc_3 on edit        errors report &
+                        on calculation errors report
+;
+;-------------------------------------------------------------------------------
+access f119-doctor-ytd-history                                          &
+        link     6                                                      &
+        to       const-rec-nbr of constants-mstr-rec-6			&
+        link doc-nbr of f119-doctor-ytd-history				&
+        to   doc-nbr of f020-doctor-mstr
+
+def x-current-ep-nbr-minus-1				&
+    =   current-ep-nbr  of constants-mstr-rec-6		&
+      - 1
+def x-last-ep-of-last-fiscal-year zoned*6 =                    	&
+nconvert(ascii (  nconvert(ascii(x-current-ep-nbr-minus-1)[1:4]	&
+                          )                                     &
+               - 1                                              &
+              )                                                 &
+        + "13"							&
+        )
+
+select 								&
+   if    ep-nbr of f119-doctor-ytd-history 			&
+		= x-last-ep-of-last-fiscal-year 		&
+     and comp-code of f119-doctor-ytd-history  = "TOTINC"  
+
+;use $use/select_f020_active_for_costing_analysis_period.use
+
+subfile debug_utl0020a keep include	&
+ doc-nbr of f119-doctor-ytd-history,	&
+ ep-nbr,				&
+ comp-code,				&
+ amt-ytd
+
+output tmp-pc-download-file add update  
+; f119 history
+    item amt-ytd-totinc-end-of-last-fiscal-year			&
+		      final   amt-ytd of f119-doctor-ytd-history 
+
+build $obj/utl0020a_1

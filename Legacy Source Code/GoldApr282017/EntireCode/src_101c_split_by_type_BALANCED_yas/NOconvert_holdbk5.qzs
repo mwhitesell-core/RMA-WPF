@@ -1,0 +1,49 @@
+; DOC: HOLDBK5.QZS
+; DOC: EXTRACT DOC BILL AMOUNT FOR 9501 TO 9507 TOTAL AT DOC-NBR
+;      EXTRACT 10% OF DOC TOTAL KEEP RESULT AT DOC-NBR
+
+; DATE      WHO       MODIFICATION
+; 96/02/08  YASEMIN   ORIGINAL
+;
+;
+;
+cancel clear
+set rep nolimit
+
+access f113-default-comp                                 &
+       link doc-nbr to doc-nbr of f110-compensation opt  &
+       link doc-nbr to doc-nbr of f020-doctor-mstr  opt
+
+choose doc-nbr 856, ep-nbr-from 9509, comp-code 'BILL'
+
+select if     comp-code of f110-compensation = "BILL"  &
+          and factor of f113-default-comp = 009000     &
+          and ep-nbr of f110-compensation le 9508      &
+          and (doc-dept = 9 or doc-dept = 4)
+
+def x-name cha*25 = pack(doc-name +" "+ doc-inits)
+
+def x-percent zoned*8 signed = (amt-gross of f110-compensation / 10) &
+            if (doc-nbr = 856 and ep-nbr of f110-compensation = 9507)
+
+def x-feb856 integer*8 signed = (amt-gross of f110-compensation / 10) &
+            if (doc-nbr = 856 and ep-nbr of f110-compensation = 9508)
+
+
+sort on doc-nbr
+
+set subfile name holdbk5 keep at doc-nbr
+
+report summary                                      &
+comp-code of f110-compensation                      &
+amt-gross of f110-compensation sub reset at doc-nbr &
+amt-net   of f110-compensation sub reset at doc-nbr &
+x-percent                      sub reset at doc-nbr &
+x-feb856                       sub reset at doc-nbr &
+doc-nbr                                             &
+doc-dept                                            &
+x-name
+
+build $pb_obj/holdbk5
+
+  

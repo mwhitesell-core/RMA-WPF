@@ -1,0 +1,278 @@
+;#> PROGRAM-ID.     u014_u015.qts
+;
+;       ((C)) Dyad Infosys Ltd  
+;
+;    PURPOSE: transfer the current status of the f050 revenue files & f050tp files
+;	      to the appropriate history files to keep a snapshot of the
+;	      revenue at the end of the month.  Reset MTD to zero in f050/f050tp & f051 files
+;
+;    MODIFICATION HISTORY
+;     DATE     WHO      DESCRIPTION
+; 2015/Jun/22  M.C.	- original
+;                       - clone/combine from u014_f050.qts, u014_f050tp.qts &
+;			  u015.qts & u015tp.qts
+
+cancel clear
+
+run u014_u015
+
+set default
+set lock record update
+set process nolimit
+
+; define globals for this run
+use $use/get_const_rec_7_values_globals.qts
+
+global temp x-select-monthend       char*1	parm			&
+	prompt "Enter monthend (1,2,3) to be transferred to history: " 
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values.qts
+
+;-------------------------------------------------------------------------------
+;
+request u014_extract_f050                       &
+                on edit        errors report    &
+                on calculation errors report
+
+access f050-doc-revenue-mstr			&
+   link nconvert(docrev-clinic-1-2)		&
+    to iconst-clinic-nbr-1-2  of iconst-mstr-rec
+
+select if iconst-monthend = x-select-monthend
+
+def ped-dd zoned*2 unsigned = mod(iconst-date-period-end of iconst-mstr-rec,100)
+
+;  (PED from constants master has yyyymmdd however each clinic's dd is
+;   different for the same month.
+;   Therefore use hard coded '01' for dd so that each clinics data is 
+;   in effect stored at the yyyymm level and thus monthly values can
+;   be easily obtained across clinic)
+
+def x-iconst-date-period-end date = 					&
+     nconvert(								&
+	         ascii (						&
+		        ( iconst-date-period-end of iconst-mstr-rec	&
+		         /100   					&
+		        )						&
+		       ,6)						&
+    	       + '01'							&
+	     )								&
+        if ped-dd <> 30                                                 &
+; below is for yearend (13th period)
+    else   iconst-date-period-end  of iconst-mstr-rec      
+
+subfile u014_f050 keep include		 &
+     x-iconst-date-period-end		,&
+     f050-doc-revenue-mstr	
+
+
+;-------------------------------------------------------------------------------
+;
+request u014_transfer_f050_to_f050hist          &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access *u014_f050 				&
+  link w-ep-yr,					&
+       x-iconst-date-period-end, 		&
+       docrev-key 				&
+    to ep-yr,					&
+       iconst-date-period-end,			&
+       docrev-key of f050-doc-revenue-mstr-history   opt
+       
+
+;(the 13th monthend processing will use the 'update' action on the output
+; statement to update the 12th monthend values)
+
+output f050-doc-revenue-mstr-history alias f050-hist-add   add 		&	
+  if not record f050-doc-revenue-mstr-history exists
+
+  item ep-yr 			initial w-ep-yr
+  item iconst-date-period-end	initial x-iconst-date-period-end
+
+output f050-doc-revenue-mstr-history update 	&	
+  if     record f050-doc-revenue-mstr-history exists
+
+;(the 13th monthend processing will use the 'update' action on the output
+; statement to update the 12th monthend values for YTD , but subtotal for 
+; MTD
+
+Item DOCREV-MTD-IN-REC  OF f050-doc-revenue-mstr-history subtotal DOCREV-MTD-IN-REC  OF U014_F050
+Item DOCREV-MTD-IN-SVC  OF f050-doc-revenue-mstr-history subtotal DOCREV-MTD-IN-SVC  OF U014_F050
+Item DOCREV-MTD-OUT-REC OF f050-doc-revenue-mstr-history subtotal DOCREV-MTD-OUT-REC OF U014_F050
+Item DOCREV-MTD-OUT-SVC OF f050-doc-revenue-mstr-history subtotal DOCREV-MTD-OUT-SVC OF U014_F050
+Item DOCREV-YTD-IN-REC  OF f050-doc-revenue-mstr-history final DOCREV-YTD-IN-REC  OF U014_F050
+Item DOCREV-YTD-IN-SVC  OF f050-doc-revenue-mstr-history final DOCREV-YTD-IN-SVC  OF U014_F050
+Item DOCREV-YTD-OUT-REC OF f050-doc-revenue-mstr-history final DOCREV-YTD-OUT-REC OF U014_F050
+Item DOCREV-YTD-OUT-SVC OF f050-doc-revenue-mstr-history final DOCREV-YTD-OUT-SVC OF U014_F050
+
+;-------------------------------------------------------------------------------
+
+request u014_extract_f050tp                     &
+                on edit        errors report    &
+                on calculation errors report
+
+access f050tp-doc-revenue-mstr			&
+   link docrevtp-clinic-nbr		        &
+    to iconst-clinic-nbr-1-2  of iconst-mstr-rec
+
+select if iconst-monthend = x-select-monthend
+
+def ped-dd zoned*2 unsigned = mod(iconst-date-period-end of iconst-mstr-rec,100)
+
+;  (PED from constants master has yyyymmdd however each clinic's dd is
+;   different for the same month.
+;   Therefore use hard coded '01' for dd so that each clinics data is 
+;   in effect stored at the yyyymm level and thus monthly values can
+;   be easily obtained across clinic)
+
+def x-iconst-date-period-end date = 					&
+     nconvert(								&
+	         ascii (						&
+                        ( iconst-date-period-end of iconst-mstr-rec     &
+                         /100                                           &
+                        )                                               &
+                       ,6)                                              &
+               + '01'                                                   &
+             )                                                          &
+        if ped-dd <> 30                                                 &
+; below is for yearend (13th period)
+    else   iconst-date-period-end  of iconst-mstr-rec
+
+subfile u014_f050tp keep include	 &
+     x-iconst-date-period-end		,&
+     f050tp-doc-revenue-mstr	
+
+;-------------------------------------------------------------------------------
+;
+request u014_transfer_f050tp_to_f050tphist      &
+                on edit        errors report    &
+                on calculation errors report
+
+access *u014_f050tp 				&
+  link w-ep-yr,					&
+       x-iconst-date-period-end, 		&
+       docrevtp-key 				&
+    to ep-yr,					&
+       iconst-date-period-end,			&
+       docrevtp-key of f050tp-doc-revenue-mstr-history   opt
+       
+
+;(the 13th monthend processing will use the 'update' action on the output
+; statement to update the 12th monthend values)
+
+output f050tp-doc-revenue-mstr-history alias f050tp-hist-add   add 		&	
+  if not record f050tp-doc-revenue-mstr-history exists
+
+  item ep-yr 			initial w-ep-yr
+  item iconst-date-period-end	initial x-iconst-date-period-end
+
+;(the 13th monthend processing will use the 'update' action on the output
+; statement to update the 12th monthend values for YTD , but subtotal for 
+; MTD
+
+output f050tp-doc-revenue-mstr-history update 	&	
+  if     record f050tp-doc-revenue-mstr-history exists
+ 
+  item DOCREVTP-IN-TECH-AMT-BILLED (1)   subtotal DOCREVTP-IN-TECH-AMT-BILLED (1)  of u014_f050tp
+  item DOCREVTP-IN-TECH-AMT-ADJUSTS (1)  subtotal DOCREVTP-IN-TECH-AMT-ADJUSTS (1) of u014_f050tp
+  item DOCREVTP-IN-TECH-NBR-SVC (1)      subtotal DOCREVTP-IN-TECH-NBR-SVC (1)     of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-BILLED (1)   subtotal DOCREVTP-IN-PROF-AMT-BILLED (1)  of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-ADJUSTS (1)  subtotal DOCREVTP-IN-PROF-AMT-ADJUSTS (1) of u014_f050tp
+  item DOCREVTP-IN-PROF-NBR-SVC (1)      subtotal DOCREVTP-IN-PROF-NBR-SVC (1)     of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-BILLED (1)  subtotal DOCREVTP-OUT-TECH-AMT-BILLED (1) of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-ADJUSTS (1) subtotal DOCREVTP-OUT-TECH-AMT-ADJUSTS (1)of u014_f050tp
+  item DOCREVTP-OUT-TECH-NBR-SVC (1)     subtotal DOCREVTP-OUT-TECH-NBR-SVC (1)    of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-BILLED (1)  subtotal DOCREVTP-OUT-PROF-AMT-BILLED (1) of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-ADJUSTS (1) subtotal DOCREVTP-OUT-PROF-AMT-ADJUSTS (1)of u014_f050tp
+  item DOCREVTP-OUT-PROF-NBR-SVC (1)     subtotal DOCREVTP-OUT-PROF-NBR-SVC (1)    of u014_f050tp
+
+  item DOCREVTP-IN-TECH-AMT-BILLED (2)   final DOCREVTP-IN-TECH-AMT-BILLED (2)  of u014_f050tp
+  item DOCREVTP-IN-TECH-AMT-ADJUSTS (2)  final DOCREVTP-IN-TECH-AMT-ADJUSTS (2) of u014_f050tp
+  item DOCREVTP-IN-TECH-NBR-SVC (2)      final DOCREVTP-IN-TECH-NBR-SVC (2)     of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-BILLED (2)   final DOCREVTP-IN-PROF-AMT-BILLED (2)  of u014_f050tp
+  item DOCREVTP-IN-PROF-AMT-ADJUSTS (2)  final DOCREVTP-IN-PROF-AMT-ADJUSTS (2) of u014_f050tp
+  item DOCREVTP-IN-PROF-NBR-SVC (2)      final DOCREVTP-IN-PROF-NBR-SVC (2)     of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-BILLED (2)  final DOCREVTP-OUT-TECH-AMT-BILLED (2) of u014_f050tp
+  item DOCREVTP-OUT-TECH-AMT-ADJUSTS (2) final DOCREVTP-OUT-TECH-AMT-ADJUSTS (2)of u014_f050tp
+  item DOCREVTP-OUT-TECH-NBR-SVC (2)     final DOCREVTP-OUT-TECH-NBR-SVC (2)    of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-BILLED (2)  final DOCREVTP-OUT-PROF-AMT-BILLED (2) of u014_f050tp
+  item DOCREVTP-OUT-PROF-AMT-ADJUSTS (2) final DOCREVTP-OUT-PROF-AMT-ADJUSTS (2)of u014_f050tp
+  item DOCREVTP-OUT-PROF-NBR-SVC (2)     final DOCREVTP-OUT-PROF-NBR-SVC (2)    of u014_f050tp
+
+;-------------------------------------------------------------------------------
+;
+request update_f050 on calculation errors report 		&
+		    on edit errors report
+
+access *u014_f050		&
+	link docrev-key		&
+	 to  docrev-key of f050-doc-revenue-mstr
+
+output f050-doc-revenue-mstr update on errors report
+   item  docrev-mtd-in-rec	final 0
+   item  docrev-mtd-in-svc	final 0
+   item  docrev-mtd-out-rec	final 0
+   item  docrev-mtd-out-svc	final 0
+   
+;-------------------------------------------------------------------------------
+;
+request update_f050tp on calculation errors report 		&
+		      on edit errors report
+
+access *u014_f050tp	  		&
+	link docrevtp-key		&
+	 to  docrevtp-key of f050tp-doc-revenue-mstr
+
+output f050tp-doc-revenue-mstr update on errors report
+   item  docrevtp-in-tech-amt-billed(1)         final 0
+   item  docrevtp-in-tech-amt-adjusts(1)        final 0
+   item  docrevtp-in-tech-nbr-svc(1)            final 0
+   item  docrevtp-in-prof-amt-billed(1)         final 0
+   item  docrevtp-in-prof-amt-adjusts(1)        final 0
+   item  docrevtp-in-prof-nbr-svc(1)            final 0
+   item  docrevtp-out-tech-amt-billed(1)        final 0
+   item  docrevtp-out-tech-amt-adjusts(1)       final 0
+   item  docrevtp-out-tech-nbr-svc(1)           final 0
+   item  docrevtp-out-prof-amt-billed(1)        final 0
+   item  docrevtp-out-prof-amt-adjusts(1)       final 0
+   item  docrevtp-out-prof-nbr-svc(1)           final 0
+
+ 
+;-------------------------------------------------------------------------------
+;
+request update_f051 on calculation errors report 		&
+		    on edit errors report
+
+access f051-doc-cash-mstr	  	 &
+	link nconvert(docash-clinic-1-2) &
+	 to  iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+sel if iconst-monthend = x-select-monthend
+
+output f051-doc-cash-mstr update on errors report
+   item  docash-mtd-in-rec	final 0
+   item  docash-mtd-in-svc	final 0
+
+;-------------------------------------------------------------------------------
+;
+request update_f051tp on calculation errors report              &
+                    on edit errors report
+
+access f051tp-doc-cash-mstr		   &
+	link docashtp-clinic-nbr	   &
+	 to  iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+sel if iconst-monthend = x-select-monthend
+
+output f051tp-doc-cash-mstr update on errors report
+   item  docashtp-tech-in-mtd   final 0
+   item  docashtp-prof-in-mtd   final 0
+   item  docashtp-tech-out-mtd  final 0
+   item  docashtp-prof-out-mtd  final 0
+   
+build $obj/u014_u015

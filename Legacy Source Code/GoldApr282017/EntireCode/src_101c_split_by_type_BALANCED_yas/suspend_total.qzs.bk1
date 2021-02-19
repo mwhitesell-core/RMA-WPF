@@ -1,0 +1,151 @@
+;02/04/02       yas             add clinic 85(represents payroll B)
+;02/08/23       yas             add clinic 95(represents oncology clinic)
+;03/08/23       yasmin          add clinic 91,92,93,94,96
+;04/04/07       MC              alpha doc nbr
+;2004/jun/07    yasemin         add new afp clinic 31-59
+;2004/oct/22    yasemin         add new afp clinic  46 
+;2005/feb/08    yasemin         add new clinic 86
+;2006/jun/01    MC              change the file sequence in access statement
+;				use clmhdr-doc-nbr to link to f020
+;2007/apr/15    yasemin         add new clinics 71-75
+;2007/Nov/20    yasemin         add new clinic 87        
+;2008/April     yasemin         add new clinic 37
+;2008/Oct       yasemin         add new clinic 88
+;2009/Apr       yasemin         add new clinic 89
+;2009/Jun       yasemin         add new clinic 79
+;2009/Jun       yasemin         add new clinic 78
+;2010/Feb       yasemin         add new clinic 66
+;2011/Jan/12    yasemin         add new clinic 23
+;2012/Jan/23    yasemin         add new clinic 24
+;2012/Jun/08    yasemin         add new clinic 25
+;2014/Apr/03    yasemin         add new clinic 69
+;2014/May/06    yasemin         add new clinic 68
+;2014/Oct/17    yasemin         add new clinic 30
+;2015/Mar/10    yasemin         add new clinic 26
+;2016/Apr/11    MC1             correct programming so that do not need to hardcode each new clinic
+
+set rep nolimit
+set rep page length 62
+set rep page width 132
+set rep dev disc name suspend_total
+set formfee
+set noclose
+
+access f002-suspend-dtl                            &
+  link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr  &
+    to clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr  &
+                           of f002-suspend-hdr opt &
+  link clmhdr-doc-nbr                              &
+    to doc-nbr of f020-doctor-mstr opt            
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+select if (   (    clmhdr-status ne clmhdr-status-delete	&
+	       and clmdtl-status ne clmdtl-status-delete	&
+	      ) 						&	
+           and clmhdr-status ne clmhdr-status-ignor		&
+          )
+
+sort on doc-nbr                &
+     on clmhdr-clinic-nbr-1-2  &
+     on clmhdr-doc-spec-cd     &
+     on clmdtl-accounting-nbr  
+
+
+def x-name cha*25 = pack(doc-name+" "+doc-inits)
+
+def x-prov cha*2 =    clmhdr-health-care-prov         &
+                   if clmhdr-health-care-prov ne "ON" &
+                 else " "
+
+def x-mr cha*1 = clmhdr-manual-review if clmhdr-manual-review = "Y"
+
+page heading                   &
+skip 1  tab 1 	sysdate        &
+        tab 20  "VIEW SUSPEND DETAIL" &
+skip 2
+
+heading at doc-nbr        skip 3       &
+tab 1 clmdtl-doc-ohip-nbr pic "^^^^^^"  &
+tab 10 doc-dept fill "0"                &
+tab 13 "/"                              &
+tab 15 doc-nbr pic "^^^"                &
+tab 22 x-name                           &
+Tab 50 "SPECIALY: "                     &
+tab 60 doc-spec-cd                      &
+tab 64 doc-spec-cd-2                    &
+tab 68 doc-spec-cd-3                    &
+tab 72 "CLINICS: "                      &
+tab 81 doc-clinic-nbr                   &
+tab 85 doc-clinic-nbr-2                 &
+tab 89 doc-clinic-nbr-3                 &
+tab 93 doc-clinic-nbr-4                 &
+tab 97 doc-clinic-nbr-5                 &
+tab 101 doc-clinic-nbr-6                &
+skip 2
+
+
+footing at clmhdr-doc-spec-cd                       &
+skip 1 tab 54  "---------"                          &
+skip 1 tab 1   "NO. SVCS:"                          &
+       tab 12  clmdtl-nbr-serv sub pic "^^^^"       &
+       tab 19  "NO. CLMS:"                          &
+       tab 27  count at clmdtl-accounting-nbr       &
+       tab 53  clmdtl-fee-ohip sub pic "^^^,^^^.^^" &
+       tab 66  "(Doctor specialty total)"           &
+skip 1 tab 54  "========="                          &
+       tab 67  "Clinic:"                            &
+       tab 75  clmhdr-clinic-nbr-1-2                &
+       tab 80  "Specialty:"                         &
+       tab 91  clmhdr-doc-spec-cd                   &
+skip 4
+
+footing at clmhdr-clinic-nbr-1-2                    &
+skip 1 tab 54  "---------"                          &
+skip 1 tab 1   "NO. SVCS:"                          &
+       tab 12  clmdtl-nbr-serv sub pic "^^^^"       &
+       tab 19  "NO. CLMS:"                          &
+       tab 27  count at clmdtl-accounting-nbr       &
+       tab 53  clmdtl-fee-ohip sub pic "^^^,^^^.^^" &
+       tab 66  "(Doctor clinic total)"              &
+skip 1 tab 54  "========="                          &
+       tab 67  "Clinic:"                            &
+       tab 75  clmhdr-clinic-nbr-1-2                &
+       tab 80  "Specialty"                          &
+       tab 91  clmhdr-doc-spec-cd                   &
+skip 4
+
+build $obj/suspend_total1
+
+sort on clmhdr-clinic-nbr-1-2  on clmdtl-doc-ohip-nbr on clmdtl-accounting-nbr
+
+page  heading 					 	 &
+        tab 1  "Clinic"                                  &
+        tab 15 "Services"                                &
+        tab 30 "Claims"                                  &
+        tab 52 "Amount"                                  &
+skip 2  tab 1  "======"                                  &
+        tab 15 "========"                                &
+        tab 30 "======"                                  &
+        tab 52 "======"                                  &
+skip 2  
+
+footing at clmhdr-clinic-nbr-1-2			 &
+tab 2   clmhdr-clinic-nbr-1-2				 &
+        tab 17 clmdtl-nbr-serv  sub pic "^^^^^^"         &
+        tab 30 count      at clmdtl-accounting-nbr	 &
+        tab 45 clmdtl-fee-ohip sub pic "^^,^^^,^^^.^^"   &
+skip 2  
+
+final footing						 &
+skip 1  tab 1  "TOTALS"                                  &
+        tab 17 clmdtl-nbr-serv  sub pic "^^^^^^"         &
+        tab 30 count      at clmdtl-accounting-nbr	 &
+        tab 45 clmdtl-fee-ohip sub pic "^^,^^^,^^^.^^"   &
+skip 1  tab 17  "======"                                 &
+        tab 30  "======"                                 &
+        tab 45  "============="                          &
+skip 2
+
+build $obj/suspend_total2

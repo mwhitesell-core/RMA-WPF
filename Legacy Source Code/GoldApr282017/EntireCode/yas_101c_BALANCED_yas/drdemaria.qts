@@ -1,0 +1,94 @@
+;doc     : drdemaria.qts
+;purpose : report billing totals Oct 1 2005 to March 31 2006
+;          April 1 2006 to March 31 2007 and July 1 2006 to June 30 2007
+;who     : Dr. Demaria
+
+
+;Date           Who             Description
+;2008/01/02     Yasemin
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "91739@",                  &
+                                              "94739@",                  &
+                                              "91953@",                  &
+                                              "94953@",                  &
+                                              "91H27@",                  &
+                                              "94H27@",                  &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if    clmhdr-batch-type = 'C'       &
+                          and clmhdr-serv-date >= 20051001  & 
+                          and clmhdr-serv-date <= 20071231    
+
+
+def x-doc-nbr cha*3 = clmhdr-claim-id[3:3]
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile demaria portable keep  include               &
+clmhdr-claim-id                                     ,&
+comma                                               ,&
+x-doc-nbr                                           ,&
+comma                                               ,&
+clmhdr-serv-date                                    ,&
+comma                                               ,&
+clmhdr-date-period-end                              ,&
+comma                                               ,&
+clmhdr-tot-claim-ar-ohip                            ,&
+x-cr
+
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *demaria                   
+
+
+sort on x-doc-nbr          
+
+temp x-oct2005 num*9
+item x-oct2005 = x-oct2005 + clmhdr-tot-claim-ar-ohip    &
+                 if (    clmhdr-serv-date >= 20051001    &
+                     and clmhdr-serv-date <= 20060331    &
+                    )                                    &
+                    reset at x-doc-nbr
+
+
+temp x-apr2006 num*9
+item x-apr2006 = x-apr2006 + clmhdr-tot-claim-ar-ohip    &
+                 if (    clmhdr-serv-date >= 20060401    &
+                     and clmhdr-serv-date <= 20070331    &
+                    )                                    &
+                    reset at x-doc-nbr
+
+temp x-jul2006 num*9
+item x-jul2006 = x-jul2006 + clmhdr-tot-claim-ar-ohip    &
+                 if (    clmhdr-serv-date >= 20060701    &
+                     and clmhdr-serv-date <= 20070630    &
+                    )                                    &
+                    reset at x-doc-nbr
+
+subfile demaria1 portable keep at x-doc-nbr include              &
+x-doc-nbr                                           ,&
+comma                                               ,&
+x-oct2005                                           ,&
+comma                                               ,&
+x-apr2006                                           ,&
+comma                                               ,&
+x-jul2006                                           ,&
+x-cr
+
+
+build $obj/drdemaria

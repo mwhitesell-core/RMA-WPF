@@ -1,0 +1,152 @@
+
+;#> PROGRAM-ID.     r010daily.qzs  
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :update doc revenue/cash mstr from balanced batches
+;		     : second pass of u010daily.qts
+
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2001/Oct/11 M.C.         - ORIGINAL (convert from u010daily.cbl)
+;			     'C'ash type 'P'ayments, update cash only
+;			     'M'isc type 'P'ayments, update cash and revenue
+;			     and all others update revenue only
+;   2003/dec/11 A.A.	     - alpha doctor nbr
+;   2016/Feb/23 MC1	     - change field size for display at final footing
+
+
+can clear
+
+set report  nolimit
+set rep dev disc  name r010daily
+set rep page length 60 width 132
+set formfeed
+set noclose
+
+access *r010daily      							&
+;!	link (batctrl-batch-nbr / 10000000)				&
+	link (nco(batctrl-batch-nbr[1:2]))				&
+         to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+sorted on iconst-clinic-nbr-1-2
+
+def x-cash-paid zoned*8 signed = 0 - batctrl-manual-pay-tot             & 
+	if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'		&
+	else batctrl-manual-pay-tot   
+
+def x-batch-calc zoned*8 signed = x-cash-paid + batctrl-calc-tot-rev     
+
+def x-clm-update zoned*8 signed = x-cash-upd  + x-rev-upd  
+
+def x-diff zoned*8 signed = x-batch-calc - x-clm-update
+
+
+page heading							&
+	tab 1  'r010daily / '					&
+	tab 13 iconst-clinic-nbr-1-2				&
+	tab 17 'CYCLE '						&
+	tab 23 iconst-clinic-cycle-nbr				&
+	tab 40 'DOCTOR REVENUE FILE UPDATE SUMMARY'		&
+	tab 90 'PERIOD END '					&
+	tab 102 iconst-date-period-end				&
+	tab 125 'PAGE'						&
+	tab 130 syspage pic '^^'				&
+skip 2	tab 50  iconst-clinic-name				&
+skip 2	tab 1   '  BATCH'					&
+	tab 16 'AGENT  NBR'					&
+	tab 28 'CYCLE'						&
+	tab 36 'PERIOD'						&
+	tab 48 'EFFECT ON'					&
+	tab 61 'EFFECT ON'					&
+	tab 74 'EFFECT ON'					&
+	tab 87 'REVENUE FILE'					&
+	tab 102 'CASH FILE'					&
+	tab 117 'DIFFERENCE'					&
+skip 1  tab 1  '  NUMBER'					&
+	tab 11 'DP'      					&
+	tab 16 '& ADJ  RECS'					&
+	tab 29 'NBR'						&
+	tab 34 'END DATE'					&
+	tab 48 'A/R CALCD'					&
+	tab 61 'REV CALCD'					&
+	tab 74 'CASH PAID'					&
+	tab 87 'UPDATE AMOUNT'					&
+	tab 102 'UPDATE AMOUNT'					&
+skip 2
+
+
+
+report									&
+	tab 1    batctrl-batch-nbr  pic '^^^^^^^^^' 			&
+	tab 10   '/'							&
+	tab 11 	clmhdr-doc-dept	significance 2				&
+	tab 16  batctrl-agent-cd					&
+	tab 18  batctrl-adj-cd						&
+	tab 23  x-nbr-processed	pic '^^^'				&
+	tab 29	batctrl-cycle-nbr					&
+	tab 34	batctrl-date-period-end	pic '^^^^/^^/^^'  		&
+	tab 48  batctrl-calc-ar-due	pic '^^^,^^^.^^ ' trail '-'	&
+	tab 61  batctrl-calc-tot-rev	pic '^^^,^^^.^^ ' trail '-'	&
+	tab 74  x-cash-paid	pic '^^^,^^^.^^ ' trail '-'		&
+	tab 89  x-rev-upd       pic '^^^,^^^.^^ ' trail '-'		&
+	tab 102 x-cash-upd 	pic '^^^,^^^.^^ ' trail '-'		&
+	tab 117 x-diff          pic '^^^,^^^.^^ ' trail '-'	bwz	&
+skip 2
+
+footing at iconst-clinic-nbr-1-2						&
+	tab 1   'CLINIC TOTALS'							&
+	tab 48  batctrl-calc-ar-due	subt  pic '^^^,^^^.^^ ' trail '-'	&
+	tab 61  batctrl-calc-tot-rev	subt  pic '^^^,^^^.^^ ' trail '-'	&
+	tab 74  x-cash-paid	subt  pic '^^^,^^^.^^ ' trail '-'		&
+	tab 89  x-rev-upd       subt  pic '^^^,^^^.^^ ' trail '-'		&
+	tab 102 x-cash-upd 	subt  pic '^^^,^^^.^^ ' trail '-'		&
+	tab 117 x-diff          subt  pic '^^^,^^^.^^ ' trail '-'	bwz	&
+skip page
+
+final footing              	 						&
+	tab 1  'r010daily   '					&
+	tab 17 'CYCLE '						&
+	tab 23 iconst-clinic-cycle-nbr				&
+	tab 40 'DOCTOR REVENUE FILE UPDATE SUMMARY'		&
+	tab 90 'PERIOD END '					&
+	tab 102 iconst-date-period-end				&
+	tab 125 'PAGE'						&
+	tab 130 syspage pic '^^'				&
+skip 2	tab 50  iconst-clinic-name				&
+skip 2	tab 48 'EFFECT ON'					&
+	tab 61 'EFFECT ON'					&
+	tab 74 'EFFECT ON'					&
+	tab 87 'REVENUE FILE'					&
+	tab 102 'CASH FILE'					&
+	tab 117 'DIFFERENCE'					&
+skip 1	tab 48 'A/R CALCD'					&
+	tab 61 'REV CALCD'					&
+	tab 74 'CASH PAID'					&
+	tab 87 'UPDATE AMOUNT'					&
+	tab 102 'UPDATE AMOUNT'					&
+skip 3  tab 1   'FINAL  TOTALS'							&
+; MC1
+;	tab 46  batctrl-calc-ar-due	subt  pic '^,^^^,^^^.^^ ' trail '-'	&
+;	tab 59  batctrl-calc-tot-rev	subt  pic '^,^^^,^^^.^^ ' trail '-'	&
+	tab 46  batctrl-calc-ar-due	subt  pic '^^^^^,^^^.^^ ' trail '-'	&
+	tab 59  batctrl-calc-tot-rev	subt  pic '^^^^^,^^^.^^ ' trail '-'	&
+	tab 72  x-cash-paid	subt  pic '^,^^^,^^^.^^ ' trail '-'		&
+;	tab 87  x-rev-upd       subt  pic '^,^^^,^^^.^^ ' trail '-'		&
+	tab 87  x-rev-upd       subt  pic '^^^^^,^^^.^^ ' trail '-'		&
+; MC1 - end
+	tab 100 x-cash-upd 	subt  pic '^,^^^,^^^.^^ ' trail '-'		&
+	tab 115 x-diff          subt  pic '^,^^^,^^^.^^ ' trail '-'	bwz	&
+skip 3     
+
+build $pb_obj/r010daily_1
+
+access *extf001aa
+
+final footing					&
+skip 2  tab 1  "FINAL 'A' TYPE ADJ"		&
+	tab 46 batctrl-calc-ar-due  subt  pic '^,^^^,^^^.^^ ' trail '-'       &
+skip 2
+
+build $pb_obj/r010daily_2
+

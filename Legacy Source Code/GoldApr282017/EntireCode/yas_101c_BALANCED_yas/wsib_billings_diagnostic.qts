@@ -1,0 +1,154 @@
+;program : wsib_billings_diagnostic.qts  
+;purpose : WSIB billing R gnostic clinics (clinic 61 to 66 & clinic 71 to 75)   and agent 2 only
+;who     : For Prosenjit Bose                      
+
+;
+; *************************************************************
+
+;Date		Who	       Description
+;2014/Jul/21    MC 	       write for Yasemin request       
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr '61@' to '66@', '71@' to '75@',  &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'    
+
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'             &   
+			  and      clmhdr-agent-cd = 2 		       &	
+			  and (    clmhdr-serv-date >= 20130701	       &
+			       and clmhdr-serv-date <= 20140630	       &
+		  	      )               
+
+
+subfile clmhdr_ext_diag   keep include     &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+clmhdr-pat-ohip-id-or-chart	     ,&
+clmhdr-tot-claim-ar-ohip	     ,&
+clmhdr-manual-and-tape-payments	     ,&
+clmhdr-submit-date		     ,&
+clmhdr-date-cash-tape-payment	     ,&
+clmhdr-status-ohip
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *clmhdr_ext_diag                                           &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr         &
+          of f002-claims-mstr
+
+select f002-claims-mstr if                   &
+            clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "MICA"     &
+       and  clmdtl-oma-cd      <> "MICC"     &
+       and  clmdtl-oma-cd      <> "MICD"     &
+       and  clmdtl-oma-cd      <> "MICE"     &
+       and  clmdtl-oma-cd      <> "MICF"     &
+       and  clmdtl-oma-cd      <> "MICG"     &
+       and  clmdtl-oma-cd      <> "MICH"     &
+       and  clmdtl-oma-cd      <> "MICJ"     &
+       and  clmdtl-oma-cd      <> "MICK"     &
+       and  clmdtl-oma-cd      <> "MICL"     &
+       and  clmdtl-oma-cd      <> "MOHR"     & ; exclude MOHR 
+       and  clmdtl-oma-cd      <> "AGEP"     & ; exclude AGEP
+       and  clmdtl-oma-cd      <> "T995"     & ; clinic 60 prof fees
+       and  clmdtl-adj-nbr     =  0	       ; regular claim detail only 
+
+
+subfile clmhdrdtl_ext_diag   keep include           &
+clmdtl-id             		of f002-claims-mstr,&
+key-clm-batch-nbr     		of f002-claims-mstr,&
+key-clm-claim-nbr     		of f002-claims-mstr,&
+clmhdr-pat-ohip-id-or-chart	of clmhdr_ext_diag ,&
+clmhdr-tot-claim-ar-ohip	of clmhdr_ext_diag ,&
+clmhdr-manual-and-tape-payments of clmhdr_ext_diag ,&
+clmhdr-submit-date		of clmhdr_ext_diag ,&
+clmhdr-date-cash-tape-payment	of clmhdr_ext_diag ,&
+clmhdr-status-ohip		of clmhdr_ext_diag ,&
+clmdtl-fee-ohip                  
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *clmhdrdtl_ext_diag                                              
+
+def claim-nbr char*10 = key-clm-batch-nbr +  ascii(key-clm-claim-nbr,2)
+
+sorted on claim-nbr
+
+temp billed-amt num*7
+item billed-amt = billed-amt +  clmdtl-fee-ohip    &
+                  reset at claim-nbr
+
+subfile claim_total_diag  keep at claim-nbr  include	    &
+claim-nbr     		        	           ,&
+clmhdr-pat-ohip-id-or-chart       	           ,&
+clmhdr-tot-claim-ar-ohip	                   ,&
+clmhdr-manual-and-tape-payments              	   ,&
+clmhdr-submit-date		     		   ,&
+clmhdr-date-cash-tape-payment	     		   ,&
+clmhdr-status-ohip				   ,&
+billed-amt 
+
+request four                            &
+        on edit        errors report    &
+        on calculation errors report
+
+access *claim_total_diag		&                                             
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr opt     
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile claim_info_diag  portable keep   include     &
+claim-nbr                                           ,&
+comma                                               ,&
+pat-surname                                         ,&
+comma                                               ,&
+pat-given-name                                      ,&
+comma                                               ,&
+pat-health-nbr                                      ,&
+comma                                               ,&
+pat-version-cd                                      ,&
+comma                                               ,&
+clmhdr-submit-date		       	            ,&
+comma                                               ,&
+clmhdr-date-cash-tape-payment	     		    ,&
+comma                                               ,&
+billed-amt                                          ,&
+comma                                               ,&
+clmhdr-manual-and-tape-payments                     ,&
+comma                                               ,&
+clmhdr-status-ohip				    ,&
+x-cr
+
+build $obj/wsib_billings_diagnostic

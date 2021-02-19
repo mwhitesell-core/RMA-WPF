@@ -1,0 +1,15 @@
+copy NEWU706A.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy NEWU706A.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy NEWU706A.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy NEWU706A.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U014_U015.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U030B_PART2.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U035C.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U115A_0.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U115A_0.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U115A_0.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U115A_0.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U115A_1.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U115A_1.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U116_POP_EXCL_DTL.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp
+copy U210.qts C:\Clients\RMA\GoldApr282017\ParsedCode\moira_101\qtp

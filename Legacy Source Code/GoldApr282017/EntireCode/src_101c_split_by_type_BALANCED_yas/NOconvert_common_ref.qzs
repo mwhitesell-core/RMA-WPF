@@ -1,0 +1,101 @@
+; DOC: COMMON-REF.QZS
+; DOC: MOST COMMON REFFERING PHYSICIANS USED
+; DOC: RUN FOR: THEKLA
+;
+;PROGRAM PURPOSE : MOST COMMON REFFERING PHYSICIANS USED
+;
+;
+;DATE       BY WHOM   DESCRIPTION
+;95/06/05   YASEMIN   ORIGINAL
+;
+; 2003/dec/11 A.A.	- alpha doctor nbr
+;
+can clear
+set default
+set report nolimit
+
+access f002-claims-mstr
+
+choose key-clm-type 'B'
+
+sel f002-claims-mstr if     clmhdr-oma-suff-adj = '000000'  &
+                        and clmhdr-batch-type = 'C'
+
+set subfile name ref1 keep
+
+report summary   &
+clmhdr-claim-id  &
+clmhdr-refer-doc-nbr
+
+build $pb_obj/ref1
+
+
+can clear
+set default
+set report nolimit
+
+access *ref1
+
+;!def x-docnbr cha*3 = clmhdr-claim-id[4:3]
+def x-docnbr cha*3 = clmhdr-claim-id[3:3]
+def x-count num*1 = 1
+
+sort on x-docnbr on clmhdr-refer-doc-nbr
+
+set subfile name ref2 keep at clmhdr-refer-doc-nbr
+
+report summary  &
+x-docnbr        &
+clmhdr-refer-doc-nbr &
+x-count subtotal
+
+build $pb_obj/ref2
+
+can clear
+set default
+set report nolimit
+set report device disc name ref
+set page length 60 width 132
+set formfeed
+
+access *ref2     &
+;!  link (nconvert(x-docnbr)) to doc-nbr of f020-doctor-mstr opt &
+  link x-docnbr to doc-nbr of f020-doctor-mstr opt &
+  link clmhdr-refer-doc-nbr to doc-ohip-nbr of f020-doctor-mstr alias f020-reffer opt
+
+;SELECT IF CLMHDR-REFER-DOC-NBR NE 0
+
+def x-name cha*30 =pack(doc-name +" "+ doc-inits)
+
+def x-ref-name cha*30 = pack(doc-name of f020-reffer +" "+ doc-inits of f020-reffer)
+
+sort on x-docnbr on x-count d on clmhdr-refer-doc-nbr
+
+page heading &
+skip 1  tab 1   "COMMON_REF.QZS"         &
+        tab 23  "REFERRING DR. NBR'S USED" &
+        tab 66  syspage                  &
+skip 3
+
+heading at x-docnbr  skip page  &
+        tab 1  "***"            &
+;!        tab 5  doc-nbr fill '0' &
+        tab 5  doc-nbr          &
+        tab 10 "DR."            &
+        tab 14 x-name           &
+skip 2  tab 1  "REFERRING DR. NBR"  &
+        tab 45 "NBR TIMES USED"     &
+skip 1  tab 1  "-----------------"  &
+        tab 45 "--------------"     &
+skip 2
+
+footing at clmhdr-refer-doc-nbr          &
+skip 1   tab 1  clmhdr-refer-doc-nbr fill "0" pic "^^^^^^" &
+         tab 11 x-ref-name  &
+         tab 49 x-count pic "^^^^^"      &
+skip 2
+
+build $pb_obj/ref3
+
+
+  

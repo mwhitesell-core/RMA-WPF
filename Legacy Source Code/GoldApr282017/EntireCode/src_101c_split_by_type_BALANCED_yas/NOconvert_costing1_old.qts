@@ -1,0 +1,391 @@
+
+;99/06/02 M. Chan	- Yasemin asks to increase the size of nbr-svc,
+;			  nbr-dtl, nbr-clm  from 4 to 6
+;99/06/08 M. Chan	- Yasemin asks to apply tech-ind <> 'Y' for clinic
+;			  60 to 65 claims only  , add a new column man reject
+;			- add request seven to extract man reject from manual
+;			  rejected claims history file
+
+
+cancel clear
+set lock file update
+set process nolimit
+
+
+; DOC: costing1.qzs   
+; DOC: 
+; DOC:  
+; DOC: RUN FOR: Created for Chris Costanza     
+;
+;PROGRAM PURPOSE : report number of claims and nbr of services
+;                  sort by clinic/dept/doc#
+
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;99/01/07   YASEMIN      ORIGINAL
+;99/05/28   M. Chan      exclude technical oma fee code
+;			 include all active doctors
+
+request one     &
+	on calculation errors report	&
+	on edit errors report
+
+access f002-claims-mstr         &
+        link (nconvert(clmhdr-claim-id[4:3]))   &
+        to doc-nbr of f020-doctor-mstr 	        &
+        link clmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr,	&
+	key-clm-serv-code, key-clm-adj-nbr '0'
+
+
+
+select f002-claims-mstr if                      &
+	        clmdtl-date-period-end >= '980701'	&
+           and  clmdtl-date-period-end <= '990630'	&
+           and  clmdtl-oma-cd      <> "0000"    & ; details only
+           and  clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+           and  clmdtl-oma-cd      <> "PAID"    & ; details only
+           and  clmdtl-oma-cd      <> "MICM"    & ; details only
+           and  clmdtl-oma-cd      <> "MISJ"    & ; details only
+           and  clmdtl-oma-cd      <> "MISC"    & ; details only
+           and  clmdtl-oma-cd      <> "MICV"    & ; details only
+           and  clmdtl-oma-cd      <> "MISP"    & ; details only
+	   and  clmdtl-adj-nbr	   = 0		  ; regular details only
+
+select   f020-doctor-mstr if    doc-date-fac-term = 000000         &
+		             or doc-date-fac-term > 990630
+
+select if (fee-tech-ind <> 'Y' and clmdtl-id[1:2] >= '60' and 	&
+				   clmdtl-id[1:2] <= '65') 	&
+       or clmdtl-id[1:2] < '60' or clmdtl-id[1:2] >  '65'
+
+;def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '  '    &
+                   else 0 
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)                    &
+                     if    clmdtl-consecutive-sv-days(2)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '  '    &
+                   else 0 
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)                    &
+                     if    clmdtl-consecutive-sv-days(3)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '  '    &
+                   else 0 
+
+def x-claims char*16 = clmdtl-id[1:16]
+
+sorted on x-claims
+
+temp x-nbr-svcs zoned*4 unsigned
+item x-nbr-svcs = x-nbr-svcs       + x-sv-nbr1 &
+                                   + x-sv-nbr2 & 
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4 &
+	reset at x-claims
+
+subfile costing1 keep at x-claims 	&
+include         &
+doc-nbr        ,&
+doc-name	,&
+doc-inits	,&
+doc-dept	,&
+doc-clinic-nbr	,&
+x-claims        ,&
+clmdtl-id       ,&
+x-nbr-svcs 
+;
+;PROGRAM PURPOSE : report number of claims and nbr of services
+;                  sort by clinic/dept/doc#
+
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;99/01/07   YASEMIN      ORIGINAL
+;99/03/28   YASEMIN      add count (each detail of claim) 
+;
+request two	&
+	on calculation errors report	&
+	on edit errors report
+
+access *costing1    
+
+def x-claim-nbr-only char*11 = x-claims[1:11]
+
+sort on doc-nbr   &
+     on x-claim-nbr-only
+
+temp nbr-svc zoned*6 unsigned
+item nbr-svc = nbr-svc + x-nbr-svcs  reset at doc-nbr
+ 
+temp nbr-clm zoned*6 unsigned 
+item nbr-clm = nbr-clm + 1 at x-claim-nbr-only reset at doc-nbr
+
+temp nbr-dtl zoned*6 unsigned
+item nbr-dtl = nbr-dtl + 1  reset at doc-nbr
+ 
+def nbr-reject zoned*4 unsigned = 0
+
+def amt-ytd      zoned*8 signed = 0 
+def misc-amt-ytd zoned*8 signed = 0 
+def mohr-amt-ytd zoned*8 signed = 0 
+def total-amt-ytd zoned*8 signed = 0
+def man-reject   zoned*6 unsigned = 0
+
+subfile costing2 keep append at doc-nbr  &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+	 doc-clinic-nbr,		    &
+         nbr-svc,                         & 
+         nbr-clm,                         &
+         nbr-dtl,                         &   
+         nbr-reject,			  &
+         amt-ytd,			  &
+	 misc-amt-ytd,			  & 
+	 mohr-amt-ytd,			  & 
+	 total-amt-ytd,			  &
+	 man-reject
+
+  
+;
+;PROGRAM PURPOSE : report if reason code not blank by doc number
+
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;99/03/28   YASEMIN      ORIGINAL
+;
+
+request three		&
+	on calculation errors report	&
+	on edit errors report
+
+access f002-claims-mstr		&
+	link (nconvert(clmhdr-claim-id[4:3]))	&
+	to doc-nbr of f020-doctor-mstr          &
+	link clmhdr-status-ohip to rat-code of f096-ohip-pay-code opt
+
+;select headers only
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, &
+	key-clm-serv-code '00000', key-clm-adj-nbr '0'   
+
+select f002-claims-mstr if 			&
+	     clmhdr-date-period-end >= 980701	& ; within range
+        and  clmhdr-date-period-end <= 990630   &
+	and  clmhdr-status-ohip <> "  "		& ;rejection
+	and  clmhdr-status-ohip <> "00"          &
+        and  clmhdr-status-ohip <> "EV"          &
+        and  clmhdr-status-ohip <> "40"          &
+        and  clmhdr-status-ohip <> "48"          &
+        and  clmhdr-status-ohip <> "51"          &
+        and  clmhdr-status-ohip <> "I5"          &
+        and  clmhdr-status-ohip <> "80"          &
+        and (clmhdr-status-ohip <> "35" or (clmhdr-doc-dept = 5   &
+                                         or clmhdr-doc-dept = 2))                                                           
+
+select f020-doctor-mstr  if 			&
+	doc-date-fac-term = 000000 or doc-date-fac-term > 990630
+
+select if not record f096-ohip-pay-code exists                    
+                              
+; def x-doc-nbr  char*3  = clmhdr-claim-id[4:3]	
+  def x-claim-id char*11 = clmhdr-claim-id[1:11] 
+; def x-claim-id char*11 = clmhdr-claim-id[4:11] 
+
+def nbr-svc zoned*6 unsigned = 0
+def nbr-clm zoned*6 unsigned = 0
+def nbr-dtl zoned*6 unsigned = 0
+
+sort   on doc-nbr	&
+       on x-claim-id
+
+temp nbr-reject zoned*4 unsigned
+item nbr-reject = nbr-reject + 1  reset at doc-nbr
+
+def amt-ytd      zoned*8 signed = 0 
+def misc-amt-ytd zoned*8 signed = 0 
+def mohr-amt-ytd zoned*8 signed = 0 
+def total-amt-ytd zoned*8 signed = 0
+
+def man-reject   zoned*6 unsigned = 0
+
+subfile costing2 keep append at doc-nbr  &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+	 doc-clinic-nbr,		    &
+         nbr-svc,                         & 
+         nbr-clm,                         &
+         nbr-dtl,                         &   
+         nbr-reject,			  &
+         amt-ytd,			  &
+	 misc-amt-ytd,			  & 
+	 mohr-amt-ytd,			  & 
+	 total-amt-ytd,			  &
+	 man-reject
+
+  
+request four
+
+access f050-doc-revenue-mstr
+sort on docrev-doc-nbr on docrev-clinic-1-2 d
+subfile docclinic keep at docrev-doc-nbr	&
+include docrev-doc-nbr, docrev-clinic-1-2, docrev-key
+
+request five
+
+access *docclinic
+subfile f050_22 keep if docrev-clinic-1-2 = '22'	&
+	include docclinic
+subfile f050_not_22 keep if docrev-clinic-1-2 <> '22'	&
+	include docclinic
+
+
+; DOC: costrev.qzs
+; DOC: 
+; DOC: 
+; DOC: RUN FOR: run for Chris Costanza
+;
+;PROGRAM PURPOSE : all clinics doc ytd revenue for 1998
+;                 
+;
+;DATE       BY WHOM   DESCRIPTION
+;99/03/26   YASEMIN   ORIGINAL
+;
+;
+request six   				&
+	on calculation errors report	&
+	on edit errors report
+
+
+access f050-doc-revenue-mstr                             &
+  link docrev-doc-nbr 					 &
+    to doc-nbr of f020-doctor-mstr   
+
+choose docrev-key '22@'
+
+select   f020-doctor-mstr if    doc-date-fac-term = 000000         &
+                             or doc-date-fac-term > 990630
+
+sort on docrev-doc-nbr
+
+def nbr-svc zoned*6 unsigned = 0
+def nbr-clm zoned*6 unsigned = 0
+def nbr-dtl zoned*6 unsigned = 0
+def nbr-reject zoned*4 unsigned = 0
+
+ 
+temp amt-ytd     zoned*8 signed 
+item amt-ytd = amt-ytd +  docrev-ytd-in-rec + docrev-ytd-out-rec &
+                if docrev-location ne "MISC"	&
+               		reset at docrev-doc-nbr
+
+temp misc-amt-ytd zoned*8 signed 
+item misc-amt-ytd = misc-amt-ytd + docrev-ytd-out-rec  &
+             if docrev-location = "MISC" and docrev-oma-code ne "MOHR"  &
+               		reset at docrev-doc-nbr
+
+temp mohr-amt-ytd zoned*8 signed 
+item mohr-amt-ytd = mohr-amt-ytd + docrev-ytd-out-rec  &
+               if docrev-location = "MISC" and docrev-oma-code = "MOHR"  &
+               		reset at docrev-doc-nbr
+
+def total-amt-ytd zoned*8 signed= amt-ytd + misc-amt-ytd + mohr-amt-ytd
+
+def man-reject   zoned*6 unsigned = 0
+
+
+
+subfile costing2 keep append at docrev-doc-nbr  &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+	 doc-clinic-nbr,		    &
+         nbr-svc,                         & 
+         nbr-clm,                         &
+         nbr-dtl,                         &   
+         nbr-reject,			  &
+         amt-ytd,			  &
+	 misc-amt-ytd,			  & 
+	 mohr-amt-ytd,			  & 
+	 total-amt-ytd,			  &
+	 man-reject
+
+  
+;PROGRAM PURPOSE : all manual rejected claims history
+;                 
+;
+;DATE       BY WHOM   DESCRIPTION
+;99/06/08   M. Chan   ORIGINAL
+;
+;
+request seven 				&
+	on calculation errors report	&
+	on edit errors report
+
+
+access manual-rejected-claims-hist                       &
+  link clmhdr-doc-nbr 					 &
+    to doc-nbr of f020-doctor-mstr   
+
+choose clmhdr-doc-nbr  
+
+select   f020-doctor-mstr if    doc-date-fac-term = 000000         &
+                             or doc-date-fac-term > 990630
+
+sorted on clmhdr-doc-nbr
+
+def nbr-svc zoned*6 unsigned = 0
+def nbr-clm zoned*6 unsigned = 0
+def nbr-dtl zoned*6 unsigned = 0
+def nbr-reject zoned*4 unsigned = 0
+
+def amt-ytd     zoned*8 signed = 0 
+def misc-amt-ytd zoned*8 signed = 0 
+def mohr-amt-ytd zoned*8 signed = 0 
+def total-amt-ytd zoned*8 signed = 0
+
+temp man-reject  zoned*6 unsigned 
+item man-reject  = man-reject + 1 reset at clmhdr-doc-nbr
+
+subfile costing2 keep append at clmhdr-doc-nbr  &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+	 doc-clinic-nbr,		    &
+         nbr-svc,                         & 
+         nbr-clm,                         &
+         nbr-dtl,                         &   
+         nbr-reject,			  &
+         amt-ytd,			  &
+	 misc-amt-ytd,			  & 
+	 mohr-amt-ytd,			  & 
+	 total-amt-ytd,			  &
+	 man-reject
+
+  
+
+
+build costing

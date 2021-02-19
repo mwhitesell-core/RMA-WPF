@@ -1,0 +1,75 @@
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd          &
+  link doc-nbr to doc-nbr       &
+    of f020-doctor-mstr opt
+
+choose doc-nbr, comp-code, rec-type 'A'
+
+select if  (comp-code = "TITHE1" and amt-ytd ne 0)     &  
+and        doc-dept = 04 	                       &
+or  (      doc-afp-paym-group = "H111"                 &
+      and (doc-dept = 14 or doc-dept = 15)	       &	
+    )                                                 
+
+sorted on doc-nbr                   
+
+temp x-tithe1     zoned*9 numeric
+item x-tithe1    = x-tithe1 + amt-ytd/100     &
+                    if comp-code =  "TITHE1"  &
+                    reset at doc-nbr
+
+temp x-tithe2     zoned*9 numeric
+item x-tithe2    = x-tithe2 + amt-ytd/100     &
+                    if comp-code =  "TITHE2"  &
+                    reset at doc-nbr
+
+temp x-tithe3     zoned*9 numeric
+item x-tithe3    = x-tithe3 + amt-ytd/100     &
+                    if comp-code =  "TITHE3"  &
+                    reset at doc-nbr
+
+temp x-depmem     zoned*9 numeric
+item x-depmem    = x-depmem + amt-ytd/100     &
+                    if comp-code =  "DEPMEM"  &
+                    reset at doc-nbr
+
+temp x-incexp     zoned*9 numeric
+item x-incexp    = x-incexp + amt-mtd/100     &
+                    if comp-code =  "INCEXP"  &
+                    reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile f119tithe  portable keep at doc-nbr include  &
+doc-afp-paym-group  of f020-doctor-mstr             ,&
+comma                                               ,&
+doc-nbr             of f020-doctor-mstr             ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+Doc-inits                                           ,&
+comma                                               ,&
+x-tithe1                                            ,&
+comma                                               ,&
+x-tithe2                                            ,&
+comma                                               ,&
+x-tithe3                                            ,&
+comma                                               ,&
+x-depmem                                            ,&
+comma                                               ,&
+x-incexp                                            ,&
+x-cr
+
+build $obj/f119tithe

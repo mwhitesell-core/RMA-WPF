@@ -1,0 +1,112 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE M010_CRM.QKS
+COMMENT "2013/may/02 MC m010_crm.qks"
+COMMENT "- allow user to create notes for different action"
+COMMENT "- this program can be called from m010.qks from designer 'note'"
+COMMENT "or d003.cbl from option 'B'"
+CANCEL CLEAR
+SCREEN $OBJ/M010_CRM RECEIVING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR, W-CALL-PGM
+DESCRIPTION OF SCREEN "                                                                      " "       This screen allows user to create notes for different action   " "       or event.                                                      " "       This screen is called either from m010.qks from designer 'note'" "       or is called from d003.cbl from option 'B'.                    " "                                                                      " "       'Date' will be set to the system run date automatically.       " "       If notes are entered from patient screen, then claim nbr       " "       will be blank.  If notes are entered from claim query screen,  " "       then claim nbr should be the same as the claim nbr from d003.  " "                                                                      " "       The seq nbr will assign   automatically by the sequence you    " "       enter the notes starting 1,2,3 ,etc as number of lines for     " "       each action in 'E'nter or 'A'ppend mode.                       " "                                                                      "
+TEMP W-PAT-IKEY CHAR*15
+TEMP W-BATCH-NBR CHAR*8
+TEMP W-CLAIM-NBR ZONED*2 UNSIGNED
+TEMP W-CALL-PGM CHAR*4
+TEMP W-PAT-NAME CHAR*25
+TEMP DTL-SEQ-NBR ZONED*8 INITIAL 0
+TEMP W-TIME ZONED*6
+FILE F010-PAT-MSTR DESIGNER
+ACCESS VIAINDEX KEY-PAT-MSTR USING W-PAT-IKEY
+FILE F010-CRM OCCURS 15
+ACCESS VIA KEY-PAT-MSTR, CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR USING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR
+ITEM KEY-PAT-MSTR INITIAL W-PAT-IKEY
+ITEM CLMHDR-BATCH-NBR INITIAL W-BATCH-NBR
+ITEM CLMHDR-CLAIM-NBR INITIAL W-CLAIM-NBR
+ITEM GHOST-DATE-DESCENDING INITIAL (20991231 - SYSDATE)
+ITEM DATE-ASSIGNED INITIAL SYSDATE
+ITEM TIME-ASSIGNED INITIAL (1000000 - (SYSTIME / 100))
+SKIP 1
+ALIGN (,4,14) (,35,47)
+FIELD W-PAT-IKEY DISPLAY LABEL 'Pat ID: '
+FIELD W-PAT-NAME DISPLAY LABEL 'Pat Name: '
+COMMENT "title     DATE       Action  Seq#     Description   at 5,1"
+TITLE "   Date        Claim Nbr  Action  Seq#  Description" AT 5,1
+SKIP 1
+COMMENT "align (1,,4) (,,18) (,,24) (,,30)"
+ALIGN (1,,4) (,,16) (,,24) (,,29) (,,36) (,,41)
+CLUSTER OCCURS WITH F010-CRM AT 6,1
+FIELD DATE-ASSIGNED OF F010-CRM REQUIRED NOCHANGE DISPLAY
+FIELD CLMHDR-BATCH-NBR OF F010-CRM REQUIRED NOCHANGE DISPLAY
+FIELD CLMHDR-CLAIM-NBR OF F010-CRM REQUIRED NOCHANGE DISPLAY FILL '0' BWZ
+FIELD ACTION-CODE OF F010-CRM ID SAME REQUIRED NOCHANGE AUTO HELP 'Enter ?? for detail description'
+FIELD KEY-DTL-SEQ-NBR OF F010-CRM ID SAME NOCHANGE LOOKUP NOTON F010-CRM VIA KEY-PAT-MSTR , CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR, GHOST-DATE-DESCENDING, DATE-ASSIGNED, TIME-ASSIGNED, KEY-DTL-SEQ-NBR USING KEY-PAT-MSTR OF F010-CRM , CLMHDR-BATCH-NBR OF F010-CRM , CLMHDR-CLAIM-NBR OF F010-CRM , GHOST-DATE-DESCENDING OF F010-CRM, DATE-ASSIGNED OF F010-CRM , TIME-ASSIGNED OF F010-CRM , KEY-DTL-SEQ-NBR OF F010-CRM PREDISPLAY
+FIELD FOLLOWUP-ACTION OF F010-CRM ID SAME SIZE 40 HELP 'Enter the notes/description up to 40 characters per line'
+PROCEDURE APPEND
+BEGIN
+DISPLAY DATE-ASSIGNED OF F010-CRM
+DISPLAY CLMHDR-BATCH-NBR OF F010-CRM
+DISPLAY CLMHDR-CLAIM-NBR OF F010-CRM
+ACCEPT ACTION-CODE OF F010-CRM
+LET DTL-SEQ-NBR = DTL-SEQ-NBR + 1
+LET KEY-DTL-SEQ-NBR OF F010-CRM = DTL-SEQ-NBR
+DISPLAY KEY-DTL-SEQ-NBR OF F010-CRM
+ACCEPT FOLLOWUP-ACTION OF F010-CRM
+END
+PROCEDURE ENTRY
+BEGIN
+FOR F010-CRM
+BEGIN
+PERFORM APPEND
+END
+END
+PROCEDURE INTERNAL GET_NAME
+BEGIN
+GET F010-PAT-MSTR
+LET W-PAT-NAME = PACK(LJ(TRUN(PAT-GIVEN-NAME))) + ' ' + PACK(LJ(TRUN(PAT-SURNAME)))
+DISPLAY W-PAT-NAME
+DISPLAY W-PAT-IKEY
+END
+PROCEDURE FIND
+BEGIN
+IF W-CALL-PGM = 'M010'
+THEN BEGIN
+FOR MISSING F010-CRM
+BEGIN
+GET F010-CRM VIAINDEX F010-CRM-KEY VIA KEY-PAT-MSTR USING W-PAT-IKEY
+END
+END
+IF W-CALL-PGM = 'D003'
+THEN BEGIN
+FOR MISSING F010-CRM
+BEGIN
+GET F010-CRM VIAINDEX F010-CRM-KEY VIA KEY-PAT-MSTR, CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR USING W-PAT-IKEY, W-BATCH-NBR, W-CLAIM-NBR
+END
+END
+END
+PROCEDURE POSTFIND
+BEGIN
+DO GET_NAME
+END
+PROCEDURE PREENTRY
+BEGIN
+DO GET_NAME
+END
+PROCEDURE PREUPDATE
+BEGIN
+LET W-TIME = SYSTIME / 100
+FOR F010-CRM
+BEGIN
+IF NEWRECORD
+THEN BEGIN
+LET TIME-ASSIGNED = (1000000 - W-TIME)
+LET GHOST-DATE-DESCENDING = (20991231 - SYSDATE)
+END
+END
+END
+BUILD DETAIL LIST
+ENDMODULE M010_CRM.QKS

@@ -1,0 +1,76 @@
+;doc     : peds_emerg_pat_count.qts                 
+;purpose : report patient count for department 75 peds emergentcy for agents 0,2,4,6,9                                        
+;	   for the period from July 1 2012 to June 30 2014                              
+;who     : Mandy Van Goch Devisional Assisstant 
+;
+; *************************************************************
+
+;Date           Who            Description
+;2014/06/17     MC             count nbr of patient seen for the doctor with 2 date ranges 
+
+cancel clear
+ 
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B', key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+;;choose  key-clm-type 'B', key-clm-batch-nbr '22@', '78@', '98@' key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if            clmhdr-batch-type = 'C'          &
+                           and        clmhdr-doc-dept = 75             &
+                           and (      clmhdr-serv-date   >= 20120701   &
+                                 and  clmhdr-serv-date   <= 20140630   &
+			       )				       &
+			   and (      clmhdr-agent-cd = 0	       &
+				  or  clmhdr-agent-cd = 2              &
+				  or  clmhdr-agent-cd = 4              &
+				  or  clmhdr-agent-cd = 6              &
+				  or  clmhdr-agent-cd = 9              &
+			       )				       
+
+def serv-year zoned*1 unsigned = 1 if clmhdr-serv-date >= 20120701 and clmhdr-serv-date <= 20130630  &
+			else     2 if clmhdr-serv-date >= 20130701 and clmhdr-serv-date <= 20140630
+
+;sort on doc-nbr on serv-year on clmhdr-pat-ohip-id-or-chart
+sort on doc-ohip-nbr on serv-year on clmhdr-pat-ohip-id-or-chart
+
+temp agent-pat-count-2013 num*5                    
+item agent-pat-count-2013 = agent-pat-count-2013 + 1						& 
+		if (clmhdr-serv-date >= 20120701 and clmhdr-serv-date <= 20130630) 	        &
+		at clmhdr-pat-ohip-id-or-chart  						&
+		reset at doc-ohip-nbr
+;;;             reset at doc-nbr
+
+temp agent-pat-count-2014 num*5
+item agent-pat-count-2014 = agent-pat-count-2014 + 1                                            &      
+                if (clmhdr-serv-date >= 20130701 and clmhdr-serv-date <= 20140630) 		&
+		at clmhdr-pat-ohip-id-or-chart  						& 
+		reset at doc-ohip-nbr
+;               reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+	
+;subfile peds_pat portable  keep at doc-nbr include       &
+subfile peds_pat portable  keep at doc-ohip-nbr include   &
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+agent-pat-count-2013                    	    ,&
+comma                                               ,&
+agent-pat-count-2014                    	    ,&
+x-cr
+
+build $pb_obj/peds_emerg_pat_count

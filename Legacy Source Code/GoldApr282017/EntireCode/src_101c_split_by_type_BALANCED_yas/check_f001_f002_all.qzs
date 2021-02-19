@@ -1,0 +1,298 @@
+; 2012/Jul/04 - MC - clone from u991.cbl to check all clinics if there are difference in amt/svc/claim         
+;		between f001 & f002
+; 2012/Dec/04 - MC1 - fine tuned on selection statement
+; 2013/Mar/21 - MC2 - add 2 more passes to extract which claim has different between hdr & detail 
+
+cancel clear
+set rep nolimit
+
+access f001-batch-control-file	&
+ link ('B', batctrl-batch-nbr)  &
+to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel f001-batch-control-file if batctrl-batch-status <  '2' 
+
+sel f002-claims-mstr if clmdtl-oma-cd = '0000'
+
+sorted on batctrl-batch-nbr
+
+def xcount = 1
+
+set subfile name extf002hdr keep at batctrl-batch-nbr 
+
+rep summ batctrl-batch-nbr batctrl-batch-type batctrl-adj-cd batctrl-batch-status &
+batctrl-nbr-claims-in-batch  batctrl-last-claim-nbr 	&
+xcount subt reset at batctrl-batch-nbr key-clm-claim-nbr &
+batctrl-calc-tot-rev batctrl-calc-ar-due batctrl-manual-pay-tot  &
+clmhdr-tot-claim-ar-ohip         subt reset at batctrl-batch-nbr &
+clmhdr-manual-and-tape-payments  subt reset at batctrl-batch-nbr &
+batctrl-amt-act batctrl-amt-est batctrl-svc-act batctrl-svc-est  &
+clmhdr-date-period-end clmhdr-orig-batch-id batctrl-date-period-end  batctrl-date-batch-entered
+build $obj/check_f001_f002_all_1
+
+access *extf002hdr
+
+select if 						&
+      batctrl-nbr-claims-in-batch <> xcount    		&
+   or batctrl-last-claim-nbr <> key-clm-claim-nbr  	&
+   or (     batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip &
+; 2012/12/04 - MC1
+;	and batctrl-batch-type <> 'P')			&
+	and batctrl-batch-type = 'C')			&
+   or (     batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip 	       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      &
+   or (     batctrl-calc-ar-due  <> clmhdr-tot-claim-ar-ohip 	       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      &
+; 2012/12/04 - end
+   or (     batctrl-manual-pay-tot  <> clmhdr-manual-and-tape-payments &
+	and batctrl-batch-type = 'P')			&
+   or batctrl-amt-act <> batctrl-amt-est
+
+; 2012/12/04 - MC1
+def batctrl-batch-type-adj-cd  char*3 =        &
+	batctrl-batch-type if batctrl-batch-type = 'C' &
+   else batctrl-batch-type + '/' + batctrl-adj-cd
+; 2012/12/04 - end
+
+set rep dev disc name extf002hdr_diff
+set rep page width 132
+set rep page length 60
+set formfeed
+
+page heading                            &
+tab 01 'extf002hdr_diff'		&
+tab 40 'Differences between f001 & f002 header for'   &
+tab 115 'Page'				&
+tab 120 syspage				&
+skip 1					&
+tab 40 'last claim nbr  or  nbr of claims  or  amounts ' &
+skip 2					& 
+tab 01 'batch nbr'                      &
+tab 13 'type'                           &
+tab 19 'status'                         &
+tab  27 'last claim nbr'                 &
+tab  43 'nbr of claims '                 &
+tab  60 'amt act amt est'                &
+tab  85 ' calc tot rev '                 &
+tab 110 '  manual payment'               &
+skip                                    &
+tab  27 'f001  /  f002 '                &
+tab  43 'f001  /  f002 '                &
+tab  60 'f001     /   f001'             &
+tab  85 'f001     /   f002'             &
+tab 110 'f001     /   f002'             &
+skip 2
+
+report                                  &
+tab 01 batctrl-batch-nbr                &
+; 2012/12/04 - MC1 - include adj cd
+;tab 14 batctrl-batch-type               &
+tab 14 batctrl-batch-type-adj-cd         &
+; 2012/12/04 - end
+tab 21 batctrl-batch-status             &
+tab 28 batctrl-last-claim-nbr           &
+tab 37 key-clm-claim-nbr                &
+tab 44 batctrl-nbr-claims-in-batch      &
+tab 53 xcount pic '^^'                  &
+tab 58 batctrl-amt-act                  &
+tab 69 batctrl-amt-est                  &
+tab 83 batctrl-calc-tot-rev             &
+tab 94 clmhdr-tot-claim-ar-ohip         &
+tab 108 batctrl-manual-pay-tot          &
+tab 119 clmhdr-manual-and-tape-payments &
+skip 1
+
+build $obj/check_f001_f002_all_2
+
+
+
+;----------------------------------
+; access claim dtl to get amount & nbr of services
+
+access *extf002hdr  link ('B', batctrl-batch-nbr)   &
+to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if clmdtl-oma-cd <> '0000'  and clmdtl-oma-cd <> 'ZZZZ'
+
+sorted on batctrl-batch-nbr
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "00 "  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+def x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(clmdtl-consec-dates-r[1:1])        &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(clmdtl-consec-dates-r[4:1])  	     &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(clmdtl-consec-dates-r[7:1])         &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def tot-svc zoned*3 unsigned = x-sv-nbr1 +  x-sv-nbr2 + x-sv-nbr3 + x-sv-nbr4
+
+set subfile name extf002dtl keep at batctrl-batch-nbr 
+
+rep summ batctrl-batch-nbr batctrl-batch-type batctrl-adj-cd batctrl-batch-status  &
+batctrl-nbr-claims-in-batch  batctrl-last-claim-nbr 	&
+xcount key-clm-claim-nbr &
+batctrl-calc-tot-rev batctrl-calc-ar-due batctrl-manual-pay-tot  &
+clmhdr-tot-claim-ar-ohip    &
+clmhdr-manual-and-tape-payments  &
+batctrl-amt-act batctrl-amt-est batctrl-svc-act batctrl-svc-est  &
+clmhdr-date-period-end clmhdr-orig-batch-id batctrl-date-period-end  batctrl-date-batch-entered &
+clmdtl-fee-ohip  subt  reset at batctrl-batch-nbr &
+tot-svc subt reset at batctrl-batch-nbr
+
+build $obj/check_f001_f002_all_3
+
+
+access *extf002dtl
+
+; 2012/12/04 - MC1
+;sel if batctrl-amt-act <> clmdtl-fee-ohip                &
+sel if (     batctrl-calc-tot-rev <> clmdtl-fee-ohip          &
+	and  batctrl-batch-type = 'C')			&
+    or (     batctrl-calc-tot-rev <> clmdtl-fee-ohip          	       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      &
+    or (     batctrl-calc-ar-due  <> clmdtl-fee-ohip          	       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      &
+    or (     batctrl-manual-pay-tot  <> clmdtl-fee-ohip                 &
+	and  batctrl-batch-type = 'P')			&
+; 2012/12/04 - end
+    or batctrl-svc-act <> tot-svc
+
+; 2012/12/04 - MC1
+def batctrl-batch-type-adj-cd  char*3 =        &
+	batctrl-batch-type if batctrl-batch-type = 'C' &
+   else batctrl-batch-type + '/' + batctrl-adj-cd
+; 2012/12/04 - end
+
+set rep dev disc name extf002dtl_diff
+set rep page width 132
+set rep page length 60
+set formfeed
+
+page heading                            &
+tab 01 'extf002dtl_diff'		&
+tab 40 'Differences between f001 & f002 detail for'   &
+tab 115 'Page'				&
+tab 120 syspage				&
+skip 1					&
+tab 40 '        nbr of services   or  amounts ' &
+skip 2					& 
+tab 01 'batch nbr'                      &
+tab 13 'type'                           &
+tab 19 'status'                         &
+tab  27 'nbr of services'                &
+tab  46 ' amount actual '               &
+tab  71 ' calc tot rev '                 &
+tab  96 '  manual payment'               &
+skip                                    &
+tab  27 'f001  /  f002 '                &
+tab  46 'f001     /   f002'             &
+tab  71 'f001     /   f002'             &
+tab  96 'f001     /   f002'             &
+skip 2
+
+report                                 &
+tab 01 batctrl-batch-nbr               &
+; 2012/12/04 - MC1 - include adj cd
+;tab 14 batctrl-batch-type               &
+tab 14 batctrl-batch-type-adj-cd         &
+; 2012/12/04 - end
+tab 21 batctrl-batch-status             &
+tab 28 batctrl-svc-act  pic '^^^^'      &
+tab 37 tot-svc pic '^^^^'               &
+tab 44 batctrl-amt-act                  &
+tab 55 clmdtl-fee-ohip                  &
+tab 69 batctrl-calc-tot-rev             &
+tab 80 clmdtl-fee-ohip                 &
+tab 94 batctrl-manual-pay-tot          &
+tab 105 clmdtl-fee-ohip                  &
+skip 1
+
+build $obj/check_f001_f002_all_4
+
+; 2013/03/21 - MC2
+;----------------------------------
+; access claim dtl to get amount for each claim    
+
+access *extf002hdr  link ('B', batctrl-batch-nbr)   &
+to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if clmdtl-oma-cd <> '0000'  and clmdtl-oma-cd <> 'ZZZZ'
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr of f002-claims-mstr
+
+set subfile name extf002hdrdtl keep at key-clm-claim-nbr 
+
+rep summ key-clm-type key-clm-batch-nbr key-clm-claim-nbr of f002-claims-mstr   &
+batctrl-batch-type batctrl-adj-cd clmdtl-fee-ohip  subt reset at key-clm-claim-nbr
+
+
+build $obj/check_f001_f002_all_5
+
+access *extf002hdrdtl					   &
+ link ("B", key-clm-batch-nbr,                             &
+            key-clm-claim-nbr, "00000", "0")               &
+  to   key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr 
+
+
+sel if (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip          &
+	and  batctrl-batch-type = 'C')			&
+    or (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip          	       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd <> 'A'))      &
+    or (     clmhdr-tot-claim-ar-ohip <> clmdtl-fee-ohip          	       &
+	and (batctrl-batch-type = 'A' and batctrl-adj-cd =  'A'))      &
+    or (     clmhdr-manual-and-tape-payments  <> clmdtl-fee-ohip                 &
+	and  batctrl-batch-type = 'P')			
+
+def batctrl-batch-type-adj-cd  char*3 =        &
+	batctrl-batch-type if batctrl-batch-type = 'C' &
+   else batctrl-batch-type + '/' + batctrl-adj-cd
+
+set rep dev disc name extf002hdrdtl_diff
+set rep page width 132
+set rep page length 60
+set formfeed
+
+page heading                            &
+tab 01 'extf002hdrdtl_diff'		&
+tab 40 'Differences between f002 header & detail amount' &
+tab 115 'Page'				&
+tab 120 syspage				&
+skip 2					& 
+tab 01 'claim nbr'                      &
+tab 13 'type'                           &
+tab  46 ' detail amount '               &
+tab  71 ' header amount'                 &
+tab  96 '  header payment'               &
+skip 2
+
+report                                 &
+tab 01 key-clm-batch-nbr  		&
+tab 09 key-clm-claim-nbr		&
+tab 14 batctrl-batch-type-adj-cd         &
+tab 44 clmdtl-fee-ohip                  &
+tab 69 clmhdr-tot-claim-ar-ohip         &
+tab 94 clmhdr-manual-and-tape-payments &
+skip 1
+
+build $obj/check_f001_f002_all_6
+
+; 2013/03/21 - end

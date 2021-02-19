@@ -1,0 +1,67 @@
+;PURPOSE: REPORT DETAIL OF DISKETTE IF NO HARD COPY SEND
+
+;DATE:		WHO:		MODIFICATION
+;98/06/12	M. CHAN		ORIGINAL
+;                    		SUMMARIZE THE SVC/CLAIM/AMT BY CLINIC
+;				INTO SUBFILE, PRINT AS FINAL FOOTING
+;				ON REPORT
+;98/08/17	M. CHAN		add request statement 
+;02/05/02	yasemin		add clinic 85(represents payroll B)
+;02/08/23	yasemin		add clinic 95(represents oncology clinic)
+;03/08/23	yasemin		add clinic 91,92,93,94,96                    
+;2003/dec/10    b.e.            alpha doctor number conversion
+;2004/mar/03    yasemin 	add clinic 43 and 84
+;2004/jun/07    yasemin 	add new afp clinic 31-59  
+;2004/oct/22    yasemin 	add new afp clinic  46 
+;2005/feb/08    yasemin 	add new clinic 86
+;2007/apr/15    yasemin 	add new clinics 71-75
+;2007/nov       yasemin		add new clinic 87	
+;2008/Apr	yasemin       	add new clinic 37
+;2008/Oct	yasemin      	add new clinic 88
+;2009/Apr	yasemin      	add new clinic 89
+;2009/Jun	yasemin      	add new clinic 79
+;2009/dec/12	brad1	        changed all zoned*8 to zoned*9
+;2010/Feb	yasemin      	add new clinic 66
+;2011/Jan       yasemin      	add new clinic 23
+;2012/Jan/23    yasemin         add new clinic 24
+;2012/Jun/08    yasemin         add new clinic 25
+;2014/Apr/03    yasemin         add new clinic 69
+;2014/May/05    yasemin         add new clinic 68
+;2014/Oct/17    yasemin         add new clinic 30
+;2015/Mar/10    yasemin         add new clinic 26
+;2016/Apr/13    MC1             correct programming so that do not need to hardcode each new clinic
+;				technically a rewrite program
+
+can clear
+set lock record update
+set process nolimit
+
+request suspend_dtl  on calculation errors report on edit errors report
+
+access f002-suspend-dtl                                 &
+  link (               clmdtl-batch-nbr   [3:3] )       &
+    to doc-nbr of f020-doctor-mstr opt                  &
+  link clmdtl-doc-ohip-nbr,                             &
+       clmdtl-accounting-nbr                            &
+    to clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr       &
+                             of f002-suspend-hdr opt
+
+
+sort    clmhdr-clinic-nbr-1-2  &
+     on clmdtl-doc-ohip-nbr    &
+     on clmdtl-accounting-nbr
+
+temp x-svc zoned*5 unsigned
+item x-svc = x-svc + clmdtl-nbr-serv reset at clmhdr-clinic-nbr-1-2
+
+temp x-clm zoned*5 unsigned
+item x-clm = x-clm + 1 at clmdtl-accounting-nbr reset at clmhdr-clinic-nbr-1-2
+
+temp x-amt zoned*10 numeric
+item x-amt = x-amt + clmdtl-fee-ohip reset at clmhdr-clinic-nbr-1-2
+
+subfile suspdtl keep at clmhdr-clinic-nbr-1-2		&
+	include clmhdr-clinic-nbr-1-2,			&
+		x-svc, x-clm, x-amt
+
+build $pb_obj/suspdtl

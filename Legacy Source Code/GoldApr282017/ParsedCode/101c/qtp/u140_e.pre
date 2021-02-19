@@ -1,0 +1,272 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U140_E.QTS
+COMMENT "Program: u140_e.qts"
+COMMENT "Purpose: upload AFP payments to the payroll's f114 special payments"
+COMMENT "file so that they can be paid during the next payroll"
+COMMENT "Additionally this pgm now creates non-payable but "
+COMMENT "tithe-able transactions for calculating dept tithe amounts."
+COMMENT "modification history"
+COMMENT "2004/??/?? b.e. - original"
+COMMENT "2004/11/25 b.e. - amt-gross now set to afp-payment-amt instead "
+COMMENT "of afp-payment-amt-total"
+COMMENT "2004/feb/04 b.e. - added access to f020 doctor master to get data to"
+COMMENT "store doctor data in audit subfile so that later"
+COMMENT "reports don't have to access f020 to get this info."
+COMMENT "05/mar/08 M.C.        - substitute afp-payment-percentage with afp-multi-doc-ra-percentage"
+COMMENT "07/aug/13 b.e. - summarize all payments for a doctor into a single"
+COMMENT "f114 payment transaction"
+COMMENT "07/aug/15 M.C. - change temp item to reset at doc-nbr and output f114 at doc-nbr"
+COMMENT "and subfile u140_e_audit at doc-nbr as well"
+COMMENT "08/may/09 brad  - upload goverance transactions (AFPCON) to f119  C  "
+COMMENT "records INSTEAD OF f114 (otherwise they go to f110 and"
+COMMENT "get paid - don't want that). "
+COMMENT "We want to track the payments  for tithe calculations"
+COMMENT "but not pay them. "
+COMMENT "08/jun/16 M.C. - add a new request to create NONRB and NONRBP for rec type D"
+COMMENT "08/jun/30 M.C. - Brad changed his mind, he would like to create "
+COMMENT "transactions in f114-special-payment"
+COMMENT "instead of f119 subfile for AFPCON, NONRB & NONRBP"
+COMMENT "08/jul/31 b.e. - originally payroll was A = 101c, B = mp. July 2008"
+COMMENT "brought tithing and dep membership (depmem) charges"
+COMMENT "and a new solo payroll - payroll C."
+COMMENT "Now payrolls B(mp) and C(solo) can't just check the "
+COMMENT "f074 flag - they must also consider the afp group "
+COMMENT "and dept of doctor"
+COMMENT "The current afp group that is 'fuzzy' is H132 where"
+COMMENT "some doctors get  paid in payroll B and others "
+COMMENT "in payroll C."
+COMMENT "Thus when running payroll B (in mp) test afp group"
+COMMENT "and dept of doctor to exclude payroll C docs and "
+COMMENT "when running payroll C (in solo) ONLY include"
+COMMENT "certain H132 docs based upon their dept and ignore"
+COMMENT "the fact that f074 shows payroll B for H132."
+COMMENT "08/aug/05 M.C. - change the selection criteria for payroll C and comment out for B"
+COMMENT "08/sep/02 M.C. - change the definition for solo doctors"
+COMMENT "08/sep/18 M.C. - ensure rec-type = 'A' for solo and 'C' for 101c"
+COMMENT "08/oct/14 M.C. - subtotal does not work properly, change to final old value + new value instead"
+COMMENT "2009/jul/08 MC1       - include f074-afp-group-sequence-mstr in the access of request u140_nonrb_nonrbp           "
+COMMENT "- check on nonrbp-flag or solo-flag instead of hard coded group number"
+CANCEL CLEAR
+RUN U140_E
+SET DEFAULT
+SET PROCESS NOLIMIT
+SET LOCK RECORD UPDATE
+GLOBAL TEMP W-CURRENT-EP-NBR ZONED UNSIGNED
+GLOBAL TEMP W-CURRENT-EP-NBR-MINUS1 ZONED UNSIGNED
+GLOBAL TEMP W-CURRENT-EP-NBR-PLUS1 ZONED UNSIGNED
+GLOBAL TEMP W-EP-FISCAL-NBR ZONED UNSIGNED
+GLOBAL TEMP AFPCON-SEQ ZONED UNSIGNED SIZE 2
+GLOBAL TEMP AFPCON-TYPE CHAR*1
+GLOBAL TEMP AFPCON-CODE-GROUP CHAR*1
+COMMENT "2008/06/16 - MC"
+GLOBAL TEMP NONRB-SEQ ZONED UNSIGNED SIZE 2
+GLOBAL TEMP NONRB-TYPE CHAR*1
+GLOBAL TEMP NONRB-CODE-GROUP CHAR*1
+GLOBAL TEMP NONRBP-SEQ ZONED UNSIGNED SIZE 2
+GLOBAL TEMP NONRBP-TYPE CHAR*1
+GLOBAL TEMP NONRBP-CODE-GROUP CHAR*1
+COMMENT "2008/06/16 - end"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS"
+REQUEST U114A_CONST_VALUES_GET_EP_NBR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6 LINK CURRENT-EP-NBR TO EP-NBR OF F191-EARNINGS-PERIOD
+CHOOSE CONST-REC-NBR 6
+ITEM W-CURRENT-EP-NBR = CURRENT-EP-NBR OF CONSTANTS-MSTR-REC-6
+ITEM W-CURRENT-EP-NBR-MINUS1 = CURRENT-EP-NBR OF CONSTANTS-MSTR-REC-6 - 1
+ITEM W-CURRENT-EP-NBR-PLUS1 = CURRENT-EP-NBR OF CONSTANTS-MSTR-REC-6 + 1
+ITEM W-EP-FISCAL-NBR = EP-FISCAL-NBR OF F191-EARNINGS-PERIOD
+COMMENT "DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'"
+COMMENT "FOR THE TRANSACTIONS BEING CREATED IN THIS RUN"
+REQUEST U140_GET_AFPCON ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "AFPCON"
+ITEM AFPCON-SEQ = REPORTING-SEQ
+ITEM AFPCON-CODE-GROUP = COMP-CODE-GROUP
+COMMENT "------------------------------------------------"
+REQUEST U140_GET_NONRB ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "NONRB"
+ITEM NONRB-SEQ = REPORTING-SEQ
+ITEM NONRB-CODE-GROUP = COMP-CODE-GROUP
+REQUEST U140_GET_NONRBP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "NONRBP"
+ITEM NONRBP-SEQ = REPORTING-SEQ
+ITEM NONRBP-CODE-GROUP = COMP-CODE-GROUP
+COMMENT "------------------------------------------------------------------------"
+REQUEST U140_UPDATE_F114 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F075-AFP-DOC-MSTR LINK DOC-AFP-PAYM-GROUP TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-MSTR LINK "AFPCON" TO COMP-CODE OF F190-COMP-CODES OPT LINK DOC-NBR OF F075-AFP-DOC-MSTR TO DOC-NBR OF F020-DOCTOR-MSTR OPT
+DEF X-SELECTED-PAYROLL CHAR*1 = PARM PROMPT "Enter PAYROLL ID:" UPSHIFT
+SORT ON DOC-NBR ON DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR
+COMMENT "2008/07/03 - it has confirmed that afp-payment-amt = afp-conversion-amt from the original incoming file "
+TEMP X-TMP-AMT-GROSS ZONED*10 NUMERIC
+ITEM X-TMP-AMT-GROSS = X-TMP-AMT-GROSS + AFP-PAYMENT-AMT RESET AT DOC-NBR
+TEMP X-TMP-AMT-NET ZONED*10 NUMERIC
+ITEM X-TMP-AMT-NET = X-TMP-AMT-NET + AFP-PAYMENT-AMT RESET AT DOC-NBR
+COMMENT "2008/07/03 - MC"
+COMMENT "and doc-dept of f020-doctor-mstr = 31      &"
+COMMENT "and batctrl-payroll of f074-afp-group-mstr  = 'C'        "
+DEF X-SOLO-DOC CHAR*1 = 'Y' IF DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR = 'H132' AND X-SELECTED-PAYROLL = 'C'
+COMMENT "and batctrl-payroll of f074-afp-group-mstr  = 'A'        "
+DEF X-GFT-DOC CHAR*1 = 'Y' IF DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR = 'H111' AND ( DOC-DEPT OF F020-DOCTOR-MSTR = 14 OR DOC-DEPT OF F020-DOCTOR-MSTR = 15 ) AND X-SELECTED-PAYROLL = 'A'
+COMMENT "and batctrl-payroll of f074-afp-group-mstr  = 'A'        "
+DEF X-NON-GFT-DOC CHAR*1 = 'Y' IF DOC-DEPT OF F020-DOCTOR-MSTR = 4 AND X-SELECTED-PAYROLL = 'A'
+COMMENT "2.1.2.3 - solo doctor    "
+COMMENT "def x-rec-type char*1 = 'A' if x-solo-doc = 'Y'    &"
+COMMENT "2.1.2.2 - GFT and non-GFT doctor "
+COMMENT "else    'C' if x-gft-doc = 'Y' or x-non-gft-doc ='Y'"
+COMMENT "2008/07/03 - end"
+COMMENT "solo doctors are the only one's paid for these transactions so only they are "
+COMMENT "output to f114 special payments for upload f119"
+DEF X-REC-TYPE CHAR*1 = 'A' IF BATCTRL-PAYROLL OF F074-AFP-GROUP-MSTR = 'C' ELSE 'C'
+COMMENT "payroll was A = 101c, B = mp "
+COMMENT "in 2008, with new solo payroll - payroll C"
+COMMENT "can't just check the f074 flag - they must also check the afp group "
+COMMENT "and dept of doctor"
+SELECT IF AFP-PAYMENT-AMT <> 0 AND X-SELECTED-PAYROLL = BATCTRL-PAYROLL OF F074-AFP-GROUP-MSTR AND AFP-GROUP-PROCESS-FLAG OF F074-AFP-GROUP-MSTR = 'E'
+COMMENT "solo doctors are the only one's paid for these transactions so only they are "
+COMMENT "output to f114 special payments for upload f119"
+OUTPUT F114-SPECIAL-PAYMENTS ADD UPDATE AT DOC-NBR VIA DOC-NBR, COMP-CODE USING DOC-NBR OF F075-AFP-DOC-MSTR, "AFPCON" ON ERRORS REPORT
+ITEM DOC-NBR FINAL DOC-NBR OF F075-AFP-DOC-MSTR
+ITEM COMP-CODE FINAL "AFPCON"
+ITEM EP-NBR-FROM FINAL W-CURRENT-EP-NBR
+ITEM EP-NBR-TO FINAL W-CURRENT-EP-NBR
+ITEM COMP-UNITS FINAL AFP-MULTI-DOC-RA-PERCENTAGE OF F075-AFP-DOC-MSTR
+COMMENT "2008/06/30 - MC"
+COMMENT "item amt-gross  final afp-payment-amt  &"
+COMMENT "of f075-afp-doc-mstr  "
+COMMENT "item amt-net    final afp-payment-amt  of f075-afp-doc-mstr  "
+COMMENT "2008/10/14 - MC"
+COMMENT "item amt-gross  subtotal x-tmp-amt-gross"
+COMMENT "item amt-net    subtotal x-tmp-amt-net  "
+ITEM AMT-GROSS FINAL AMT-GROSS + X-TMP-AMT-GROSS
+ITEM AMT-NET FINAL AMT-NET + X-TMP-AMT-NET
+COMMENT "2008/10/14 - end"
+COMMENT "2008/06/30 - end"
+ITEM LAST-MOD-DATE FINAL SYSDATE
+ITEM LAST-MOD-TIME FINAL SYSTIME / 10000
+ITEM LAST-MOD-USER-ID FINAL "U140_e  gen'd"
+COMMENT "2008/06/30 - MC - include rec-type"
+COMMENT "item rec-type   final 'C'        "
+ITEM REC-TYPE FINAL X-REC-TYPE
+COMMENT "2008/06/30 - end"
+COMMENT "2008/07/03 - MC"
+SUBFILE U140_E_AUDIT KEEP APPEND AT DOC-NBR INCLUDE X-SELECTED-PAYROLL, DOC-NBR OF F075-AFP-DOC-MSTR, DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR, DOC-NAME OF F020-DOCTOR-MSTR, DOC-INITS OF F020-DOCTOR-MSTR, DOC-DEPT OF F020-DOCTOR-MSTR, COMP-CODE OF F190-COMP-CODES, EP-NBR-FROM, EP-NBR-TO, COMP-UNITS, X-TMP-AMT-GROSS, X-TMP-AMT-NET, X-REC-TYPE
+COMMENT "2008/07/03 - end"
+COMMENT "brad2 - 'hide' AFPCON transaction in  C  type record of f119-doctor-ytd"
+COMMENT "def x-rec-type  char*1 =  C "
+COMMENT "def comp-code char*6 =  AFPCON "
+DEF X-AMT-NET INTEGER*10 SIGNED = AFP-PAYMENT-AMT OF F075-AFP-DOC-MSTR
+DEF X-AMT-GROSS INTEGER*10 SIGNED = AFP-PAYMENT-AMT OF F075-AFP-DOC-MSTR
+COMMENT "2008/07/03 - MC - note:  records created in f114-special-payments will be uploaded"
+COMMENT "to f110-compensation for rec-type = 'A' and to f119-doctor-ytd for rec-type = 'C'"
+COMMENT "in program u130.qts which is part of $cmd/teb1  payroll run"
+COMMENT "2008/06/16 - MC - add new request"
+REQUEST U140_NONRB_NONRBP ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+COMMENT "2009/07/08 - MCr12"
+ACCESS F075-AFP-DOC-MSTR LINK DOC-AFP-PAYM-GROUP TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-MSTR LINK DOC-NBR OF F075-AFP-DOC-MSTR TO DOC-NBR OF F020-DOCTOR-MSTR OPT LINK DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR TO DOC-AFP-PAYM-GROUP OF F074-AFP-GROUP-SEQUENCE-MSTR OPT
+COMMENT "2009/07/08 - end"
+DEF X-SELECTED-PAYROLL CHAR*1 = PARM PROMPT "Enter PAYROLL ID:" UPSHIFT
+COMMENT "'NONRB'  for solo doctors with incoming group H132 or"
+COMMENT "'NONRBP' for GFT & non-GFT doctors with incoming group H262, H513 to H519, H526, H528 & H529"
+COMMENT "and for solo doctors with incoming group H262, H513 to H519, H520 to H524, H526, H528 & H529"
+COMMENT "; 2008/07/03 - MC - Brad decided to set rec-type 'A  instead of 'D' - but NOT SURE"
+COMMENT ";def x-rec-type  char*1 =  D  ; hide records - used for tithe calc only"
+COMMENT "def x-rec-type  char*1 =  A   "
+COMMENT "2008/07/03 - end"
+COMMENT "and doc-dept of f020-doctor-mstr = 31      &"
+COMMENT "and batctrl-payroll of f074-afp-group-mstr  = 'C'        "
+DEF X-SOLO-DOC CHAR*1 = 'Y' IF DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR = 'H132' AND X-SELECTED-PAYROLL = 'C'
+COMMENT "and batctrl-payroll of f074-afp-group-mstr  = 'A'        "
+DEF X-GFT-DOC CHAR*1 = 'Y' IF DOC-AFP-PAYM-GROUP OF F020-DOCTOR-MSTR = 'H111' AND ( DOC-DEPT OF F020-DOCTOR-MSTR = 14 OR DOC-DEPT OF F020-DOCTOR-MSTR = 15 ) AND X-SELECTED-PAYROLL = 'A'
+COMMENT "and batctrl-payroll of f074-afp-group-mstr  = 'A'        "
+DEF X-NON-GFT-DOC CHAR*1 = 'Y' IF DOC-DEPT OF F020-DOCTOR-MSTR = 4 AND X-SELECTED-PAYROLL = 'A'
+COMMENT "2008/sep/03 be. hide (ie  D ) if NOT solo - otherwise include in TOTINC calculations ( A )"
+COMMENT "2.1.1.4 - solo doctor    "
+COMMENT "def x-rec-type char*1 = 'A' if x-solo-doc = 'Y'    &"
+COMMENT "2.1.1.5/6 - GFT and non-GFT doctor "
+COMMENT "else    'D' if x-gft-doc = 'Y' or x-non-gft-doc ='Y'"
+DEF X-REC-TYPE CHAR*1 = 'D'
+COMMENT "2009/07/08 - MC1"
+COMMENT "if      (      doc-afp-paym-group of f075-afp-doc-mstr = 'H262' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H513' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H514' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H515' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H516' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H517' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H518' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H519' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H526' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H528' &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H529' &"
+COMMENT ")"
+DEF X-NONRBP-GROUP CHAR*1 = 'Y' IF NONRBP-FLAG = 'Y' AND SOLO-FLAG = 'N'
+COMMENT "2009/07/08 - end"
+COMMENT "2009/07/08 - MC1"
+COMMENT "if      (      doc-afp-paym-group of f075-afp-doc-mstr = 'H262'      &"
+COMMENT "or (      doc-afp-paym-group of f075-afp-doc-mstr >= 'H513' &"
+COMMENT "and   doc-afp-paym-group of f075-afp-doc-mstr <= 'H524' &"
+COMMENT ")       &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H526'      &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H528'      &"
+COMMENT "or    doc-afp-paym-group of f075-afp-doc-mstr = 'H529'      &"
+COMMENT ")"
+DEF X-SOLO-NONRBP-GROUP CHAR*1 = 'Y' IF NONRBP-FLAG = 'Y' AND (SOLO-FLAG = 'Y' OR SOLO-FLAG = 'N')
+COMMENT "2009/07/08 - end"
+COMMENT "2.1.1.4.1 - solo doctors"
+DEF X-NONRB CHAR*1 = 'Y' IF X-SOLO-DOC = 'Y' AND DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR = 'H132'
+COMMENT "2.1.1.4.2 - solo doctors"
+COMMENT "2.1.1.5 - GFT doctors"
+COMMENT "2.1.1.6 - non-GFT doctors"
+DEF X-NONRBP CHAR*1 = 'Y' IF ( ( X-SOLO-DOC = 'Y' AND X-SOLO-NONRBP-GROUP = 'Y' ) OR ( X-GFT-DOC = 'Y' AND X-NONRBP-GROUP = 'Y' ) OR ( X-NON-GFT-DOC = 'Y' AND X-NONRBP-GROUP = 'Y' ) )
+COMMENT "2008/09/09 - MC - including the blank payroll of f074 "
+COMMENT "and  (   x-selected-payroll = batctrl-payroll of f074-afp-group-mstr  &"
+COMMENT "or batctrl-payroll of f074-afp-group-mstr = ' '         &"
+COMMENT ")        &"
+SELECT IF AFP-SUBMISSION-AMT <> 0 AND ( X-NONRB = 'Y' OR X-NONRBP = 'Y' )
+COMMENT "2008/09/09 - end"
+DEF X-COMP-CODE CHAR*6 = "NONRB" IF X-NONRB = 'Y' ELSE "NONRBP" IF X-NONRBP = 'Y'
+DEF REPORTING-SEQ ZONED*2 UNSIGNED = NONRB-SEQ IF X-NONRB = 'Y' ELSE NONRBP-SEQ IF X-NONRBP = 'Y'
+DEF COMP-CODE-GROUP CHAR*1 = NONRB-CODE-GROUP IF X-NONRB = 'Y' ELSE NONRBP-CODE-GROUP IF X-NONRBP = 'Y'
+DEF X-AMT-NET INTEGER*10 SIGNED = AFP-SUBMISSION-AMT OF F075-AFP-DOC-MSTR
+DEF X-AMT-GROSS INTEGER*10 SIGNED = AFP-SUBMISSION-AMT OF F075-AFP-DOC-MSTR
+SORT ON DOC-NBR ON X-COMP-CODE
+TEMP X-TMP-AMT-GROSS ZONED*10 NUMERIC
+ITEM X-TMP-AMT-GROSS = X-TMP-AMT-GROSS + AFP-SUBMISSION-AMT RESET AT X-COMP-CODE
+TEMP X-TMP-AMT-NET ZONED*10 NUMERIC
+ITEM X-TMP-AMT-NET = X-TMP-AMT-NET + AFP-SUBMISSION-AMT RESET AT X-COMP-CODE
+OUTPUT F114-SPECIAL-PAYMENTS ADD UPDATE AT X-COMP-CODE VIA DOC-NBR, COMP-CODE USING DOC-NBR OF F075-AFP-DOC-MSTR, X-COMP-CODE ON ERRORS REPORT
+ITEM DOC-NBR FINAL DOC-NBR OF F075-AFP-DOC-MSTR
+ITEM COMP-CODE FINAL X-COMP-CODE
+ITEM EP-NBR-FROM FINAL W-CURRENT-EP-NBR
+ITEM EP-NBR-TO FINAL W-CURRENT-EP-NBR
+ITEM COMP-UNITS FINAL AFP-MULTI-DOC-RA-PERCENTAGE OF F075-AFP-DOC-MSTR
+COMMENT "item amt-gross  final x-tmp-amt-gross"
+COMMENT "item amt-net    final x-tmp-amt-net  "
+COMMENT "2008/10/14 - MC"
+COMMENT "item amt-gross  subtotal x-tmp-amt-gross"
+COMMENT "item amt-net    subtotal x-tmp-amt-net  "
+ITEM AMT-GROSS FINAL AMT-GROSS + X-TMP-AMT-GROSS
+ITEM AMT-NET FINAL AMT-NET + X-TMP-AMT-NET
+COMMENT "2008/10/14 - end"
+ITEM LAST-MOD-DATE FINAL SYSDATE
+ITEM LAST-MOD-TIME FINAL SYSTIME / 10000
+ITEM LAST-MOD-USER-ID FINAL "U140_e  gen'd"
+COMMENT "2008/07/03 - MC - Brad changes his mind to set rec-type = 'A' - but NOT SURE"
+COMMENT "item rec-type   final 'D'"
+ITEM REC-TYPE FINAL X-REC-TYPE
+COMMENT "2008/07/03 - end"
+COMMENT "2008/06/30 - end"
+COMMENT "2008/07/03 - MC"
+COMMENT "subfile u140_e_audit append at doc-nbr   include &"
+COMMENT "2008/07/03 - MC"
+SUBFILE U140_E_AUDIT APPEND AT X-COMP-CODE INCLUDE X-SELECTED-PAYROLL, DOC-NBR OF F075-AFP-DOC-MSTR, DOC-AFP-PAYM-GROUP OF F075-AFP-DOC-MSTR, DOC-NAME OF F020-DOCTOR-MSTR, DOC-INITS OF F020-DOCTOR-MSTR, DOC-DEPT OF F020-DOCTOR-MSTR, COMP-CODE, EP-NBR-FROM, EP-NBR-TO, COMP-UNITS, X-TMP-AMT-GROSS, X-TMP-AMT-NET, X-REC-TYPE
+COMMENT "2008/07/03 - end"
+BUILD $OBJ/U140_E
+ENDMODULE U140_E.QTS

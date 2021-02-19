@@ -1,0 +1,96 @@
+;#> program-id.     m027.qks
+;    program purpose : entry of a doctor's contacts including their own address/phone etc
+;
+;    modification historY
+;        date   who     description
+; 2005/jan/19   b.e.	- original
+; 2005/mar/17   M.C.    - include web user name
+; 2006/apr/04   M.C.	- if user update contacts-surname for doctor type in f027, also update doc-name in f020
+;			- include f020-doctor-mstr 
+
+can clear
+screen $pb_obj/m027 receiving x-doc-nbr, x-doc-name  
+
+temp x-doc-nbr char*3
+temp x-contacts-type char*1
+temp x-doc-name char*30
+temp x-contacts-name char*40
+
+file f027-contacts-mstr occurs 4
+  access viaindex  contacts-key  using filler , x-doc-nbr
+item filler initial " "
+item doc-nbr initial x-doc-nbr
+
+; 2006/04/04 - MC
+file f020-doctor-mstr designer
+  access viaindex doc-nbr using x-doc-nbr
+; 2006/04/04 - end
+
+title "Contacts for: "              at 1,30
+align (,,50)
+field x-doc-name  display  predisplay
+
+title "Type"			at 3,3
+skip 
+align (1,,5) (,9,22)
+cluster occurs with f027-contacts-mstr
+field contacts-type of f027-contacts-mstr 	required nochange	&
+      lookup noton f027-contacts-mstr 				 	&
+	    via filler, 						&
+		doc-nbr,  						&
+		contacts-type                     			&
+	  using filler of f027-contacts-mstr, 				&
+		doc-nbr of f027-contacts-mstr,				&
+		contacts-type  of f027-contacts-mstr			
+field contacts-surname     	label "Surname    :"
+skip 
+align        (,9,22) (,54,61) (,69,74)
+field contacts-given-names 	label "Given Names:"
+field contacts-inits 	   	label "Inits:" 
+field contacts-sex	   	label "Sex:"
+skip
+align        (,9,22) (,54,74)
+field contacts-title	 	label "Title      :"
+field billing-entry-flag 	label "Billing data entry?"
+; 2005/03/17 - -MC
+field logon-username 		label "Web username:"
+; 2005/03/17 - end
+skip 1
+
+procedure designer more
+begin
+  let x-doc-nbr = doc-nbr
+  let x-contacts-type = contacts-type
+  let x-contacts-name =   truncate(lj(contacts-surname))                &
+                        + ","                                           &
+                        + truncate(lj(contacts-given-names))
+  run screen $pb_obj/m028 passing x-doc-nbr,            &
+                                  x-contacts-type,      &
+                                  x-contacts-name       mode same
+end
+ 
+; 2006/04/04 - MC
+procedure preupdate  
+begin
+  if changemode
+    then begin
+      for f027-contacts-mstr
+       begin
+	let x-contacts-name = contacts-surname + ',' +	&
+  			      contacts-inits
+    	if     x-doc-name <> x-contacts-name		&
+      	   and contacts-type = 'D'
+    	then  begin 
+	   get f020-doctor-mstr 
+           let doc-name = contacts-surname
+           let doc-inits= contacts-inits   
+           let doc-name-soundex = soundex(doc-name)
+	   put f020-doctor-mstr
+	   end
+	end
+     end
+end
+; 2006/04/04 - end
+
+build
+

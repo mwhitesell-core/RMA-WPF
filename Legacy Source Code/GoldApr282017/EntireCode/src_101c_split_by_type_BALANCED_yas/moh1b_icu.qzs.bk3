@@ -1,0 +1,54 @@
+;
+;
+; 90/09/18	M.C.	- ORIGINAL - SMS 1
+;			- SECOND PASS - LINK DETAILS WITH HEADER RECORD
+; 92/09/15      B.M.L.  - ADDED OPT TO PATIENT LINK.
+;
+; 94/05/27	M.C.	- THIS IS THE ORIGINAL VERSION FROM HSC
+;			- MAKE THE NECCESSARY CHANGES FOR RMA CLINIC 81
+;			  AGENT 8
+; 94/06/01	M.C.	- INCLUDE CLMHDR-HOSP
+
+cancel clear
+
+set default
+set rep nolimit
+
+
+
+access *moh1aicu link ('B',clmdtl-batch-nbr,clmdtl-claim-nbr,'00000','0') to &
+	key-clm-type,key-clm-batch-nbr,key-clm-claim-nbr,key-clm-serv-code,key-clm-adj-nbr of f002-claims-mstr &
+	link clmdtl-doc-nbr to doc-nbr of f020-doctor-mstr   opt &
+	link clmhdr-pat-ohip-id-or-chart			&
+		to key-pat-mstr of f010-pat-mstr opt
+
+
+define x-doc-name char*20 = pack(doc-name + ", " + doc-inits)
+define x-pat-name char*25 = pack(pat-surname + ", " + pat-given-name)
+
+define x-pat-ohip-nbr  char*12 = ascii(pat-health-nbr,10)     &
+                               if pat-health-nbr <> 0   and   &
+			record f010-pat-mstr exists	      &
+                            else ascii(pat-ohip-nbr,8)        &
+                               if pat-prov-cd = "ON"    and   &
+			record f010-pat-mstr exists	      &
+                            else ascii(pat-ohip-out-prov,12)  &
+		if	record f010-pat-mstr exists	      &
+			    else clmhdr-pat-ohip-id-or-chart  &
+	        if not  record f010-pat-mstr exists
+
+set subfile name moh1bicu keep
+
+report  summary							&
+	clmdtl-doc-nbr clmdtl-batch-key sel-from-ped     	&
+	sel-to-ped sel-clinic-nbr				&
+	clmdtl-batch-nbr clmdtl-claim-nbr clmdtl-oma-cd		&
+	x-clmdtl-nbr-serv clmdtl-sv-date clmdtl-fee-ohip    	&
+	clmhdr-i-o-pat-ind clmhdr-loc x-pat-ohip-nbr        	&
+	clmhdr-pat-ohip-id-or-chart clmdtl-date-period-end	&
+	doc-ohip-nbr x-doc-name doc-full-part-ind x-pat-name	&
+	clmhdr-hosp
+
+build $pb_obj/moh1b_icu
+
+  

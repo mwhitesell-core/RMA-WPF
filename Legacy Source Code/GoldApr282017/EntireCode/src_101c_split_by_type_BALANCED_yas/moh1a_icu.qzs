@@ -1,0 +1,130 @@
+;program: moh1a_icu.qzs
+;
+; 90/09/18	M.C.	- ORIGINAL - SMS 1
+;			- FIRST PASS - EXTRACT ALL DETAILS WITH AGENT 1
+;
+; 91/08/08      M.C.    - SMS 6
+;			- CLAIMS KEY STRUCTURE HAS CHANGED, MODIFY THE
+;			  CHOOSE AND SELECT STATEMENTS
+;
+; 94/05/27      M.C.    - THIS IS THE ORIGINAL VERSION FROM HSC, MODIFY
+;			  NECCESSARY CHANGES FOR RMA CLINIC 81 AGENT 8
+; 95/01/19      YAS     - TAKE OUT SELECT AGENT 8
+; 98/oct/05     B.E.	- method of adding up the number of services in a claim
+;			  including consecutive services was giving data conversion
+;			  error and setting field to 0. New method coded.
+;
+; 1999/May/06	S.B.	- Altered 'sel-from-ped' and 'sel-to-ped' for Y2K.
+
+; 2001/nov/23 B.E.      - move choose and select from moh1a_icu.qzu into this
+;                         program and changed selection of ICU claims  from
+;                         agent = 5 to payroll = "B"
+;			- added fields clmhdr-pat-ohip-id-or-chart, 
+;			  clmhdr-loc  and clmhdr-i-o-pat-ind
+;			  so that subsequent programs don't
+;			  have to access f002 to get them
+;
+; 2003/dec/11 A.A.	- alpha doctor nbr
+;
+
+
+cancel clear
+
+set default
+set report nolimit
+
+;access f002-claims-mstr
+
+;choose key-clm-type 'B', key-clm-batch-nbr 810000000 to 810999999
+;sel f002-claims-mstr if clmdtl-oma-cd ne '0000'     		&
+;		and     clmdtl-oma-cd ne 'ZZZZ'			&
+;   	        and  clmdtl-adj-nbr = 0				
+; As of 2001/oct/01 B.E. MOH claims now stored in clinic 22 but
+; with agent = 5
+; (As of 2001/nov/23 B.E. claims now longer agent 5 only but are 
+;  designated with a clmhdr payroll flag = "B")
+
+;choose key-clm-type 'B', key-clm-batch-nbr 220000000 to 220999999
+;sel f002-claims-mstr if clmdtl-oma-cd ne '0000'                 &
+;                and     clmdtl-oma-cd ne 'ZZZZ'                 &
+;                and  clmdtl-adj-nbr = 0                         &
+;                and  clmdtl-agent-cd = 5 !!!!!!!!!!!!!!!!!!!!!!!! 
+;access *claims_subfile
+access claims_history_subfile
+
+select if clmdtl-id[1:2]= '22'  and clmhdr-hosp = "B"
+
+;*** S.B. Y2K start.
+;define sel-from-ped zoned*6 = parm prompt 'Enter From Period End Date: '
+;define sel-to-ped   zoned*6 = parm prompt 'Enter  To  Period End Date: '
+define sel-from-ped zoned*8 = parm prompt 'Enter From Period End Date: '
+define sel-to-ped   zoned*8 = parm prompt 'Enter  To  Period End Date: '
+;*** S.B. Y2K end.
+
+;;define clmdtl-doc-nbr zoned*4 = nconvert(ascii(clmdtl-batch-nbr,9)[3:4])
+;! define clmdtl-doc-nbr zoned*4 = nconvert(clmdtl-id[3:4])
+define clmdtl-doc-nbr char*3 = clmdtl-id[3:3]
+
+;;define clmdtl-batch-key char*8 = ascii(clmdtl-batch-nbr,9)[1:2] &
+;;	                         + ascii(clmdtl-batch-nbr,9)[4:6]
+;! define clmdtl-batch-key char*8 = clmdtl-id[1:2] &
+;! 	                       + clmdtl-id[4:6]
+define clmdtl-batch-key char*8 = clmdtl-id[1:8]  
+;;define sel-clinic-nbr char*2 = ascii(clmdtl-batch-nbr,9)[1:2]
+define sel-clinic-nbr char*2 = clmdtl-id[1:2]
+
+; 98/oct/05
+;define x-clmdtl-nbr-serv zoned*4 = clmdtl-nbr-serv          +   &
+;	nconvert(ascii(clmdtl-consec-dates,9)[1:1])         +   &
+;        nconvert(ascii(clmdtl-consec-dates,9)[4:1])         +   &
+;        nconvert(ascii(clmdtl-consec-dates,9)[7:1])
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'               
+def x-clmdtl-nbr-serv  		&
+    =   x-sv-nbr1		&
+      + x-sv-nbr2		&
+      + x-sv-nbr3		&
+      + x-sv-nbr4 
+
+;
+; reselect records that meet the selection criteria
+;
+select if     clmdtl-date-period-end >= ascii(sel-from-ped,8)		&
+  	  and clmdtl-date-period-end <= ascii(sel-to-ped  ,8)		&
+	  and clmdtl-id[1:2]= '22'  and clmhdr-hosp = "B"
+
+
+set subfile name moh1aicu keep
+;! def clmdtl-batch-nbr zoned*9 = nconvert(clmdtl-id[1:9])
+;! def clmdtl-claim-nbr zoned*2 = nconvert(clmdtl-id[10:2])
+;! def clmdtl-oma-cd    char*5  = clmdtl-id[12:5]
+def clmdtl-batch-nbr char*8 = clmdtl-id[1:8]
+def clmdtl-claim-nbr zoned*2 = nconvert(clmdtl-id[9:2])
+def clmdtl-oma-cd    char*4  = clmdtl-id[11:4]
+report  summary							&
+	clmdtl-doc-nbr clmdtl-batch-key sel-from-ped     	&
+	sel-to-ped sel-clinic-nbr				&
+	clmdtl-batch-nbr clmdtl-claim-nbr clmdtl-oma-cd		&
+	x-clmdtl-nbr-serv clmdtl-sv-date clmdtl-fee-ohip	&
+	clmdtl-date-period-end					&
+	clmhdr-pat-ohip-id-or-chart 				&
+	clmhdr-loc						&
+	clmhdr-i-o-pat-ind	
+
+build $pb_obj/moh1a_icu
+
+  

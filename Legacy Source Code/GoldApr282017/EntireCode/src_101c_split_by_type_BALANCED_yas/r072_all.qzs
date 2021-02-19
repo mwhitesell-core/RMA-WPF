@@ -1,0 +1,176 @@
+;#> PROGRAM-ID.
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :  PRODUCE AN AUDIT REPORT SUBTOTALING
+;                       ALL CLAIMS DELETED AND RETAINED
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO     DESCRIPTION
+; 2014/08/21	M.C.	- grand total for all clinics    for 'CLAIMS' only
+
+cancel clear
+set report nolimit
+
+access *u072-retain-claim-hdr				&
+	link (nconv(clmhdr-batch-nbr[1:2])) 		&
+          to iconst-clinic-nbr-1-2 of iconst-mstr-rec  
+
+
+define d-iconst-clinic-nbr-1-2 int size 2 = iconst-clinic-nbr-1-2 
+
+
+define d-retain-count zoned*1 numeric = 1
+define d-delete-count zoned*1 numeric = 0
+define r-clmhdr-tot-claim-ar-oma zoned*7 numeric = clmhdr-tot-claim-ar-oma 
+define r-clmhdr-tot-claim-ar-ohip zoned*7 numeric = clmhdr-tot-claim-ar-ohip
+define r-clmhdr-manual-and-tape-payments zoned*7 numeric = clmhdr-manual-and-tape-payments 
+define d-clmhdr-tot-claim-ar-oma zoned*7 numeric = 0
+define d-clmhdr-tot-claim-ar-ohip zoned*7 numeric = 0
+define d-clmhdr-manual-and-tape-payments zoned*7 numeric = 0
+
+define d-clmhdr-adj-cd char*1 = ' ' if 	&
+       clmhdr-batch-type = 'C' else clmhdr-adj-cd
+
+define d-batch-type num*1 =                             &
+                1 if clmhdr-batch-type = "C"            &
+           else 2 if clmhdr-batch-type = "A"    	&
+           else 3
+
+define d-type char*11 = "CLAIMS"                                &
+                if clmhdr-batch-type = "C"                      &
+              else "ADJUSTMENTS" if clmhdr-batch-type = "A"     &
+              else "PAYMENTS" if clmhdr-batch-type = "P"
+
+set subfile name u072-purge-validate-all keep 
+report summary  d-iconst-clinic-nbr-1-2         &
+		iconst-date-period-end		&
+		x-ped-purge-prior-to-date	&
+		iconst-clinic-cycle-nbr		&
+		d-type				&
+		d-batch-type			&
+		d-retain-count			&
+		d-delete-count			&
+		clmhdr-batch-type 		&
+		d-clmhdr-adj-cd			&
+		clmhdr-agent-cd			&
+		clmhdr-cycle-nbr		&
+                d-clmhdr-tot-claim-ar-oma       &
+                d-clmhdr-tot-claim-ar-ohip      &
+                d-clmhdr-manual-and-tape-payments &
+                r-clmhdr-tot-claim-ar-oma      	&
+                r-clmhdr-tot-claim-ar-ohip     	&
+                r-clmhdr-manual-and-tape-payments 
+
+build $obj/r072a_all
+
+
+access *u072-delete-claim-hdr				&
+        link (nconv(clmhdr-batch-nbr[1:2])) 		&
+          To iconst-clinic-nbr-1-2 of iconst-mstr-rec	
+
+define d-iconst-clinic-nbr-1-2 int size 2 = iconst-clinic-nbr-1-2 
+
+define d-retain-count zoned*1 numeric = 0
+define d-delete-count zoned*1 numeric = 1
+define r-clmhdr-tot-claim-ar-oma zoned*7 numeric = 0
+define r-clmhdr-tot-claim-ar-ohip zoned*7 numeric = 0
+define r-clmhdr-manual-and-tape-payments zoned*7 numeric = 0
+define d-clmhdr-tot-claim-ar-oma zoned*7 numeric =   clmhdr-tot-claim-ar-oma 
+define d-clmhdr-tot-claim-ar-ohip zoned*7 numeric =  clmhdr-tot-claim-ar-ohip 
+define d-clmhdr-manual-and-tape-payments zoned*7 numeric = 	&
+	clmhdr-manual-and-tape-payments 
+
+define d-batch-type num*1 =                             &
+                1 if clmhdr-batch-type = "C"            &
+           else 2 if clmhdr-batch-type = "A"            &
+           else 3
+
+define d-clmhdr-adj-cd char*1 = ' ' if  &
+       clmhdr-batch-type = 'C' else clmhdr-adj-cd
+
+define d-type char*11 = "CLAIMS"                                &
+                if clmhdr-batch-type = "C"                      &
+              else "ADJUSTMENTS" if clmhdr-batch-type = "A"     &
+              else "PAYMENTS" if clmhdr-batch-type = "P"
+
+set subfile name u072-purge-validate-all append 
+report summary	d-iconst-clinic-nbr-1-2         &
+                iconst-date-period-end          &
+		x-ped-purge-prior-to-date	&
+                iconst-clinic-cycle-nbr         &
+                d-type                          &
+                d-batch-type                    &
+                d-retain-count                  &
+                d-delete-count                  &
+                clmhdr-batch-type               &
+                d-clmhdr-adj-cd                	&
+		clmhdr-agent-cd			&
+                clmhdr-cycle-nbr                &
+                d-clmhdr-tot-claim-ar-oma       &
+                d-clmhdr-tot-claim-ar-ohip      &
+                d-clmhdr-manual-and-tape-payments &
+                r-clmhdr-tot-claim-ar-oma       &
+                r-clmhdr-tot-claim-ar-ohip      &
+                r-clmhdr-manual-and-tape-payments 
+
+build $obj/r072b_all
+
+
+access *u072-purge-validate-all
+	
+select if d-type = "CLAIMS"
+
+page heading                                             &
+        tab   1 "R072_ALL"                               &
+	tab  41 "CLAIMS MASTER CONVERSION VERIFICATION REPORT" &
+        tab 100 "RUN DATE"                               &
+        tab 109 sysdate                                  &
+        tab 124 "PAGE"                                   &
+        tab 129 syspage pic "^^^"     			 &
+skip 2							 &
+	tab  63 "CUT-OFF DATE:"				 &
+        tab  78	x-ped-purge-prior-to-date		 &
+skip 2							 &
+        tab  22 "---------------WITHIN - WRITEOFF RANGE---------------" &
+	tab  78 "--------------OUTSIDE - WRITEOFF RANGE---------------" &
+skip 2							 &
+	tab  16 "AGENT"					 &
+	tab  27 "OMA AMT"				 &
+	tab  43 "OHIP AMT"			 	 &
+	tab  59 "CASH AMT" 			 	 &
+	tab  71 "NBR"   				 &
+	tab  84 "OMA AMT"      				 &
+	tab  98 "OHIP AMT"     				 &
+	tab 115 "CASH AMT"      			 &
+	tab 127 "NBR"				 	 &
+skip 2 							 &
+	tab   1 d-type				 	 &
+	tab  15 'GRAND TOTAL'			 	 &
+skip 1
+
+final footing 					 	 &
+skip 2							 &
+        tab   21 d-clmhdr-tot-claim-ar-oma subtotal      &
+                  pic "^^^^^^^,^^^.^^ " trail "-"         &
+        tab   36 d-clmhdr-tot-claim-ar-ohip subtotal     &
+                  pic "^^^^^^^,^^^.^^ " trail "-"         &
+        tab   51 d-clmhdr-manual-and-tape-payments  subtotal &
+                  pic "^^^^^^^,^^^.^^ " trail "-"         &
+        tab   67 d-delete-count subtotal pic '^^^^^^^^'    &
+        tab   77  r-clmhdr-tot-claim-ar-oma subtotal      &
+                  pic "^^^^^^^,^^^.^^ " trail "-"         &
+        tab   92 r-clmhdr-tot-claim-ar-ohip subtotal     &
+                  pic "^^^^^^^,^^^.^^ " trail "-"         &
+        tab  108 r-clmhdr-manual-and-tape-payments subtotal &
+                  pic "^^^^^^^,^^^.^^ " trail "-"         &
+        tab  123 d-retain-count subtotal pic '^^^^^^^^'   
+
+
+set report device disc name r072_all
+set page length 60
+set page width 132
+set formfeed
+
+build $obj/r072c_all
+

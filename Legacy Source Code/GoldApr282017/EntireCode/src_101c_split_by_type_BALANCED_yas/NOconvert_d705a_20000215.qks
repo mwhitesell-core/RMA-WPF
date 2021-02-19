@@ -1,0 +1,318 @@
+;#> PROGRAM-ID.     D705A.QKS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : TO ALLOW CORRECTIONS TO SUSPENDED **DETAIL**  RECORDS
+;
+;    MODIFICATION HISTORY
+;        DATE    WHO         DESCRIPTION
+;     90/JUN/13  D.B.        - ORIGINAL
+;     90/OCT/23  D.B.        - ADDED EDITS
+;     90/NOV/22  D.B.        - ADDED FEE CALCULATION
+;     91/MAR/01  B.E.        - ADDED DIAGNOSTIC CODE TO DETAIL RECORD
+;     93/JUL/14  M.C.	     - SMS 142
+;			     - USE CLMDTL-DIAG-CD-ALPHA
+;			     - USE CLMDTL-NBR-SERV-ALPHA
+;     96/05/10   YAS         - ALLOW ACTIVITIES ADD AND DELETE
+;     96/MAY/15  M.C.	     - PDR 648, ALLOW ENTRY, INITIALIZE ITEMS
+;			       CLMDTL-DOC-OHIP-NBR/ACCOUNTING-NBR
+;			       PLUS SOME EDITS
+;   1998/11/11   S.B.	     - ADDED FILE "F002-SUSPEND-HDR" AS A MASTER.
+;			     - ADDED THE ITEMS "CLMDTL-FEE-OMA" AND
+;			     - "CLMDTL-FEE-OHIP" TO FILE "F002-SUSPEND-DTL".
+;   1998/11/20   S.B.        - ADDED A PROCESS PROCEDURE FOR FIELD
+;			       "clmdtl-amt-tech-billed" THAT POPULATES
+;				FIELDS "clmdtl-fee-oma" AND
+;			        "clmdtl-fee-ohip" WITH THE VALUE ENTERED
+;				IN "clmdtl-amt-tech-billed".
+; 1999/jan/28 B.E.           - y2k 
+; 1999/11/08  M.C.	     - initialize clmdtl-batch-nbr to be clmhdr-batch-nbr
+; 1999/12/14  M.C.	     - use clmdtl-nbr-serv instead of clmdtl-nbr-serv-alpha
+; 2000/02/03  B.A.	     - added code to set flags for new, altered or 
+;			       canceled records (disabled delete activity) 
+
+
+can clear
+screen $pb_obj/d705a receiving w-clmhdr-doc-ohip-nbr,		&
+	 w-clmhdr-accounting-nbr, f002-suspend-hdr              &
+;2000/02/03 begin
+;	ACTIVITIES FIND,CHANGE,ENTRY,DELETE
+        activities find,change,entry
+
+temp w-clmhdr-doc-ohip-nbr
+temp w-clmhdr-accounting-nbr char*8
+temp w-nbr-serv
+temp w-amt
+temp w-const
+temp w-oma-fee
+temp w-ohip-fee
+temp w-amt-tech
+temp w-amt-oma
+temp w-amt-ohip
+
+file f002-suspend-hdr master
+
+file f002-suspend-dtl   primary
+	access viaindex suspend-dtl-id using	&
+	w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+   item clmdtl-doc-ohip-nbr initial w-clmhdr-doc-ohip-nbr fixed
+   item clmdtl-accounting-nbr initial w-clmhdr-accounting-nbr fixed
+
+   item clmdtl-fee-oma of f002-suspend-dtl sum into 	&
+	clmhdr-tot-claim-ar-oma of f002-suspend-hdr
+   item clmdtl-fee-ohip of f002-suspend-dtl sum into 	&
+	clmhdr-tot-claim-ar-ohip of f002-suspend-hdr
+;2000/02/03 begin 
+   item clmdtl-status initial ' '
+
+; 99/11/07
+    item clmdtl-batch-nbr initial clmhdr-batch-nbr
+
+file f040-oma-fee-mstr reference
+	access viaindex fee-oma-cd using clmdtl-oma-cd
+
+file constants-mstr-rec-2 reference
+	access using "2"
+
+file f020-doctor-mstr reference
+	access viaindex doc-ohip-nbr using clmdtl-doc-ohip-nbr opt
+
+file f091-diag-codes-mstr reference
+ 	access viaindex diag-cd using clmdtl-diag-cd-alpha
+
+title "SUSPENDED **DETAIL** MAINTENANCE" at 1,48
+
+skip 1
+align (1, 5, 33 )
+field clmdtl-doc-ohip-nbr of f002-suspend-dtl          nochange   &
+	pic "^^^^^^" label "Doctor Nbr (OHIP)" predisplay display
+align (1, 5, 33 )
+field clmdtl-accounting-nbr of f002-suspend-dtl          nochange &
+      id same label "Remote Site's Accounting Nbr" predisplay  display
+skip 1
+;FIELD CLMDTL-BATCH-NBR OF F002-SUSPEND-DTL
+;FIELD CLMDTL-CLAIM-NBR OF F002-SUSPEND-DTL
+
+field clmdtl-oma-cd of f002-suspend-dtl		label "OMA Code" &
+	lookup on f040-oma-fee-mstr
+field clmdtl-oma-suff of f002-suspend-dtl	label "OMA Suff"
+
+;FIELD CLMDTL-ADJ-NBR OF F002-SUSPEND-DTL
+;FIELD CLMDTL-REV-GROUP-CD OF F002-SUSPEND-DTL
+;FIELD CLMDTL-AGENT-CD-ALPHA OF F002-SUSPEND-DTL	LABEL "AGENT CODE"
+;FIELD CLMDTL-DIAG-CD        OF F002-SUSPEND-DTL	LABEL "OHIP  DIAG CD"
+
+field clmdtl-diag-cd-alpha  of f002-suspend-dtl	label "OHIP Diag Code" &
+	lookup on f091-diag-codes-mstr
+
+;FIELD CLMDTL-DIAG-CD-LOCAL  OF F002-SUSPEND-DTL	LABEL "LOCAL  "   " "
+
+;FIELD CLMDTL-ADJ-CD OF F002-SUSPEND-DTL
+;FIELD CLMDTL-NBR-SERV OF F002-SUSPEND-DTL	LABEL "Initial Service - NBR"
+
+; 99/12/14 -MC
+;field clmdtl-nbr-serv-alpha of f002-suspend-dtl	label "Initial Service - NBR" value "01" to "99"
+field clmdtl-nbr-serv of f002-suspend-dtl	label "Initial Service - NBR" value 01 to 99
+;y2k 
+;field clmdtl-sv-yy-alpha of f002-suspend-dtl	label "                - YY" value "00" to "99"
+field clmdtl-sv-yy-alpha of f002-suspend-dtl	label "                - YY" value "1999" to "2099"
+field clmdtl-sv-mm-alpha of f002-suspend-dtl	label "                - MM" value "01" to "12"
+field clmdtl-sv-dd-alpha of f002-suspend-dtl	label "                - DD" value "01" to "31"
+
+cluster occurs with clmdtl-consecutive-sv-date
+field clmdtl-consecutive-sv-date-alpha of f002-suspend-dtl &
+						label "Consecutive Service Dates"
+cluster
+
+align (1, 5, 33 )
+field clmdtl-amt-tech-billed of f002-suspend-dtl 	&
+	label "Amt Tech Billed" 
+align (1, 5, 32 )
+field clmdtl-fee-oma of f002-suspend-dtl		&
+	label "OMA Fee" 
+field clmdtl-fee-ohip of f002-suspend-dtl		&
+	label "OHIP Fee" 
+field clmdtl-status  of  f002-suspend-dtl label "DETAIL STATUS"
+
+;FIELD CLMDTL-DATE-PERIOD-END OF F002-SUSPEND-DTL
+;FIELD CLMDTL-CYCLE-NBR OF F002-SUSPEND-DTL
+;FIELD CLMDTL-STATUS OF F002-SUSPEND-DTL
+;FIELD W-NBR-SERV
+;FIELD W-OMA-FEE
+;FIELD W-OHIP-FEE
+
+procedure process clmdtl-oma-cd
+begin
+  let w-oma-fee = fee-curr-a-fee-1
+  let w-ohip-fee = fee-curr-h-fee-1
+  let w-amt-tech = 0
+  let w-nbr-serv = clmdtl-nbr-serv	&
+;y2k  - brad test!
+		 + floor(clmdtl-consec-dates / 100000000)	&
+;y2k
+		 + floor(mod(clmdtl-consec-dates,1000000) / 100000) &
+;y2k
+		 + floor(mod(clmdtl-consec-dates,1000) / 100)
+  if  fee-icc-sec = "CV"			&
+  or ((   fee-icc-sec = "NM"			&
+       or fee-icc-sec = "DR"			&
+       or fee-icc-sec = "PF"			&
+       or fee-icc-sec = "DU")			&
+      and clmdtl-oma-suff = "B")	&
+  or (    fee-icc-sec = "SP"		&
+      and (clmdtl-oma-suff = "A"	&
+       or  clmdtl-oma-suff = "M"))	&
+  or ( fee-icc-sec = "CP"			&
+      and (clmdtl-oma-suff = "A"	&
+       or  clmdtl-oma-suff = "M"))	&
+  or ( fee-icc-sec = "DT"			&
+      and (clmdtl-oma-suff = "A"	&
+       or  clmdtl-oma-suff = "M"))
+    then begin
+      let w-oma-fee = fee-curr-a-fee-1
+      let w-ohip-fee = fee-curr-h-fee-1
+      end
+  if ((   fee-icc-sec = "NM"			&
+       or fee-icc-sec = "DR"			&
+       or fee-icc-sec = "PF"			&
+       or fee-icc-sec = "DU")			&
+      and clmdtl-oma-suff = "C")
+    then begin
+      let w-oma-fee = fee-curr-a-fee-2
+      let w-ohip-fee = fee-curr-h-fee-2
+      end
+  if ((   fee-icc-sec = "NM"			&
+       or fee-icc-sec = "DR"			&
+       or fee-icc-sec = "PF"			&
+       or fee-icc-sec = "DU")			&
+     and (clmdtl-oma-suff = "A"	&
+       or clmdtl-oma-suff = "M"))
+    then begin
+      let w-oma-fee = fee-curr-a-fee-1 + fee-curr-a-fee-2
+      let w-ohip-fee = fee-curr-h-fee-1 + fee-curr-h-fee-2
+      end
+  if ((   fee-icc-sec = "CP"			&
+       or fee-icc-sec = "DT"			&
+       or fee-icc-sec = "SP")			&
+      and clmdtl-oma-suff = "C"	&
+      and doc-spec-cd = 0)
+    then begin
+      let w-oma-fee = const-reg-a-curr of constants-mstr-rec-2
+      let w-ohip-fee = const-reg-h-curr of constants-mstr-rec-2
+      end
+  if ((   fee-icc-sec = "CP"			&
+       or fee-icc-sec = "DT"			&
+       or fee-icc-sec = "SP")			&
+      and clmdtl-oma-suff = "C"	&
+      and doc-spec-cd <> 0)
+    then begin
+      let w-oma-fee = const-cert-a-curr
+      let w-ohip-fee = const-cert-h-curr
+      end
+  if      fee-icc-sec = "SP"			&
+      and clmdtl-oma-suff = "B"
+    then begin
+      let w-oma-fee = const-asst-a-curr
+      let w-ohip-fee= const-asst-h-curr
+      end
+  if ((   fee-icc-sec = "CP"			&
+       or fee-icc-sec = "DT"			&
+       or fee-icc-sec = "SP")			&
+      and clmdtl-oma-suff = "C")
+    then begin
+      let w-oma-fee = w-oma-fee + (w-oma-fee * fee-curr-a-anae)
+      let w-ohip-fee = w-ohip-fee + (w-ohip-fee * fee-curr-h-anae)
+      end
+  if      fee-icc-sec = "SP"			&
+      and clmdtl-oma-suff = "B"
+    then begin
+      let w-oma-fee = w-oma-fee + (w-oma-fee * fee-curr-a-asst)
+      let w-ohip-fee = w-ohip-fee + (w-ohip-fee * fee-curr-h-asst)
+      end
+
+  let w-amt-oma = w-oma-fee * w-nbr-serv
+  let w-amt-ohip = w-ohip-fee * w-nbr-serv
+
+  if clmdtl-agent-cd = 9
+    then begin
+      let w-amt-ohip = w-amt-ohip * const-wcb-curr
+      let w-amt-oma  = w-amt-ohip * const-wcb-curr
+      end
+
+  if clmdtl-agent-cd = 4 or clmdtl-agent-cd = 6
+    then begin
+      let w-amt-ohip = w-amt-oma
+      end
+
+  if fee-tech-ind = "Y" or clmdtl-oma-suff = "B"
+    then begin
+      let w-amt-tech = w-amt-ohip
+      end
+
+  if fee-icc-sec = "NM" or fee-icc-sec = "DR"	&
+  or fee-icc-sec = "DU" or fee-icc-sec = "PF"
+    then begin
+      let w-amt-tech = fee-curr-a-fee-1	&
+                  * (w-amt-ohip / (fee-curr-a-fee-1 + fee-curr-a-fee-2))
+      end
+
+    let clmdtl-amt-tech-billed = w-amt-tech
+    let clmdtl-fee-oma = w-amt-oma
+    let clmdtl-fee-ohip = w-amt-ohip
+    display clmdtl-amt-tech-billed
+    display clmdtl-fee-oma
+    display clmdtl-fee-ohip
+
+    end
+
+procedure process clmdtl-amt-tech-billed
+   begin
+     let clmdtl-fee-oma  = clmdtl-amt-tech-billed
+     let clmdtl-fee-ohip = clmdtl-amt-tech-billed
+     display clmdtl-fee-oma
+     display clmdtl-fee-ohip
+   end
+
+;2000/02/03 begin
+procedure designer del
+begin 
+  let clmdtl-status = 'D'
+  let clmhdr-tot-claim-ar-ohip of f002-suspend-hdr =   &
+      clmhdr-tot-claim-ar-ohip of f002-suspend-hdr     & 
+      - clmdtl-fee-ohip of f002-suspend-dtl
+  let clmhdr-tot-claim-ar-oma of f002-suspend-hdr =    & 
+      clmhdr-tot-claim-ar-oma of f002-suspend-hdr      &
+      - clmdtl-fee-oma
+end
+
+procedure designer undel
+begin     
+  if clmdtl-status = 'D'
+  then begin
+    let clmdtl-status = 'U'
+    let clmhdr-tot-claim-ar-ohip of f002-suspend-hdr =   &
+        clmhdr-tot-claim-ar-ohip of f002-suspend-hdr     &
+        + clmdtl-fee-ohip of f002-suspend-dtl
+    let clmhdr-tot-claim-ar-oma of f002-suspend-hdr =    &
+        clmhdr-tot-claim-ar-oma of f002-suspend-hdr      & 
+        + clmdtl-fee-oma
+  end
+  else warn "This record has not been flagged for deletion"
+end 
+
+procedure preupdate
+begin
+  if      newrecord		&
+      and not alteredrecord
+    then begin
+      let clmdtl-status = 'N' 
+    end
+  if     alteredrecord		 &
+     and not newrecord		 & 
+     and clmdtl-status <> 'D'
+    then begin
+      let clmdtl-status = 'U'
+    end 
+end 
+
+build

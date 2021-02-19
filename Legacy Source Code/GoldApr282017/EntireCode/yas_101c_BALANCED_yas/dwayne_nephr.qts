@@ -1,0 +1,98 @@
+;doc     : dwayne_nephr.qts
+;purpose : report claims keyed after july 1, 2002 with service dates
+;          less than july 1, 2002
+
+;who     : Dwayne Martin and Kevin S.
+
+
+;Date		Who		Description
+;2003/07/16   	Yasemin		Original
+;2003/07/31   	Yasemin		june services keyed after july 1, 2001
+
+
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                           
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220839000 to 220839999,   &
+                                              220481000 to 220481999,   &
+                                              220078000 to 220078999,   &
+                                              220188000 to 220188999,   &
+                                              220403000 to 220403999,   &
+                                              220886000 to 220886999,   &
+                                              220279000 to 220279999,   &
+                                              220792000 to 220792999,   &
+                                              220879000 to 220879999,   &
+                                              220455000 to 220455999,   &
+                                              220928000 to 220928999,   &
+                                              220055000 to 220055999,   &
+                                              220662000 to 220662999,   &
+                                              220459000 to 220459999,   &
+                                              220425000 to 220425999,   &
+                                              220967000 to 220967999,   &
+                                              220448000 to 220448999,   &
+                                              220524000 to 220524999,   &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select if clmhdr-batch-type = 'C' and clmhdr-date-period-end >= 20010701
+
+subfile dwayne_1 keep include              &
+key-clm-batch-nbr      of f002-claims-mstr,&
+key-clm-claim-nbr      of f002-claims-mstr,&
+clmhdr-date-sys        of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dwayne_1			&
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr 	&	
+	of f002-claims-mstr  
+
+def x-code char*4 = clmdtl-id[12:4]
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     <  '20010701' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+subfile dwayne_2 keep include          &
+clmdtl-id              of f002-claims-mstr,&
+key-clm-batch-nbr      of f002-claims-mstr,&
+key-clm-claim-nbr      of f002-claims-mstr,&
+clmhdr-date-sys        of dwayne_1        ,&
+x-doc-nbr                                 ,&
+;x-nbr-svcs 	                          ,& 
+clmdtl-nbr-serv                       ,& 
+x-code	                                  ,& 
+clmdtl-sv-date                            ,& 
+clmdtl-fee-ohip                           
+
+
+build $obj/dwayne_nephr
+
+

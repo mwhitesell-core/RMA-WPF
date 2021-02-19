@@ -1,0 +1,31 @@
+;
+; 2007/07/17 - MC  - original
+;		   - this program clones the request of process detail from newu706a.qts
+;		     to add the tag for record count on the record complex
+;		   - occasionally we received data conversion on clmdtl-sv-date from log file,
+;		     based on the record count, we can easily identify the claims that have
+;		     problem.  Suspend hdr/dtl files must be restored before we can run this
+;		     test.
+;		   - after investigation, nothing is wrong from the incoming file but the user
+;		     has added one addition claim detail with the wrong serv date, instead of 20070704,
+;		     it showed as 200 0704
+
+cancel clear
+set lock record update
+set process nolimit
+access *u706a_susp_hdr_count_srted                      &
+        link clmhdr-doc-ohip-nbr,                       &
+             clmhdr-accounting-nbr                      &
+          to clmdtl-doc-ohip-nbr,                       &
+             clmdtl-accounting-nbr  of f002-suspend-dtl &
+        link (nconvert(w-key-claims-mstr[2:2]))         &
+          to iconst-clinic-nbr-1-2  of iconst-mstr-rec
+
+use $use/def_clmdtl_status.def
+
+select if clmdtl-status of f002-suspend-dtl <> clmdtl-status-delete
+
+temp xcount 
+item xcount = xcount + 1
+
+subfile mcu706a keep include u706a_susp_hdr_count_srted, clmdtl-sv-date, xcount

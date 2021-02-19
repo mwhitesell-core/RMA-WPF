@@ -1,0 +1,159 @@
+;  2007/04/16 	M.C.	change the definition for x-paid-amt with negative amount as well
+;  2009/03/31   M.C.    include clmhdr-adj-cd in the sort, footing at clmhdr-adj-cd since
+;			now we have 3 different files(2 AGEP & MOHR)
+;  2009/04/08   M.C.	cosmetic change on report including page heading, similiar to r031b_agep.txt
+;  2013/05/15   MC1 	cosmetic change on report including page heading, similiar to r031b_agep.txt to include MOHD
+;			add a new request to have subtotal for clmhdr-adj-cd
+;  2013/09/11   MC1     include the third pass for undefined doctor transactions if applied
+;  2016/07/14   MC2     expand the amount fields
+ 
+can clear
+set rep nolimit
+set rep dev disc name r031b
+;set rep page length 0
+set rep page length 60 width 132
+set formfeed
+set noclose
+
+access r031a-ohip-premiums
+
+def x-paid-amt zoned*8 signed = &
+; 2007/04/16 - MC
+;nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+	nconvert(dollars-paid[2:2] + dollars-paid[5:3] + dollars-paid[9:2]) * -1	&
+	if dollars-paid[1:1] = '-'						&
+	else  nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+; 2007/04/16 - end
+
+; 2009/03/31 - MC
+;sort on ICONST-CLINIC-NBR-1-2
+sort on ICONST-CLINIC-NBR-1-2 on clmhdr-adj-cd
+
+
+; 2009/04/08 - MC
+page heading 			&
+tab  1 'R031B'     		&
+; 2013/05/15 - MC1
+;tab 25 'AGEP /AGE3/ MOHR Payments before update'	&
+tab 25 'AGEP / AGE3 / MOHR / MOHD Payments before update'	&
+; 2013/05/15 - end
+tab 75 sysdate			&
+tab 90 'Page'			&
+tab 96 syspage			&
+skip 2				&
+tab  1 'Clinic'			&
+tab 10 'Type'			&
+tab 20 'Amount'     		&
+skip 2
+; 2009/04/08 - MC
+
+footing at clmhdr-adj-cd		&
+;iconst-clinic-nbr-1-2              	 &
+;x-paid-amt  subtotal pic "^^^,^^^.^^"   &
+;clmhdr-adj-cd				&
+tab  1 iconst-clinic-nbr-1-2		&
+tab 10 clmhdr-adj-cd			&
+; MC2
+;tab 16 x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-'
+tab 16 x-paid-amt  subtotal pic "^^^^,^^^.^^ " trail '-'
+
+; 2009/03/31 - end
+
+footing at ICONST-CLINIC-NBR-1-2  	&
+skip 2					&
+tab 1  'Totals: '			&
+; MC2
+;tab 30 x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-' &
+tab 30 x-paid-amt  subtotal pic "^^^^,^^^.^^ " trail '-' &
+skip 2
+
+final footing 			&
+skip 2				&
+tab 1  'Grand Totals: '		&
+; MC2
+;tab 30  x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+tab 30  x-paid-amt  subtotal pic "^^^^,^^^.^^ " trail '-' & 
+skip 1
+
+
+
+build $pb_obj/r031_before_update_1
+
+access r031a-ohip-premiums
+
+def x-paid-amt zoned*8 signed = &
+        nconvert(dollars-paid[2:2] + dollars-paid[5:3] + dollars-paid[9:2]) * -1        &
+        if dollars-paid[1:1] = '-'                                              	&
+        else  nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+
+sort on  clmhdr-adj-cd
+
+page heading 			&
+tab  1 'R031B'     		&
+tab 25 'AGEP / AGE3 / MOHR / MOHD Payments before update'	&
+tab 75 sysdate			&
+tab 90 'Page'			&
+tab 96 syspage			&
+skip 2				&
+tab  1 'Clinic'			&
+tab 10 'Type'			&
+tab 20 'Amount'     		&
+skip 2
+
+footing at clmhdr-adj-cd		&
+tab 10 clmhdr-adj-cd			&
+; MC2
+;tab 16 x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-'
+tab 16 x-paid-amt  subtotal pic "^^^^,^^^.^^ " trail '-'
+
+build $pb_obj/r031_before_update_2
+
+
+; 2013/09/11 - MC2 - add new pass for undefined doctor transactions
+
+access r031a-ohip-premiums			&
+	link doc-ohip-nbr 			&
+	 to  doc-ohip-nbr of f020-doctor-mstr optional
+
+sel if not record f020-doctor-mstr exists
+
+def x-paid-amt zoned*8 signed = 							&
+	nconvert(dollars-paid[2:2] + dollars-paid[5:3] + dollars-paid[9:2]) * -1	&
+	if dollars-paid[1:1] = '-'							&
+	else  nconvert(dollars-paid[1:3] + dollars-paid[5:3] + dollars-paid[9:2])
+
+
+page heading 			&
+tab  1 'R031B'     		&
+tab 25 'UNDEFINED DOCTOR TRANSACTIONS   before update'	&
+tab 75 sysdate			&
+tab 90 'Page'			&
+tab 96 syspage			&
+skip 2				&
+tab  1 'Clinic'			&
+tab 10 'Type'			&
+tab 20 'Amount'     		&
+tab 30 'Doc Ohip Nbr'		&
+tab 45 'Doctor Name'     	&
+skip 2
+
+report                       		&
+tab  1 iconst-clinic-nbr-1-2		&
+tab 10 clmhdr-adj-cd			&
+tab 16 x-paid-amt  pic "^^^,^^^.^^ " trail '-' 	&
+tab 33 doc-ohip-nbr of r031a-ohip-premiums	&
+tab 45 doc-name of r031a-ohip-premiums		&
+skip 1
+
+final footing 			&
+skip 2				&
+tab 1  'Grand Totals: '		&
+; MC2
+;tab 16  x-paid-amt  subtotal pic "^^^,^^^.^^ " trail '-' & 
+tab 16  x-paid-amt  subtotal pic "^^^^,^^^.^^ " trail '-' & 
+skip 1
+
+build $pb_obj/r031_before_update_3
+
+
+

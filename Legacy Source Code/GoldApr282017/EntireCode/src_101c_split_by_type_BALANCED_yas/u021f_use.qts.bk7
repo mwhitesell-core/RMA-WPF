@@ -1,0 +1,562 @@
+; 2004/mar/04 - this copybook has been converted from the original u021f.qts
+; 2004/mar/10 - make correction on x-f002-claim-status & update f087/f010 &
+;		rejected-claims properly
+; 2004/may/03 - if service reject and error code = VJ7, set charge-status = 'N'
+; 2004/jun/08 - extend the definition for x-ohip-err-code-final and
+;               x-ohip-err-code-final-cat
+; 2004/jun/17 - if service reject and error code = EQE or EQF, set charge-status = 'N'
+; 2004/aug/18 - make correction on update f087-dtl     
+; 2006/aug/16 - Yasemin reminds me why we changed the condition when creating f087-dtl 2 years ago
+;		is because Thekla would like to see all claim detail records that belong
+;		to the claim header record even though for claim detail does not have error code
+;               (clarify the issue by documenting the criteria but no change is required at this point)
+; 2006/aug/17 - Brad and I agree that we must have the same criteria when creating f087/hdr &
+;		f087-dtl which is unconditionally.  We assume each incoming record has an error code
+;		for each claim
+
+
+sorted	on rat-rmb-account-nbr 	&
+	on rat-rmb-orig-seq-nbr	&
+	on rat-rmb-service-cd 	&
+	on rat-rmb-service-date
+
+def x-bal-due zoned*8 signed                    &
+        = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+
+select if x-bal-due <> 0
+
+
+
+; (ped must be defined - use process date if claim not found)
+ def x-ped date						&
+	= clmhdr-date-period-end 			&
+		if record f002-claims-mstr exists	&
+    else  rat-rmb-process-date of u021a
+
+; (currently all errors are deemed chargeable)
+temp x-charge-status char*1
+item x-charge-status 					&
+        = "Y" 
+
+; (find 1st "E"ligilibity and 1st "S"ervice error in header
+temp x-ohip-err-hdr-elig-ss  
+item x-ohip-err-hdr-elig-ss					&
+	=  1 	if     rat-rmb-error-h-cd-1 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-1 = "E" 	&
+     else  2	if     rat-rmb-error-h-cd-2 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-2 = "E" 	&
+     else  3	if     rat-rmb-error-h-cd-3 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-3 = "E" 	&
+     else  4	if     rat-rmb-error-h-cd-4 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-4 = "E" 	&
+     else  5 	if     rat-rmb-error-h-cd-5 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-5 = "E" 	&
+     else  0
+
+temp x-ohip-err-hdr-serv-ss  
+item x-ohip-err-hdr-serv-ss					&
+        =  1	if     rat-rmb-error-h-cd-1 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-1 = "S" 	&
+     else  2	if     rat-rmb-error-h-cd-2 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-2 = "S" 	&
+     else  3	if     rat-rmb-error-h-cd-3 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-3 = "S" 	&
+     else  4	if     rat-rmb-error-h-cd-4 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-4 = "S" 	&
+     else  5 	if     rat-rmb-error-h-cd-5 <> " "		& 
+		   and ohip-err-cat-code of f093-hdr-5 = "S"	&
+     else  0
+
+temp x-ohip-err-dtl-elig-ss  
+item x-ohip-err-dtl-elig-ss					&
+	=  1 	if     rat-rmb-error-t-cd-1 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-1 = "E" 	&
+     else  2	if     rat-rmb-error-t-cd-2 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-2 = "E" 	&
+     else  3	if     rat-rmb-error-t-cd-3 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-3 = "E" 	&
+     else  4	if     rat-rmb-error-t-cd-4 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-4 = "E" 	&
+     else  5 	if     rat-rmb-error-t-cd-5 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-5 = "E" 	&
+     else  0
+temp x-ohip-err-dtl-serv-ss  
+item x-ohip-err-dtl-serv-ss					&
+        =  1 	if     rat-rmb-error-t-cd-1 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-1 = "S" 	&
+     else  2	if     rat-rmb-error-t-cd-2 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-2 = "S" 	&
+     else  3	if     rat-rmb-error-t-cd-3 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-3 = "S" 	&
+     else  4	if     rat-rmb-error-t-cd-4 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-4 = "S" 	&
+     else  5 	if     rat-rmb-error-t-cd-5 <> " "		& 
+		   and ohip-err-cat-code of f093-dtl-5 = "S"	&
+     else  0
+
+temp x-ohip-err-code-hdr-this-rec char*3
+item x-ohip-err-code-hdr-this-rec				&
+	=  rat-rmb-error-h-cd-1					& 
+		if x-ohip-err-hdr-elig-ss = 1			&
+     else  rat-rmb-error-h-cd-2					& 
+		if x-ohip-err-hdr-elig-ss = 2			&
+     else  rat-rmb-error-h-cd-3					& 
+		if x-ohip-err-hdr-elig-ss = 3			&
+     else  rat-rmb-error-h-cd-4					& 
+		if x-ohip-err-hdr-elig-ss = 4			&
+     else  rat-rmb-error-h-cd-5					& 
+		if x-ohip-err-hdr-elig-ss = 5			&
+     else  rat-rmb-error-h-cd-1					& 
+		if x-ohip-err-hdr-serv-ss = 1			&
+     else  rat-rmb-error-h-cd-2					& 
+		if x-ohip-err-hdr-serv-ss = 2			&
+     else  rat-rmb-error-h-cd-3					& 
+		if x-ohip-err-hdr-serv-ss = 3			&
+     else  rat-rmb-error-h-cd-4					& 
+		if x-ohip-err-hdr-serv-ss = 4			&
+     else  rat-rmb-error-h-cd-5					& 
+		if x-ohip-err-hdr-serv-ss = 5			&
+     else " "
+
+temp x-ohip-err-code-hdr-cat-this-rec char*1
+item x-ohip-err-code-hdr-cat-this-rec				&
+	= "E" if x-ohip-err-hdr-elig-ss > 0			&
+     else "S" if x-ohip-err-hdr-serv-ss > 0			&
+     else " "
+
+temp x-ohip-err-code-dtl-this-rec char*3
+item x-ohip-err-code-dtl-this-rec				&
+	=  rat-rmb-error-t-cd-1					& 
+		if x-ohip-err-dtl-elig-ss = 1			&
+     else  rat-rmb-error-t-cd-2					& 
+		if x-ohip-err-dtl-elig-ss = 2			&
+     else  rat-rmb-error-t-cd-3					& 
+		if x-ohip-err-dtl-elig-ss = 3			&
+     else  rat-rmb-error-t-cd-4					& 
+		if x-ohip-err-dtl-elig-ss = 4			&
+     else  rat-rmb-error-t-cd-5					& 
+		if x-ohip-err-dtl-elig-ss = 5			&
+     else  rat-rmb-error-t-cd-1					& 
+		if x-ohip-err-dtl-serv-ss = 1			&
+     else  rat-rmb-error-t-cd-2					& 
+		if x-ohip-err-dtl-serv-ss = 2			&
+     else  rat-rmb-error-t-cd-3					& 
+		if x-ohip-err-dtl-serv-ss = 3			&
+     else  rat-rmb-error-t-cd-4					& 
+		if x-ohip-err-dtl-serv-ss = 4			&
+     else  rat-rmb-error-t-cd-5					& 
+		if x-ohip-err-dtl-serv-ss = 5			&
+     else " "
+
+temp x-ohip-err-code-dtl-cat-this-rec char*1
+item x-ohip-err-code-dtl-cat-this-rec				&
+	= "E" if x-ohip-err-dtl-elig-ss > 0			&
+     else "S" if x-ohip-err-dtl-serv-ss > 0			&
+     else " "
+
+temp x-ohip-err-code-hdr-claim char*3
+temp x-ohip-err-code-dtl-cat-claim char*1
+temp x-ohip-err-code-hdr-cat-claim char*1
+temp x-ohip-err-code-dtl-claim char*3
+; (determine if the claim's code is going to be changed)
+temp x-hdr-code-going-to-be-changed char*1
+item x-hdr-code-going-to-be-changed 					&
+	= "Y" if     x-ohip-err-code-hdr-claim = " "                  	&
+                   or (    x-ohip-err-code-hdr-cat-claim    = "S"       &
+                       and x-ohip-err-code-hdr-cat-this-rec = "E"       &
+                      )                                                 &
+     else "N"
+temp x-dtl-code-going-to-be-changed char*1
+item x-dtl-code-going-to-be-changed 					&
+	= "Y" if     x-ohip-err-code-dtl-claim = " "                  	&
+                   or (    x-ohip-err-code-dtl-cat-claim    = "S"       &
+                       and x-ohip-err-code-dtl-cat-this-rec = "E"       &
+                      )                                                 &
+     else "N"
+; (update claim's category if the code is going to be changed)
+item x-ohip-err-code-hdr-cat-claim					&
+        = x-ohip-err-code-hdr-cat-this-rec                             	&
+                if  x-hdr-code-going-to-be-changed = "Y"		&
+	     reset at rat-rmb-account-nbr
+item x-ohip-err-code-dtl-cat-claim					&
+        = x-ohip-err-code-dtl-cat-this-rec                             	&
+                if  x-dtl-code-going-to-be-changed = "Y"		&
+	     reset at rat-rmb-account-nbr
+
+; (update claim's code)
+item x-ohip-err-code-hdr-claim						&
+	= x-ohip-err-code-hdr-this-rec					&
+                if  x-hdr-code-going-to-be-changed = "Y"		&
+	     reset at rat-rmb-account-nbr
+item x-ohip-err-code-dtl-claim                                          &
+        = x-ohip-err-code-dtl-this-rec                                  &
+                if  x-dtl-code-going-to-be-changed = "Y"		&
+             reset at rat-rmb-account-nbr
+
+; (in case a claim has both "E" and "S" errors the fields above give priority
+;  to the "E" errors - keep the "S" error in this field so that the f002 
+;  claim header's service error field can be updated regardless of the 'final'
+;  claim's overall error code which is likely to be an "E" type)
+
+temp x-ohip-err-code-dtl-serv-this-rec char*3
+item x-ohip-err-code-dtl-serv-this-rec				&
+        =  rat-rmb-error-t-cd-1                                 &
+                if x-ohip-err-dtl-serv-ss = 1                   &
+     else  rat-rmb-error-t-cd-2                                 &
+                if x-ohip-err-dtl-serv-ss = 2                   &
+     else  rat-rmb-error-t-cd-3                                 &
+                if x-ohip-err-dtl-serv-ss = 3                   &
+     else  rat-rmb-error-t-cd-4                                 &
+                if x-ohip-err-dtl-serv-ss = 4                   &
+     else  rat-rmb-error-t-cd-5                                 &
+                if x-ohip-err-dtl-serv-ss = 5                   &
+     else " "
+
+temp x-ohip-err-code-hdr-serv-this-rec char*3
+item x-ohip-err-code-hdr-serv-this-rec	                        &
+	=  rat-rmb-error-h-cd-1					& 
+		if x-ohip-err-hdr-serv-ss = 1			&
+     else  rat-rmb-error-h-cd-2					& 
+		if x-ohip-err-hdr-serv-ss = 2			&
+     else  rat-rmb-error-h-cd-3					& 
+		if x-ohip-err-hdr-serv-ss = 3			&
+     else  rat-rmb-error-h-cd-4					& 
+		if x-ohip-err-hdr-serv-ss = 4			&
+     else  rat-rmb-error-h-cd-5					& 
+		if x-ohip-err-hdr-serv-ss = 5			&
+     else " "
+
+temp x-ohip-err-code-hdr-serv-claim char*3
+item x-ohip-err-code-hdr-serv-claim				&
+	= x-ohip-err-code-hdr-serv-this-rec			&
+		if    x-ohip-err-code-hdr-serv-claim = " "      &
+             reset at rat-rmb-account-nbr
+temp x-ohip-err-code-dtl-serv-claim char*3
+item x-ohip-err-code-dtl-serv-claim				&
+	= x-ohip-err-code-dtl-serv-this-rec			&
+		if    x-ohip-err-code-dtl-serv-claim = " "      &
+             reset at rat-rmb-account-nbr
+
+temp x-ohip-err-code-final char*3
+item x-ohip-err-code-final					&
+	= x-ohip-err-code-hdr-claim				&
+		if    x-ohip-err-code-hdr-claim <> " "		&
+		  and (   x-ohip-err-code-hdr-cat-claim = "E"	&
+		       or x-ohip-err-code-dtl-cat-claim = "S"	&
+		      )						&
+; 2004/06/08 - MC
+     else x-ohip-err-code-hdr-claim                           &
+              if    x-ohip-err-code-hdr-claim <> " "          &
+                and (   x-ohip-err-code-hdr-cat-claim = "S"   &
+                    )                                         &
+; 2004/06/08 - end
+     else x-ohip-err-code-dtl-claim				&
+		if    x-ohip-err-code-dtl-claim <> " "		&
+     else " "
+
+temp x-ohip-err-code-final-cat char*1
+item x-ohip-err-code-final-cat					&
+	= x-ohip-err-code-hdr-cat-claim				&
+		if    x-ohip-err-code-hdr-cat-claim <> " "	&
+		  and (   x-ohip-err-code-hdr-cat-claim = "E"	&
+		       or x-ohip-err-code-dtl-cat-claim = "S"	&
+		      )						&
+; 2004/06/08 - MC
+     else x-ohip-err-code-hdr-cat-claim                       &
+              if    x-ohip-err-code-hdr-cat-claim <> " "      &
+                and (   x-ohip-err-code-hdr-cat-claim = "S"   &
+                    )                                         &
+; 2004/06/08 - end
+     else x-ohip-err-code-dtl-cat-claim				&
+		if    x-ohip-err-code-dtl-cat-claim <> " "	&
+     else " "
+
+; (if patient's version code has changed since submission and error is one of
+;  the below then force resubmission of claim with "X" status)
+temp x-f002-claim-status char*1 
+item x-f002-claim-status						      &
+      = "X" if   (    pat-version-cd of f010-pat-mstr <> rat-rmb-version-cd   &	
+	          and (   x-ohip-err-code-final = "EH2"			      &
+		       or x-ohip-err-code-final = "VH4"			      &
+		      ) 						      &
+	         )							      &
+	      or (    pat-birth-date of f010-pat-mstr <> rat-rmb-birth-date   & 
+	          and (   x-ohip-err-code-final = "VH8"			      &
+		      )							      &
+		 ) 							      &
+; 2004/03/10 - MC
+;  else "H" 
+  else "H" if x-ohip-err-code-final <> " "				      &
+  else " "
+; 2004/03/10 - end
+
+
+temp rec-counter num 
+item rec-counter = rec-counter + 1	reset at rat-rmb-account-nbr
+
+def run-date date = sysdate
+def run-time zoned*4 unsigned = systime / 10000
+; DETAIL update
+output f087-submitted-rejected-claims-dtl alias f087-dtl-add    add &	
+	on error report 					&
+; 2004/03/10 - MC
+; 2004/08/18 - MC - do not check against non-blank error code when 
+;		    creating f087-dtl
+	if 1 = 1
+;;	if    x-ohip-err-code-final <> " " 			&
+;;	  and 1 = 1
+; 2004/08/18 - end
+
+; 2004/03/10 - end
+
+  item clmhdr-batch-nbr final 					&	
+;!              nconvert(  rat-rmb-group-nbr[1:2]               &
+;!                         + "0"                                &
+;!                       + rat-rmb-account-nbr[1:6]             &
+                           rat-rmb-group-nbr[1:2]               &
+                         + rat-rmb-account-nbr[1:6]
+
+  item clmhdr-claim-nbr final nconvert(rat-rmb-account-nbr[7:2]) 
+  item ped			final x-ped
+  item edt-process-date		final rat-rmb-process-date
+  item key-dtl-seq-nbr		final rec-counter 
+
+  item edt-oma-service-cd-and-suffix				&	
+				final rat-rmb-service-cd 
+  item edt-service-date		final rat-rmb-service-date
+  item edt-dtl-diag-cd		final rat-rmb-diag-cd 
+  item edt-nbr-serv		final rat-rmb-nbr-of-serv
+  item edt-amount-submitted	final rat-rmb-amount-sub
+  item edt-dtl-err-explan-cd	final rat-rmb-t-explan-cd
+  item edt-dtl-err-cd-1		final rat-rmb-error-t-cd-1
+  item edt-dtl-err-cd-2		final rat-rmb-error-t-cd-2
+  item edt-dtl-err-cd-3		final rat-rmb-error-t-cd-3
+  item edt-dtl-err-cd-4		final rat-rmb-error-t-cd-4
+  item edt-dtl-err-cd-5		final rat-rmb-error-t-cd-5
+  item edt-dtl-err-8-explan-cd	final rat-rmb-8-explan-cd
+  item edt-dtl-err-8-explan-desc				&
+				final rat-rmb-8-explan-desc
+  item last-mod-date		final sysdate
+  item last-mod-time		final systime/10000
+  item last-mod-user-id		final "system"
+
+; HEADER update
+output f087-submitted-rejected-claims-hdr  alias f087-hdr-add   add &
+    at rat-rmb-account-nbr	on error report	&
+; 2004/03/10 - MC
+; 2006/08/17 - MC - do not check against non-blank error code when 
+;		    creating f087-hdr, to have the same criteria as f087-dtl
+;		  - f087 hdr/dtl will be created for every incoming rejected record
+ 	if 1 = 1
+;	if    x-ohip-err-code-final <> " " 			&
+;	 and 1 = 1
+; 2006/08/17 - end
+; 2004/03/10 - end
+
+  item clmhdr-batch-nbr final 				&	
+;!              nconvert(  rat-rmb-group-nbr[1:2]       &
+;!                         + "0"                          &
+;!                       + rat-rmb-account-nbr[1:6]     &
+                           rat-rmb-group-nbr[1:2]       &
+                         + rat-rmb-account-nbr[1:6]
+ 
+  item clmhdr-claim-nbr 	final nconvert(rat-rmb-account-nbr[7:2]) 
+
+;!  item clmhdr-doc-nbr         final nconvert(rat-rmb-account-nbr[1:3])
+  item clmhdr-doc-nbr           final          rat-rmb-account-nbr[1:3]
+
+  item ped			final x-ped
+
+  item edt-process-date		final rat-rmb-process-date
+  item edt-health-nbr		final rat-rmb-health-nbr
+  item edt-health-version-cd	final rat-rmb-version-cd
+  item edt-pat-birth-date	final rat-rmb-birth-date
+  item edt-account-nbr		final rat-rmb-account-nbr
+  item edt-pay-prog		final rat-rmb-pay-prog
+  item edt-payee		final rat-rmb-payee
+  item eft-referring-doc-nbr	final rat-rmb-refer-doc-nbr
+  item edt-facility-nbr		final rat-rmb-facility-nbr
+  item edt-admit-date		final rat-rmb-admit-date
+  item edt-location-cd		final rat-rmb-loc-cd
+
+  item ohip-err-code		final x-ohip-err-code-final 
+
+  item edt-err-h-cd-1		final rat-rmb-error-h-cd-1
+  item edt-err-h-cd-2		final rat-rmb-error-h-cd-2
+  item edt-err-h-cd-3		final rat-rmb-error-h-cd-3
+  item edt-err-h-cd-4		final rat-rmb-error-h-cd-4
+  item edt-err-h-cd-5		final rat-rmb-error-h-cd-5
+
+;  (all rejections initially set to chargeable)
+;  item charge-status		final x-charge-status
+; 2004/05/03 - MC
+;  item charge-status           final "Y"
+  item charge-status            final 'N' if x-ohip-err-code-final = 'VJ7' &
+; 2004/06/17 - MC - add two more conditions
+					  or x-ohip-err-code-final = 'EQE' &
+					  or x-ohip-err-code-final = 'EQF' &
+; 2004/06/17 - end
+                                else  "Y"
+; 2004/05/03 - end
+
+  item entry-date		final sysdate
+  item entry-time-long       	final systime            
+  item entry-user-id		final "system"
+  item last-mod-date		final sysdate
+  item last-mod-time		final systime/10000
+  item last-mod-user-id		final "system"
+
+
+; f002 ------------------------------------------------
+output f002-claims-mstr alias f002-update update 	&
+  at rat-rmb-account-nbr 				&
+	if     record f002-claims-mstr exists &
+	   and 1 = 1
+
+    item clmhdr-elig-error	final   x-ohip-err-code-final	&
+			if x-ohip-err-code-final-cat = "E"
+    item clmhdr-elig-status	final   "A" 		 	&
+			if x-ohip-err-code-final-cat = "E"
+
+    item clmhdr-serv-error	final   x-ohip-err-code-dtl-serv-claim
+    item clmhdr-serv-status	final   "A" 		 	&
+			if x-ohip-err-code-dtl-serv-claim <> ""
+
+;    item clmhdr-tape-submit-ind final   "H"	; on Hold
+    item clmhdr-tape-submit-ind final   x-f002-claim-status 
+
+
+; f085 ------------------------------------------------
+output rejected-claims add &
+  at rat-rmb-account-nbr on error report 	&
+; 2004/03/10 - MC - only create records for eligibility errors
+;	if    x-f002-claim-status <> "X"	&    ; don't need letter if
+						     ; claim being resubmitted
+	if    x-f002-claim-status = "H" 	&    
+; 2004/03/10 - end
+	and 1 = 1				
+
+;!   item claim-nbr              final  (  nconvert(rat-rmb-group-nbr[1:2])    &
+;!                                      * 100000000                           &
+;!                                     )                                      &
+;!                                   + nconvert(rat-rmb-account-nbr)
+    item claim-nbr              final  rat-rmb-group-nbr[1:2]                 &
+                                     + rat-rmb-account-nbr
+
+;!    item doc-nbr                final nconvert(rat-rmb-account-nbr[1:3])
+    item doc-nbr                final            rat-rmb-account-nbr[1:3]
+
+    item clmhdr-pat-ohip-id-or-chart 					&
+				final   clmhdr-pat-ohip-id-or-chart	& 
+                                                of f002-claims-mstr
+    item clmhdr-loc             final   clmhdr-loc of f002-claims-mstr
+    item mess-code              final   x-ohip-err-code-final
+
+
+; obec ------------------------------------------------
+output moh-obec add 	&
+  at rat-rmb-account-nbr on error report	&
+	if 1 = 1
+
+    item  pat-health-nbr of moh-obec	final	pat-health-nbr of f010-pat-mstr
+    item  pat-version-cd of moh-obec	final	pat-version-cd of f010-pat-mstr
+    item  pat-sex 	 of moh-obec	final	pat-sex        of f010-pat-mstr
+    item obec-submission-id		final	" "
+
+
+; f010 ------------------------------------------------
+output f010-pat-mstr alias f010-update update			&
+  at rat-rmb-account-nbr 					&
+		if    (   x-ohip-err-code-final = "EH1"		&
+		       or x-ohip-err-code-final = "EH2"		&
+		       or x-ohip-err-code-final = "EH4"		&
+		       or x-ohip-err-code-final = "EH5"		&
+		       or x-ohip-err-code-final = "VH4"		&
+		       or x-ohip-err-code-final = "VH8"		&
+		       or x-ohip-err-code-final = "VH9"		&
+		      )						&
+		   and record f010-pat-mstr exists		&
+; 2004/02/26 - MC
+; 2004/03/10 - MC - update only for eligibility errors
+;		   and x-f002-claim-status <> "X" 		&
+		   and x-f002-claim-status = "H"       		&
+; 2004/03/10 - end
+; 2004/02/26 - end
+	       and 1 = 1
+
+    item pat-mess-code          final  x-ohip-err-code-final 
+    item pat-ohip-validation-status				&
+			 	final 	"I" ; Invalid
+
+    item pat-obec-status 	final	"?"
+    item pat-last-mod-by	final	"u021f"
+
+
+subfile $pb_data/u021f_f002_audit append keep include		 &
+    run-date						,&
+    run-time						,&
+    rat-rmb-file-name of u021a		 		,&
+    rat-rmb-account-nbr of u021a			,&
+    x-ohip-err-code-hdr-cat-claim           		,&
+    x-ohip-err-code-dtl-cat-claim           		,&
+    x-ohip-err-code-hdr-claim               		,&
+    x-ohip-err-code-dtl-claim               		,&
+    x-ohip-err-code-hdr-serv-claim          		,&
+    x-ohip-err-code-dtl-serv-claim          		,&
+    x-ohip-err-code-final                   		,&
+    x-ohip-err-code-final-cat               		,&
+    clmhdr-elig-status		of f002-claims-mstr	,&
+    clmhdr-tape-submit-ind 	of f002-claims-mstr
+
+subfile $pb_data/u021f_f010_audit keep append at rat-rmb-account-nbr	 &
+		if    (   x-ohip-err-code-final = "EH1"		&
+		       or x-ohip-err-code-final = "EH2"		&
+		       or x-ohip-err-code-final = "EH4"		&
+		       or x-ohip-err-code-final = "EH5"		&
+		       or x-ohip-err-code-final = "VH4"		&
+		       or x-ohip-err-code-final = "VH8"		&
+		       or x-ohip-err-code-final = "VH9"		&
+		      )						&
+  include						 &
+    run-date						,&
+    run-time						,&
+    rat-rmb-file-name of u021a				,&
+    rat-rmb-account-nbr of u021a			,&
+    x-ohip-err-code-hdr-cat-claim           		,&
+    x-ohip-err-code-dtl-cat-claim           		,&
+    x-ohip-err-code-hdr-claim               		,&
+    x-ohip-err-code-dtl-claim               		,&
+    x-ohip-err-code-hdr-serv-claim          		,&
+    x-ohip-err-code-dtl-serv-claim          		,&
+    x-ohip-err-code-final                   		,&
+    x-ohip-err-code-final-cat               		,&
+    pat-ohip-validation-status	of f010-pat-mstr	,&
+    pat-obec-status		of f010-pat-mstr
+
+subfile u021f_debug keep append 			&
+  include						&
+    rat-rmb-file-name of u021a		    ,&
+    rat-rmb-account-nbr of u021a	    ,&
+    x-ohip-err-hdr-elig-ss                  ,&
+    x-ohip-err-hdr-serv-ss                  ,&
+    x-ohip-err-dtl-elig-ss                  ,&
+    x-ohip-err-dtl-serv-ss                  ,&
+    x-ohip-err-code-hdr-this-rec            ,&
+    x-ohip-err-code-hdr-cat-this-rec        ,&
+    x-ohip-err-code-dtl-this-rec            ,&
+    x-ohip-err-code-dtl-cat-this-rec        ,&
+    x-ohip-err-code-hdr-claim               ,&
+    x-ohip-err-code-dtl-cat-claim           ,&
+    x-ohip-err-code-hdr-cat-claim           ,&
+    x-ohip-err-code-dtl-claim               ,&
+    x-hdr-code-going-to-be-changed          ,&
+    x-dtl-code-going-to-be-changed          ,&
+    x-ohip-err-code-hdr-serv-this-rec       ,&
+    x-ohip-err-code-dtl-serv-this-rec       ,&
+    x-ohip-err-code-hdr-serv-claim          ,&
+    x-ohip-err-code-dtl-serv-claim          ,&
+    x-ohip-err-code-final                   ,&
+    x-ohip-err-code-final-cat
+
+

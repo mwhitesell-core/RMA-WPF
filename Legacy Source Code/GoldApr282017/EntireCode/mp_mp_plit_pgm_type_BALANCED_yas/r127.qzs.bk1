@@ -1,0 +1,57 @@
+;#> PROGRAM-ID.     R127.QZS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: totinc record in f119 exists and mtd amt  not equal  0
+;             and record exist in f112 with current ep-nbr and pay code in f112 = 0 then report
+;
+;    MODIFICATION HISTORY
+;        DATE    WHO      DESCRIPTION
+;   2013/Sep/26  MC       - original
+;   2013/Oct/03  MC       - add second criteria - if no record found in f112, report
+;
+cancel clear
+set report nolimit
+set report dev disc name r127
+set page width 132 length 62
+set formfeed
+
+access f119-doctor-ytd                                          &
+        link (6) to const-rec-nbr of constants-mstr-rec-6	&
+        link doc-nbr of f119-doctor-ytd                         &
+        to   doc-nbr of f020-doctor-mstr                        &
+	link (doc-nbr of f119-doctor-ytd,                        &
+	     (current-ep-nbr - 1 ) )                             &
+	to   doc-nbr,                                           &
+	     ep-nbr of f112-pycdceilings   opt
+
+choose doc-nbr, comp-code 'TOTINC'
+
+select if  		(     amt-mtd <> 0  			&
+			  and doc-pay-code = '0'		&
+			  and record f112-pycdceilings exists	&
+			)					&
+		or 	not record f112-pycdceilings exists
+
+page heading                                                    &
+        tab 1   "R127"                                          &
+        tab 25  "PHYSCIANS WITH TOTINC IN F119 ( 94 Screen ) BUT WITH ZERO PAYCODE" &
+        tab 100 "RUN DATE:"                                     &
+        tab 110  sysdate                                        &
+        tab 124 "PAGE:" tab 129 syspage pic "^"                 &
+skip    tab 25  "     OR NO RECORD FOUND IN F112 FILE (91 SCREEN)   " &
+skip 2  tab 1   "DOC #"                                         &
+        tab 8   "DOC NAME"                                      &
+        tab 40  "PAY CODE"                                      &
+        tab 54  "MTD AMT "                                      &
+skip 2
+
+report                                                &
+        tab 2   doc-nbr                               &
+        tab 8   doc-name                              &
+        tab 43  doc-pay-code			      &
+	tab 50  amt-mtd
+
+
+build $pb_obj/r127
+  

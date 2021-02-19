@@ -1,0 +1,98 @@
+; DOC: costing_claims.qzs
+; DOC: 
+; DOC:  
+; DOC: RUN FOR: Created for Chris Costanza     
+;
+;PROGRAM PURPOSE : report number of claims and nbr of services
+;                  sort by clinic/dept/doc#
+
+
+;
+;DATE       BY WHOM      DESCRIPTION
+;99/01/07   YASEMIN      ORIGINAL
+;99/05/28   M. Chan      exclude technical oma fee code
+;			 include all active doctors
+
+can clear
+set rep nolimit
+
+access f002-claims-mstr         &
+        link (nconvert(clmhdr-claim-id[4:3]))   &
+;        to doc-nbr of f020-doctor-mstr opt
+        to doc-nbr of f020-doctor-mstr 	        &
+        link cmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr,	&
+	key-clm-serv-code, key-clm-adj-nbr '0'
+
+
+;select f002-claims-mstr if                      &
+;                key-clm-serv-code      <> "00000"    & ; details only
+;           and  key-clm-serv-code      <> "ZZZZ"    & ; details only
+;           and  key-clm-serv-code      <> "MISC"    & ; details only
+;           and  key-clm-adj-nbr = "0"             ; skip adjustment details
+
+select f002-claims-mstr if                      &
+                clmdtl-oma-cd      <> "0000"    & ; details only
+           and  clmdtl-oma-cd      <> "ZZZZ"    & ; details only
+           and  clmdtl-oma-cd      <> "MICM"    & ; details only
+           and  clmdtl-oma-cd      <> "MISJ"    & ; details only
+           and  clmdtl-oma-cd      <> "MISC"      ; details only
+
+;select if     record f020-doctor-mstr exists
+
+
+select   f020-doctor-mstr if    doc-date-fac-term = 000000         &
+		             or doc-date-fac-term > 990630
+
+select if fee-tech-ind <> 'Y'
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2]  ne 'BI'    &
+                   else 0 
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)                    &
+;                    if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+;                      and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+;                      and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                     if    clmdtl-consecutive-sv-days(2)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne 'BI'    &
+                   else 0 
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)                    &
+;                    if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+;                      and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+;                      and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                     if    clmdtl-consecutive-sv-days(3)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne 'BI'    &
+                   else 0 
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 & 
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+;def x-claims cha*11 = clmdtl-id[1:11]
+def x-claims cha*16 = clmdtl-id[1:16]
+ 
+sort on x-claims
+
+set subfile name costing_claims keep at x-claims 
+
+report summary  &
+x-doc-nbr       &
+x-nbr-svcs sub  &
+x-claims        &
+clmdtl-id       &
+;clmdtl-fee-ohip
+clmdtl-fee-ohip subt
+  
+build costing_claims

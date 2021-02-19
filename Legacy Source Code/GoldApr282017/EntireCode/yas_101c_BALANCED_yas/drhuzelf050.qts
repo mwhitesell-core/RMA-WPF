@@ -1,0 +1,84 @@
+can clear
+set process nolimit
+set lock file update
+
+access f050-doc-revenue-mstr-history                            &
+ link docrev-doc-nbr to doc-nbr     of f020-doctor-mstr  opt	&
+ link docrev-oma-cd  to fee-oma-cd  of f040-oma-fee-mstr opt
+
+sort on doc-nbr on docrev-oma-cd
+
+select if 			&
+   (    docrev-doc-nbr = 481	&
+     or docrev-doc-nbr = 839	&
+     or docrev-doc-nbr = 188	&
+     or docrev-doc-nbr = 879	&
+     or docrev-doc-nbr = 455	&
+     or docrev-doc-nbr = 459	&
+     or docrev-doc-nbr = 448	&
+     or docrev-doc-nbr = 425	&
+     or docrev-doc-nbr = 403	&
+     or docrev-doc-nbr = 078    &
+     or docrev-doc-nbr = 279    &
+;    or docrev-doc-nbr = 055)   &
+     or docrev-doc-nbr = 662)  ; &
+;and ICONST-DATE-PERIOD-END = 20020301 &
+;and docrev-clinic-1-2 = "22"
+
+choose ep-yr 2001, iconst-date-period-end 20020301, docrev-key '22@'
+
+def name char*30 			&
+   = pack(doc-name + "," + doc-inits + "(" + ascii(doc-nbr,3) + ")" ) &
+	if docrev-doc-nbr <> 301	&
+       else "BARNES,CC (481)"
+
+define doc-nbr zoned*3 = docrev-doc-nbr if docrev-doc-nbr <> 301 &
+	else 481
+
+;def fixed-docrev-oma-cd char*5 			&
+;    = "G864A" if docrev-oma-cd = "G864M"	&
+; else            docrev-oma-cd
+;(change any "M" suffix codes to "A")
+def fixed-docrev-oma-cd char*5 			&
+    =    docrev-oma-cd[1:4]			&
+      + "A"					&
+	 if docrev-oma-cd[5:1] = "M"		&
+ else            docrev-oma-cd
+
+def oma-cd-desc char*55 				&
+    = pack(fixed-docrev-oma-cd + " - " + fee-desc)	&
+	 if record f040-oma-fee-mstr exists		&
+ else pack(fixed-docrev-oma-cd + " - UNKNOWN FEE CODE")
+
+def oma-code-only char*4 = docrev-oma-cd[1:4]
+
+
+def x-comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+
+temp x-ytd-amount num*7 
+item x-ytd-amount =x-ytd-amount + (docrev-ytd-in-rec +docrev-ytd-out-rec) /100 &
+                            reset at docrev-oma-cd
+                      
+temp x-ytd-service num*5
+item x-ytd-service  =x-ytd-service + (docrev-ytd-in-svc + docrev-ytd-out-svc) &
+                          reset at docrev-oma-cd
+
+subfile f050ma1 portable keep at docrev-oma-cd  include &
+  name               , &
+  x-comma            , &
+  fixed-DOCREV-OMA-CD, &
+  x-comma            , &
+  oma-cd-desc	     , &
+  x-comma            , &
+  x-ytd-amount       , &
+  x-comma            , &
+  x-ytd-service      , &
+x-cr
+
+build $pb_obj/f050ma1_excel
+
+
+

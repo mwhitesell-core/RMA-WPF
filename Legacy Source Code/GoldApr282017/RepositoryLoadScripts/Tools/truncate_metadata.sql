@@ -1,0 +1,33 @@
+--Truncate table DBCore_Table Reuse Storage;
+--Truncate table DBCore_Xref_Table Reuse Storage;
+Truncate table dbdictionary Reuse Storage;
+Truncate table dbdictionary_database Reuse Storage;
+Truncate table DBObject Reuse Storage;
+Truncate table DBMethod Reuse Storage;
+Truncate table dbdatabase_role Reuse Storage;
+Truncate table Dbtemplate Reuse Storage;
+Truncate table dbtemplate_dropdown Reuse Storage;	
+Truncate table dbdomain Reuse Storage;
+Truncate table dbdomain_dropdown Reuse Storage;
+Truncate table dbelement Reuse Storage;
+Truncate table dbelement_dropdown Reuse Storage;
+Truncate table dbelement_permission Reuse Storage;
+Truncate table dbrelation Reuse Storage;
+Truncate table dbrelation_element Reuse Storage;
+Truncate table dbrelation_permission Reuse Storage;
+Truncate table dbindex_segment Reuse Storage;
+Truncate table dbindex_Table Reuse Storage;
+Truncate table dbsequence Reuse Storage;
+Truncate table dbstored_procedure Reuse Storage;
+Truncate table dbstructure Reuse Storage;
+Truncate table dbtrigger Reuse Storage;
+Truncate table dbuser_Table Reuse Storage;
+Truncate table dbuser_role Reuse Storage;
+Truncate table DBView_Source Reuse Storage;
+Truncate table dbLiteral Reuse Storage;
+Truncate table dbstack Reuse Storage;
+Truncate table dbstack_detail Reuse Storage;
+Truncate Table dbset_option Reuse Storage;
+DELETE FROM dbdatabase;
+
+

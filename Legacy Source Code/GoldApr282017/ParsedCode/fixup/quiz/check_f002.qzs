@@ -1,0 +1,60 @@
+cancel clear
+set report nolimit
+set page width 132
+
+access iconst-mstr-rec
+;choose iconst-clinic-nbr-1-2 22
+choose iconst-clinic-nbr-1-2 63
+def x-batch char*9 = parm prompt 'Enter batch Nbr: '
+set subfile name selbatchnbr keep
+rep summ x-batch
+go
+
+
+set page title "F002 HEADER Values"
+access *selbatchnbr					&
+ link ('B', x-batch) to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if   key-clm-serv-code = '00000'
+rep clmhdr-claim-id clmhdr-tot-claim-ar-ohip clmhdr-tot-claim-ar-ohip subt pic "^^^,^^^.^^"  &
+	clmhdr-tot-claim-ar-oma  clmhdr-tot-claim-ar-oma  subt pic "^^^,^^^.^^"  count	&
+	clmhdr-amt-tech-billed clmhdr-manual-and-tape-payments
+
+final footing skip 2 			&
+	"TOTAL BATCH Amount / NBR Claims" 	&
+	tab 34 clmhdr-tot-claim-ar-ohip subt pic "^^^,^^^.^^" &	
+	tab 47 clmhdr-tot-claim-ar-oma subt pic "^^^,^^^.^^"  &
+	tab 60 clmhdr-amt-tech-billed  subt pic "^^^,^^^.^^"  &
+	tab 80 clmhdr-manual-and-tape-payments  subt pic "^^^,^^^.^^ " 
+go
+
+set page title "F002 DETAILS Values"
+access *selbatchnbr					&
+ link ('B', x-batch) to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if clmdtl-oma-cd <> '0000' and clmdtl-oma-cd <> 'ZZZZ'
+def x-consec-svc zoned*3 = 			&
+	nconvert(clmdtl-consec-dates-r[1:1]) +  &
+	nconvert(clmdtl-consec-dates-r[4:1]) +  &
+	nconvert(clmdtl-consec-dates-r[7:1]) 
+rep clmhdr-claim-id clmdtl-nbr-serv clmdtl-nbr-serv subt pic "^^^" 	&
+	clmdtl-consec-dates-r clmdtl-fee-ohip clmdtl-fee-ohip subt pic "^^^^,^^^.^^ "  &
+	clmdtl-fee-oma clmdtl-fee-oma subt pic "^^^^,^^^.^^ "   &
+	clmdtl-amt-tech-billed clmdtl-amt-tech-billed subt pic "^^^,^^^.^^"
+
+final footing skip 2					&
+		"Total SERVICES"		&
+		tab 33 clmdtl-nbr-serv subt    pic "^^^^" &
+		tab 42 x-consec-svc   subt    pic "^^^" &
+		tab 50 "Detail $ should = HEADER $"		&
+	       	tab 78 clmdtl-fee-ohip subt pic "^^^,^^^.^^ "	&
+	       	tab 90 clmdtl-fee-oma  subt pic "^^^,^^^.^^ "	&
+	       	tab 101 clmdtl-amt-tech-billed subt pic "^^,^^^.^^ "
+go
+
+set page title "F001 Values - if they exist"
+access *selbatchnbr					&
+  link x-batch to batctrl-batch-nbr of f001-batch-control-file
+rep batctrl-batch-nbr batctrl-last-claim-nbr batctrl-calc-ar-due batctrl-amt-act  batctrl-svc-act
+go
+exit

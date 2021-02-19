@@ -1,0 +1,54 @@
+;#> program-id.     u933c.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: icu payroll/statements
+;             - update f119-DOCTOR-YTD with values from current EP
+;               run (that were placed into *u993a)
+;
+;    MODIFICATION HISTORY
+;    DATE   WHO	DESCRIPTION
+; 00/nov/07 B.E.	- original
+; 01/mar/13 B.E.	- fixed bug so that when updating f119 the
+;			  ytd values are ADDED to existing amounts
+
+
+cancel clear
+
+set default
+set process nolimit
+
+run u933c
+
+access *u933a2					&
+   link doc-nbr,                            	&
+        x-comp-code                           	&
+     to doc-nbr,                            	&
+        comp-code of f119-doctor-ytd opt    	&
+   link x-comp-code				&
+     to comp-code of f190-comp-codes opt
+
+def tmp-amt-mtd zoned numeric size 10		&
+     = 0 if 	x-comp-code of u933a2 = "x"	&
+  else x-amt-mtd of u933a2  
+def tmp-amt-ytd zoned numeric size 10		&
+     = 0 if 	x-comp-code of u933a2 = "x"	&
+  else x-amt-ytd of u933a2  
+
+;-------------------------------------------------------------------
+output f119-doctor-ytd                   update                 &
+  if  record f119-doctor-ytd exists
+	item amt-mtd final           tmp-amt-mtd
+	item amt-ytd final amt-ytd + tmp-amt-ytd
+
+output f119-doctor-ytd  alias f119-add  add                     &
+  if not record f119-doctor-ytd exists
+	item doc-nbr         final doc-nbr          of u933a2
+	item comp-code       final x-comp-code      of u933a2
+	item process-seq     final reporting-seq    of f190-comp-codes 
+	item comp-code-group final comp-code-group  of f190-comp-codes
+	item rec-type        final "A"
+	item amt-mtd         final tmp-amt-mtd
+	item amt-ytd         final tmp-amt-ytd
+
+build $obj/u933c

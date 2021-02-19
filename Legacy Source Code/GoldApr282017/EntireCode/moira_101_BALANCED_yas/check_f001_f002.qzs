@@ -1,0 +1,90 @@
+; 2012/Apr/11 - check differences between batch record and claim header records for amount & nbr of claims
+;	      - normally when RMA discovered there are differences from r002ab report for amount and/or nbr of claims
+;		between f001 & f002
+
+cancel clear
+set rep nolimit
+
+access f001-batch-control-file
+
+;---------------
+; Modify the choose and select statements below
+
+;choose batctrl-batch-nbr '22X93217', '22X93225', '22X95538'
+choose batctrl-batch-nbr '34@' 
+;sel if batctrl-date-period-end = '20110525' and batctrl-agent-cd = 0 and batctrl-batch-type = 'C' 
+;sel if batctrl-date-period-end = '20110923' and batctrl-agent-cd = 0 and batctrl-batch-type = 'C' 
+;sel if batctrl-date-period-end = '20120424' and batctrl-agent-cd = 0 and batctrl-batch-type = 'C' 
+;sel if batctrl-date-period-end = '20120524' and batctrl-agent-cd = 0 and batctrl-batch-type = 'C' 
+sel if batctrl-date-period-end = '20121024' and batctrl-agent-cd = 0 and batctrl-batch-type = 'C' 
+
+;--------------
+set subfile name extf001 keep
+rep summ all
+go
+
+; access claim hdr to get amount & nbr of claims
+access *extf001 link ('B', batctrl-batch-nbr)   &
+to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if clmdtl-oma-cd = '0000'
+
+sorted on batctrl-batch-nbr
+def xcount = 1
+set subfile name extf002hdr keep at batctrl-batch-nbr 
+rep summ batctrl-batch-nbr batctrl-nbr-claims-in-batch &
+batctrl-last-claim-nbr xcount subt reset at batctrl-batch-nbr &
+batctrl-calc-tot-rev clmhdr-tot-claim-ar-ohip subt reset at batctrl-batch-nbr &
+batctrl-amt-act batctrl-amt-est clmhdr-date-period-end clmhdr-orig-batch-id
+go
+
+access *extf002hdr
+sel if batctrl-nbr-claims-in-batch <> xcount    &
+   or batctrl-calc-tot-rev <> clmhdr-tot-claim-ar-ohip &
+   or batctrl-amt-act <> batctrl-amt-est
+set rep page width 132
+rep all
+go
+
+;----------------------------------
+; access claim dtl to get amount & nbr of services
+access *extf001 link ('B', batctrl-batch-nbr)   &
+to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if clmdtl-oma-cd <> '0000'  and clmdtl-oma-cd <> 'ZZZZ'
+
+sorted on batctrl-batch-nbr
+def xcount = 1
+; check for consecutive services
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+def tot-svc zoned*3 unsigned = clmdtl-nbr-serv +  x-sv-nbr2 + x-sv-nbr3 + x-sv-nbr4
+
+set subfile name extf002dtl keep at batctrl-batch-nbr 
+rep summ batctrl-batch-nbr batctrl-nbr-claims-in-batch &
+batctrl-last-claim-nbr xcount subt reset at batctrl-batch-nbr &
+batctrl-calc-tot-rev clmdtl-fee-ohip  subt  reset at batctrl-batch-nbr &
+batctrl-svc-act batctrl-svc-est tot-svc subt reset at batctrl-batch-nbr
+go
+
+access *extf002dtl
+sel if batctrl-calc-tot-rev <> clmdtl-fee-ohip          &
+    or batctrl-svc-act <> tot-svc   
+set rep page width 132
+rep all  
+go
+
+

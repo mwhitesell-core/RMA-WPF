@@ -1,0 +1,135 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE D087.QKS
+COMMENT "PROGRAM: D087"
+COMMENT "PURPOSE:"
+COMMENT "allow the entry of claims that have been manually rejected by the"
+COMMENT "local OHIP office. No electronic file can be obtained from OHIP so the"
+COMMENT "claims must be entered by hand from the hard copy report."
+COMMENT "Note that originally only the doctor number was entered (when this database"
+COMMENT "was kep in LOTUS 123.  Therefore the claim number entry is optional"
+COMMENT "but the doctor number must be entered. If a claim number is entered"
+COMMENT "the doctor number is extracted and the doctor nbr field defaulted."
+COMMENT "The PED is defaulted from the Constants master but can be changed since"
+COMMENT "some entry is done after month end."
+COMMENT "MODIFICATION HISTORY"
+COMMENT "WHEN        WHO WHY"
+COMMENT "1999/05/31  B.E. - original"
+COMMENT "1999/06/22  B.E. - y2k"
+COMMENT "1999/12/08  B.E. - changed edits on patient to warnings rather than error"
+COMMENT "1999/12/30  B.E. - added  EH2  as default error message"
+COMMENT "2000/02/07  B.E. - corrected mis-calculation of clmhdr-doc-nbr"
+COMMENT "2003/12/01  b.e. - alpha doctor number"
+CANCEL CLEAR
+SCREEN $PB_OBJ/D087
+FILE MANUAL-REJECTED-CLAIMS-HIST OCCURS 18 TIMES
+ACCESS VIA ENTRY-DATE REQUEST ENTRY-DATE
+COMMENT "!         using manual-rejected-claim[1:2] +                     &"
+COMMENT "!               manual-rejected-claim[3:9]    &"
+COMMENT "using manual-rejected-claim[1:2] + '0' +               &"
+COMMENT "manual-rejected-claim[3:8]    &"
+ACCESS VIA MANUAL-REJECTED-CLAIM USING MANUAL-REJECTED-CLAIM REQUEST MANUAL-REJECTED-CLAIM
+ACCESS SEQUENTIAL
+ITEM ENTRY-DATE INITIAL SYSDATE
+ITEM ENTRY-TIME-LONG INITIAL SYSTIME
+ITEM ENTRY-USER-ID INITIAL SIGNONUSER
+ITEM LAST-MOD-DATE FINAL SYSDATE
+ITEM LAST-MOD-TIME FINAL SYSTIME/10000
+ITEM LAST-MOD-USER-ID FINAL SIGNONUSER
+FILE F093-OHIP-ERROR-MSG-MSTR REFERENCE
+TEMP X-NAME CHAR*20 OCCURS WITH MANUAL-REJECTED-CLAIMS-HIST
+COMMENT "NOTE: when user enters claim they don't type the leading '0' of doctor nbr"
+COMMENT "so the using clause adds '0' "
+FILE F002-CLAIMS-MSTR REFERENCE
+COMMENT "nconvert((manual-rejected-claim[1:2]) + '0' + manual-rejected-claim[3:6]), &"
+COMMENT "nconvert(manual-rejected-claim[9:2]), '00000', '0'"
+COMMENT "!  nconvert((manual-rejected-claim[1:2]) +       manual-rejected-claim[3:7]), &"
+COMMENT "!  nconvert(manual-rejected-claim[10:2]), '00000', '0'"
+ACCESS VIA KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR USING 'B', MANUAL-REJECTED-CLAIM[1:8], NCONVERT( MANUAL-REJECTED-CLAIM[9:2]), '00000', '0'
+FILE F002-CLAIMS-MSTR ALIAS F002FIND DESIGNER OCCURS WITH MANUAL-REJECTED-CLAIMS-HIST
+ACCESS VIA KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR USING 'B', CLMHDR-BATCH-NBR OF MANUAL-REJECTED-CLAIMS-HIST, CLMHDR-CLAIM-NBR OF MANUAL-REJECTED-CLAIMS-HIST, '00000', '0'
+FILE F010-PAT-MSTR REFERENCE
+ACCESS VIA KEY-PAT-MSTR USING CLMHDR-PAT-OHIP-ID-OR-CHART OF F002-CLAIMS-MSTR
+FILE F010-PAT-MSTR ALIAS F010FIND DESIGNER OCCURS WITH MANUAL-REJECTED-CLAIMS-HIST
+ACCESS VIA KEY-PAT-MSTR USING CLMHDR-PAT-OHIP-ID-OR-CHART OF F002FIND
+TEMP FOUND CHAR*1
+TEMP W-DATE DATE INITIAL SYSDATE
+ALIGN (,,70)
+TITLE "Entry of Claims MANUALLY rejected by Ohip" AT 1,26
+FIELD W-DATE DISPLAY PREDISPLAY
+TITLE "D087" AT 2,1
+SKIP
+TITLE '         REJECTION            DOC' AT 3,4
+TITLE 'CLAIM NBR   CODE    PED       NBR  PATIENT NAME          ENTERED' AT 4,4
+ALIGN (1,,4) (,,17) (,,22) (,,25) (,,32) (,,39) (,,61) (,,72)
+CLUSTER OCCURS WITH MANUAL-REJECTED-CLAIMS-HIST AT 5,1
+FIELD MANUAL-REJECTED-CLAIM REQUIRED NOCHANGE LOOKUP ON F002-CLAIMS-MSTR, NOTON MANUAL-REJECTED-CLAIMS-HIST
+FIELD OHIP-ERR-CODE LOOKUP ON F093-OHIP-ERROR-MSG-MSTR DEFAULT "EH2"
+COMMENT "y2k"
+FIELD PED PIC "^^^^/^^/^^" DISPLAY
+COMMENT "!field clmhdr-doc-nbr significance 3  display"
+FIELD CLMHDR-DOC-NBR DISPLAY
+FIELD X-NAME DISPLAY
+FIELD ENTRY-DATE DISPLAY
+FIELD ENTRY-TIME-LONG DISPLAY PIC "^^:^^^^^^"
+PROCEDURE POSTFIND
+BEGIN
+FOR MANUAL-REJECTED-CLAIMS-HIST
+BEGIN
+COMMENT "NOTE: when the claim has been read from F087 it HAS a leading zero before doctor"
+COMMENT "number so the 'get' stmnt has a different 'access' clause rather the   F002"
+COMMENT "'file' stmt"
+GET F002FIND OPTIONAL
+IF ACCESSOK
+THEN BEGIN
+GET F010FIND OPTIONAL
+IF ACCESSOK
+THEN BEGIN
+LET X-NAME = PACK(PAT-SURNAME OF F010FIND + ', ' + PAT-GIVEN-NAME OF F010FIND)
+DISPLAY X-NAME
+END
+END
+END
+END
+PROCEDURE PROCESS MANUAL-REJECTED-CLAIM
+BEGIN
+COMMENT "(preset doctor nbr from claim)"
+COMMENT "!  let     clmhdr-doc-nbr = nconvert(manual-rejected-claim[4:3]) "
+LET CLMHDR-DOC-NBR = MANUAL-REJECTED-CLAIM[3:3]
+DISPLAY CLMHDR-DOC-NBR
+COMMENT "(preset PED from claim)"
+LET PED = CLMHDR-DATE-PERIOD-END OF F002-CLAIMS-MSTR
+DISPLAY PED
+GET F010-PAT-MSTR OPTIONAL
+IF NOT ACCESSOK
+THEN WARNING '*W* Claim does NOT have Patient Id'
+ELSE BEGIN
+IF PAT-PROV-CD OF F010-PAT-MSTR <> 'ON'
+THEN WARNING '*W* Patient is NOT an Ontario patient'
+LET X-NAME = PACK(PAT-SURNAME OF F010-PAT-MSTR + ', ' + PAT-GIVEN-NAME OF F010-PAT-MSTR)
+DISPLAY X-NAME
+END
+END
+COMMENT "procedure preupdate"
+COMMENT "begin"
+COMMENT "if newrecord "
+COMMENT "then"
+COMMENT "begin"
+COMMENT "for manual-rejected-claims-hist  "
+COMMENT "begin"
+COMMENT "let  clmhdr-batch-nbr of manual-rejected-claims-hist &"
+COMMENT "= nconvert(  manual-rejected-claim[1:2] &"
+COMMENT "+  0      &"
+COMMENT "+ manual-rejected-claim[3:6] &"
+COMMENT ")"
+COMMENT "let clmhdr-claim-nbr = nconvert(manual-rejected-claim[10:2])"
+COMMENT "end"
+COMMENT "end"
+COMMENT "end"
+BUILD DETAIL LIST
+ENDMODULE D087.QKS

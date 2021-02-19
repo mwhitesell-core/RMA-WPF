@@ -1,0 +1,90 @@
+; DOC: R030G3.QZS
+; DOC: LIST OF CLAIMS WITH "H"OLD STATUS AND MESS-CODE NE " "
+; DOC: TO CHECK AND MAKE SURE CLAIMS ARE NOT STALE DATED.
+; DOC: RUN FOR: THEGLA
+;
+;  PURPOSE: LIST OF ALL CLAIMS WHITH "H"OLD STATUS SET SINCE A
+;           SPECIFIED DATE. SORTED BY MESS-CODE
+;
+;
+;  MODIFICATION HISTORY:
+;
+;  YY/MMM/DD     BY WHOM        WHY
+;  93/MAY/25     YASEMIN        ORIGINAL
+;
+;  03/dec/12	 A.A.		alpha doctor nbr
+;
+
+can clear
+
+set report nolimit
+
+access f002-claims-mstr                                         &
+  link clmhdr-pat-ohip-id-or-chart viaindex key-pat-mstr        &
+    to f010-pat-mstr
+
+choose key-clm-type "B"
+
+;y2k
+def date-from date = parm prompt "ENTER FROM DATE (YYYYMMDD): "
+;y2k
+def date-to   date = parm prompt "ENTER  TO  DATE (YYYYMMDD): "
+
+def clm-ref char*3 = clmhdr-reference [1:3]
+;! def clm-id char*10 = clmhdr-claim-id [1:2] + clmhdr-claim-id [4:8]
+def clm-id char*10 = clmhdr-claim-id [1:10]
+
+def x-balance num*7 =       &
+    clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+sel f002-claims-mstr if clmhdr-oma-suff-adj = "000000"   &
+  and clmhdr-batch-type = "C"                            &
+  and clmhdr-tape-submit-ind = "H"
+
+;y2k
+sel if clmhdr-submit-date ge  date-from            &
+;y2k
+   and clmhdr-submit-date le  date-to              &
+   and x-balance > 0                               &
+   and pat-mess-code ne " "
+
+sort on pat-mess-code on clm-id
+
+set subfile name r030g3 keep
+rep summary clm-ref clm-id key-clm-batch-nbr key-clm-claim-nbr x-balance pat-mess-code
+build $pb_obj/r030g3
+
+can clear
+set default
+set report nolimit
+set report device disc name hold_mess
+set page length 60 width 132
+set formfeed
+
+access *r030g3                                          &
+     link ("B",key-clm-batch-nbr, key-clm-claim-nbr) to &
+     key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr &
+     of f002-claims-mstr
+
+select if clmhdr-adj-oma-cd of f002-claims-mstr <> "0000" &
+      and clmhdr-adj-oma-cd of f002-claims-mstr <> "ZZZZ"
+
+sorted on pat-mess-code on clm-id
+
+page heading           &
+;y2k
+  tab 1  sysdate       &
+  tab 50 "HOLD CLAIMS WITH MESS CODE"  &
+skip 2
+
+heading at pat-mess-code				&
+	   pat-mess-code  skip 3
+
+;y2k
+rep clm-id print at clm-id clmdtl-sv-date pic "^^^^/^^/^^"
+
+footing at pat-mess-code skip page
+
+build $pb_obj/r030g4
+
+  

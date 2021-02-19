@@ -1,0 +1,264 @@
+; Name   : PM30.QKS
+; Purpose: TIME SHEET DETAIL SCREEN
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD  	By whom        	Why
+; ??/???/??  	?.?           	-
+; MODIFICATION:	
+;
+; 88/02/08    MOIRA SO  	- VERIFICATION ON PWO-STATUS AND ACT-STATUS
+;	  		 	  IF STATUS IS 'C'LOSED, DISPLAY ERROR
+;				  MESSAGE
+;
+; 90/10/17    B.M.L.    	- DISALLOW * WITH   A M L & T  CODES
+;
+;
+; 90/11/05    B.M.L.    	- USE OF A "." IN ACTIVITY FIELD TO TAKE
+;                        	  USER TO PM31_UPDATE TO ENTER NEW
+;				  ACTIVITY NUMBER.
+;
+; 91/07/26    B.M.L.    	- ADDED CONDITIONAL COMPILE FOR INVOICES
+;
+; 92/01/28    M.CHAN		- SAF 1001
+;				- ALLOW CAT/FUN COLUMN TO BE BLANK
+;				- PWO COLUMN IS A REQUIRED FIELD
+;				- PRESET DESC FROM FPWOACTS FILE
+;
+; 92/02/27	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+;				- LOOKUP ON FEMPPWOS WHEN ENTERING
+;				  PWO FOR THE EMPLOYEE
+
+can clear
+
+
+
+screen $pb_obj/pm30        receiving ftimehdr on line 5 for 19
+
+file ftimehdr master
+file ftimesht primary occurs 6
+
+temp x-pwo zoned*5
+item client initial "   "
+item billable initial " "
+item tot final sat + sun + mon + tue + wed + thu + fri
+file fpwos reference
+file ffunctions reference
+file fpwoacts reference
+file femppwos reference
+  access viaindex emppwo-key using (ascii(tsht-emp of ftimesht,4) + &
+				    ascii(pwo-num of ftimesht,5))
+
+temporary line-num zoned*2 unsigned
+temporary tmp-hours zoned*4 unsigned initial 0
+temporary temp-key character*10 initial tsht-key
+temporary temp-activity character*4
+
+draw from 4,1 to 4,80
+draw from 4,32 to 17,32
+draw from 4,38 to 17,38
+draw from 4,44 to 17,44
+draw from 4,50 to 17,50
+draw from 4,56 to 17,56
+draw from 4,62 to 17,62
+draw from 4,68 to 17,68
+draw from 4,74 to 17,74
+draw from 4,80 to 17,80
+draw from 17,1 to 17,80
+
+hilite error audible
+field line-num noid nolabel display data at 1,25 omit bwz
+
+hilite id halftone
+hilite title inverse
+
+  title "TIME SHEET DETAIL" at 1,41
+
+hilite title off
+;          5 7 9     16   21   26
+title "   ST * PWO    CLI  FUN  ACT  " at 3,1
+title "SAT   SUN   MON   TUE   WED   THU   FRI   TOT" at 3,34
+
+skip to line 5
+align (1,,4) (,, 6) (,,14) (,,21) (,,27)
+cluster occurs with ftimesht
+field billable of ftimesht predisplay
+;FIELD PWO-NUM  OF FTIMESHT BWZ LOOKUP ON FPWOS
+field pwo-num  of ftimesht required bwz lookup on fpwos, &
+	on femppwos message 'PWO has not assigned to employee'
+field client   of ftimesht display
+;FIELD FUNCTION OF FTIMESHT REQUIRED LOOKUP ON FFUNCTIONS
+field function of ftimesht          lookup on ffunctions
+field activity of ftimesht required if pwo-num of ftimesht ne 0
+align  (,,1) (,,33) (,,39) (,,45) (,,51) (,,57) (,,63) (,,69) (,,75)
+hilite data underline
+field act-desc of fpwoacts display
+field sat of ftimesht bwz
+field sun of ftimesht bwz
+field mon of ftimesht bwz
+field tue of ftimesht bwz
+field wed of ftimesht bwz
+field thu of ftimesht bwz
+field fri of ftimesht bwz
+field tot of ftimesht display
+cluster
+
+title "Other options:" at 19,1
+align (20,23,) (47,50,)
+
+subscreen pm32      passing temp-key label "Display daily totals" &
+          mode f
+
+command "QUIZ AUTO=RTIMESHT2.QZC" label "Print selected timesheets" &
+        clear lines 6 to 24 response
+
+procedure internal total-hours
+  begin
+    let tot = sat + sun + mon + tue + wed + thu + fri
+    display tot
+  end
+
+procedure input activity
+  begin
+    if fieldtext = "."
+      then
+        begin
+           let x-pwo = pwo-num
+           run pm31_update clear lines 19 to 23 mode e passing x-pwo, &
+                           temp-activity
+           let fieldtext = temp-activity
+        end
+  end
+
+procedure process pwo-num
+  begin
+    if pwo-status of fpwos = "C"
+    then error="PWO IS CLOSED FOR BILLING"
+    else
+    if pwo-num ne 0
+    then
+      begin
+        let client of ftimesht = client of fpwos
+        display client
+      end
+    else
+      let client of ftimesht = " "
+  end
+
+procedure edit activity
+  begin
+    if pwo-num ne 0
+      then begin
+        get fpwoacts via pwoact-key &
+                     using characters(pwo-num) + &
+                     activity of ftimesht
+	information = "PWOACT=" + ascii(pwo-num of fpwoacts,5) &
+				+ "=" + 		&
+			        activity of fpwoacts &
+				+"="+			&
+			        act-desc  of fpwoacts &
+				+"="+			&
+			        ascii(budget   of fpwoacts,3) &
+				+"="+			&
+			        ascii(duration-days of fpwoacts,3) &
+				+"="+			&
+			        act-status of fpwoacts
+	if act-status = "C"
+	then error ="ACTIVITY IS CLOSED FOR BILLING"
+      end
+  end
+
+procedure process sat
+  begin
+    do internal total-hours
+  end
+
+procedure process sun
+  begin
+    do internal total-hours
+  end
+
+procedure process mon
+  begin
+    do internal total-hours
+  end
+
+procedure process tue
+  begin
+    do internal total-hours
+  end
+
+procedure process wed
+  begin
+    do internal total-hours
+  end
+
+procedure process thu
+  begin
+    do internal total-hours
+  end
+
+procedure process fri
+  begin
+    do internal total-hours
+  end
+
+procedure preupdate
+begin
+  for ftimesht
+  begin
+    if not deletedrecord of ftimesht
+      then begin
+        let line-num = occurrence
+        display line-num
+
+        if function ne " "
+        then begin
+          if tot = 0
+            then error "No hours entered for line number displayed"
+          end
+
+        if (pwo-num of ftimesht = 0 and matchpattern(function,"P@"))
+          then error "P category not allowed without PWO number"
+
+        if (pwo-num of ftimesht = 0 and matchpattern(function,"A@") and  billable of ftimesht = "*")
+          then error "* not allowed with A activity codes"
+
+        if (pwo-num of ftimesht = 0 and matchpattern(function,"M@") and  billable of ftimesht = "*")
+          then error "* not allowed with M activity codes"
+
+        if (pwo-num of ftimesht = 0 and matchpattern(function,"L@") and  billable of ftimesht = "*")
+          then error "* not allowed with L activity codes"
+
+        if (pwo-num of ftimesht = 0 and matchpattern(function,"T@") and  billable of ftimesht = "*")
+          then error "* not allowed with T activity codes"
+
+        if pwo-num of ftimesht ne 0
+          then begin
+            if activity of ftimesht = " "
+              then error "Must enter ACTIVITY for line number displayed."
+              else begin
+                get fpwoacts via pwoact-key &
+                             using characters(pwo-num) + &
+                             activity of ftimesht
+                let line-num = 0
+                display line-num
+                end
+            end
+          else begin
+            let line-num = 0
+            display line-num
+            end
+    end
+  end
+end
+
+procedure find
+  begin
+    for ftimesht
+      begin
+        get ftimesht via tsht-key using tsht-key of ftimehdr
+        end
+    end
+build
+  

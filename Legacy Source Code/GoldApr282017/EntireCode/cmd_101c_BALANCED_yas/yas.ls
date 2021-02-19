@@ -1,0 +1,61 @@
+-rw-rw-r--   1 brad     dyad     5801984 Oct 22 22:27 1998, data/f020_doc_mstr_history.dat
+-rw-rw-r--   1 brad     dyad      457728 Oct 22 22:27 1998, data/f020_doc_mstr_history.idx
+-rw-rw-r--   1 brad     dyad           0 Oct 22 22:17 1998, data/f020_doctor_extra.dat
+-rw-rw-r--   1 brad     dyad        3072 Oct 22 22:17 1998, data/f020_doctor_extra.idx
+-rw-rw-r--   1 brad     dyad      462848 Oct 22 22:24 1998, data/f020_doctor_mstr
+lrwxrwxrwx   1 brad     dyad          16 Oct 22 22:17 1998, data/f020_doctor_mstr.dat -> f020_doctor_mstr
+-rw-rw-r--   1 brad     dyad       34816 Oct 22 22:24 1998, data/f020_doctor_mstr.idx
+-rw-rw-r--   1 brad     dyad      749645 Oct 22 22:17 1998, data/f050_doc_revenue_mstr
+lrwxrwxrwx   1 brad     dyad          21 Oct 22 22:17 1998, data/f050_doc_revenue_mstr.dat -> f050_doc_revenue_mstr
+-rw-rw-r--   1 brad     dyad      360448 Oct 22 22:17 1998, data/f050_doc_revenue_mstr.idx
+-rw-rw-r--   1 brad     dyad      347035 Oct 22 22:17 1998, data/f050_doc_revenue_mstr_real
+-rw-rw-r--   1 brad     dyad      188416 Oct 22 22:17 1998, data/f050_doc_revenue_mstr_real.idx
+-rw-rw-r--   1 rma      dyad        4096 Aug 10 11:43 1998, data/f070_dept_mstr
+lrwxrwxrwx   1 brad     dyad          14 Aug 10 10:57 1998, data/f070_dept_mstr.dat -> f070_dept_mstr
+-rw-rw-r--   1 rma      dyad        3072 Aug 10 09:32 1998, data/f070_dept_mstr.idx
+-rw-rw-r--   1 rma      dyad       38912 Oct  1 11:22 1998, data/f080_bank_mstr
+lrwxrwxrwx   1 brad     dyad          14 Aug 10 10:57 1998, data/f080_bank_mstr.dat -> f080_bank_mstr
+-rw-rw-r--   1 rma      dyad        9216 Oct  1 11:22 1998, data/f080_bank_mstr.idx
+-rw-rw-r--   1 brad     dyad        7168 Oct 22 22:27 1998, data/f090_constants_mstr
+lrwxrwxrwx   1 brad     dyad          19 Oct 22 22:17 1998, data/f090_constants_mstr.dat -> f090_constants_mstr
+-rw-rw-r--   1 brad     dyad        3072 Oct 22 22:27 1998, data/f090_constants_mstr.idx
+-rw-rw-r--   1 brad     dyad           0 Oct 22 22:17 1998, data/f095_text_lines.dat
+-rw-rw-r--   1 brad     dyad        3072 Oct 22 22:17 1998, data/f095_text_lines.idx
+-rw-rw-r--   1 brad     dyad     41498624 Oct 22 22:18 1998, data/f110_comp_history.dat
+-rw-rw-r--   1 brad     dyad     20657152 Oct 22 22:19 1998, data/f110_comp_history.idx
+-rw-rw-r--   1 brad     dyad     3368960 Oct 22 22:24 1998, data/f110_compensation.dat
+-rw-rw-r--   1 brad     dyad     2804736 Oct 22 22:24 1998, data/f110_compensation.idx
+-rw-rw-r--   1 brad     dyad     3746816 Oct 22 22:19 1998, data/f112_pycd_history.dat
+-rw-rw-r--   1 brad     dyad      325632 Oct 22 22:19 1998, data/f112_pycd_history.idx
+-rw-rw-r--   1 brad     dyad      354304 Oct 22 22:21 1998, data/f112_pycdceilings.dat
+-rw-rw-r--   1 brad     dyad       90112 Oct 22 22:21 1998, data/f112_pycdceilings.idx
+-rw-rw-r--   1 brad     dyad      388096 Oct 22 22:19 1998, data/f113_def_comp_history.dat
+-rw-rw-r--   1 brad     dyad       45056 Oct 22 22:19 1998, data/f113_def_comp_history.idx
+-rw-rw-r--   1 brad     dyad      117760 Oct 22 22:19 1998, data/f113_default_comp.dat
+-rw-rw-r--   1 brad     dyad       29696 Oct 22 22:19 1998, data/f113_default_comp.idx
+-rw-rw-r--   1 brad     dyad     8353792 Oct 22 22:27 1998, data/f119_doc_ytd_history.dat
+-rw-rw-r--   1 brad     dyad     5364736 Oct 22 22:27 1998, data/f119_doc_ytd_history.idx
+-rw-rw-r--   1 brad     dyad      935936 Oct 22 22:24 1998, data/f119_doctor_ytd.dat
+-rw-rw-r--   1 brad     dyad      374784 Oct 22 22:24 1998, data/f119_doctor_ytd.idx
+-rw-rw-r--   1 brad     dyad       26624 Oct 22 22:19 1998, data/f190_comp_codes.dat
+-rw-rw-r--   1 brad     dyad        9216 Oct 22 22:19 1998, data/f190_comp_codes.idx
+-rw-rw-r--   1 brad     dyad       11264 Oct 22 22:19 1998, data/f191_earnings_period.dat
+-rw-rw-r--   1 brad     dyad        3072 Oct 22 22:19 1998, data/f191_earnings_period.idx
+-rw-rw-r--   1 brad     dyad      126976 Oct 22 22:26 1998, data/f198_user_defined_totals.dat
+-rw-rw-r--   1 brad     dyad       31744 Oct 22 22:26 1998, data/f198_user_defined_totals.idx
+-rw-rw-r--   1 brad     dyad        1024 Oct 22 22:19 1998, data/f199_user_defined_fields.dat
+-rw-rw-r--   1 brad     dyad        3072 Oct 22 22:19 1998, data/f199_user_defined_fields.idx
+-rw-rw-r--   1 rma      dyad      484551 Oct 22 22:27 1998, production/dumpf119_9804.txt
+-rw-rw-r--   1 rma      dyad      427620 Oct 22 22:27 1998, production/dumpf119ytd_9804.txt
+-rw-rw-r--   1 rma      dyad         344 Oct 22 22:21 1998, production/r111b_9804.txt
+-rw-rw-r--   1 rma      dyad      103587 Oct 22 22:26 1998, production/r119_9804.txt
+-rw-rw-r--   1 rma      dyad     1556305 Oct 22 22:25 1998, production/r120_9804.txt
+-rw-rw-r--   1 rma      dyad       75144 Oct 22 22:26 1998, production/r121_9804.txt
+-rw-rw-r--   1 rma      dyad      457046 Oct 22 22:24 1998, production/r123a_9804.txt
+-rw-rw-r--   1 rma      dyad       56202 Oct 22 22:24 1998, production/r123b_9804.txt
+-rw-rw-r--   1 rma      dyad       32890 Oct 22 22:24 1998, production/r123c_9804.txt
+-rw-rw-r--   1 rma      dyad     1574128 Oct 22 22:26 1998, production/r124a_9804.sf
+-rw-rw-r--   1 rma      dyad        4224 Oct 22 22:26 1998, production/r124a_9804.sfd
+-rw-rw-r--   1 rma      dyad     2464175 Oct 22 22:26 1998, production/r124b_9804.txt
+-rw-rw-r--   1 rma      dyad       12330 Oct 22 22:24 1998, production/u119_payeft.ps
+-rw-rw-r--   1 rma      dyad         585 Oct 22 22:24 1998, production/u119_payeft.psd

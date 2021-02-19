@@ -1,0 +1,84 @@
+; 2013/may/02	MC	m010_1a.qks
+;			- allow user to create notes for different action
+;			- this program can be called from m010.qks or d003.cbl
+
+cancel clear
+
+screen $obj/m010_1a receiving pat-ikey
+
+temp pat-ikey      char*15
+temp pat-name      char*25
+
+file f010-crm occurs 15
+  access viaindex key-pat-mstr using pat-ikey                                   
+
+  item key-pat-mstr initial  pat-ikey  
+  item date-assigned initial sysdate
+  item followup-status initial ' '
+  item key-dtl-seq-nbr initial 1
+
+file f010-pat-mstr reference
+;file f010-pat-mstr designer 
+  access viaindex key-pat-mstr using pat-ikey
+
+file f010-crm alias f010-crm-check designer occurs with f010-crm 
+  access via key-pat-mstr, date-assigned, followup-status 	&
+       using pat-ikey, sysdate, followup-status of f010-crm  
+
+skip  1
+align (,4,14) (,35,47)
+field pat-ikey display label 'Pat ID: '
+field pat-name display label 'Pat Name: ' predisplay   
+
+title "   DATE       Action  Seq#     Description"  at 5,1
+skip  1
+align (1,,4) (,,18) (,,24) (,,30)
+cluster occurs with f010-crm at 6,1
+FIELD DATE-ASSIGNED OF F010-CRM REQUIRED NOCHANGE display
+FIELD FOLLOWUP-STATUS OF F010-CRM ID SAME REQUIRED NOCHANGE	predisplay	&
+	value ' ', 'P', 'E', 'I' upshift					&
+	help '" " - note, "P"hone, "E"mail, "I"nvoice' 
+FIELD KEY-DTL-SEQ-NBR OF F010-CRM ID SAME NOCHANGE LOOKUP &
+      NOTON F010-CRM VIA KEY-PAT-MSTR , DATE-ASSIGNED , &
+      FOLLOWUP-STATUS , KEY-DTL-SEQ-NBR USING KEY-PAT-MSTR OF &
+      F010-CRM , DATE-ASSIGNED OF F010-CRM , FOLLOWUP-STATUS OF &
+      F010-CRM , KEY-DTL-SEQ-NBR OF F010-CRM predisplay
+FIELD FOLLOWUP-ACTION OF F010-CRM id same
+
+
+procedure internal read-next
+begin 
+     while retrieving f010-crm-check
+     begin
+	let key-dtl-seq-nbr of f010-crm = key-dtl-seq-nbr of f010-crm-check + 1
+	end
+end
+
+PROCEDURE APPEND
+BEGIN
+     DISPLAY DATE-ASSIGNED OF F010-CRM
+     ACCEPT FOLLOWUP-STATUS OF F010-CRM
+     do read-next
+     display key-dtl-seq-nbr of f010-crm
+     ACCEPT FOLLOWUP-ACTION OF F010-CRM
+     END
+
+PROCEDURE ENTRY
+BEGIN
+     DISPLAY PAT-IKEY
+     DISPLAY PAT-NAME
+     FOR F010-CRM
+       BEGIN
+         PERFORM APPEND
+         END
+     END
+
+;procedure initialize
+procedure find
+begin
+  get f010-pat-mstr     
+  let pat-name = pack(lj(trun(pat-given-name))) + ' ' + pack(lj(trun(pat-surname)))
+  display pat-name 
+end
+
+build detail list

@@ -1,0 +1,180 @@
+;#> PROGRAM-ID.     U190_YEAREND_3.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Year end roll over for EARNING SUBSYSTEM.
+;		It is assumed that the Ceiling(NOT **Expense**) values 'active'
+;		It is assumed that the Ceiling/Expense values 'active'
+;		the last EP-NBR of the fiscal year, are to be
+;		continued into the next fiscal year.
+;		This program takes the transaction for each doctor
+;		in F112-PYCDCEILINGS that was for the last
+;		EP-NBR of the fiscal year (usually 12 or 13) and
+;		'rolls' the values into the next year.
+;		changing the YEAR to next year and and setting EP
+;		to NEW YEAR + 01. Example, 9512 becomes 9601.
+;		The valid EP Numbers are in F191.
+;
+;	Note: This program must be run while the Constant's Master
+;	      EP number is the last EP of the current fiscal year
+;	      and before moving to the next year's FIRST EP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;   1999/May/16		Sd.B.	 - Y2K checked.
+
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+; !!!! THIS PGMS STILL HAVE PLUS/MINS 0/1 DIFFERENT BETWEEN CEILING/EXPESE
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+cancel clear
+run u190
+
+set default
+set process nolimit
+
+global temp x-current-ep-nbr        zoned unsigned
+global temp x-current-ep-nbr-minus1 zoned unsigned
+global temp x-current-ep-nbr-plus1  zoned unsigned
+global temp x-next-yr-first-ep-nbr  zoned unsigned
+global temp x-next-yr-last-ep-nbr   zoned unsigned
+global temp x-ep-fiscal-nbr         zoned unsigned
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u114_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item x-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item x-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item x-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+
+; using current EP get FIRST EP of next YR
+item x-next-yr-first-ep-nbr 					&
+  = (  floor(    (  current-ep-nbr   of constants-mstr-rec-6	&
+                  + 100						&
+	         )						&
+               / 100						&
+	    )							&
+     * 100							&
+    )								&
+   + 01	
+
+
+item x-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+
+;-------------------------------------------------------------------------------
+; Roll over DEFAULT COMPENSATION
+;
+request u190_default_pycdceilings               &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access f112-pycdceilings					       &
+	link doc-nbr of f112-pycdceilings                              &
+	to   doc-nbr of f020-doctor-mstr			       &
+	link doc-nbr of f112-pycdceilings,                             &
+	     x-next-yr-first-ep-nbr                                    &
+	to   doc-nbr,                                                  &
+	     ep-nbr of f112-pycdceilings                               &
+	alias f112-next-yr    opt
+
+select f112-pycdceilings 					       &
+ if     ep-nbr of f112-pycdceilings = x-current-ep-nbr		
+
+
+define x-next-pay-code char*1					      &
+    = "1"                                                             &
+ 		if    doc-pay-code     of f112-pycdceilings = "4"     &
+		  and doc-pay-sub-code of f112-pycdceilings = "A"     &
+ else doc-pay-code of f112-pycdceilings
+
+define x-next-pay-sub-code char*1				      &
+       = doc-pay-sub-code of f112-pycdceilings
+
+subfile u190_yearend_3 keep include           			      &
+	                  doc-nbr	       of f112-pycdceilings,  &
+	                  x-next-yr-first-ep-nbr,                  &
+	                  doc-pay-code    of f112-pycdceilings,    &
+	                  x-next-pay-code,		           &
+	                  doc-pay-sub-code    of f112-pycdceilings,&
+	                  x-next-pay-sub-code,			   &
+                      	  factor	      of f112-pycdceilings,&
+                          doc-yrly-ceiling    of f112-pycdceilings,&
+ 			  doc-yrly-ceiling-adjusted of f112-pycdceilings
+
+ output f112-pycdceilings add alias f112-output if not record f112-next-yr  exists
+ 	item doc-nbr          = doc-nbr      of f112-pycdceilings
+ 	item ep-nbr           = x-next-yr-first-ep-nbr
+ 	item doc-pay-code     = x-next-pay-code
+ 	item doc-pay-sub-code = x-next-pay-sub-code
+ 	item factor	      = factor		    of f112-pycdceilings
+ 	item retro-to-ep-nbr  = 0
+ 	item doc-yrly-ceiling = doc-yrly-ceiling    of f112-pycdceilings
+ 	item doc-yrly-ceiling-adjusted				&
+ 			      = 0
+ 	item doc-yrly-ceiling-computed				&
+ 			      = doc-yrly-ceiling          of f112-pycdceilings
+ 	item doc-yrly-expense = 0
+ 	item doc-yrly-expense-adjusted= 0
+ 	item doc-yrly-expense-computed = 0
+ 	item doc-yrly-expn-alloc-pers = 0
+ 	item doc-yrly-ceil-guar = 0
+ 	item doc-yrly-ceiling-guar-perc = 0
+ 	item doc-rma-expense-percent-reg = 0
+ 	item doc-rma-expense-percent-misc = 0
+ 	item doc-dept-expense-percent-reg = 0
+ 	item doc-dept-expense-percent-misc = 0
+ 	item last-mod-date    = sysdate
+ 	item last-mod-time    = systime/10000
+ 	item last-mod-user-id = "Comp.YrEndRoll"
+
+
+ output f020-doctor-mstr alias f020-update  update  if record f020-doctor-mstr exists
+ 	item doc-ytdcea                = 0
+ 	item doc-yrly-ceiling-computed = doc-yrly-ceiling of f112-pycdceilings
+ 	item doc-ytdcex                = 0
+ 	item doc-yrly-expense-computed = 0
+  	item doc-ytdgua     final 0
+  	item doc-ytdgub     final 0
+  	item doc-ytdguc     final 0
+  	item doc-ytdgud     final 0
+  	item doc-ytdcea     final 0
+  	item doc-ytdcex     final 0
+  	item doc-ytdear     final 0
+  	item doc-ytdinc     final 0
+  	item doc-ytdeft     final 0
+  	item doc-totinc-g   final 0
+  	item doc-ytdinc-g   final 0
+  	item doc-totinc     final 0
+  	item doc-adjcea     final 0
+  	item doc-adjcex     final 0
+  	item doc-ceicea     final 0
+  	item doc-ceicex     final 0
+  	item doc-payeft     final 0
+  	item ceicea-prt-format final " "
+  	item ceicex-prt-format final " "
+  	item ytdcea-prt-format final " "
+  	item ytdcex-prt-format final " "
+  	item doc-ep-date-deposit final 0
+  	item doc-ep-ped          final 0
+  	item filler2 final " "
+  	item filler3 final " "
+
+build $pb_obj/u190_yearend_3
+  

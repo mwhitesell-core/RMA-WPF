@@ -1,0 +1,447 @@
+;doc     : dwayne_nonafp.qts
+;purpose : create a detail claims report for Dr. 783 C21 C81 clinic 22 
+;who     : Dwayne Martins
+
+;
+; *************************************************************
+
+;Date		Who		Description
+;2006/12/04	Yasemin	        dwayne
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22783@",                  &
+                                              "22C21@",                  &
+                                              "22C81@",                  &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'  &  
+                           and (   clmhdr-agent-cd = 0      &
+                                or clmhdr-agent-cd = 4      &
+                               )
+
+subfile dwayne     keep include                   &
+clmhdr-claim-id               of f002-claims-mstr,&
+key-clm-batch-nbr             of f002-claims-mstr,&
+key-clm-claim-nbr             of f002-claims-mstr,&
+clmhdr-loc                    of f002-claims-mstr,&
+clmhdr-hosp                   of f002-claims-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dwayne                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20040101' &
+;      clmdtl-date-period-end   >= '20040101' &
+       and  clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "AGEP"     &
+       and  clmdtl-adj-nbr     =  0
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee    
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee  
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee 
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee 
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+
+subfile dwayne1     keep include          &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-1                      ,&
+x-sv-date-1                              ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of dwayne          ,&
+clmhdr-hosp           of dwayne           
+
+subfile dwayne1 alias dwayne_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-2                      ,&
+x-sv-date-2                              ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of dwayne          ,&
+clmhdr-hosp           of dwayne           
+
+subfile dwayne1 alias dwayne_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-3                      ,&
+x-sv-date-3                              ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of dwayne          ,&
+clmhdr-hosp           of dwayne           
+
+subfile dwayne1 alias dwayne_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-4                      ,&
+x-sv-date-4                              ,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of dwayne          ,&
+clmhdr-hosp           of dwayne           
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *dwayne1                &                                          
+  link clmdtl-id[3:3] to doc-nbr of f020-doctor-mstr opt 
+
+def x-doc    cha*3 = clmdtl-id[3:3]
+def x-yyyymm cha*6 = x-sv-date-1[1:6]
+
+sort on x-doc
+
+;;;;;;;;;;;;2004
+temp x-200401 zoned*9
+item x-200401 = x-200401  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200401"              &
+              reset at x-doc
+
+temp  x-200402 zoned*9
+item  x-200402 = x-200402  + x-clmdtl-fee-ohip-1/100 &
+               if x-yyyymm   = "200402"              &
+               reset at x-doc
+
+temp x-200403 zoned*9
+item x-200403 = x-200403  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200403"              &
+              reset at x-doc
+
+temp x-200404 zoned*9
+item x-200404 = x-200404  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200404"              &
+              reset at x-doc
+
+temp x-200405 zoned*9
+item x-200405 = x-200405  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200405"              &
+              reset at x-doc
+
+temp x-200406 zoned*9
+item x-200406 = x-200406  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200406"              &
+              reset at x-doc
+
+temp x-200407 zoned*9
+item x-200407 = x-200407  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200407"              &
+              reset at x-doc
+
+temp x-200408 zoned*9
+item x-200408 = x-200408  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200408"              &
+              reset at x-doc
+
+temp x-200409 zoned*9
+item x-200409 = x-200409  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200409"              &
+              reset at x-doc
+
+temp x-200410 zoned*9
+item x-200410 = x-200410  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200410"              &
+              reset at x-doc
+
+temp x-200411 zoned*9
+item x-200411 = x-200411  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200411"              &
+              reset at x-doc
+
+temp x-200412 zoned*9
+item x-200412 = x-200412  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200412"              &
+              reset at x-doc
+
+
+;;;;;;;;;;;;2005
+temp x-200501 zoned*9
+item x-200501 = x-200501  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200501"              &
+              reset at x-doc
+
+temp  x-200502 zoned*9
+item  x-200502 = x-200502  + x-clmdtl-fee-ohip-1/100 &
+               if x-yyyymm   = "200502"              &
+               reset at x-doc
+
+temp x-200503 zoned*9
+item x-200503 = x-200503  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200503"              &
+              reset at x-doc
+
+temp x-200504 zoned*9
+item x-200504 = x-200504  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200504"              &
+              reset at x-doc
+
+temp x-200505 zoned*9
+item x-200505 = x-200505  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200505"              &
+              reset at x-doc
+
+temp x-200506 zoned*9
+item x-200506 = x-200506  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200506"              &
+              reset at x-doc
+
+temp x-200507 zoned*9
+item x-200507 = x-200507  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200507"              &
+              reset at x-doc
+
+temp x-200508 zoned*9
+item x-200508 = x-200508  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200508"              &
+              reset at x-doc
+
+temp x-200509 zoned*9
+item x-200509 = x-200509  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200509"              &
+              reset at x-doc
+
+temp x-200510 zoned*9
+item x-200510 = x-200510  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200510"              &
+              reset at x-doc
+
+temp x-200511 zoned*9
+item x-200511 = x-200511  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200511"              &
+              reset at x-doc
+
+temp x-200512 zoned*9
+item x-200512 = x-200512  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200512"              &
+              reset at x-doc
+
+
+;;;;;;;;;2006
+temp x-200601 zoned*9
+item x-200601 = x-200601  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200601"              &
+              reset at x-doc
+
+temp  x-200602 zoned*9
+item  x-200602 = x-200602  + x-clmdtl-fee-ohip-1/100 &
+               if x-yyyymm   = "200602"              &
+               reset at x-doc
+
+temp x-200603 zoned*9
+item x-200603 = x-200603  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200603"              &
+              reset at x-doc
+
+temp x-200604 zoned*9
+item x-200604 = x-200604  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200604"              &
+              reset at x-doc
+
+temp x-200605 zoned*9
+item x-200605 = x-200605  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200605"              &
+              reset at x-doc
+
+temp x-200606 zoned*9
+item x-200606 = x-200606  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200606"              &
+              reset at x-doc
+
+temp x-200607 zoned*9
+item x-200607 = x-200607  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200607"              &
+              reset at x-doc
+
+temp x-200608 zoned*9
+item x-200608 = x-200608  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200608"              &
+              reset at x-doc
+
+temp x-200609 zoned*9
+item x-200609 = x-200609  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200609"              &
+              reset at x-doc
+
+temp x-200610 zoned*9
+item x-200610 = x-200610  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200610"              &
+              reset at x-doc
+
+temp x-200611 zoned*9
+item x-200611 = x-200611  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200611"              &
+              reset at x-doc
+
+temp x-200612 zoned*9
+item x-200612 = x-200612  + x-clmdtl-fee-ohip-1/100 &
+              if x-yyyymm   = "200612"              &
+              reset at x-doc
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile dwayne2 portable keep at x-doc include       &
+x-doc                                               ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+x-200401                                            ,&
+comma                                               ,&
+x-200402                                            ,&
+comma                                               ,&
+x-200403                                            ,&
+comma                                               ,&
+x-200404                                            ,&
+comma                                               ,&
+x-200405                                            ,&
+comma                                               ,&
+x-200406                                            ,&
+comma                                               ,&
+x-200407                                            ,&
+comma                                               ,&
+x-200408                                            ,&
+comma                                               ,&
+x-200409                                            ,&
+comma                                               ,&
+x-200410                                            ,&
+comma                                               ,&
+x-200411                                            ,&
+comma                                               ,&
+x-200412                                            ,&
+comma                                               ,&
+x-200501                                            ,&
+comma                                               ,&
+x-200502                                            ,&
+comma                                               ,&
+x-200503                                            ,&
+comma                                               ,&
+x-200504                                            ,&
+comma                                               ,&
+x-200505                                            ,&
+comma                                               ,&
+x-200506                                            ,&
+comma                                               ,&
+x-200507                                            ,&
+comma                                               ,&
+x-200508                                            ,&
+comma                                               ,&
+x-200509                                            ,&
+comma                                               ,&
+x-200510                                            ,&
+comma                                               ,&
+x-200511                                            ,&
+comma                                               ,&
+x-200512                                            ,&
+comma                                               ,&
+x-200601                                            ,&
+comma                                               ,&
+x-200602                                            ,&
+comma                                               ,&
+x-200603                                            ,&
+comma                                               ,&
+x-200604                                            ,&
+comma                                               ,&
+x-200605                                            ,&
+comma                                               ,&
+x-200606                                            ,&
+comma                                               ,&
+x-200607                                            ,&
+comma                                               ,&
+x-200608                                            ,&
+comma                                               ,&
+x-200609                                            ,&
+comma                                               ,&
+x-200610                                            ,&
+comma                                               ,&
+x-200611                                            ,&
+comma                                               ,&
+x-200612                                            ,&
+x-cr
+
+build $obj/dwayne

@@ -1,0 +1,830 @@
+;#> PROGRAM-ID.     D705A.QKS 
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : TO ALLOW CORRECTIONS TO SUSPENDED **DETAIL**  RECORDS
+;
+;    MODIFICATION HISTORY
+;        DATE    WHO         DESCRIPTION
+;     90/JUN/13  D.B.        - ORIGINAL
+;     90/OCT/23  D.B.        - ADDED EDITS
+;     90/NOV/22  D.B.        - ADDED FEE CALCULATION
+;     91/MAR/01  B.E.        - ADDED DIAGNOSTIC CODE TO DETAIL RECORD
+;     93/JUL/14  M.C.	     - SMS 142
+;			     - USE CLMDTL-DIAG-CD-ALPHA
+;			     - USE CLMDTL-NBR-SERV-ALPHA
+;     96/05/10   YAS         - ALLOW ACTIVITIES ADD AND DELETE
+;     96/MAY/15  M.C.	     - PDR 648, ALLOW ENTRY, INITIALIZE ITEMS
+;			       CLMDTL-DOC-OHIP-NBR/ACCOUNTING-NBR
+;			       PLUS SOME EDITS
+;   1998/11/11   S.B.	     - ADDED FILE "F002-SUSPEND-HDR" AS A MASTER.
+;			     - ADDED THE ITEMS "CLMDTL-FEE-OMA" AND
+;			     - "CLMDTL-FEE-OHIP" TO FILE "F002-SUSPEND-DTL".
+;   1998/11/20   S.B.        - ADDED A PROCESS PROCEDURE FOR FIELD
+;			       "clmdtl-amt-tech-billed" THAT POPULATES
+;				FIELDS "clmdtl-fee-oma" AND
+;			        "clmdtl-fee-ohip" WITH THE VALUE ENTERED
+;				IN "clmdtl-amt-tech-billed".
+; 1999/jan/28 B.E.           - y2k 
+; 1999/11/08  M.C.	     - initialize clmdtl-batch-nbr to be clmhdr-batch-nbr
+; 1999/12/14  M.C.	     - use clmdtl-nbr-serv instead of clmdtl-nbr-serv-alpha
+; 2000/02/03  B.A.	     - added code to set flags for new, altered or 
+;			       canceled records (disabled delete activity) 
+; 2000/02/15  B.A.           - adjusted subtotals of f002-suspend-hdr in
+;                              del and undel designer proc.
+; 2000/04/18  B.E./B.A.	     - Modification to suspend records that were 
+;			       uploaded from the RMA WEB system are tracked
+;			       and when the actual claims (f002) are created,
+;			       these modifications are sent back to the WEB
+;			       to keep it in sync.
+;			       Since the web "visits" are designed to have 
+;			       happened on a single day, the date of the service
+;			       is stored in the visit header. When the syspend
+;			       detail records were created this service date
+;			       was written into each detail record matching
+;			       the flexibility that d001 allows within a claim
+;			       of having several different service dates.
+;			       In order to pass back the modifications made to
+;			       to suspend details no changes are allowed to
+;			       the service date.
+;			       Code could be written that would take a date
+;			       change on one detail and update all other details
+;			       but it's not worth the effort -delete the 
+;			       suspend claim and re-enter on web if wrong date).
+;			     - note that web claims are identified by using
+;			       the 3 digit doctor nbr in the header 
+;				(CLMHDR-DOC-NBR OF F002-SUSPEND-HDR) to 
+;			       access f073-client-doc-mstr and testing if
+;			       client-id = "WEB" 
+; 2000/04/18 B.E	     - removed "consecutive services" cluster
+; 
+; 2000/05/26 B.A. 	     - Added use file confidentially_check.use
+; 2000/06/08 B.A.	     - Added logic to subtotal amt-tech-billed from
+;			       f002-suspend-dtl to f002-suspend-hdr
+; 2000/06/12 B.E.	- now allow change to date. The new data is then
+;			  updated into all other details to keep them 
+;			  consistent(WEB claims only). Diskette claims can
+;			  have difference dates)
+; 2000/06/13 B.E.	- default OHIP amount to OMA amount entered
+; 2000/06/14 M.C.       - set clmdtl-batch-nbr equal to clmhdr-batch-nbr 
+;			  when user creates a new claim detail record
+
+; 2000/06/21 B.E.	- update of other details when service date changed
+;			  fixed on 'newrecord' condition.    
+; 2000/06/28 B.E.	- added display of first 2 bytes of consecutive dates
+;			  which can contains "BI" or "OP"
+; 00/sep/12 B.E. - status made display only field.
+; 00/sep/18 B.E. - add 'rep' designer routine to allow rapid change of 
+;		   either diag-code or svc-date in all details recs
+; 00/sep/14 B.E. - added 'des' call to d705c to maintain "manual review" records
+; 00/sep/20 B.E. - as per yas's request, removed OK flag - automatically run
+;		   update
+;		 - added w-rep-oma-cd
+;		 - added 'auto' to all input fields to speed up entry
+;		 - reversed sequence of oma/ohip fees on screen
+; 00/sep/25 B.E. - added warning if description text longer than what fits    
+;                  into 5 claim description recs
+; 00/sep/25 B.E. - don't allow changes to logically deleted records
+
+can clear
+screen $pb_obj/d705a receiving w-clmhdr-doc-ohip-nbr,		&
+	 w-clmhdr-accounting-nbr, f002-suspend-hdr              &
+;2000/02/03 begin
+;	ACTIVITIES FIND,CHANGE,ENTRY,DELETE
+        activities find,change,entry
+
+temp w-clmhdr-doc-ohip-nbr
+temp w-clmhdr-accounting-nbr char*8
+temp w-nbr-serv
+temp w-amt
+temp w-const
+temp w-oma-fee
+temp w-ohip-fee
+temp w-amt-tech
+temp w-amt-oma
+temp w-amt-ohip
+temp w-changed-date    char*8  
+temp w-changed-date-yy char*4  
+temp w-changed-date-mm char*2  
+temp w-changed-date-dd char*2  
+temp t-count num
+temp w-rep-ok char*1 
+temp w-rep-diag-cd  char*3  
+temp w-rep-sv-date  date    
+temp w-rep-oma-cd   char*4  
+temp w-oma-cd       char*4  
+temp w-rep-oma-suff char*1  
+temp w-oma-suff char*1
+temp x-nbr-desc-recs
+temp x-warn-flag char*1
+temp x-occ
+temp x-rec-status char*1
+temp x-mode char*9 reset at startup
+
+;2000/09/29 - MC 
+temp dummy-check-changed-date char*1
+;;
+
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+
+file f002-suspend-hdr master
+
+file f002-suspend-dtl   primary occurs 11
+	access viaindex suspend-dtl-id using		&
+	w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+   item clmdtl-doc-ohip-nbr of f002-suspend-dtl		&
+		initial w-clmhdr-doc-ohip-nbr fixed
+   item clmdtl-accounting-nbr of f002-suspend-dtl	&
+		 initial w-clmhdr-accounting-nbr fixed
+; 2000/06/14 - MC
+   item clmdtl-batch-nbr of f002-suspend-dtl		&
+		initial clmhdr-batch-nbr fixed
+   item clmdtl-amt-tech-billed of f002-suspend-dtl sum into &
+	clmhdr-amt-tech-billed of f002-suspend-hdr
+   item clmdtl-fee-oma 	        of f002-suspend-dtl sum into 	&
+	clmhdr-tot-claim-ar-oma of f002-suspend-hdr
+   item clmdtl-fee-ohip 	of f002-suspend-dtl sum into 	&
+	clmhdr-tot-claim-ar-ohip of f002-suspend-hdr
+   item clmdtl-status of f002-suspend-dtl initial ' ' 
+
+temp w-clmdtl-sv-day-1 char*2 occurs with f002-suspend-dtl
+
+file f002-suspend-desc alias f002-desc-verify designer
+        access viaindex suspend-dtl-id using            &
+        w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+
+;use $use/f002_consecutive_dates.def
+
+file f002-suspend-dtl alias f002-suspend-dtl-svc-date desi
+	access viaindex suspend-dtl-id using		&
+	w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+
+file f002-suspend-dtl alias susp-dtl designer 
+
+use $use/confidentially_check.use
+
+file f040-oma-fee-mstr reference
+;	access viaindex fee-oma-cd using clmdtl-oma-cd of of f002-suspend-dtl
+file f040-oma-fee-mstr alias f040-pricing designer
+
+file constants-mstr-rec-2 reference
+	access using "2"
+
+file f020-doctor-mstr reference
+	access viaindex doc-ohip-nbr 			&
+		using clmdtl-doc-ohip-nbr of f002-suspend-dtl opt
+
+file f073-client-doc-mstr reference 
+	access via doc-nbr 				&
+		using nconv(ascii(clmdtl-batch-nbr of f002-suspend-dtl)[4:3])
+
+file f091-diag-codes-mstr reference
+; 	access viaindex diag-cd using clmdtl-diag-cd-alpha of f002-suspend-dtl
+
+title "Suspended **DETAIL** Maintenance" at 1,48
+
+skip ; 1
+title "Enter values to be REPlicated" at ,50
+skip
+align (1,4,37) (,50, 65)
+field clmhdr-doc-ohip-nbr of f002-suspend-hdr                     &
+	pic "^^^^^^" label "Doctor Nbr (OHIP)" predisplay display
+field w-rep-diag-cd  label "Diag code   : "  			  &
+	auto							&
+	lookup on f091-diag-codes-mstr				  &
+  	viaindex diag-cd using w-rep-diag-cd
+
+align (1,4,35) (,50, 65)
+field clmhdr-accounting-nbr of f002-suspend-hdr                   &
+      id same label "Remote Site's Accounting Nbr" predisplay  display
+field w-rep-sv-date label "Service Date: "			&
+	auto
+
+; 00/sep/20 B.E.
+align          (,50,65) (,,69)
+;field w-rep-ok label "OK to Update?" values "Y", "N" default " " upshift
+
+field w-rep-oma-cd   label "OMA Code    : "  			&
+	upshift							&
+	auto							&
+	lookup on f040-oma-fee-mstr 				&
+	viaindex fee-oma-cd using w-rep-oma-cd 
+
+field w-rep-oma-suff 						&
+	auto							&
+	upshift							&
+	values "A", "B", "C", " "				&
+	default " "
+
+align (1,4,35) (,50, 65)
+skip ;1
+title " OMA          ---Service---      ---------- Fees -----------   Pricing " at ,4
+skip
+title "Code Suf Diag Nbr      Date      Tech        OHIP        OMA     Flag  Status" at ,4
+skip ;1
+cluster occurs with f002-suspend-dtl
+align (1,,4) (,,10) (,,14) (,,18) (,,21) (,25,26) (,28,29) (,,32) (,,43) (,,54) (,,70) (,,78)
+
+field clmdtl-oma-cd of f002-suspend-dtl					&
+	auto								&
+	upshift								&
+	lookup on f040-oma-fee-mstr 					&
+	viaindex fee-oma-cd using clmdtl-oma-cd of f002-suspend-dtl required
+
+field clmdtl-oma-suff of f002-suspend-dtl				&
+	auto								&
+	values "A", "B", "C" required upshift
+
+field clmdtl-diag-cd-alpha  of f002-suspend-dtl				&
+	auto								&
+	lookup on f091-diag-codes-mstr					&
+ 	viaindex diag-cd using clmdtl-diag-cd-alpha of f002-suspend-dtl required
+
+field clmdtl-nbr-serv of f002-suspend-dtl				&
+	auto								&
+	values 01 to 99 required
+
+field clmdtl-sv-yy-alpha of f002-suspend-dtl	 			&
+		value "1999" to "2099"  auto
+field clmdtl-sv-mm-alpha of f002-suspend-dtl label "/"			&
+		value "01" to "12" auto
+field clmdtl-sv-dd-alpha of f002-suspend-dtl label "/"			&
+		value "01" to "31"  auto
+;2000/09/29 - MC - add silent edit
+field dummy-check-changed-date silent
+;;
+field clmdtl-amt-tech-billed of f002-suspend-dtl auto
+field clmdtl-fee-ohip of f002-suspend-dtl	 auto
+field clmdtl-fee-oma of f002-suspend-dtl	 auto
+field w-clmdtl-sv-day-1 value " ", "OP", "BI" auto upshift
+
+field clmdtl-status  of  f002-suspend-dtl label "Detail STATUS" display
+
+procedure process clmdtl-oma-cd
+begin
+  let w-amt= 0
+end
+
+procedure process w-clmdtl-sv-day-1 
+begin
+; (if BI,OP etc. entered ensure that corresponding clmdtl field is kept in sync)
+;  info = w-clmdtl-sv-day-1  + "=" +   clmdtl-sv-day-alpha-1 of f002-suspend-dtl now response
+  if w-clmdtl-sv-day-1 <> "  "
+  then
+    begin
+;      info = w-clmdtl-sv-day-1  + "==" +   clmdtl-sv-day-alpha-1 of f002-suspend-dtl now response
+      if w-clmdtl-sv-day-1 <> clmdtl-sv-day-alpha-1 of f002-suspend-dtl
+      then
+	begin
+;          info = w-clmdtl-sv-day-1  + "===" +   clmdtl-sv-day-alpha-1 of f002-suspend-dtl now response
+	  let clmdtl-sv-day-alpha-1 of f002-suspend-dtl = w-clmdtl-sv-day-1
+;          info = w-clmdtl-sv-day-1  + "====" +   clmdtl-sv-day-alpha-1 of f002-suspend-dtl now response
+	end
+    end
+end
+
+procedure internal price_oma_cd
+begin
+  get f040-pricing using w-oma-cd; read has to find record since it's already been verified
+  let w-oma-fee =  fee-curr-a-fee-1 of f040-pricing /10
+  let w-ohip-fee = fee-curr-h-fee-1 of f040-pricing /10
+  let w-amt-tech = 0
+
+  if   fee-icc-sec of f040-pricing = "CV"			&
+    or (   (    fee-icc-sec of f040-pricing = "NM"			&
+            or  fee-icc-sec of f040-pricing = "DR"			&
+            or  fee-icc-sec of f040-pricing = "PF"			&
+            or  fee-icc-sec of f040-pricing = "DU"			&
+ 	   )						&
+        and w-oma-suff = "B"			&
+	)						&
+    or (    fee-icc-sec of f040-pricing = "SP"				&	
+        and (   w-oma-suff = "A"			&
+             or w-oma-suff = "M"))	&
+    or (    fee-icc-sec of f040-pricing = "CP"			&
+        and (   w-oma-suff = "A"	&
+             or w-oma-suff = "M"))	&
+  or ( fee-icc-sec of f040-pricing = "DT"			&
+      and (w-oma-suff = "A"	&
+       or  w-oma-suff = "M"))
+    then begin
+      let w-oma-fee  = fee-curr-a-fee-1 of f040-pricing /10
+      let w-ohip-fee = fee-curr-h-fee-1 of f040-pricing /10
+      end
+  if ((   fee-icc-sec of f040-pricing = "NM"			&
+       or fee-icc-sec of f040-pricing = "DR"			&
+       or fee-icc-sec of f040-pricing = "PF"			&
+       or fee-icc-sec of f040-pricing = "DU")			&
+      and w-oma-suff = "C")
+    then begin
+      let w-oma-fee =  fee-curr-a-fee-2 of f040-pricing /10
+      let w-ohip-fee = fee-curr-h-fee-2 of f040-pricing /10
+      end
+  if ((   fee-icc-sec of f040-pricing = "NM"			&
+       or fee-icc-sec of f040-pricing = "DR"			&
+       or fee-icc-sec of f040-pricing = "PF"			&
+       or fee-icc-sec of f040-pricing = "DU")			&
+     and (w-oma-suff = "A"	&
+       or w-oma-suff = "M"))
+    then begin
+      let w-oma-fee =  (  fee-curr-a-fee-1 of f040-pricing	&
+		        + fee-curr-a-fee-2 of f040-pricing)/10
+      let w-ohip-fee = (  fee-curr-h-fee-1 of f040-pricing	&
+		        + fee-curr-h-fee-2 of f040-pricing)/10
+      end
+  if ((   fee-icc-sec of f040-pricing = "CP"			&
+       or fee-icc-sec of f040-pricing = "DT"			&
+       or fee-icc-sec of f040-pricing = "SP")			&
+      and w-oma-suff = "C"	&
+      and doc-spec-cd = 0)
+    then begin
+      let w-oma-fee  = const-reg-a-curr of constants-mstr-rec-2
+      let w-ohip-fee = const-reg-h-curr of constants-mstr-rec-2
+      end
+  if ((   fee-icc-sec of f040-pricing = "CP"			&
+       or fee-icc-sec of f040-pricing = "DT"			&
+       or fee-icc-sec of f040-pricing = "SP")			&
+      and w-oma-suff = "C"	&
+      and doc-spec-cd <> 0)
+    then begin
+      let w-oma-fee  = const-cert-a-curr
+      let w-ohip-fee = const-cert-h-curr
+      end
+  if      fee-icc-sec of f040-pricing = "SP"			&
+      and w-oma-suff = "B"
+    then begin
+      let w-oma-fee = const-asst-a-curr
+      let w-ohip-fee= const-asst-h-curr
+      end
+  if ((   fee-icc-sec of f040-pricing = "CP"			&
+       or fee-icc-sec of f040-pricing = "DT"			&
+       or fee-icc-sec of f040-pricing = "SP")			&
+      and w-oma-suff = "C")
+    then begin
+      let w-oma-fee =w-oma-fee  + (w-oma-fee  * fee-curr-a-anae of f040-pricing)
+      let w-ohip-fee=w-ohip-fee + (w-ohip-fee * fee-curr-h-anae of f040-pricing)
+      end
+  if      fee-icc-sec of f040-pricing = "SP"			&
+      and w-oma-suff = "B"
+    then begin
+      let w-oma-fee  = w-oma-fee  + (w-oma-fee  		&
+					   * fee-curr-a-asst of f040-pricing)/10
+      let w-ohip-fee = w-ohip-fee + (w-ohip-fee 		&
+					   * fee-curr-h-asst of f040-pricing)/10
+      end
+
+  let w-amt-oma  = w-oma-fee  * w-nbr-serv
+  let w-amt-ohip = w-ohip-fee * w-nbr-serv
+
+  if clmdtl-agent-cd of f002-suspend-dtl = 9
+  then 
+    begin
+      let w-amt-ohip = w-amt-ohip * const-wcb-curr
+      let w-amt-oma  = w-amt-ohip * const-wcb-curr
+    end
+
+  if   clmdtl-agent-cd of f002-suspend-dtl = 4 	&
+    or clmdtl-agent-cd of f002-suspend-dtl = 6
+  then 
+    begin
+      let w-amt-ohip = w-amt-oma
+    end
+
+  if   fee-tech-ind of f040-pricing = "Y" 	&
+    or w-oma-suff = "B"
+  then 
+    begin
+       let w-amt-tech = w-amt-ohip
+    end
+
+  if   fee-icc-sec of f040-pricing = "NM"			&
+    or fee-icc-sec of f040-pricing = "DR"			&		
+    or fee-icc-sec of f040-pricing = "DU" 			&
+    or fee-icc-sec of f040-pricing = "PF"
+  then 
+     begin
+        let w-amt-tech 							&
+		=   (fee-curr-a-fee-1 of f040-pricing/10)		&
+                  * (w-amt-ohip / (   fee-curr-a-fee-1 of f040-pricing	&
+		  		    + fee-curr-a-fee-2 of f040-pricing)/10)
+     end
+
+  if d-confid-flag = 'Y'
+  then 
+     let clmhdr-confidential-flag = 'Y'
+
+  if    d-confid-flag = 'R' 			&
+    and clmhdr-confidential-flag <> 'Y'
+  then 
+    let clmhdr-confidential-flag = 'R'
+
+end
+
+procedure internal set_all_det_recs_to_rep_values
+begin
+  while retrieving f002-suspend-dtl-svc-date
+  begin
+    if clmdtl-status of f002-suspend-dtl-svc-date <> clmdtl-status-delete
+    then
+    begin
+      if w-rep-diag-cd <> " "
+      then
+        begin
+	  let clmdtl-diag-cd of f002-suspend-dtl-svc-date &
+							=nconvert(w-rep-diag-cd)
+	  let clmdtl-status  of f002-suspend-dtl-svc-date =clmdtl-status-updated
+;	  put f002-suspend-dtl-svc-date
+        end
+      if w-rep-sv-date <> 0
+      then
+        begin
+	  let clmdtl-sv-date of f002-suspend-dtl-svc-date = ascii(w-rep-sv-date)
+	  let clmdtl-status  of f002-suspend-dtl-svc-date = clmdtl-status-updated 
+;	  put f002-suspend-dtl-svc-date
+        end
+      if w-rep-oma-cd <> " "
+      then
+        begin
+	  let clmdtl-oma-cd   of f002-suspend-dtl-svc-date = w-rep-oma-cd
+  	  let clmdtl-oma-suff of f002-suspend-dtl-svc-date = w-rep-oma-suff
+
+;        (repriced based upon new oma code)
+          let w-oma-cd = w-rep-oma-cd
+          let w-nbr-serv =  clmdtl-nbr-serv of f002-suspend-dtl-svc-date    &
+                          + clmdtl-sv-nbr-1 of f002-suspend-dtl-svc-date    &
+                          + clmdtl-sv-nbr-2 of f002-suspend-dtl-svc-date    &
+                          + clmdtl-sv-nbr-3 of f002-suspend-dtl-svc-date
+          let w-oma-suff = clmdtl-oma-suff of f002-suspend-dtl-svc-date
+
+          do price_oma_cd
+
+          let clmdtl-amt-tech-billed of f002-suspend-dtl-svc-date = w-amt-tech
+          let clmdtl-fee-oma         of f002-suspend-dtl-svc-date = w-amt-oma
+          let clmdtl-fee-ohip        of f002-suspend-dtl-svc-date = w-amt-ohip
+
+        end
+
+      let clmdtl-status  of f002-suspend-dtl-svc-date =clmdtl-status-updated
+      put f002-suspend-dtl-svc-date
+    end
+  end
+; (if any changes made, then update status of hdr rec)
+;  if   w-rep-diag-cd  > " " &
+;    or w-rep-sv-date  <> 0  &
+;    or w-rep-oma-suff > " "
+;  then
+;    begin
+      let clmhdr-status of f002-suspend-hdr = updated
+      put f002-suspend-hdr
+;    end
+
+; (ensure that the old values aren't accidentally used a 2nd time)
+  let w-rep-diag-cd  = " "
+  let w-rep-sv-date  = 0
+  let w-rep-oma-cd   = " "
+  let w-rep-oma-suff = " "
+;  let w-rep-ok = " "
+  display w-rep-diag-cd
+  display w-rep-sv-date
+;  display w-rep-ok
+  display w-rep-oma-cd
+  display w-rep-oma-suff
+end
+
+;
+; THIS CODE DOENS'T WORK WITH OUT GETTING RECORD HAS CHANGED ERROR SO
+; CALLS TO IT WERE COMMNETED OUT...
+
+procedure internal set_all_det_recs_to_same_svc_date 
+begin
+  info = "NOTE: Ingore the 'record has changed since...' that appears next ..." now response
+  while retrieving f002-suspend-dtl-svc-date
+  begin
+;    (change detail if svc date was changed and it's <> detail's svc date)
+     if    w-changed-date <> " "		&
+       and w-changed-date <> clmdtl-sv-date of f002-suspend-dtl-svc-date
+     then
+       begin
+         let clmdtl-sv-date of f002-suspend-dtl-svc-date = w-changed-date 
+	 let clmdtl-status  of f002-suspend-dtl-svc-date = clmdtl-status-updated
+         put f002-suspend-dtl-svc-date
+      end
+  end
+  let w-changed-date = " "
+end
+
+procedure designer 1
+begin
+  let x-occ = occurrence
+; (get the status of the record being processed)
+  for f002-suspend-dtl
+    begin
+      if x-occ = occurrence
+      then
+	let x-rec-status = clmdtl-status of f002-suspend-dtl
+      if  changemode 
+      then
+	let x-mode = "CHANGE"
+      else
+	let x-mode = "NOTCHANGE"
+    end
+
+; (don't allow changes to deleted records)
+  if     x-mode = "CHANGE"			&
+     and x-rec-status = clmdtl-status-delete 	
+  then
+    begin
+	error "ERROR - you can't change Deleted records"
+    end
+  else
+    begin
+      accept clmdtl-oma-cd          of f002-suspend-dtl         
+      accept clmdtl-oma-suff        of f002-suspend-dtl       
+      accept clmdtl-diag-cd-alpha   of f002-suspend-dtl
+      accept clmdtl-nbr-serv        of f002-suspend-dtl
+      accept clmdtl-sv-yy-alpha     of f002-suspend-dtl
+      accept clmdtl-sv-mm-alpha     of f002-suspend-dtl 
+      accept clmdtl-sv-dd-alpha     of f002-suspend-dtl
+      accept clmdtl-amt-tech-billed of f002-suspend-dtl 
+      accept clmdtl-fee-ohip        of f002-suspend-dtl
+      accept clmdtl-fee-oma         of f002-suspend-dtl
+      accept w-clmdtl-sv-day-1 
+    end
+end
+
+procedure designer del
+begin 
+if not newrecord
+then begin
+  if clmdtl-status of f002-suspend-dtl <> clmdtl-status-delete
+    then begin
+      let clmdtl-status of f002-suspend-dtl = clmdtl-status-delete
+      display clmdtl-status of f002-suspend-dtl
+      let clmhdr-tot-claim-ar-ohip of f002-suspend-hdr =   &
+            clmhdr-tot-claim-ar-ohip of f002-suspend-hdr     & 
+          - clmdtl-fee-ohip          of f002-suspend-dtl
+      let clmhdr-tot-claim-ar-oma of f002-suspend-hdr =    & 
+            clmhdr-tot-claim-ar-oma of f002-suspend-hdr      &
+          - clmdtl-fee-oma          of f002-suspend-dtl
+      let clmhdr-amt-tech-billed of f002-suspend-hdr =    &
+            clmhdr-amt-tech-billed of f002-suspend-hdr      &
+          - clmdtl-amt-tech-billed of f002-suspend-dtl
+     end
+   else warn "This record has already been marked for deletion"
+   end
+else warn "You can't delete a record you haven't 'U'pdated into database"
+end
+
+
+procedure edit    clmdtl-sv-yy-alpha 
+begin
+; (flag web claims that have date changes so that later all other detail recs
+;  can be updated to the same date)
+    get f073-client-doc-mstr optional 
+    if    client-id = 'WEB'						&
+      and (   newrecord							&
+           or     clmdtl-sv-yy-alpha          of f002-suspend-dtl	&
+	       <> oldvalue(clmdtl-sv-yy-alpha of f002-suspend-dtl)	&
+	  )
+    then
+      begin
+        let w-changed-date-yy = fieldtext
+	let w-changed-date =   w-changed-date-yy	&
+			     + w-changed-date-mm	&
+			     + w-changed-date-dd
+      end
+end 
+
+
+procedure edit    clmdtl-sv-mm-alpha 
+begin
+; (flag web claims that have date changes so that later all other detail recs
+;  can be updated to the same date)
+    get f073-client-doc-mstr optional 
+    if    client-id = 'WEB'						&
+      and (   newrecord							&
+           or       clmdtl-sv-mm-alpha of f002-suspend-dtl 		&
+		<> oldvalue(clmdtl-sv-mm-alpha of f002-suspend-dtl)	&
+	  )
+    then 
+      begin
+        let w-changed-date-mm = fieldtext
+	let w-changed-date =   w-changed-date-yy	&
+                             + w-changed-date-mm        &
+                            + w-changed-date-dd
+      end
+end 
+
+procedure edit    clmdtl-sv-dd-alpha 
+begin
+; (flag web claims that have date changes so that later all other detail recs
+;  can be updated to the same date)
+    get f073-client-doc-mstr optional 
+    if    client-id = 'WEB'						&
+      and (   newrecord							&
+           or     clmdtl-sv-dd-alpha          of f002-suspend-dtl	&
+	       <> oldvalue(clmdtl-sv-dd-alpha of f002-suspend-dtl)	&
+	  )
+    then
+      begin
+        let w-changed-date-dd = fieldtext
+	let w-changed-date =  w-changed-date-yy		&
+			    + w-changed-date-mm		&
+			    + w-changed-date-dd
+      end
+end
+
+;2000/09/29 - MC - add edit 
+procedure edit dummy-check-changed-date
+begin
+   if w-changed-date <> ' '
+   then
+   begin
+	if w-changed-date-yy = ' '
+	then let w-changed-date =   clmdtl-sv-yy-alpha of f002-suspend-dtl &
+				 +  w-changed-date[5:4]
+	if w-changed-date-mm = ' '
+	then let w-changed-date =   w-changed-date[1:4] 		   &
+				  + clmdtl-sv-mm-alpha of f002-suspend-dtl &
+				  + w-changed-date[7:2]
+	if w-changed-date-dd = ' '
+	then let w-changed-date =  w-changed-date[1:6] 			   &
+				 + clmdtl-sv-dd-alpha of f002-suspend-dtl
+   end
+
+
+  let w-oma-cd = clmdtl-oma-cd of f002-suspend-dtl
+  let w-nbr-serv =  clmdtl-nbr-serv of f002-suspend-dtl     &
+                  + clmdtl-sv-nbr-1 of f002-suspend-dtl    &
+                  + clmdtl-sv-nbr-2 of f002-suspend-dtl    &
+                  + clmdtl-sv-nbr-3 of f002-suspend-dtl
+  let w-oma-suff = clmdtl-oma-suff of f002-suspend-dtl
+  do price_oma_cd
+  let clmdtl-amt-tech-billed of f002-suspend-dtl = w-amt-tech
+  let clmdtl-fee-ohip        of f002-suspend-dtl = w-amt-ohip
+  let clmdtl-fee-oma         of f002-suspend-dtl = w-amt-oma
+  display clmdtl-amt-tech-billed of f002-suspend-dtl
+  display clmdtl-fee-ohip        of f002-suspend-dtl
+  display clmdtl-fee-oma         of f002-suspend-dtl
+end
+
+
+; (00/sep/20 B.E. -  removed this procedure)
+;procedure process clmdtl-amt-tech-billed
+;   begin
+;     let clmdtl-fee-oma of f002-suspend-dtl  = clmdtl-amt-tech-billed of f002-suspend-dtl
+;     let clmdtl-fee-ohip of f002-suspend-dtl = clmdtl-amt-tech-billed of f002-suspend-dtl
+;     display clmdtl-fee-oma  of f002-suspend-dtl
+;     display clmdtl-fee-ohip of f002-suspend-dtl
+;   end
+
+
+
+
+procedure designer undel
+begin     
+if not newrecord
+then begin
+  if clmdtl-status of f002-suspend-dtl = clmdtl-status-delete
+  then begin
+    let clmdtl-status of f002-suspend-dtl = clmdtl-status-updated
+    display clmdtl-status of f002-suspend-dtl
+    let clmhdr-tot-claim-ar-ohip   of f002-suspend-hdr =   &
+          clmhdr-tot-claim-ar-ohip of f002-suspend-hdr     &
+        + clmdtl-fee-ohip          of f002-suspend-dtl
+    let clmhdr-tot-claim-ar-oma    of f002-suspend-hdr =    &
+          clmhdr-tot-claim-ar-oma of f002-suspend-hdr      & 
+        + clmdtl-fee-oma          of f002-suspend-dtl
+    let clmhdr-amt-tech-billed   of f002-suspend-hdr =    &
+          clmhdr-amt-tech-billed of f002-suspend-hdr      &
+        + clmdtl-amt-tech-billed of f002-suspend-dtl
+  end
+  else warn "This record has not been flagged for deletion"
+  end
+else warn "You can't undelete a record you haven't 'U'pdated into database"
+end 
+
+
+
+;procedure process clmdtl-fee-ohip  
+;begin
+;;  (default OMA amt = OHIP amount entered)
+;  let clmdtl-fee-oma = clmdtl-fee-ohip of f002-suspend-dtl
+;  display clmdtl-fee-oma of f002-suspend-dtl
+;end
+
+
+procedure designer rep
+begin
+    accept w-rep-diag-cd
+    accept w-rep-sv-date
+    accept w-rep-oma-cd
+    accept w-rep-oma-suff
+;;
+;  (00/sep/20 - users don't want to enter OK, so force 'Y'es
+;    accept w-rep-ok
+;  let w-rep-ok = "Y"
+
+; (if non-zero values entered, the replicate these values into all details)
+  if   w-rep-diag-cd <> " "&
+    or w-rep-sv-date <> 0 &
+    or w-rep-oma-cd  <> " "
+  then
+;    (change all records to value in 'rep' fields if 'ok'=Y)
+    begin
+;       if w-rep-ok = "Y"
+       let w-rep-ok = "Y"
+;       then
+;         begin
+       do set_all_det_recs_to_rep_values
+;         end
+    end
+end
+
+; 00/sep/20 B.E. - allow description records to be viewed from this screen
+;		   as well as d705
+
+use $use/d705_verify_desc_length.use
+
+procedure designer des
+begin
+  let w-clmhdr-doc-ohip-nbr   = clmhdr-doc-ohip-nbr
+  let w-clmhdr-accounting-nbr = clmhdr-accounting-nbr
+  run screen $pb_obj/d705c passing w-clmhdr-doc-ohip-nbr,   &
+      w-clmhdr-accounting-nbr, f002-suspend-hdr mode f
+; (warn user if comments are to large to fit into a single claim's descr recs)
+  do warn-desc-max-length
+  end
+
+;2000/04/18 - B.A. begin
+;2000/jun/12 B.E. added call to set_all_det_recs_to_same_svc_date to keep
+;		  the service date in all details the same
+;procedure update
+;begin
+;   FOR F002-SUSPEND-DTL
+;     BEGIN
+;        PUT F002-SUSPEND-DTL
+;        END
+;   PUT F002-SUSPEND-HDR
+;     if  w-changed-date <> " "
+;     then 
+;       begin
+;;        (ensure all other details have same service date)
+;         do internal set_all_det_recs_to_same_svc_date
+;        end
+;
+;   display clmdtl-status of f002-suspend-dtl
+;   let clmhdr-status of f002-suspend-hdr = updated
+;   put f002-suspend-hdr
+;   let w-changed-date = " "
+;end
+
+
+procedure preupdate
+begin
+  if  w-changed-date <> " "
+  then 
+    begin
+;     (ensure all other details have same service date)
+      do internal set_all_det_recs_to_same_svc_date
+    end
+
+  for f002-suspend-dtl
+  begin
+    if    alteredrecord of f002-suspend-dtl	&
+      and clmdtl-status of f002-suspend-dtl <> clmdtl-status-delete
+    then
+      begin
+        let     clmdtl-status of f002-suspend-dtl = updated
+        display clmdtl-status of f002-suspend-dtl
+      end
+  end
+
+  let clmhdr-status of f002-suspend-hdr = updated
+
+end
+
+procedure initialize
+begin
+ let w-changed-date = " "
+
+; (warn user if comments are to large to fit into a single claim's descr recs)
+  do warn-desc-max-length
+end
+
+procedure postfind
+begin
+  for f002-suspend-dtl
+    begin
+      if clmdtl-sv-day-alpha-1 of f002-suspend-dtl <> "00"
+      then
+        let w-clmdtl-sv-day-1 = clmdtl-sv-day-alpha-1 of f002-suspend-dtl
+      else
+        let w-clmdtl-sv-day-1 = " "
+    end
+end
+
+build detail

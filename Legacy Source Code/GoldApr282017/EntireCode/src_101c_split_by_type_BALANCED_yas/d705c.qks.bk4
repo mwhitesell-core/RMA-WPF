@@ -1,0 +1,84 @@
+;#> program-id.     d705c.qks
+;
+;	((C)) Dyad Technologies
+;
+;    program purpose : to allow entry/correction of web "manual review"
+;			comments (placed into claim "description" records)
+;
+;    MODIFICATION HISTORY
+;        DATE    WHO         DESCRIPTION
+;     00/sep/14  B.E.        - original
+
+can clear
+screen $pb_obj/d705c receiving w-clmhdr-doc-ohip-nbr,		&
+	 w-clmhdr-accounting-nbr, f002-suspend-hdr		&
+	 on line 19 for 5 message on line 24
+
+temp w-clmhdr-doc-ohip-nbr
+temp w-clmhdr-accounting-nbr char*8
+temp x-nbr-desc-recs 
+
+use $use/def_clmhdr_status.def
+use $use/def_clmdtl_status.def
+
+
+file f002-suspend-hdr master
+
+file f002-suspend-desc  primary occurs 4
+	access viaindex suspend-dtl-id using		&
+	w-clmhdr-doc-ohip-nbr, w-clmhdr-accounting-nbr
+   item clmdtl-doc-ohip-nbr   initial w-clmhdr-doc-ohip-nbr fixed
+   item clmdtl-accounting-nbr initial w-clmhdr-accounting-nbr fixed
+   item clmdtl-status initial ' ' 
+
+file constants-mstr-rec-2 reference
+	access using "2"
+
+title "**Decription Recs(Manual Review Comments)** Maintenance" at ,25
+
+;skip 1
+;align (1,4,35)
+;field clmdtl-doc-ohip-nbr of f002-suspend-desc          nochange   &
+;	pic "^^^^^^" label "Doctor Nbr (OHIP)" predisplay display
+;field clmdtl-accounting-nbr of f002-suspend-desc        nochange &
+;      id same label "Remote Site's Accounting Nbr" predisplay  display
+;skip 1
+;title " Line            " at ,2
+;skip
+;title "  Nbr Description" at ,2
+;skip 1
+cluster occurs with f002-suspend-desc
+align (1,,5)  (,,8)
+field clmdtl-line-no
+field clmdtl-suspend-desc
+
+;field clmdtl-status  of  f002-suspend-desc label "DETAIL STATUS" display
+
+procedure preupdate
+begin     
+   let x-nbr-desc-recs = 0
+
+   for f002-suspend-desc
+   begin
+;    (ensure that line-no field matches record's sequence)
+     if clmdtl-line-no <> occurrence
+     then
+     begin
+       let clmdtl-line-no = occurrence
+     end
+;    (count the number of description records so that this counter
+;     can be updated into the hdr rec)
+     if         clmdtl-suspend-desc <> " "	&
+	and not deletedrecord 
+     then
+     begin
+       let x-nbr-desc-recs = occurrence
+     end
+   end
+
+   let clmhdr-nbr-suspend-desc-recs of f002-suspend-hdr = x-nbr-desc-recs
+   let clmhdr-status of f002-suspend-hdr = updated
+   put f002-suspend-hdr
+end
+
+build

@@ -1,0 +1,1336 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   1
+*                      r005.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - LIST
+* Accepted - RESEQ
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Options: int(r005.int) verbose nolist endp list(r005.lst)
+identification division.
+program-id.  r005.
+author. dyad computer systems inc.
+installation. rma.
+date-written. 80/01/31.
+date-compiled. 01-Jun-11 11:48.
+security.
+*
+*       files   : f020 - doctor master
+*               : f051 - doctor cash master
+*               : f090 - constants master
+*               : r005 - monthly cash applied report
+*
+*       program purpose : print the monthly cash applied report.
+*
+*       revision history:
+*
+*       may/82 (d.m.)   -changed to access new doctor cash master
+*                        instead of doctor revenue master
+*                       -changed to access new constants master
+*                       -changd to access new doctor master
+*
+*         rev.  may/87 (s.b.) - coversion from aos to aos/vs.
+*                               change field size for
+*                               status clause to 2 and
+*                               feedback clause to 4.
+*
+*        mar/88 (j.l.)   - recompile program for the change in f050,f051
+*                          doc rev mtd field changed to s9(6)v99
+*
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*  revised jan/98 j. chau  - s149 unix conversion
+*
+*  revised 1999/May/07 S.B.     - y2k changes to headers.
+*  2003/dec/09 M.C.     - alpha doc nbr
+
+environment division.
+input-output section.
+file-control.
+*
+    copy "f051_doc_cash_mstr.slr".
+    select docash-mstr
+*       assign index to "f051_doc_cash_mstr"
+*       assign data  to "f051_doc_cash_mstr"
+        assign to disk "$pb_data/f051_doc_cash_mstr"
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   2
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f051_)
+*               contiguous
+*               space management
+        organization is indexed
+        access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+        lock mode is manual
+
+        record key   is docash-key
+        status       is status-cobol-docash-mstr.
+*       infos status  is status-docash-mstr.
+*       eof-flag     is eof-cash-mstr
+*
+*
+    copy "f020_doctor_mstr.slr".
+    select doc-mstr
+*mf     assign index to "f020_doctor_mstr"
+*mf     assign data  to "f020_doctor_mstr"
+        assign to disk "$pb_data/f020_doctor_mstr"
+        organization is indexed
+        access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+        lock mode is manual
+
+        record key   is doc-nbr of doc-mstr-rec
+
+*mf added two  alternative keys below
+        alternate key is doc-name-soundex
+         with duplicates
+        alternate key is doc-ohip-nbr of doc-mstr
+         with duplicates
+              status  is status-cobol-doc-mstr.
+*       infos status  is status-doc-mstr.
+*       eof-flag     is eof-doc-mstr
+*
+*
+    copy "f090_constants_mstr.slr".
+select iconst-mstr
+assign to disk "$pb_data/f090_constants_mstr"
+organization is indexed
+access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+lock mode is manual
+record key   is iconst-clinic-nbr-1-2
+*       eof-flag     is eof-iconst-mstr
+status is status-cobol-iconst-mstr.
+*
+    select print-file
+        assign to printer printer-file-name
+        file status is status-print-file.
+data division.
+file section.
+
+    copy "f051_doc_cash_mstr.fd".
+fd  docash-mstr
+*    index block contains 512 characters
+*    data  block contains 512 characters
+           block contains 512 characters
+*   record      contains  45 characters
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   3
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f051_)
+     record     contains  46 characters .
+*    feedback is feedback-docash-mstr.
+
+01  docash-master-rec.
+
+*
+*       this file contains cash records only and is in use as of
+*       may/82.
+*
+*       key is:
+*
+*                         : clinic
+*                           dept.
+*                           doctor number
+*                           location
+*                           agent code
+*                           filler of spaces
+*
+*               only the in-patient amount areas are used
+*               all the out-patient areas are zeroed out
+*               and all sv areas for both sections are set to zero
+*
+    05  docash-key.
+        10  docash-clinic-1-2           pic x(2).
+        10  docash-dept                 pic 99.
+*!        10  docash-doc-nbr              pic 999.
+        10  docash-doc-nbr              pic xxx.
+        10  docash-location             pic x999.
+        10  docash-agency-type          pic x.
+
+    05  docash-month-to-date.
+*       10  docash-mtd-in-rec           pic s9(5)v99.
+        10  docash-mtd-in-rec           pic s9(6)v99.
+        10  docash-mtd-in-svc           pic s9(3).
+
+    05  docash-year-to-date.
+* 2011/05/30 - MC - increase field size
+*       10  docash-ytd-in-rec           pic s9(6)v99.
+        10  docash-ytd-in-rec           pic s9(7)v99.
+* 2011/05/30 - end
+        10  docash-ytd-in-svc           pic s9(5).
+
+* 2011/05/30 -MC
+*       10  filler                      pic x(10).
+        10  filler                      pic x(9).
+* 2011/05/30 - end
+*
+    copy "f020_doctor_mstr.fd".
+* sms 137  bml  05-dec-90  increase fields by 2
+* sms 139  mc   10-jun-92  add 5 clinic nbr and 2 spec codes in
+*                          reserved for nip
+*          mc   24-nov-93  include brad's fields of earning subsystem
+*          mc   12-feb-94  include doc-ep-pay-code and doc-ep-pay-sub-code
+*          db   03-jun-98  Year 2000
+*          mc   16-jul-02  add 5 additional batch nbr for each additional
+*                          clinic
+*          mc   23-sep-02  rename the second occurrence of group-regular-service
+*                          to group-over-serviced
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   4
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f020_)
+*          be   05-nov-03  alpha doctor nbr
+*          mc   03-mar-04  reuse filler x(4) for doc-afp-paym-group from filler2
+*          be   06-apr-17  - increase to 800 when $1M payroll figures changed th
+
+fd  doc-mstr
+*       block  contains 680 characters
+*       record contains 680 characters.
+*       block  contains 695 characters
+*       record contains 695 characters.
+        block  contains 800 characters
+        record contains 800 characters.
+
+01 doc-mstr-rec.
+*    05  doc-nbr                                        pic 9(3).
+    05  doc-nbr                                 pic x(3).
+    05  doc-dept                                pic 99.
+    05  doc-ohip-nbr                            pic 9(6).
+    05  doc-pract-nbr redefines doc-ohip-nbr    pic 9(6).
+    05  doc-sin-nbr.
+        10  doc-sin-123                         pic 999.
+        10  doc-sin-456                         pic 999.
+        10  doc-sin-789                         pic 999.
+    05  doc-clinic-nbr                          pic 99.
+    05  doc-spec-cd                             pic 99.
+    05  doc-hosp-nbr                            pic x999.
+    05  doc-name                                pic x(24).
+    05  doc-name-soundex                        pic x(4).
+
+    05  doc-inits.
+        10  doc-init1                           pic x.
+        10  doc-init2                           pic x.
+        10  doc-init3                           pic x.
+    05  doc-address-office.
+        10  doc-addr-office-1                   pic x(24).
+        10  doc-addr-office-2                   pic x(24).
+        10  doc-addr-office-3                   pic x(24).
+    05  doc-addr-office-r  redefines  doc-address-office.
+        10  doc-addr-office  occurs 3 times     pic x(24).
+    05  doc-addr-office-pc.
+        10  doc-addr-office-pc-123.
+            15  doc-addr-office-pc1             pic a.
+            15  doc-addr-office-pc2             pic 9.
+            15  doc-addr-office-pc3             pic a.
+        10  doc-addr-office-pc-456.
+            15  doc-addr-office-pc4             pic 9.
+            15  doc-addr-office-pc5             pic a.
+            15  doc-addr-office-pc6             pic 9.
+    05  doc-address-home.
+        10  doc-addr-home-1                     pic x(24).
+        10  doc-addr-home-2                     pic x(24).
+        10  doc-addr-home-3                     pic x(24).
+    05  doc-addr-home-r  redefines doc-address-home.
+        10  doc-addr-home  occurs 3 times       pic x(24).
+    05  doc-addr-home-pc.
+        10  doc-addr-home-pc-123.
+            15  doc-addr-home-pc1               pic a.
+            15  doc-addr-home-pc2               pic 9.
+            15  doc-addr-home-pc3               pic a.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   5
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f020_)
+        10  doc-addr-home-pc-456.
+            15  doc-addr-home-pc4               pic 9.
+            15  doc-addr-home-pc5               pic a.
+            15  doc-addr-home-pc6               pic 9.
+    05  doc-full-part-ind                       pic x.
+    05  doc-class-code redefines doc-full-part-ind pic x.
+    05  doc-bank-info.
+        10  doc-bank-nbr                        pic 9(4).
+        10  doc-bank-branch                     pic 9(5).
+        10  doc-bank-acct                       pic x(12).
+*   05  doc-tax-info.
+*       10  doc-billing-percent                 pic 9v99.
+*       10  doc-misc-percent                    pic 9v99.
+*       10  doc-tax-percent                     pic 9v99.
+*       10  doc-billing-percent                 pic 9v9999.
+*       10  doc-misc-percent                    pic 9v9999.
+*       10  doc-tax-percent                     pic 9v9999.
+*       10  doc-pay-code                        pic x.
+    05  doc-fac-dates.
+        10  doc-date-fac-start.
+* y2k       15  doc-date-fac-start-yy           pic 99.
+            15  doc-date-fac-start-yy           pic 9999.
+            15  doc-date-fac-start-mm           pic 99.
+            15  doc-date-fac-start-dd           pic 99.
+        10  doc-date-fac-term.
+* y2k       15  doc-date-fac-term-yy            pic 99.
+            15  doc-date-fac-term-yy            pic 9999.
+            15  doc-date-fac-term-mm            pic 99.
+            15  doc-date-fac-term-dd            pic 99.
+    05    doc-fac-dates-r redefines doc-fac-dates.
+        10  doc-date-fac occurs 2 times.
+* y2k       15  doc-date-fac-yy                 pic 99.
+            15  doc-date-fac-yy                 pic 9999.
+            15  doc-date-fac-mm                 pic 99.
+            15  doc-date-fac-dd                 pic 99.
+    05  doc-annual-ceiling-info.
+*        10  doc-ytdgua                          pic s9(7)v99 comp.
+        10  doc-ytdgua                          pic s9(7)v99.
+*        10  doc-ytdgub                          pic s9(7)v99 comp.
+        10  doc-ytdgub                          pic s9(7)v99.
+*        10  doc-ytdguc                          pic s9(7)v99 comp.
+        10  doc-ytdguc                          pic s9(7)v99.
+*        10  doc-ytdgud                          pic s9(7)v99 comp.
+        10  doc-ytdgud                          pic s9(7)v99.
+*        10  doc-ytdcea                          pic s9(7)v99 comp.
+        10  doc-ytdcea                          pic s9(7)v99.
+*        10  doc-ytdcex                          pic s9(7)v99 comp.
+        10  doc-ytdcex                          pic s9(7)v99.
+*        10  doc-ytdear                          pic s9(7)v99 comp.
+        10  doc-ytdear                          pic s9(7)v99.
+*        10  doc-ytdinc                          pic s9(7)v99 comp.
+        10  doc-ytdinc                          pic s9(7)v99.
+*        10  doc-ytdeft                          pic s9(7)v99 comp.
+        10  doc-ytdeft                          pic s9(7)v99.
+*        10  doc-totinc-g                        pic s9(7)v99 comp.
+        10  doc-totinc-g                        pic s9(7)v99.
+* y2k
+*       10  doc-ep-date-deposit                 pic 9(4) comp.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   6
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f020_)
+        10  doc-ep-date-deposit                 pic 9(8).
+*        10  doc-totinc                          pic s9(7)v99 comp.
+        10  doc-totinc                          pic s9(7)v99.
+*        10  doc-ep-ceiexp                       pic s9(7)v99 comp.
+        10  doc-ep-ceiexp                       pic s9(7)v99.
+*        10  doc-adjcea                          pic s9(7)v99 comp.
+        10  doc-adjcea                          pic s9(7)v99.
+*        10  doc-adjcex                          pic s9(7)v99 comp.
+        10  doc-adjcex                          pic s9(7)v99.
+*        10  doc-ceicea                          pic s9(7)v99 comp.
+        10  doc-ceicea                          pic s9(7)v99.
+*        10  doc-ceicex                          pic s9(7)v99 comp.
+        10  doc-ceicex                          pic s9(7)v99.
+        10  ceicea-prt-format                   pic x(13).
+        10  ceicex-prt-format                   pic x(13).
+        10  ytdcea-prt-format                   pic x(13).
+        10  ytdcex-prt-format                   pic x(13).
+        10  doc-clinic-nbr-2                    pic 99.
+        10  doc-clinic-nbr-3                    pic 99.
+        10  doc-clinic-nbr-4                    pic 99.
+        10  doc-clinic-nbr-5                    pic 99.
+        10  doc-clinic-nbr-6                    pic 99.
+        10  doc-spec-cd-2                       pic 99.
+        10  doc-spec-cd-3                       pic 99.
+*        10  doc-ytdinc-g                        pic s9(7)v99 comp.
+        10  doc-ytdinc-g                        pic s9(7)v99.
+    05  doc-locations.
+        10  doc-loc-1                           pic x999.
+        10  doc-loc-2                           pic x999.
+        10  doc-loc-3                           pic x999.
+        10  doc-loc-4                           pic x999.
+        10  doc-loc-5                           pic x999.
+        10  doc-loc-6                           pic x999.
+        10  doc-loc-7                           pic x999.
+        10  doc-loc-8                           pic x999.
+        10  doc-loc-9                           pic x999.
+        10  doc-loc-10                          pic x999.
+        10  doc-loc-11                          pic x999.
+        10  doc-loc-12                          pic x999.
+        10  doc-loc-13                          pic x999.
+        10  doc-loc-14                          pic x999.
+        10  doc-loc-15                          pic x999.
+        10  doc-loc-16                          pic x999.
+        10  doc-loc-17                          pic x999.
+        10  doc-loc-18                          pic x999.
+        10  doc-loc-19                          pic x999.
+        10  doc-loc-20                          pic x999.
+        10  doc-loc-21                          pic x999.
+        10  doc-loc-22                          pic x999.
+        10  doc-loc-23                          pic x999.
+        10  doc-loc-24                          pic x999.
+        10  doc-loc-25                          pic x999.
+        10  doc-loc-26                          pic x999.
+        10  doc-loc-27                          pic x999.
+        10  doc-loc-28                          pic x999.
+        10  doc-loc-29                          pic x999.
+        10  doc-loc-30                          pic x999.
+    05  doc-locations-r  redefines  doc-locations.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   7
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f020_)
+        10  doc-loc     occurs 30 times         pic x999.
+*
+    05  doc-rma-expense-percent-misc            pic 9(5)v9(4) comp.
+* 2004/03/03 - MC
+*   05  filler2                                 pic x(8).
+    05  doc-afp-paym-group                      pic x(4).
+    05  filler2                                 pic x(4).
+* 2004/030/03 - end
+    05  doc-ind-pays-gst                        pic x.
+    05  doc-nx-avail-batch                      pic 999.
+* 2002/07/16 - MC - add 5 more next batch nbr for each clinic
+    05  doc-nx-avail-batch-2                    pic 999.
+    05  doc-nx-avail-batch-3                    pic 999.
+    05  doc-nx-avail-batch-4                    pic 999.
+    05  doc-nx-avail-batch-5                    pic 999.
+    05  doc-nx-avail-batch-6                    pic 999.
+** 2002/07/16 - end
+*    05  doc-yrly-ceiling-computed               pic 9(7)v99 comp.
+    05  doc-yrly-ceiling-computed               pic 9(7)v99.
+*    05  doc-yrly-expense-computed               pic 9(7)v99 comp.
+    05  doc-yrly-expense-computed               pic 9(7)v99.
+    05  doc-rma-expense-percent-reg             pic 9(5)v9(4) comp.
+    05  doc-sub-specialty                       pic x(15).
+*    05  doc-payeft                              pic s9(7)v99 comp.
+    05  doc-payeft                              pic s9(7)v99.
+*    05  doc-ytdded                              pic s9(7)v99 comp.
+    05  doc-ytdded                              pic s9(7)v99.
+    05  doc-dept-expense-percent-misc           pic 9(5)v9(4) comp.
+    05  doc-dept-expense-percent-reg            pic 9(5)v9(4) comp.
+    05  doc-ep-ped                              pic s9(9) comp.
+    05  doc-ep-pay-code                         pic x.
+    05  doc-ep-pay-sub-code                     pic x.
+    05  filler3                                 pic x(1).
+    05  doc-ind-holdback-active                 pic x(1).
+    05  group-regular-service                   pic x(4).
+* 2002/09/23 - MC
+*    05  group-regular-service                  pic x(4).
+    05  group-over-serviced                     pic x(4).
+* 2002/09/23 - end
+    05  doc-specialties                         pic x(90).
+
+*
+    copy "f090_constants_mstr.fd".
+* 99/Jan/29     MC      - change iconst-clinic-nbr from numeric to character
+* 03/nov/05 b.e. - alpha doctor nbr
+* 06/nov/08     MC      - include iconst-clinic-pay-batch-nbr
+
+fd  iconst-mstr
+*       index block contains   2 characters
+              block contains 384 characters
+        record      contains 384 characters  .
+*       feedback is feedback-iconst-mstr.
+
+01 iconst-mstr-rec.
+    05  iconst-clinic-nbr-1-2                   pic   99.
+*    05  iconst-clinic-nbr                      pic  9(4).
+    05  iconst-clinic-nbr                       pic  x(4).
+    05  iconst-clinic-name                      pic x(20).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   8
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/f090_)
+    05  iconst-clinic-cycle-nbr                 pic   99.
+    05  iconst-date-period-end.
+* y2k   10  iconst-date-period-end-yy           pic   99.
+        10  iconst-date-period-end-yy           pic   9999.
+        10  iconst-date-period-end-mm           pic   99.
+        10  iconst-date-period-end-dd           pic   99.
+    05  iconst-clinic-addr.
+        10  iconst-clinic-addr-l1               pic  x(25).
+        10  iconst-clinic-addr-l2               pic  x(25).
+        10  iconst-clinic-addr-l3               pic  x(25).
+    05  iconst-clinic-addr-r redefines iconst-clinic-addr.
+        10  iconst-clinic-addr                  pic x(25)   occurs  3  times.
+    05  iconst-clinic-card-colour               pic    x.
+    05  iconst-clinic-over-lim1                 pic 99v99.
+    05  iconst-clinic-under-lim2                pic 99v99.
+    05  iconst-clinic-under-lim3                pic 99v99.
+    05  iconst-clinic-over-lim4                 pic 99v99.
+
+*!    05  iconst-clinic-batch-nbr                 pic 9(6).
+    05  iconst-clinic-batch-nbr                 pic x(6).
+
+    05  iconst-reduction-factor                 pic 99v99.
+    05  iconst-overpay-factor                   pic 99v99.
+* 2006/11/08
+*   05  filler                                  pic x(242).
+    05  filler                                  pic x(106).
+    05  iconst-clinic-pay-batch-nbr             pic x(6).
+    05  filler                                  pic x(130).
+* 2006/11/08 - end
+*
+
+fd  print-file
+    record contains 132 characters.
+01  prt-line                            pic x(132).
+
+working-storage section.
+
+77  ss                                  pic 99  comp.
+77  ss-agent                            pic 99  comp.
+77  ss-const                            pic 99  comp.
+77  ws-closing-msg                      pic x(30)       value
+                "REPORT IS IN FILE R005".
+77  ss-from                             pic 999 comp.
+77  ss-to                               pic 999 comp.
+77  agent                               pic 99  comp.
+77  dept                                pic 99  comp.
+
+77  eof-docash-mstr                     pic x   value "N".
+
+*mf 77  status-file                     pic x(11) value zeros.
+*mf 77  status-doc-mstr                 pic x(11) value zeros.
+*mf 77  status-docash-mstr              pic x(11) value zeros.
+*mf 77  status-iconst-mstr              pic x(11) value zeros.
+
+77  status-file                         pic xx    value zeros.
+77  status-cobol-doc-mstr               pic xx    value zeros.
+77  status-cobol-docash-mstr            pic xx    value zeros.
+77  status-cobol-iconst-mstr            pic xx    value zeros.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page   9
+*                      r005.cbl                                      )
+77  status-audit-rpt                    pic xx    value zeros.
+77  status-print-file                   pic xx    value zeros.
+77  feedback-docash-mstr                pic x(4)  value zeros.
+77  feedback-iconst-mstr                pic x(4)  value zero.
+
+77  printer-file-name                   pic x(4) value "r005".
+
+77  page-cnt                            pic 9(5).
+77  doc-mtd-total                       pic s9(10)v99.
+77  doc-ytd-total                       pic s9(10)v99.
+77  dept-mtd-total                      pic s9(10)v99.
+77  dept-ytd-total                      pic s9(10)v99.
+77  final-totals-being-printed          pic x   value "N".
+77  doc-desc-2b-printed                 pic x.
+77  docash-agency-type-r                pic 99.
+77  line-cnt                            pic 99.
+77  err-ind                             pic 9.
+77  ws-reply                            pic x.
+77  ws-temp-cash                        pic s9(8)v99.
+
+77  docash-read                         pic 9(7).
+77  doc-mstr-read                       pic 9(7).
+77  loc-mstr-read                       pic 9(7).
+
+01  save-docash-key.
+    05  save-clinic-1-2                 pic x(2).
+    05  save-dept                       pic 99.
+*!    05  save-doc-nbr                  pic 999.
+    05  save-doc-nbr                    pic xxx.
+    05  save-location                   pic x999.
+    05  save-oma-cd                     pic x(5).
+
+01  request-clinic                      pic xxxx.
+
+01  ws-request-clinic-ident             pic xx.
+
+01  blank-line                          pic x(132) value spaces.
+
+77  max-nbr-agents                      pic 99  value 10.
+77  ss-level-doc                        pic 9   value 1.
+77  ss-level-dept                       pic 9   value 2.
+77  ss-level-grand                      pic 9   value 3.
+
+01  counters.
+*       (level 1 = doctor     totals
+*        level 2 = department totals
+*        level 3 = grand      totals)
+    05  totals  occurs 3 times.
+*           (slots 1 thru 9 hold agents 1 thru 9 and agent 0 stored in 10)
+        10  by-agent    occurs 10 times.
+            15  agent-code              pic x.
+            15  mtd-total               pic s9(10)v99.
+            15  ytd-total               pic s9(10)v99.
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  10
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/sysda)
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+
+    copy "mth_desc_max_days.ws".
+*
+*       (each position contains:
+*               - maximum nbr of days in month
+*               - non-abreviated spelling of month
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  11
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/mth_d)
+*               - nbr of julian days from jan-01 until last day of month
+*       note: table does not take into consideration leap year)
+*
+01  month-descs-and-max-days-mth.
+    05  mth-desc-max-days.
+        10  filler                      pic x(14) value '31  JANUARY031'.
+        10  filler                      pic x(14) value '29 FEBRUARY059'.
+        10  filler                      pic x(14) value '31    MARCH090'.
+        10  filler                      pic x(14) value '30    APRIL120'.
+        10  filler                      pic x(14) value '31      MAY151'.
+        10  filler                      pic x(14) value '30     JUNE181'.
+        10  filler                      pic x(14) value '31     JULY212'.
+        10  filler                      pic x(14) value '31   AUGUST243'.
+        10  filler                      pic x(14) value '30SEPTEMBER273'.
+        10  filler                      pic x(14) value '31  OCTOBER304'.
+        10  filler                      pic x(14) value '30 NOVEMBER334'.
+        10  filler                      pic x(14) value '31 DECEMBER365'.
+    05  mth-desc-max-days-r   redefines mth-desc-max-days.
+        10  mth-desc-max-days-occur     occurs  12  times.
+            15  max-nbr-days            pic 99.
+            15  mth-desc                pic x(9).
+            15  nbr-julian-days-ytd     pic 9(3).
+
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                      pic x(60)       value
+                "INVALID REPLY".
+        10  filler                      pic x(60)       value
+                "INVALID CLINIC NUMBER".
+        10  filler                      pic x(60)       value
+                "NO CASH RECORDS FOR THIS CLINIC".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                     pic x(60)
+                occurs 3 times.
+
+01  err-msg-comment                     pic x(60).
+01  l1-detail-line.
+    05  filler                          pic x(3)        value spaces.
+    05  l1-dept-nbr                     pic 99.
+    05  filler                          pic x(11)       value spaces.
+    05  l1-doctor-nbr                   pic x(5).
+    05  filler                          pic x(4)        value spaces.
+    05  l1-doctor-name                  pic x(21).
+    05  filler                          pic xx          value spaces.
+    05  l1-agent                        pic 9.
+    05  filler                          pic xx          value spaces.
+    05  l1-mtd-cash                     pic z,zzz,zzz.99-.
+    05  filler                          pic x           value spaces.
+    05  l1-ytd-cash                     pic zz,zzz,zzz.99-.
+    05  filler                          pic x(44)       value spaces.
+
+01  t1-doctor-total.
+    05  filler                          pic x(30)       value spaces.
+    05  filler                          pic x(12)       value
+                "DOCTOR TOTAL".
+    05  filler                          pic x(7)        value spaces.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  12
+*                      r005.cbl                                      )
+    05  t1-mtd                          pic zzz,zzz,zzz.99-.
+    05  t1-ytd                          pic zzz,zzz,zzz.99-.
+    05  filler                          pic x(53)       value spaces.
+
+01  t2-dept-total-title.
+    05  t2-department-or-agent          pic x(18).
+    05  t2-grand-or-agent               pic x(7).
+    05  filler                          pic x(12)       value
+                "TOTAL **    ".
+    05  t2-dept-or-agent                pic x(19).
+    05  filler                          pic x(5)        value "MONTH".
+    05  filler                          pic x(11)       value spaces.
+    05  filler                          pic x(7)        value
+                "YEAR TO".
+    05  filler                          pic x(53)       value spaces.
+
+01  t2-dept-total-title-2.
+    05  filler                          pic x(55)       value spaces.
+    05  filler                          pic x(7)        value
+                "TO DATE".
+    05  filler                          pic x(13)       value spaces.
+    05  filler                          pic x(4)        value "DATE".
+    05  filler                          pic x(53)       value spaces.
+
+01  t3-dept-total-detail.
+    05  filler                          pic x(39)       value spaces.
+    05  t3-agent                        pic 9.
+    05  filler                          pic x(8)        value spaces.
+    05  t3-mtd                          pic zzz,zzz,zzz.99-.
+    05  filler                          pic xx          value spaces.
+    05  t3-ytd                          pic zzz,zzz,zzz.99-.
+    05  filler                          pic x(53)       value spaces.
+
+01  t4-dept-final-total.
+    05  filler                          pic x(12)       value spaces.
+    05  t4-dept-nbr                     pic z9.
+    05  filler                          pic x(23)       value spaces.
+    05  filler                          pic x(5)        value "TOTAL".
+    05  filler                          pic x(6)        value spaces.
+    05  t4-mtd                          pic zzz,zzz,zzz.99-.
+    05  filler                          pic xx          value "*".
+    05  t4-ytd                          pic zzz,zzz,zzz.99-.
+    05  filler                          pic x(51)       value "*".
+
+01  h1-head-line.
+    05  filler                          pic x(7)        value "R005".
+    05  filler                          pic x           value "/".
+    05  h1-clinic-nbr                   pic 99.
+    05  filler                          pic x           value spaces.
+    05  h1-alpha-month                  pic x(9).
+    05  filler                          pic x           value spaces.
+    05  h1-num-day                      pic z9.
+* (y2k)
+*    05  filler                         pic xxxx        value ", 19".
+    05  filler                          pic xx          value spaces.
+* (y2k)
+*    05  h1-year                                pic xx.
+    05  h1-year                         pic xxxx.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  13
+*                      r005.cbl                                      )
+    05  filler                          pic x           value spaces.
+    05  filler                          pic x(31)       value
+                "* MONTHLY CASH APPLIED REPORT *".
+    05  filler                          pic xx          value spaces.
+* (y2k)
+*    05  h1-yy                          pic 99.
+    05  h1-yy                           pic 9999.
+    05  filler                          pic x           value "/".
+    05  h1-mm                           pic 99.
+    05  filler                          pic x           value "/".
+    05  h1-dd                           pic 99.
+    05  filler                          pic x(7)        value "  PAGE ".
+    05  h1-page                         pic zz9.
+* (y2k)
+*    05  filler                         pic x(61)       value spaces.
+    05  filler                          pic x(59)       value spaces.
+
+01  h1a-clinic-line.
+
+    05  filler                          pic x(34)       value spaces.
+    05  h1a-clinic-name                 pic x(20).
+    05  filler                          pic x(78)       value spaces.
+
+01  h2-head-line.
+    05  filler                          pic x(15)       value
+                "DEPARTMENT".
+    05  filler                          pic x(10)       value
+                "DOCTOR".
+    05  filler                          pic x(20)       value
+                "DOCTOR".
+    05  filler                          pic x(12)       value
+                "AGENT".
+    05  filler                          pic x(14)       value
+                "MONTH".
+    05  filler                          pic x(61)       value
+                "YEAR TO".
+
+01  h3-head-line.
+    05  filler                          pic x(15)       value
+                "  NUMBER".
+    05  filler                          pic x(11)       value
+                "NUMBER".
+    05  filler                          pic x(20)       value
+                "NAME".
+    05  filler                          pic x(10)       value
+                "CODE".
+    05  filler                          pic x(17)       value
+                "TO DATE".
+    05  filler                          pic x(59)       value
+                "DATE".
+procedure division.
+declaratives.
+
+err-iconst-mstr-file section.
+    use after standard error procedure on iconst-mstr.
+err-iconst-mstr.
+    stop "ERROR IN ACCESSING CONSTANTS MASTER".
+*mf    move status-iconst-mstr          to status-file.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  14
+*                      r005.cbl                                      )
+    move status-cobol-iconst-mstr       to status-file.
+*   display file-status-display.
+    display status-file.
+    stop run.
+
+err-docash-mstr-file section.
+    use after standard error procedure on docash-mstr.
+err-docash-mstr.
+    stop "ERROR IN ACCESSING DOCASH MASTER ".
+*mf    move status-docash-mstr          to status-file.
+    move status-cobol-docash-mstr       to status-file.
+*   display file-status-display.
+    display status-file.
+    stop run.
+
+err-doc-mstr-file section.
+    use after standard error procedure on doc-mstr.
+err-doc-mstr.
+    stop "ERROR IN ACCESSING DOCTOR MSTR ".
+*mf    move status-doc-mstr             to status-file.
+    move status-cobol-doc-mstr          to status-file.
+*   display file-status-display.
+    display status-file.
+    stop run.
+
+end declaratives.
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru    aa0-99-exit.
+    perform ab0-process-records         thru    ab0-99-exit
+                until eof-docash-mstr = "Y".
+    perform az0-finalization            thru    az0-99-exit.
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from    date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+    move sys-yy                         to      run-yy.
+    move sys-mm                         to      run-mm.
+    move sys-dd                         to      run-dd.
+
+    open input iconst-mstr.
+
+*   display scr-title.
+
+aa0-10.
+*   accept scr-clinic-nbr.
+    accept ws-request-clinic-ident
+
+    move ws-request-clinic-ident        to iconst-clinic-nbr-1-2.
+
+    read iconst-mstr
+        invalid key
+            move 2                              to err-ind
+            perform za0-common-error            thru za0-99-exit
+            go to  aa0-10.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  15
+*                      r005.cbl                                      )
+    move iconst-clinic-nbr-1-2                  to h1-clinic-nbr.
+    move iconst-date-period-end-yy              to h1-year.
+    move iconst-date-period-end-dd              to h1-num-day.
+    move mth-desc (iconst-date-period-end-mm)   to h1-alpha-month.
+    move iconst-clinic-name                     to h1a-clinic-name.
+    move "     ** DEPARTMENT"                   to t2-department-or-agent.
+
+*   display msg-month.
+
+*   display msg-continue.
+
+aa0-20.
+
+*   accept reply.
+    accept ws-reply
+
+    if ws-reply = "Y"
+    then
+*       display program-in-progress
+       continue
+    else
+        if ws-reply = "N"
+        then
+            go to az0-100-end-job
+        else
+            move 1                              to      err-ind
+            perform za0-common-error            thru    za0-99-exit
+            go to aa0-20.
+*       endif
+*   endif
+
+*    expunge print-file.
+    open input  doc-mstr
+                docash-mstr.
+
+    open output print-file.
+
+    perform aa1-zero-counters           thru aa1-99-exit
+        varying ss-from
+        from    1 by 1
+        until   ss-from > ss-level-grand.
+
+    move run-yy                         to h1-yy.
+    move run-mm                         to h1-mm.
+    move run-dd                         to h1-dd.
+
+    move zeros                          to docash-key.
+    move iconst-clinic-nbr-1-2          to docash-clinic-1-2.
+
+    perform rb0-read-docash-approx      thru    rb0-99-exit.
+    if   eof-docash-mstr = "Y"
+      or docash-clinic-1-2 not = ws-request-clinic-ident
+    then
+        move  3                         to      err-ind
+        perform za0-common-error        thru    za0-99-exit
+        go to az0-10-error-shutdown.
+*   (else)
+*   endif
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  16
+*                      r005.cbl                                      )
+
+    move docash-key                     to save-docash-key.
+    move 90                             to line-cnt.
+
+aa0-99-exit.
+    exit.
+
+aa1-zero-counters.
+
+    perform aa10-zero-cntrs             thru aa10-99-exit
+        varying ss-to
+        from    1 by 1
+        until   ss-to > max-nbr-agents.
+
+aa1-99-exit.
+    exit.
+
+
+
+aa10-zero-cntrs.
+
+    move spaces                         to agent-code (ss-from, ss-to).
+
+    move zero                           to mtd-total  (ss-from, ss-to)
+                                           ytd-total  (ss-from, ss-to).
+
+aa10-99-exit.
+    exit.
+ab0-process-records.
+
+    perform ba0-cash-record             thru    ba0-99-exit.
+
+    perform ra0-read-next-docash        thru    ra0-99-exit.
+    if eof-docash-mstr = "Y"
+    then
+        go to ab0-99-exit.
+*   (else)
+*   endif
+
+    if docash-dept = save-dept
+    then
+        if docash-doc-nbr   = save-doc-nbr
+        then
+            next sentence
+        else
+            perform ca0-doctor-break    thru    ca0-99-exit
+            move docash-key             to      save-docash-key
+*       endif
+    else
+        perform ca0-doctor-break        thru    ca0-99-exit
+        perform ea0-dept-break          thru    ea0-99-exit
+        move docash-key                 to      save-docash-key.
+*   endif
+
+ab0-99-exit.
+    exit.
+az0-finalization.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  17
+*                      r005.cbl                                      )
+*    (print doctor and dept totals for last doctor processed in mainline)
+    perform ca0-doctor-break            thru    ca0-99-exit.
+    perform ea0-dept-break              thru    ea0-99-exit.
+
+
+    perform az1-print-grand-totals      thru    az1-99-exit.
+
+az0-10-error-shutdown.
+    close doc-mstr
+          docash-mstr
+          print-file.
+
+az0-100-end-job.
+
+    accept sys-time                     from time.
+*   display scr-counters.
+*   display scr-closing-screen.
+*   display scr-report-location.
+*   display confirm.
+
+    stop run.
+
+az0-99-exit.
+    exit.
+
+
+
+az1-print-grand-totals.
+
+    move spaces                         to      t2-department-or-agent.
+    move "          ** AGENT"           to      t2-department-or-agent.
+    move " GRAND"                       to      t2-grand-or-agent.
+    move "AGENT"                        to      t2-dept-or-agent.
+    perform wa1-heading-routine         thru    wa1-99-exit.
+
+    write prt-line from t2-dept-total-title     after advancing 3 lines.
+    write prt-line from t2-dept-total-title-2   after advancing 1 line.
+
+    move "Y"                            to      final-totals-being-printed.
+    move ss-level-grand                 to      ss-from
+                                                ss-to.
+    perform eb0-prt-and-roll-tots       thru    eb0-99-exit.
+
+az1-99-exit.
+    exit.
+ba0-cash-record.
+
+*    (agent 0 is 'OHIP' cash from r.a.t. tape application u030 - use subscript 1
+
+    if docash-agency-type = 0
+    then
+        move 10                         to      ss-agent
+    else
+        move docash-agency-type         to      ss-agent.
+*   endif
+
+*       ('X' flag indicates that non-zero values stored in this level of
+*        array and used later to determine if level should be printed in report)
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  18
+*                      r005.cbl                                      )
+
+    move "X"                            to      agent-code (ss-level-doc, ss-age
+
+    add docash-mtd-in-rec               to      mtd-total (ss-level-doc, ss-agen
+    add docash-ytd-in-rec               to      ytd-total (ss-level-doc, ss-agen
+
+ba0-99-exit.
+    exit.
+ca0-doctor-break.
+
+    move save-dept              to      l1-dept-nbr.
+    move save-doc-nbr           to      l1-doctor-nbr
+                                        doc-nbr.
+
+    move zero                   to      err-ind.
+    perform sa0-read-docmstr    thru    sa0-99-exit.
+
+    if err-ind = zero
+    then
+        move doc-name           to      l1-doctor-name
+    else
+        move spaces             to      l1-doctor-name.
+*   endif
+
+    move "Y"                    to      doc-desc-2b-printed.
+
+    perform cb0-prt-doc-agent-tots      thru    bb1-99-exit
+        varying agent
+        from 1 by 1
+        until   agent > max-nbr-agents.
+
+*   (print total for all agents of doc (even if only 1 agent for doc))
+    move doc-mtd-total          to      t1-mtd.
+    move doc-ytd-total          to      t1-ytd.
+    write prt-line from t1-doctor-total after advancing 1 lines.
+    add 1                       to      line-cnt.
+
+    move 0                      to      doc-mtd-total
+                                        doc-ytd-total.
+
+    move ss-level-doc           to      ss-from.
+    move ss-level-dept          to      ss-to.
+
+    perform cd0-clr-doc-agent-tots-and-sum
+                                        thru    cd0-99-exit
+        varying agent
+        from 1 by 1
+        until   agent > max-nbr-agents.
+
+ca0-99-exit.
+    exit.
+cb0-prt-doc-agent-tots.
+
+*       ('X' flag indicates that there are values to be printed in that level of
+
+    if agent-code (ss-level-doc, agent) = "X"
+    then
+        move agent                              to      l1-agent
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  19
+*                      r005.cbl                                      )
+        move mtd-total (ss-level-doc, agent)    to      l1-mtd-cash
+        move ytd-total (ss-level-doc, agent)    to      l1-ytd-cash
+        add  mtd-total (ss-level-doc, agent)    to      doc-mtd-total
+        add  ytd-total (ss-level-doc, agent)    to      doc-ytd-total
+        perform wa0-write-doc-line              thru    wa0-99-exit.
+*    (else)
+*   endif
+
+bb1-99-exit.
+    exit.
+cd0-clr-doc-agent-tots-and-sum.
+
+    if agent-code (ss-from, agent) = "X"
+    then
+        move agent-code (ss-from, agent)        to agent-code (ss-to, agent)
+        add  mtd-total  (ss-from, agent)        to mtd-total  (ss-to, agent)
+        add  ytd-total  (ss-from, agent)        to ytd-total  (ss-to, agent).
+*   (else)
+*   endif
+
+    move spaces                                 to agent-code (ss-from, agent).
+    move zero                                   to mtd-total  (ss-from, agent)
+                                                   ytd-total  (ss-from, agent).
+
+cd0-99-exit.
+    exit.
+ea0-dept-break.
+
+    move "/AGENT"                       to      t2-grand-or-agent.
+    move "AGENT"                        to      t2-dept-or-agent.
+
+    perform wa1-heading-routine         thru    wa1-99-exit.
+
+    write prt-line from t2-dept-total-title after advancing 3 lines.
+    write prt-line from t2-dept-total-title-2 after advancing 1 lines.
+
+    move ss-level-dept                  to      ss-from.
+    move ss-level-grand                 to      ss-to.
+    perform eb0-prt-and-roll-tots       thru    eb0-99-exit.
+
+ea0-99-exit.
+    exit.
+eb0-prt-and-roll-tots.
+
+    move save-dept                      to      dept.
+
+    perform eb1-prt-agent-tots          thru    eb1-99-exit
+        varying agent
+        from    1 by 1
+        until   agent > max-nbr-agents.
+
+    perform eb2-roll-agent-tots         thru    eb2-99-exit
+        varying agent
+        from    1 by 1
+        until   agent > max-nbr-agents.
+
+    if final-totals-being-printed = "Y"
+    then
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  20
+*                      r005.cbl                                      )
+*mf     move spaces                     to      t4-dept-nbr
+        move zero                       to      t4-dept-nbr
+    else
+        move save-dept                  to      t4-dept-nbr.
+*   endif
+
+    move dept-mtd-total                 to      t4-mtd.
+    move dept-ytd-total                 to      t4-ytd.
+
+    write prt-line                      from t4-dept-final-total
+                                             after advancing 2 lines.
+
+    move 70                             to      line-cnt.
+    move zero                           to      dept-mtd-total
+                                                dept-ytd-total.
+
+eb0-99-exit.
+    exit.
+eb1-prt-agent-tots.
+
+    if agent-code (ss-from, agent) = "X"
+    then
+*       (print 'FROM' level)
+        move agent                      to      t3-agent
+        move mtd-total (ss-from, agent) to      t3-mtd
+        move ytd-total (ss-from, agent) to      t3-ytd
+        write prt-line                  from    t3-dept-total-detail
+                                                after advancing 2 lines.
+*   (else)
+*   endif
+
+eb1-99-exit.
+    exit.
+
+
+eb2-roll-agent-tots.
+
+    if agent-code (ss-from, agent) = "X"
+    then
+*       (roll tots up a level)
+        add  mtd-total (ss-from, agent) to      dept-mtd-total rounded
+        add  ytd-total (ss-from, agent) to      dept-ytd-total rounded
+        if final-totals-being-printed = "N"
+        then
+            move "X"                    to      agent-code (ss-to, agent)
+            add  mtd-total (ss-from, agent)
+                                        to      mtd-total  (ss-to, agent)rounded
+            add  ytd-total (ss-from, agent)
+                                        to      ytd-total  (ss-to, agent)rounded
+            move spaces                 to      agent-code (ss-from, agent)
+            move zero                   to      mtd-total  (ss-from, agent)
+                                                ytd-total  (ss-from, agent).
+*   (else)
+*   endif
+
+eb2-99-exit.
+    exit.
+ra0-read-next-docash.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  21
+*                      r005.cbl                                      )
+
+    read  docash-mstr   next
+        at end
+            move "Y"                    to      eof-docash-mstr
+            go to ra0-99-exit.
+
+    if docash-clinic-1-2 not = ws-request-clinic-ident
+    then
+        move "Y"                        to      eof-docash-mstr
+        go to ra0-99-exit.
+*   (else)
+*   endif
+
+
+    add 1                               to docash-read.
+
+ra0-99-exit.
+    exit.
+
+
+
+rb0-read-docash-approx.
+
+*mf    read docash-mstr key is docash-key approximate
+*mf     invalid key
+*mf         move "Y"                    to eof-docash-mstr
+*mf         go to rb0-99-exit.
+
+    start docash-mstr key is greater than or equal to docash-key
+        invalid key
+            move "Y"                    to eof-docash-mstr
+            go to rb0-99-exit.
+    read docash-mstr next.
+
+    add 1                               to docash-read.
+
+
+rb0-99-exit.
+    exit.
+sa0-read-docmstr.
+
+    move zero                           to err-ind.
+
+    read doc-mstr
+        invalid key
+            move 4                      to err-ind
+            go to sa0-99-exit.
+
+    add 1                               to doc-mstr-read.
+
+sa0-99-exit.
+    exit.
+wa0-write-doc-line.
+
+    if line-cnt > 60
+    then
+        perform wa1-heading-routine     thru wa1-99-exit.
+*   (else)
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  22
+*                      r005.cbl                                      )
+*   endif
+
+    if doc-desc-2b-printed = "N"
+    then
+*mf     move spaces             to l1-dept-nbr
+        move zero               to l1-dept-nbr
+        move space              to  l1-doctor-nbr
+                                   l1-doctor-name
+        write prt-line from l1-detail-line after advancing 1 lines
+        add 1                   to line-cnt
+    else
+        move "N"                to doc-desc-2b-printed
+        write prt-line from l1-detail-line after advancing 2 line
+        add 2                   to line-cnt.
+*   endif
+
+wa0-99-exit.
+    exit.
+
+
+
+wa1-heading-routine.
+
+    add 1                               to page-cnt.
+    move page-cnt                       to h1-page.
+
+    write prt-line from h1-head-line    after advancing page.
+    write prt-line from h1a-clinic-line after advancing 1 lines.
+
+wa1-49-exit.
+
+    write prt-line from h2-head-line    after advancing 3 lines.
+    write prt-line from h3-head-line    after advancing 1 lines.
+
+    write prt-line from blank-line      after advancing 1 lines.
+
+    move 7                              to line-cnt.
+
+wa1-99-exit.
+    exit.
+za0-common-error.
+
+    move err-msg (err-ind)              to err-msg-comment.
+*   display err-msg-line.
+    display err-msg-comment.
+*   display confirm.
+*   stop " ".
+*   display blank-line-24.
+
+za0-99-exit.
+  exit.
+
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 01-Jun-11 11:48 Page  23
+*                      r005.cbl (/alpha/rmabill/rmabill101c/use/y2k_d)
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        5744     Code:        4302

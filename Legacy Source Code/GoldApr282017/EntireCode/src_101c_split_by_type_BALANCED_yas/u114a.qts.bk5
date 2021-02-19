@@ -1,0 +1,511 @@
+;#> PROGRAM-ID.     U114A.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             If the current EP's F112-PYCDCEILING record does not already
+;             have a COMPUTED CEILING (earn/expense) value, then this pgm
+;             will calculate one.
+;
+;             Using the values stored in the DOCTOR master for YTD COMPUTED CEILING
+;             and the doctor's current ANNUAL CEILING, it will calculate a new
+;             YTD COMPUTED CEILING and ANNUAL COMPUTED CEILING.  These values
+;             are stored in the F112 record, in the DOCTOR Mstr and also as
+;             the GROSS/NET values of the CEIEAR(Earnings) and CEIEXP(expense)
+;             transactions created by this pgm.
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;     92/JAN/01  ____   B.E.     - correct penny round off error for CEILING
+;                                  and Expense calculations when dividing by 12
+;     92/OCT/08  ____   B.E.     - calculation to limit EP CEILINGS to maximum
+;                                  of annual ceilings (required for "13th" EP)
+;     92/OCT/16  ____   B.E.     - F020 updated with YTD Ceilings for Earnings/Expenses
+;     92/NOV/24  ____   B.E.     - use of DOC-ADJCEA calculations
+;                                  creation of ADJCEA trans.
+;     93/FEB/15  ____   B.E.     - use of F020 COMPUTED ANNUAL CEILING values
+;     93/FEB/17  ____   B.E.     - CHANGED BACK FROM COMPUTED ANNUAL CEILING
+;                               ??? should YTDEAR change to YTDCEA ??? same question in u114
+;     93/APR/08  ____   B.E.     - YTDexp changed to YTDcex
+;     93/APR/14  ____   B.E.     - MAY ADD UPDATE OF F119
+;     93/APR/19  ____   B.E.     - UPDATE F020 WITH CEILING VALUES (MTHLY/YTD)
+;     93/MAY/06  ____   B.E.     - added   SUBFILE F119
+;     93/MAY/??  ____   B.E.     - removed SUBFILE F119
+;     93/MAY/18         B.E.     - add back +- 1CENT, added rounding (.5)
+;     93/MAY/25         B.E.     - add .5 rounding to all divisions
+;     93/JUN/01         B.E.     - removed rounding (10,000 ceiling 9,999)
+;     93/JUL/06         B.E.     - COMPUTED CEILING now has cents
+;     93/SEP/20         B.E.     - OUTPUT 'CEIEXP' ONLY FOR PAYCODE '4'
+;     93/SEP/21         B.E.     - added restrictions on OUTPUT statements
+;                                  to certain Pay Codes.
+;     94/NOV/18         B.E.     - changed pgm to not recalculate YTDCEA/CEX
+;                                  from start of the year. Now uses current
+;                                  YTD ?? ceilings in F020 and 1 more EP's
+;                                  ceiling using 1/12 of current ANNUAL
+;                                  CEILING(
+
+;     96/FEB/13         M.C.     - SMS 147 - calculate REQREV and TARREV
+;				   for MTD  and YTD in F020-DOCTOR-EXTRA
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+; !!!! THIS PGMS STILL HAVE PLUS/MINS 0/1 DIFFERENT BETWEEN CEILING/EXPESE
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+cancel clear
+run u114
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        zoned unsigned
+global temp w-current-ep-nbr-minus1 zoned unsigned
+global temp w-current-ep-nbr-plus1  zoned unsigned
+global temp w-ep-fiscal-nbr         zoned unsigned
+global temp adjcea-seq    numeric
+global temp adjcea-type   char*1
+global temp ceiear-seq    numeric
+global temp ceiear-factor numeric
+global temp ceiear-type   char*1
+global temp ceiexp-seq    numeric
+global temp ceiexp-type   char*1
+global temp ceiexp-factor numeric
+global temp ytdcea-seq    numeric
+global temp ytdcex-seq    numeric
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u114_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item w-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item w-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item w-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+
+item w-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+request u114_get_adjcea                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "ADJCEA"
+item adjcea-seq  = process-seq
+item adjcea-type = comp-type
+
+request u114_get_ceiear                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "CEIEAR"
+item ceiear-seq  = process-seq
+item ceiear-type = comp-type
+request u114_get_ceiexp                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "CEIEXP"
+item ceiexp-seq  = process-seq
+item ceiexp-type = comp-type
+
+request u114_get_ytdcea                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDCEA"
+item ytdcea-seq  = process-seq
+request u114_get_ytdcex                    &
+                on edit        errors report &
+                on calculation errors report
+access f190-comp-codes
+choose comp-code "YTDCEX"
+item ytdcex-seq  = process-seq
+
+;-------------------------------------------------------------------------------
+; GENERATE THE 'COMPUTED PERIOD CEILING EARNINGS/EXPENSES' TRANSACTIONS
+; CALCULATE REQUIRE/TARGET REVENUE IN F020-DOCTOR-EXTRA
+;
+request u114_run_0_calc_ceilings                &
+                on edit        errors report    &
+                on calculation errors report
+
+access constants-mstr-rec-6                             &
+        link current-ep-nbr                             &
+        viaindex f112-ep-doc-nbr                        &
+        to   ep-nbr of f112-pycdceilings                &
+        link doc-nbr of f112-pycdceilings               &
+        to   doc-nbr of f020-doctor-mstr		&
+	link doc-nbr of f112-pycdceilings		&
+	to   doc-nbr of f020-doctor-extra opt
+
+choose const-rec-nbr 6
+
+sorted on doc-nbr of f112-pycdceilings
+
+; E A R N I N G S
+
+define w-doc-yrly-ceiling          zoned signed size 8                &
+      = (doc-yrly-ceiling          of f112-pycdceilings  * 100)
+define w-doc-yrly-ceiling-computed zoned signed size 8                &
+      =  doc-yrly-ceiling-computed of f020-doctor-mstr
+
+define w-ep-ceil-earn     zoned signed size 8                         &
+      = round (w-doc-yrly-ceiling / 12,0,near)
+
+; (Determine if EP Payment needs to be adjusted by a penny -
+;  Calculate Potential Final Yearly Payment = PAYMENTS TO DATE + EP CEILING
+;  Payment continued to end of the year.  Compare against COMPUTED ANNUAL CEILING.
+;  If greater by more than 1 cent, then reduce payment by penny, if less
+;  than by more than 1 cent, then increase by penny.)
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!!! THIS CALCUATION DOES TAKE INTO CONSIDERATION SOMEONE WHOSE     !!!!!!!
+;!!!!!!  YTDCEA IS LOW BECAUSE HE WASN'T ON FILE FOR THE FIRST FEW     !!!!!!!
+;!!!!!!  MONTHS -                                                      !!!!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+define w-pot-annual-calcearn zoned signed size 8                      &
+      =  doc-ytdcea  of f020-doctor-mstr   &
+       + (  w-ep-ceil-earn                 &
+          * ( 12                           &
+             - w-ep-fiscal-nbr             &
+             + 1                           &
+            )                              &
+         )
+; ?????????????????????????? + 1 ?????????????
+
+define w-ep-ceil-earn-1 zoned signed size 8                           &
+  = w-ep-ceil-earn + 1                                             &
+        if w-pot-annual-calcearn < w-doc-yrly-ceiling-computed       &
+ else  w-ep-ceil-earn - 1                                             &
+        if w-pot-annual-calcearn > w-doc-yrly-ceiling-computed        &
+ else  w-ep-ceil-earn
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;NOT SURE WHAT CODE BELOW DOES
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+define w-doc-adjcea-abs zoned signed size 8                           &
+        = absolute(doc-adjcea of f020-doctor-mstr)
+define w-ep-ceil-earn-adj zoned signed size 8                         &
+      = w-ep-ceil-earn-1        if doc-adjcea of f020-doctor-mstr = 0 &
+  else  w-ep-ceil-earn-1                                              &
+      + doc-adjcea if   (doc-adjcea >  0)                             &
+                     or (    doc-adjcea of f020-doctor-mstr <= 0      &
+                         and w-doc-adjcea-abs <= w-ep-ceil-earn-1)    &
+     else 0
+
+define w-new-adjcea zoned signed size 8                               &
+        = 0      if   doc-adjcea  of f020-doctor-mstr >= 0            &
+                   or (    doc-adjcea of f020-doctor-mstr <= 0        &
+                       and w-doc-adjcea-abs <= w-ep-ceil-earn)        &
+    else  doc-adjcea of f020-doctor-mstr                              &
+        + w-ep-ceil-earn
+;;;!!!!!!!!!!!!!!!!!!!!
+; BELOW CODE SHOULD LIKELY NOW BE PERFORMED BEFORE ADJUSMENT MADE ?????
+;;;!!!!!!!!!!!!!!!!!!!!
+; (ensure that YTD EARNINGS + PAYMENT based upon this EP's EARNINGS CEILING
+;  don't exceed the doctor's Computed Annual Ceiling)
+define w-ceil-earn-ytd zoned signed size 8                            &
+        =  w-ep-ceil-earn-adj                                         &
+         + doc-ytdcea of f020-doctor-mstr
+;        + DOC-YTDEAR OF F020-DOCTOR-MSTR
+
+define w-ep-ceil-earn-act zoned signed size 8                                  &
+        = w-ep-ceil-earn-adj                                                   &
+              if w-ceil-earn-ytd <= w-doc-yrly-ceiling-computed                &
+     else                                                                      &
+;       (stop payment if already paid more than Computed ceiling - happens     &
+;        when EARNINGS Ceiling is reduced drastically)                         &
+          0   if doc-ytdear of f020-doctor-mstr >= w-doc-yrly-ceiling-computed &
+     else                                                                      &
+;       (set CEILING to remainder up to annual CEILING)                        &
+           w-doc-yrly-ceiling-computed                                         &
+         - doc-ytdcea of f020-doctor-mstr
+;        + DOC-YTDEAR OF F020-DOCTOR-MSTR
+
+
+; E X P E N S E
+
+define w-doc-yrly-expense  zoned signed size 8                       &
+       = doc-yrly-expense * 100
+define w-doc-yrly-expense-computed  zoned signed size 8              &
+       = doc-yrly-expense-computed of f020-doctor-mstr
+;      = DOC-YRLY-EXPENSE-COMPUTED OF F020-DOCTOR-MSTR * 100
+define w-ep-ceil-expn    zoned signed size 8                          &
+                              = round(  w-doc-yrly-expense            &
+                                      / doc-yrly-expn-alloc-pers,0,near)
+;                                     / DOC-YRLY-EXPN-ALLOC-PERS)+.5)
+define w-pot-annual-calcexpn zoned signed size 8                      &
+                                 =  doc-ytdcex of f020-doctor-mstr    &
+                                      + (  w-ep-ceil-expn             &
+                                         * ( 12                       &
+                                            - w-ep-fiscal-nbr         &
+                                            + 1) )
+define w-ep-ceil-expn-1 zoned signed size 8                           &
+     = w-ep-ceil-expn + 1                                             &
+              if w-pot-annual-calcexpn < w-doc-yrly-expense-computed  &
+ else  w-ep-ceil-expn - 1                                             &
+              if w-pot-annual-calcexpn > w-doc-yrly-expense-computed  &
+ else  w-ep-ceil-expn
+
+; (ensure that calculated EP CEILING plus YTD CEILING don't exceed
+;  Doctor's COMPUTED ANNUAL Expense CEILING)
+define w-ceil-expn-ytd     zoned signed size 8                        &
+        =  w-ep-ceil-expn-1                                           &
+         + doc-ytdcex of f020-doctor-mstr
+
+define w-ep-ceil-expn-act zoned signed size 8                                  &
+        = w-ep-ceil-expn                                                       &
+              if w-ceil-expn-ytd <= w-doc-yrly-expense-computed                &
+     else                                                                      &
+;       (stop payment if already paid more than Computed ceiling - happens     &
+;        when EXPENSE Ceiling is reduced drastically)                          &
+          0   if doc-ytdcex of f020-doctor-mstr >= w-doc-yrly-expense-computed &
+;         0   IF DOC-YTDEXP OF F020-DOCTOR-MSTR >= W-DOC-YRLY-EXPENSE-COMPUTED &
+     else                                                                      &
+;       (set CEILING to remainder up to annual CEILING)                        &
+           w-doc-yrly-expense-computed                                         &
+         - doc-ytdcex of f020-doctor-mstr
+
+; R E Q U I R E     R E V E N U E
+
+define w-doc-yrly-reqrev          zoned signed size 8                &
+      = (doc-yrly-reqrev          of f112-pycdceilings  * 100)
+define w-doc-yrly-require-revenue zoned signed size 8                &
+      =  doc-yrly-require-revenue of f020-doctor-extra
+
+define w-ep-reqrev     zoned signed size 8                         &
+      = round (w-doc-yrly-reqrev / 12,0,near)
+
+; (Determine if REQUIRE REVENUE needs to be adjusted by a penny -
+;  Calculate Potential Final Yearly REQUIRE REVENUE  = YTD TO DATE + EP REQUIRE REVENUE
+;  Payment continued to end of the year.  Compare against COMPUTED ANNUAL REQUIRE REVENUE.
+;  If greater by more than 1 cent, then reduce payment by penny, if less
+;  than by more than 1 cent, then increase by penny.)
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!!! THIS CALCUATION DOES TAKE INTO CONSIDERATION SOMEONE WHOSE     !!!!!!!
+;!!!!!!  YTDREQ IS LOW BECAUSE HE WASN'T ON FILE FOR THE FIRST FEW     !!!!!!!
+;!!!!!!  MONTHS -                                                      !!!!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+define w-pot-annual-reqrev zoned signed size 8                      &
+      =  doc-ytdreq  of f020-doctor-extra  &
+       + (  w-ep-reqrev                 &
+          * ( 12                           &
+             - w-ep-fiscal-nbr             &
+             + 1                           &
+            )                              &
+         )
+; ?????????????????????????? + 1 ?????????????
+
+define w-ep-reqrev-1 zoned signed size 8                           &
+  = w-ep-reqrev + 1                                             &
+        if w-pot-annual-reqrev < w-doc-yrly-require-revenue       &
+ else  w-ep-reqrev - 1                                             &
+        if w-pot-annual-reqrev > w-doc-yrly-require-revenue        &
+ else  w-ep-reqrev
+
+; (ensure that YTD REQUIRE REVENUE + this EP's REQUIRE REVENUE
+;  don't exceed the doctor's Computed Annual REQUIRE REVENUE)
+define w-reqrev-ytd zoned signed size 8                           &
+        =  w-ep-reqrev-1                                          &
+         + doc-ytdreq of f020-doctor-extra
+
+define w-ep-reqrev-act zoned signed size 8                        &
+;be/98/dec       = w-ep-reqrev                                             &
+        = w-ep-reqrev-1                                           &
+              if w-reqrev-ytd <= w-doc-yrly-require-revenue       &
+     else                                                         &
+          0   if doc-ytdreq of f020-doctor-extra >= w-doc-yrly-require-revenue &
+     else                                                         &
+;       (set REQUIRE REVENUE to remainder up to annual REQUIRE REVENUE)
+           w-doc-yrly-require-revenue                             &
+         - doc-ytdreq of f020-doctor-extra
+
+
+; T A R G E T   R E V E N U E
+
+define w-doc-yrly-tarrev          zoned signed size 8                &
+      = (doc-yrly-tarrev          of f112-pycdceilings  * 100)
+define w-doc-yrly-target-revenue zoned signed size 8                &
+      =  doc-yrly-target-revenue of f020-doctor-extra
+
+define w-ep-tarrev     zoned signed size 8                         &
+      = round (w-doc-yrly-tarrev / 12,0,near)
+
+; (Determine if TARGET REVENUE needs to be adjusted by a penny -
+;  Calculate Potential Final Yearly TARGET REVENUE  = YTD TO DATE + EP TARGET REVENUE
+;  Payment continued to end of the year.  Compare against COMPUTED ANNUAL TARGET REVENUE.
+;  If greater by more than 1 cent, then reduce payment by penny, if less
+;  than by more than 1 cent, then increase by penny.)
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!!! THIS CALCUATION DOES TAKE INTO CONSIDERATION SOMEONE WHOSE     !!!!!!!
+;!!!!!!  YTDTAR IS LOW BECAUSE HE WASN'T ON FILE FOR THE FIRST FEW     !!!!!!!
+;!!!!!!  MONTHS -                                                      !!!!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+define w-pot-annual-tarrev zoned signed size 8                      &
+      =  doc-ytdtar  of f020-doctor-extra  &
+       + (  w-ep-tarrev                 &
+          * ( 12                           &
+             - w-ep-fiscal-nbr             &
+             + 1                           &
+            )                              &
+         )
+; ?????????????????????????? + 1 ?????????????
+
+define w-ep-tarrev-1 zoned signed size 8                           &
+  = w-ep-tarrev + 1                                             &
+        if w-pot-annual-tarrev < w-doc-yrly-target-revenue       &
+ else  w-ep-tarrev - 1                                             &
+        if w-pot-annual-tarrev > w-doc-yrly-target-revenue        &
+ else  w-ep-tarrev
+
+; (ensure that YTD TARGET REVENUE + this EP's TARGET REVENUE
+;  don't exceed the doctor's Computed Annual TARGET REVENUE)
+define w-tarrev-ytd zoned signed size 8                           &
+        =  w-ep-tarrev-1                                          &
+         + doc-ytdtar of f020-doctor-extra
+
+define w-ep-tarrev-act zoned signed size 8                        &
+;be/98/dec        = w-ep-tarrev                                             &
+        = w-ep-tarrev-1                                           &
+              if w-tarrev-ytd <= w-doc-yrly-target-revenue       &
+     else                                                         &
+          0   if doc-ytdtar of f020-doctor-extra >= w-doc-yrly-target-revenue &
+     else                                                         &
+;       (set TARGET REVENUE to remainder up to annual TARGET REVENUE)
+           w-doc-yrly-target-revenue                             &
+         - doc-ytdtar of f020-doctor-extra
+
+
+subfile debugu114 keep include                                        &
+        ep-nbr of f112-pycdceilings,                                  &
+        doc-nbr of f112-pycdceilings,                                 &
+        doc-pay-code of f112-pycdceilings,                            &
+        doc-pay-sub-code of f112-pycdceilings,                        &
+        doc-yrly-ceiling-computed of f020-doctor-mstr,                &
+        doc-yrly-ceiling-computed of f112-pycdceilings alias coma-f112,&
+        w-doc-yrly-ceiling,                                           &
+        w-doc-yrly-ceiling-computed,                                  &
+        doc-yrly-expense-computed of f020-doctor-mstr,                &
+        doc-yrly-expense-computed of f112-pycdceilings alias comx-f112,&
+        w-ep-ceil-earn,                                               &
+        w-ep-ceil-earn-adj,                                           &
+        doc-adjcea of f020-doctor-mstr,                               &
+        w-new-adjcea,                                                 &
+        w-ceil-earn-ytd,                                              &
+        w-pot-annual-calcearn,                                        &
+        w-ep-ceil-earn-1,                                             &
+        w-doc-adjcea-abs,                                             &
+        w-ep-ceil-earn-act,                                           &
+;       DOC-YTDCEA ALIAS AMT-NET-YTDCEA,                              &
+        w-ep-fiscal-nbr,                                              &
+        w-doc-yrly-expense,                                           &
+        w-doc-yrly-expense-computed,                                  &
+        w-ep-ceil-expn,                                               &
+        w-ceil-expn-ytd,                                              &
+        w-ep-ceil-expn-act,                                           &
+        doc-yrly-expn-alloc-pers,                                     &
+;       DOC-YTDCEX ALIAS AMT-NET-YTDCEX,                              &
+        doc-ytdcea of f020-doctor-mstr,                               &
+        doc-ytdcex of f020-doctor-mstr,			 	      &
+	w-ep-tarrev-act,						&
+	w-ep-reqrev-act
+
+subfile debugu114-2 keep include                                        &
+        doc-nbr of f112-pycdceilings,                                 &
+w-doc-yrly-reqrev , &
+w-doc-yrly-require-revenue,&
+w-pot-annual-reqrev ,&
+doc-ytdreq  of f020-doctor-extra,&
+w-ep-reqrev,&
+w-ep-reqrev-1 ,&
+w-reqrev-ytd ,&
+w-ep-reqrev-act
+
+
+output f110-compensation alias f110-ceiear add          &
+  if   doc-pay-code of f112-pycdceilings = "1"          &
+    or doc-pay-code of f112-pycdceilings = "3"          &
+    or doc-pay-code of f112-pycdceilings = "4"
+        item ep-nbr          = w-current-ep-nbr
+        item ep-nbr-entry    = w-current-ep-nbr
+        item comp-code       = "CEIEAR"
+        item comp-type       =  ceiear-type
+        item process-seq     =  ceiear-seq
+        item factor          =  0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = w-doc-yrly-ceiling
+;;;;;;; ITEM AMT-GROSS       = DOC-YRLY-CEILING-COMPUTED OF F020-DOCTOR-MSTR * 100 ; DOLLARS TO CENTS CONV
+        item amt-net         = w-ep-ceil-earn-act
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U114     gen'd"
+
+; (MIGHT BE NEEDED IF R121 TO PREPARED TITLE OF STATEMENT INSTEAD OF R122)
+output f110-compensation alias f110-ceiexp add          &
+  if   doc-pay-code of f112-pycdceilings = "1"          &
+    or doc-pay-code of f112-pycdceilings = "3"          &
+    or doc-pay-code of f112-pycdceilings = "4"
+        item ep-nbr          = w-current-ep-nbr
+        item ep-nbr-entry    = w-current-ep-nbr
+        item comp-code       = "CEIEXP"
+        item comp-type       =  ceiexp-type
+        item process-seq     =  ceiexp-seq
+        item factor          = 0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = w-doc-yrly-expense
+;;;;;;  ITEM AMT-GROSS       = DOC-YRLY-EXPENSE-COMPUTED OF F020-DOCTOR-MSTR * 100 ; DOLLARS TO CENTS CONV
+        item amt-net         = w-ep-ceil-expn-act
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U114 gen'd"
+
+output f110-compensation alias f110-adjcea add                   &
+  if w-new-adjcea <> 0
+        item ep-nbr          = w-current-ep-nbr-plus1
+        item ep-nbr-entry    = w-current-ep-nbr
+        item comp-code       = "ADJCEA"
+        item comp-type       =  adjcea-type
+        item process-seq     =  adjcea-seq
+        item factor          = 0
+        item factor-override = " "
+        item comp-units      = 0
+        item amt-gross       = 0
+        item amt-net         = w-new-adjcea
+        item compensation-status = " "
+        item last-mod-date    = sysdate
+        item last-mod-time    = systime / 10000
+        item last-mod-user-id = "U114 gen'd"
+
+;output f020-doctor-mstr alias f020-update  update
+;   item doc-ceicea  final                                   w-ep-ceil-earn-act
+;   item doc-ytdcea  final  doc-ytdcea of f020-doctor-mstr + w-ep-ceil-earn-act
+;   item doc-ceicex  final                                   w-ep-ceil-expn-act
+;   item doc-ytdcex  final  doc-ytdcex of f020-doctor-mstr + w-ep-ceil-expn-act
+;   item doc-adjcea  final                                   w-new-adjcea
+
+;output f020-doctor-extra update if record f020-doctor-extra exists
+;   item doc-ceireq  final                                   w-ep-reqrev-act
+;   item doc-ytdreq  final  doc-ytdreq of f020-doctor-extra + w-ep-reqrev-act
+;   item doc-ceitar  final                                   w-ep-tarrev-act
+;   item doc-ytdtar  final  doc-ytdtar of f020-doctor-extra + w-ep-tarrev-act
+
+build $pb_obj/u114a

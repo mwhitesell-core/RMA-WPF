@@ -1,0 +1,109 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE COSTING6_MAN_REJ_DTL.QTS
+COMMENT "Program: costing6_man_rej_dtl.qts"
+COMMENT "Purpose: - creates files for costing the MANUAL REJECTION Charges"
+COMMENT "- separate it into 3 catagories E, R and S                      "
+COMMENT "DATE       BY WHOM      DESCRIPTION"
+COMMENT "00/02/23   YASEMIN      ORIGINAL"
+COMMENT "02/07/30   M.C. - increase the record count for manual rejection by patient by ohip-err-code"
+COMMENT "03/dec/11  A.A. - alpha doctor nbr"
+COMMENT "04/may/10  M.C. - access f087-submitted-rejected-claims-hdr instead"
+COMMENT "- change sort statement"
+COMMENT "04/jul/28  b.e. - if error code not on lookup table and thus no error"
+COMMENT "category can be determined, then consider as  R ma"
+COMMENT "error."
+COMMENT "- selection criteria to include only chargeable items"
+COMMENT "04/jul/14  b.e. - at yas's request changed some of the logic put in"
+COMMENT "2004/jul/28 to include more errors in subfile"
+COMMENT "but show them as  R ma errors"
+COMMENT "2015/Jul/09 MC1 - include charge-status in the sort"
+COMMENT "2015/Jul/16 MC2 - change from select  on  ped  to select on edt-process-date"
+COMMENT "as ped = clmhdr-date-period-end of the claim, edt-process-date = date stamp from the incoming"
+COMMENT "file from MOH,  claims can be resubmitted and returned with different edt-process-date."
+COMMENT "costing is selected for the current  fiscal period  range"
+COMMENT "2016/Nov/28 MC3 - use set lock record update"
+CANCEL CLEAR
+RUN COSTING6
+SET DEFAULT
+SET PROCESS NOLIMIT
+COMMENT "MC3"
+COMMENT "set lock file update"
+SET LOCK RECORD UPDATE
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+COMMENT "File: globals_get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+GLOBAL TEMP W-CURRENT-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-CUTOFF-YYMMDD DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED DATE
+GLOBAL TEMP W-CURRENT-COSTING-PED-YYMM ZONED*6
+GLOBAL TEMP W-PREVIOUS-FISCAL-START-YYMMDD DATE
+GLOBAL TEMP W-PREVIOUS-FISCAL-END-YYMMDD DATE
+GLOBAL TEMP W-EP-YR NUM*2
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES_GLOBALS.QTS
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+COMMENT "File: get_const_rec_7_values.qts"
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "obtain current costing  constants  and pass to subsequent requests"
+REQUEST COSTING1_GET_REC_7 ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-7
+CHOOSE CONST-REC-NBR 7
+ITEM W-CURRENT-FISCAL-START-YYMMDD = CURRENT-FISCAL-START-YYMMDD
+ITEM W-CURRENT-FISCAL-END-YYMMDD = CURRENT-FISCAL-END-YYMMDD
+ITEM W-CURRENT-COSTING-CUTOFF-YYMMDD = CURRENT-COSTING-CUTOFF-YYMMDD
+ITEM W-CURRENT-COSTING-PED = CURRENT-COSTING-PED
+ITEM W-CURRENT-COSTING-PED-YYMM = CURRENT-COSTING-PED / 100
+ITEM W-PREVIOUS-FISCAL-START-YYMMDD = PREVIOUS-FISCAL-START-YYMMDD
+ITEM W-PREVIOUS-FISCAL-END-YYMMDD = PREVIOUS-FISCAL-END-YYMMDD
+ITEM W-EP-YR = EP-YR
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\GET_CONST_REC_7_VALUES.QTS
+REQUEST COSTING5_1 ON CALCULATION ERRORS REPORT ON EDIT ERRORS REPORT
+ACCESS F087-SUBMITTED-REJECTED-CLAIMS-HDR LINK CLMHDR-DOC-NBR TO DOC-NBR OF F020-DOCTOR-MSTR LINK OHIP-ERR-CODE TO F093-OHIP-ERROR-MSG-MSTR OPT LINK 'B', CLMHDR-BATCH-NBR, CLMHDR-CLAIM-NBR, '00000', '0' TO KEY-CLM-TYPE, KEY-CLM-BATCH-NBR, KEY-CLM-CLAIM-NBR, KEY-CLM-SERV-CODE, KEY-CLM-ADJ-NBR OF F002-CLAIMS-MSTR OPT
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "(select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm)"
+COMMENT "File: select_f020_active_for_costing_analysis_period.use "
+COMMENT "Purpose: "
+COMMENT "select doctor who  was 'active' anytime within the costing"
+COMMENT "analysis period - ie. start of fiscal year to current costing"
+COMMENT "analysis ped's yymm"
+DEF DOC-START-YYMM ZONED*6 = DOC-DATE-FAC-START / 100
+SELECT F020-DOCTOR-MSTR IF ( DOC-DATE-FAC-START = 0000000 OR DOC-START-YYMM <= W-CURRENT-COSTING-PED-YYMM ) AND ( DOC-DATE-FAC-TERM = 00000000 OR DOC-DATE-FAC-TERM >= W-CURRENT-FISCAL-START-YYMMDD )
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\SELECT_F020_ACTIVE_FOR_COSTING_ANALYSIS_PERIOD.USE
+COMMENT "(select rejections whose PED is within the period 'start of fiscal period'"
+COMMENT "and  the 'current costing analysis ped' )"
+COMMENT "MC2"
+COMMENT "(select rejections whose edt-process-date is within the period 'start of fiscal period'"
+COMMENT "and  the 'current costing analysis ped' )"
+COMMENT "define ped-yymm zoned*6 = ped / 100"
+COMMENT "select if   (    ped      >= w-current-fiscal-start-yymmdd &"
+DEFINE PED-YYMM ZONED*6 = EDT-PROCESS-DATE / 100
+COMMENT "MC2 - end"
+COMMENT "&"
+SELECT IF ( EDT-PROCESS-DATE >= W-CURRENT-FISCAL-START-YYMMDD AND PED-YYMM <= W-CURRENT-COSTING-PED-YYMM )
+COMMENT "2005/jul/14 b.e. removed this edit to show all errors"
+COMMENT "and (   charge-status =  Y                                 &; charged"
+COMMENT ")                                                    ; errors only"
+COMMENT "MC1 - As Brad said, same ohip error code may occur more than once but each can have different value in charge-status"
+COMMENT "so make sure at control break , charge status = 'Y' in order to count in"
+SORT ON CLMHDR-DOC-NBR ON OHIP-ERR-CAT-CODE ON CLMHDR-PAT-OHIP-ID-OR-CHART ON OHIP-ERR-CODE OF F087-SUBMITTED-REJECTED-CLAIMS-HDR ON CHARGE-STATUS
+TEMP MAN-REJECT-R ZONED*6 UNSIGNED
+COMMENT "2005/jul/14 b.e. added below"
+ITEM MAN-REJECT-R = MAN-REJECT-R + 1 IF OHIP-ERR-CAT-CODE = "R" OR ( OHIP-ERR-CAT-CODE <> "R" AND OHIP-ERR-CAT-CODE <> "S" AND OHIP-ERR-CAT-CODE <> "E" ) OR CHARGE-STATUS <> "Y" AT OHIP-ERR-CODE RESET AT CLMHDR-DOC-NBR
+TEMP MAN-REJECT-E ZONED*6 UNSIGNED
+ITEM MAN-REJECT-E = MAN-REJECT-E + 1 IF OHIP-ERR-CAT-CODE = "E" AND CHARGE-STATUS = "Y" AT OHIP-ERR-CODE RESET AT CLMHDR-DOC-NBR
+TEMP MAN-REJECT-S ZONED*6 UNSIGNED
+ITEM MAN-REJECT-S = MAN-REJECT-S + 1 IF OHIP-ERR-CAT-CODE = "S" AND CHARGE-STATUS = "Y" AT OHIP-ERR-CODE RESET AT CLMHDR-DOC-NBR
+SUBFILE COSTING6 KEEP AT CLMHDR-DOC-NBR INCLUDE DOC-NBR, DOC-NAME, DOC-INITS, DOC-DEPT, DOC-CLINIC-NBR, MAN-REJECT-R, MAN-REJECT-S, MAN-REJECT-E, OHIP-ERR-CAT-CODE
+BUILD $OBJ/COSTING6
+ENDMODULE COSTING6_MAN_REJ_DTL.QTS

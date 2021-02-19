@@ -1,0 +1,219 @@
+;#> PROGRAM-ID.     u086.qts
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE:	When patient eligibility information is changed a
+;			driver record is written to f086. F086 is used by this
+;			program to update all patient claims that were being
+;	 		"H"eld so that they will be "R"esubmitted. Any held
+;			claim which belongs to the current cycle (claim's
+;			f001 record's status is checked) have the status
+;			set to "blank" rather than "R" so they can be
+;			processed by the OHIP submission program rather than
+;			the resubmits program.
+;			Any of the patient's claims in the 'rejected claims' 
+;			file are also deleted by the program.
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     93/APR/28 AGK.         - ORIGINAL (SMS 141)
+;     93/MAY/28 M.CHAN	     - PDR 573
+;			     - A NEW REQUEST TO RESUBMIT SUBMITTED
+;			       CLAIMS THAT HAVE NOT BEEN PAID
+;     96/DEC/10 M. CHAN	     - REVISED THE ACCESS AND SELECT STMT
+;     98/DEC/08 M. CHAN	     - add a new request to sort f086-pat-id to create
+;			       unique ikey into the subfile, and using the 
+;			       subfile as the driver file for each request
+;			     - add on errors report on each output statement
+;			     - use pkey index of f002-claims-mstr instead of 
+;			       bkey index in request resubmit_submitted_claims
+;  1999/jan/31 B.E.	- y2k
+;  1999/Feb/01 M.C.          - change to access to key-p-clm-data instead of the
+;			       individual segments for p key
+;  1999/nov/25 B.E.	- added select if clmhdr-date-cash-tape-payment = blanks
+;			  to existing test for all zeros
+;  00/may/30 B.E.     - if claim that qualified for resubmission belongs
+;		       to the current cycle, then set it submit status ind
+;		       to blank rather than "R".
+;  00/may/30 B.E.    - removed code that set "Y"es confidential status to "N".
+;  00/may/30 B.E.    - removed resubmit_submitted_claims request
+;  03/dec/23 A.A.    - alpha doctor nbr
+;  04/Jan/21 M.C.    - Brad suggested to clone request patient_claims_update to another
+;                      new request except no linkage to rejected-claims
+;  04/Mar/23 M.C.    - modify the definition for submit-status  based on balance due
+;                      in two requests, also add bal-due in two requests
+;
+can clear
+set default
+set process nolimit
+set lock file update
+
+run u086
+
+request sort_f086_pat_id
+; reduce driver file to 1 record per patient
+
+access f086-pat-id
+
+sort on clmhdr-pat-ohip-id-or-chart
+
+subfile sortf086 keep at clmhdr-pat-ohip-id-or-chart		&
+  include clmhdr-pat-ohip-id-or-chart
+
+
+
+request patient_claims_update
+;
+; (00/may/29 B.E. access f001 to obtain claim's batch status to determine
+;		  if it's part of the current cycle. Set status to blank if 
+;		  current cycle claim, otherwise "R"esubmit or "X")
+; 00/jun/07 B.E> - added OPT on rejected-claims link
+access *sortf086               		 			&
+  link clmhdr-pat-ohip-id-or-chart        			&
+   to  clmhdr-pat-ohip-id-or-chart  of rejected-claims	opt	&
+  link ("B"), 							&
+;!	(nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6])), &
+;!	(nconvert(ascii(claim-nbr,10)[9:2])),  			&
+	(claim-nbr[1:8]) , &
+	(nconvert(claim-nbr)[9:2]),  			&
+	"00000", "0" 						&
+   to   key-clm-type, key-clm-batch-nbr, 			&
+        key-clm-claim-nbr, key-clm-serv-code,    		&
+        key-clm-adj-nbr of f002-claims-mstr			&
+   link clmhdr-batch-nbr of f002-claims-mstr                    &
+    to  batctrl-batch-nbr of f001-batch-control-file   opt
+
+use $use/def_batctrl_batch_status.def nol
+
+; 2004/03/23 - MC
+def bal-due zoned*7 signed = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+; 2004/03/23 - end
+
+; 00/jun/07 B.E. - to force resubmit set "R" status, unless the claim belongs
+;		   to the current cycle in which case set a blank status so that
+;		   the OHIP submission pgm will pick it up. For previously
+;		   bypassed claims (ie. no submit date but not part of 
+;		   current cycle) force resubmission by setting "X"
+def submit-status char*1 						&
+     = " " if    record f001-batch-control-file exists			&
+	     and batctrl-batch-status < batctrl-batch-status-ohip-sent	&
+  else "X" if clmhdr-submit-date = 0					&
+; 2004/03/23 - MC - add more criteria
+           and bal-due > 0                                              &
+          and clmhdr-status-ohip <> 'I2'                                &
+; else "R"
+  else "R" if clmhdr-submit-date <> 0                                   &
+          and bal-due > 0                                               &
+          and clmhdr-status-ohip <> 'I2'                                &
+  else "S" if clmhdr-submit-date <> 0                                   &
+          and (bal-due <= 0 or clmhdr-status-ohip = 'I2')               &
+  else " " if clmhdr-submit-date = 0                                    &
+          and (bal-due <= 0 or clmhdr-status-ohip = 'I2')
+; 2003/03/23 - end
+
+
+output f002-claims-mstr update	on errors report 
+   item clmhdr-tape-submit-ind final submit-status		&
+	if   clmhdr-tape-submit-ind = "H"			&
+	  or clmhdr-tape-submit-ind = "R"
+
+; 00/may/30 B.E. - resetting to "N" doesn't seem a good idea. Code removed.
+;   item clmhdr-confidential-flag final "N" 			&
+;        if clmhdr-confidential-flag = "Y"
+
+; 2004/01/21 - MC
+
+request patient_claims_update_2
+;
+; (00/may/29 B.E. access f001 to obtain claim's batch status to determine
+;                 if it's part of the current cycle. Set status to blank if
+;                 current cycle claim, otherwise "R"esubmit or "X")
+
+access *sortf086                                                &
+  link ("P"),                                                   &
+        clmhdr-pat-ohip-id-or-chart[2:15]                       &
+   to   key-p-clm-type, key-p-clm-data of f002-claims-mstr      &
+   link clmhdr-batch-nbr of f002-claims-mstr                    &
+    to  batctrl-batch-nbr of f001-batch-control-file   opt
+
+use $use/def_batctrl_batch_status.def nol
+
+; 2004/03/23 - MC
+def bal-due zoned*7 signed = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+; 2004/03/23 - end
+
+; 00/jun/07 B.E. - to force resubmit set "R" status, unless the claim belongs
+;                  to the current cycle in which case set a blank status so that
+;                  the OHIP submission pgm will pick it up. For previously
+;                  bypassed claims (ie. no submit date but not part of
+
+;                  the OHIP submission pgm will pick it up. For previously
+;                  bypassed claims (ie. no submit date but not part of
+;                  current cycle) force resubmission by setting "X"
+def submit-status char*1                                                &
+     = " " if    record f001-batch-control-file exists                  &
+             and batctrl-batch-status < batctrl-batch-status-ohip-sent  &
+  else "X" if clmhdr-submit-date = 0                                    &
+; 2004/03/23 - MC - add more criteria
+           and bal-due > 0                                              &
+          and clmhdr-status-ohip <> 'I2'                                &
+; else "R"
+  else "R" if clmhdr-submit-date <> 0                                   &
+          and bal-due > 0                                               &
+          and clmhdr-status-ohip <> 'I2'                                &
+  else "S" if clmhdr-submit-date <> 0                                   &
+          and (bal-due <= 0 or clmhdr-status-ohip = 'I2')               &
+  else " " if clmhdr-submit-date = 0                                    &
+          and (bal-due <= 0 or clmhdr-status-ohip = 'I2')
+; 2003/03/23 - end
+
+
+output f002-claims-mstr update  on errors report
+   item clmhdr-tape-submit-ind final submit-status              &
+        if   clmhdr-tape-submit-ind = "H"                       &
+          or clmhdr-tape-submit-ind = "R"
+
+; 2004/01/21 - end
+
+
+request delete_rejected_claims
+
+access *sortf086  						&
+  link clmhdr-pat-ohip-id-or-chart        			&
+    to clmhdr-pat-ohip-id-or-chart  of rejected-claims
+
+output rejected-claims delete on errors report
+
+
+
+; 00/may/31 B.E. - removed this request - no apparent reason to resubmit
+;		   these claims. U022a1 resubmit program has logic to 
+;		   handle picking up appropriate claims
+
+;request resubmit_submitted_claims
+;
+;; 98/12/08  access f086-pat-id						&
+;access *sortf086  	 					&
+;;99/02/01  link "P", nconvert(clmhdr-pat-ohip-id-or-char2:9]),		&
+;  link "P", (clmhdr-pat-ohip-id-or-chart[2:17])				&
+;;99/02/01       nconvert(clmhdr-pat-ohip-id-or-chart[11:2]),		&
+;;99/02/01       (clmhdr-pat-ohip-id-or-chart[13:4] + " "), " "		&
+;; 98/12/08   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+;;98/12/08        key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+;;99/02/01   to  key-p-clm-type, key-p-clm-batch-nbr, key-p-clm-claim-nbr, &
+;;99/02/01       key-p-clm-serv-code, key-p-clm-adj-nbr of f002-claims-mstr
+;   to  key-p-clm-type, key-p-clm-data of f002-claims-mstr   
+;
+;sel f002-claims-mstr 
+;	if    clmhdr-tape-submit-ind = "S"      			&
+;          and (   clmhdr-agent-cd =  0  				&
+;	       or clmhdr-agent-cd =  2)         			&
+;          and (   clmhdr-date-cash-tape-payment = "00000000"		&
+;               or clmhdr-date-cash-tape-payment =       "00"		&
+;               or clmhdr-date-cash-tape-payment =        " ")
+;
+;output f002-claims-mstr update on errors report
+;   item clmhdr-tape-submit-ind final "R"
+
+build $pb_obj/u086
+  

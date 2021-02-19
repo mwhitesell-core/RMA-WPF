@@ -1,0 +1,326 @@
+;doc     : afp_pediatrics.qts
+;purpose : rep dept 7 ( dept 3 docs 317, 340, 385 adn 626 ) 
+;          from jan 1st to dec 31st, 2003. clinic 22 agent 0 and 4 only
+;          for  patients under 18 (service date minus birth date)
+;          clinic 61-65 professional fee only 
+;          include "B" adjustments 
+;          exclude MiSC payments and K018, K021, K051, K052 and K061  
+;          Pass 1 - select appropriate claims and "explode" repetitive services
+;who     : Leena and fotheringham
+
+
+;Date           Who             Description
+;2003/05/14     Yasemin         Original
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr							&
+    link clmhdr-pat-ohip-id-or-chart					&
+     to  key-pat-mstr of f010-pat-mstr opt	
+ 
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220000000 to 220999999,      &
+                                              610000000 to 659999999,      &
+                                              960000000 to 969999999,      &
+        key-clm-claim-nbr,  key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-doc cha*3 =clmhdr-claim-id[4:3]
+
+def x-payment cha*3 = "HCP" if pat-prov-cd = "ON"    &
+			  and record f010-pat-mstr exist &
+                 else "RMB" if pat-prov-cd <> "ON"   &
+			  and  pat-prov-cd <> " " 	&
+			  and record f010-pat-mstr exist &
+		 else " "   if pat-prov-cd = " "	&
+; miscellaneous payment do not have linkage to pat mstr via ikey (ikey is blank)
+			  or  not record f010-pat-mstr exist
+
+select f002-claims-mstr if                                                     &
+                 (     clmhdr-batch-type = 'C' 	                               &
+                   or (clmhdr-batch-type = 'P'and clmhdr-adj-cd = 'M')	       &
+                 )                                                             &
+                	and  (   clmhdr-agent-cd = 0 	                       &
+	                      or clmhdr-agent-cd = 4   			       &	
+	                      or clmhdr-agent-cd = 7)  
+
+select        if ( (         clmhdr-doc-dept = 7                    &
+                    or  (    clmhdr-doc-dept = 14 and x-doc= "889") &
+                    or  (    clmhdr-doc-dept = 14 and x-doc= "858") &
+                    or  (    clmhdr-doc-dept = 4  and x-doc= "357") &
+                    or  (    clmhdr-doc-dept = 3                    &
+                         and (    x-doc = "317"                     & 
+                               or x-doc = "340"                     &
+                               or x-doc = "385"                     &
+                               or x-doc = "501"                     &
+                               or x-doc = "626"                     &
+                               or x-doc = "739"                     &
+			     )					    &
+                        )                                           &
+                   )                                                &
+              and  (x-payment <> "RMB"                        )     &
+                 )        
+
+subfile dept7 keep include                       &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+clmhdr-batch-type	     of f002-claims-mstr,&
+clmhdr-manual-and-tape-payments of f002-claims-mstr,&
+clmhdr-amt-tech-billed       of f002-claims-mstr,&
+clmhdr-tot-claim-ar-oma      of f002-claims-mstr,&
+clmhdr-tot-claim-ar-ohip     of f002-claims-mstr,&
+clmhdr-payroll               of f002-claims-mstr,& 
+clmhdr-serv-date             of f002-claims-mstr,& 
+clmhdr-loc                   of f002-claims-mstr,& 
+clmhdr-hosp                  of f002-claims-mstr,&
+pat-birth-date 
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dept7                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20030101' & 
+       and  clmdtl-sv-date     <= '20031231' &
+       and  clmdtl-oma-cd      <> "0000"     & ; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+;       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+;       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+;       and  clmdtl-oma-cd      <> "NHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "K018"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "K021"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "K051"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "K052"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "K061"    
+;       and  clmdtl-adj-nbr     = 0             ; ignore adjustments
+; when clmdtl-adj-nbr not included it will include "B" adjustments
+
+def x-oma-code cha*5 = clmdtl-id[12:5]
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-clinic zoned*2 unsigned = key-clm-batch-nbr / 10000000
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs		&
+		if     x-clinic <  61                   &; not clinic 60's'
+		   or  x-clinic >  65                   &
+	else (clmdtl-fee-ohip - clmdtl-amt-tech-billed) / x-nbr-svcs
+
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee	&
+	if clmhdr-batch-type = 'C'			&
+; Miscellaneous Payment always have zero value in clmdtl-nbr-serv
+	else  clmdtl-fee-ohip if clmhdr-batch-type = 'P'
+
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee
+
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee	
+
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee	
+
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+
+subfile dept71 keep include               &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-clinic				 ,&
+x-oma-code	                         ,& 
+x-doc-nbr                                ,&
+x-sv-date-1                              ,&
+x-sv-nbr1	                         ,& 
+x-clmdtl-fee-ohip-1                      ,&
+clmhdr-loc            of dept7           ,&
+clmhdr-hosp           of dept7           ,& 
+clmhdr-payroll        of dept7           ,& 
+pat-birth-date        of dept7	
+
+subfile dept71 alias dept7_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-clinic				 ,&
+x-oma-code                               ,&
+x-doc-nbr                                ,&
+x-sv-date-2                              ,&
+x-sv-nbr2                                ,&
+x-clmdtl-fee-ohip-2                      ,&
+clmhdr-loc            of dept7           ,&
+clmhdr-hosp           of dept7           ,& 
+clmhdr-payroll        of dept7           ,& 
+pat-birth-date        of dept7	
+
+subfile dept71 alias dept7_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-clinic				 ,&
+x-oma-code                               ,&
+x-doc-nbr                                ,&
+x-sv-date-3                              ,&
+x-sv-nbr3                                ,&
+x-clmdtl-fee-ohip-3                      ,&
+clmhdr-loc            of dept7           ,&
+clmhdr-hosp           of dept7           ,& 
+clmhdr-payroll        of dept7           ,& 
+pat-birth-date        of dept7	
+
+subfile dept71 alias dept7_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmdtl-diag-cd        of f002-claims-mstr,&
+x-clinic				 ,&
+x-oma-code                               ,&
+x-doc-nbr                                ,&
+x-sv-date-4                              ,&
+x-sv-nbr4                                ,&
+x-clmdtl-fee-ohip-4                      ,&
+clmhdr-loc            of dept7           ,&
+clmhdr-hosp           of dept7           ,& 
+clmhdr-payroll        of dept7           ,& 
+pat-birth-date        of dept7	
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *dept71				 		                 
+ 
+
+def pat-birth-date-yy zoned*4 unsigned = nconvert(ascii(pat-birth-date,8)[1:4])
+def pat-birth-date-mm zoned*2 unsigned = nconvert(ascii(pat-birth-date,8)[5:2])
+def pat-birth-date-dd zoned*2 unsigned = nconvert(ascii(pat-birth-date,8)[7:2])
+
+def clmdtl-sv-yy zoned*4 unsigned = nconvert(x-sv-date-1[1:4])
+def clmdtl-sv-mm zoned*2 unsigned = nconvert(x-sv-date-1[5:2])
+def clmdtl-sv-dd zoned*2 unsigned = nconvert(x-sv-date-1[7:2])
+
+def x-age zoned*4 unsigned  =  clmdtl-sv-yy - pat-birth-date-yy     &
+        if   ( clmdtl-sv-mm >  pat-birth-date-mm)                   &
+          or ((clmdtl-sv-mm =  pat-birth-date-mm) and               &
+              (clmdtl-sv-dd >= pat-birth-date-dd))                  &
+        else clmdtl-sv-yy - pat-birth-date-yy - 1
+
+def x-age-1 zoned*4 unsigned = 2003 - pat-birth-date-yy  
+
+subfile dept72 keep include              &
+x-age                                   ,&
+x-age-1                                 ,&
+x-clinic              of dept71         ,&
+x-doc-nbr             of dept71         ,&
+x-sv-date-1           of dept71         ,&
+x-sv-nbr1	      of dept71         ,& 
+clmdtl-diag-cd        of dept71         ,&
+x-oma-code	      of dept71         ,& 
+clmhdr-loc	      of dept71         ,& 
+clmhdr-hosp           of dept71         ,& 
+clmhdr-payroll        of dept71         ,& 
+x-clmdtl-fee-ohip-1   of dept71  
+
+request four                            &
+        on edit        errors report    &
+        on calculation errors report
+
+;purpose : Report by doctor                                  
+
+access *dept72 link (x-oma-code[1:4]) to fee-oma-cd of f040-oma-fee-mstr opt &
+               link x-doc-nbr to doc-nbr of f020-doctor-mstr opt
+
+def oma-desc char*48 = fee-desc
+
+;select if x-age < 18
+
+sort on  x-doc-nbr on x-oma-code
+
+temp fee-amt zoned*7 signed
+item fee-amt = fee-amt + x-clmdtl-fee-ohip-1 	&
+	reset at x-oma-code
+
+temp nbr-svc zoned*7 unsigned
+item nbr-svc = nbr-svc + x-sv-nbr1 		&
+	reset at x-oma-code
+
+subfile dept73  keep at x-oma-code  include      &
+x-age                                   ,&
+x-age-1                                 ,&
+x-clinic              of dept72         ,&
+x-doc-nbr             of dept72         ,&
+x-sv-date-1           of dept72         ,&
+nbr-svc                                 ,&
+clmdtl-diag-cd        of dept72         ,&
+x-oma-code            of dept72         ,&
+clmhdr-loc            of dept72         ,&
+clmhdr-hosp           of dept72         ,&
+clmhdr-payroll        of dept72         ,&
+fee-amt               			,&
+oma-desc
+
+build $obj/afp_pediatrics

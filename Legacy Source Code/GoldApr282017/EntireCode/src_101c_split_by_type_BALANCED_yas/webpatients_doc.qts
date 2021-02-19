@@ -1,0 +1,102 @@
+; doc: patients.qts
+;
+;PROGRAM PURPOSE : extract patient information for a doctor to be uploaded into 
+;                  web
+;
+;DATE       BY WHOM   DESCRIPTION
+;2011/03    YASEMIN   patients.qzs  too long for .txt file
+;
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                                 &
+        link clmhdr-pat-ohip-id-or-chart                &
+          to   key-pat-mstr of f010-pat-mstr
+
+choose key-clm-type 'B', key-clm-batch-nbr               & 
+;                                           "22M59@",     &
+;                                           "98M59@",     &
+;                                           "22D42@",     &
+;                                           "98D42@",     &
+                                           "22E89@",     &
+                                           "98E89@",     &
+        key-clm-claim-nbr, key-clm-serv-code '00000'
+
+sort on pat-health-nbr 
+
+
+def x-province cha*21 =      "Ontario"               if pat-prov-cd = "ON"   &
+                        else "Alberta"               if pat-prov-cd = "AB"   & 
+                        else "British Columbia"      if pat-prov-cd = "BC"   &
+                        else "Manitoba"              if pat-prov-cd = "MB"   &
+                        else "Newfoundland"          if pat-prov-cd = "NF"   &
+                        else "New Brunswick"         if pat-prov-cd = "NB"   &
+                        else "Northwest Territories" if pat-prov-cd = "NT"   &
+                        else "Nova Scotia"           if pat-prov-cd = "NS"   &
+                        else "Prince Edward Island"  if pat-prov-cd = "PE"   &
+                        else "Saskatchewan"          if pat-prov-cd = "SK"   &
+                        else "Yukon"                 if pat-prov-cd = "YT"   &
+                        else "Quebec"                if pat-prov-cd = "PQ"
+ 
+def x-address char*42 = pack(subscr-addr1+" "+subscr-addr2)
+
+;def x-chart cha*9 = ((pat-chart-nbr[2:4])+("0")+(pat-chart-nbr[6:4])) &
+;                 if pat-chart-nbr[1:1] = "M" else " "      
+
+def x-chart-m char*10 = pat-chart-nbr   if pat-chart-nbr[1:1] = 'M'
+def x-chart-k char*10 = pat-chart-nbr-2 if pat-chart-nbr-2[1:1] = 'K'
+def x-chart-h char*10 = pat-chart-nbr-3 if pat-chart-nbr-3[1:1] = 'H'
+def x-chart-g char*10 = pat-chart-nbr-4 if pat-chart-nbr-4 <> key-pat-mstr[6:10]
+def x-chart-j char*11 = pat-chart-nbr-5 if pat-chart-nbr-5[1:1] = 'J'
+
+def x-rmb-nbr char*16 = pat-ohip-mmyy if pat-health-nbr = 0 & 
+                        else " "
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile patients portable keep at pat-health-nbr include  &
+pat-surname                 ,&
+comma                       ,&
+pat-given-name              ,&
+comma                       ,&
+pat-health-nbr              ,&
+comma                       ,&
+pat-version-cd              ,&
+comma                       ,&
+pat-prov-cd                 ,&
+comma                       ,&
+x-rmb-nbr                   ,&
+comma                       ,&
+x-chart-m                   ,&
+comma                       ,&
+x-chart-k                   ,&
+comma                       ,&
+x-chart-h                   ,&
+comma                       ,&
+x-chart-g                   ,&
+comma                       ,&
+x-chart-j                   ,&
+comma                       ,&
+pat-birth-date              ,&
+comma                       ,&
+pat-phone-nbr               ,&
+comma                       ,&
+pat-sex                     ,&
+comma                       ,&
+x-address                   ,&
+comma                       ,&
+subscr-addr3                ,&
+comma                       ,&
+pat-country                 ,&
+comma                       ,&
+subscr-postal-cd            ,&
+x-cr
+build $obj/webpatients_doc

@@ -1,0 +1,235 @@
+;#> PROGRAM-ID.     D113.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to DEFAULT Physician Earning Compensation
+;	      transcations
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;     92/JAN/01  ____   B.E.     - added routine ACCEPT-VALUES
+;     95/NOV/07  ____   M.C.     - DO NOT REQUIRE TO RECEIVE EP NBR
+;				 - NO SELECTION IS REQUIRED TO F113 FILE
+;   1999/Jan/21		S.B.	 - Fixed sizes of dates and alignment of 
+;				   fields for Y2K.  Shortened the description 
+;				   field to make space.
+;   1999/Jun/07 S.B.      	 - Altered the call to scrtitle.use and
+;   	                           stdhilite.use to be called from $use
+;           	                   instead of src.
+;                    		 - Removed the call to secfile.use because
+;                         	   it was not doing anything.
+;
+
+can clear
+set default
+
+screen $pb_obj/d113.qkc on line 6 for 18 message on line 24		&
+;	RECEIVING W-DOC-NBR, W-EP-NBR-FROM, W-EP-NBR-TO,        &
+	receiving w-doc-nbr,                                    &
+		  constants-mstr-rec-6, f020-doctor-mstr
+
+temp w-doc-nbr
+;TEMP W-EP-NBR-FROM
+;TEMP W-EP-NBR-TO
+temp x-srch-code char*6
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query/modify/delete any DEFAULT   " &
+"       Compensation transactions.  The FROM/TO range indicates the    " &
+"       period over which the transactions will be automatically       " &
+"       created.                                                       " &
+"       Note that if the current PED falls within the FROM/TO range    " &
+"       the transactions can't be deleted.  This ensures a complete    " &
+"	audit trail for any generated transactions.                    " &
+"                                                                      "
+
+;use $pb_src/secfile.use   nol nod
+
+file  f113-default-comp  occurs 12
+	access viaindex f113-default-comp using w-doc-nbr
+; (display if record belongs to the current year - 1st two bytes of EP-NBR)
+;SELECT IF (ASCII(EP-NBR-FROM OF F113-DEFAULT-COMP,2)) = (ASCII(W-EP-NBR-FROM,2))
+;SELECT IF EP-NBR-FROM OF F113-DEFAULT-COMP[1:2] = W-EP-NBR-FROM[1:2]
+;SELECT IF    W-EP-NBR-FROM <= EP-NBR-FROM OF F113-DEFAULT-COMP	&
+;	  AND W-EP-NBR-TO   >= EP-NBR-TO   OF F113-DEFAULT-COMP
+
+file f020-doctor-mstr master
+
+file f190-comp-codes      reference
+file f191-earnings-period reference
+;     ACCESS VIAINDEX EP-NBR USING EP-NBR OF COMPENSATION
+file constants-mstr-rec-6 designer
+
+define x-screen-name char*55 = "DEFAULT COMPENSATION"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+title &
+"   --E/P--                                                                ENTRY" &
+	at ,1
+skip
+title &
+;Y2K changes.
+"   FROM   TO     COMPENSATION      FACTOR    UNITS       GROSS         NET  E/P" &
+	at ,1
+skip
+
+cluster occurs with f113-default-comp
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 YYMM YYMM TAX___-_______________99.9999*99.999- 999,999.99- 999,999.99- YYMM
+;Y2K changes.
+;align (1,,4) (,,9) (,,14)(,20,21) (,,36) (,,43) (,,44) (,,52) (,,64)(,,76)
+align (1,,4) (,,11) (,,18)(,24,25) (,,36) (,,44) (,,48) (,,52) (,,64)(,,75)
+field ep-nbr-from	of f113-default-comp required 		&
+			lookup on f191-earnings-period		&
+			message "*E* Invalid Earnings Period."
+field ep-nbr-to		of f113-default-comp required 		&
+			lookup on f191-earnings-period		&
+			message "*E* Invalid Earnings Period."
+field comp-code         of f113-default-comp	required	&
+      			lookup on f190-comp-codes            	&
+      			message "*E* Invalid COMPENSATION Code."
+field desc-short	of f190-comp-codes label "-" display 	&
+;Y2K changes.
+			pic "^^^^^^^^^^^"
+field factor		of f113-default-comp
+;FIELD FACTOR-OVERRIDE	OF F113-DEFAULT-COMP
+field comp-units	of f113-default-comp if units-dollars-flag  &
+;Y2K changes.
+			of f190-comp-codes = "U" pic "^^^^^^"
+field amt-gross		of f113-default-comp ; ;;;;IF UNITS-DOLLARS-FLAG OF F190-COMP-CODES = "D"
+field amt-net		of f113-default-comp ; ;;;;;DISPLAY
+field ep-nbr-entry	of f113-default-comp display ;DEFAULT TO CURRENT EP-NBR
+;FIELD LAST-MOD-DATE	OF F113-DEFAULT-COMP DISPLAY
+;FIELD LAST-MOD-TIME	OF F113-DEFAULT-COMP DISPLAY
+;FIELD LAST-MOD-USER-ID	OF F113-DEFAULT-COMP DISPLAY
+
+procedure  input  ep-nbr-from
+begin
+  if fieldtext = "."
+  then begin
+    run screen $pb_obj/m191.qkc clear lines 13 to 23 refresh all
+  end
+end
+
+procedure  edit  ep-nbr-from
+begin
+   if ep-nbr-from > last-ep-nbr-of-fiscal-yr
+   then error   "*E* This Earnings Period is NOT within the Current Fiscal Year."
+   if ep-nbr-from < current-ep-nbr
+   then error   "*E* This Earnings Period is PRIOR to the Current Earnings Period."
+end
+
+procedure  input  ep-nbr-to
+begin
+  if fieldtext = "."
+  then begin
+    run screen $pb_obj/m191.qkc clear lines 13 to 23 refresh all
+  end
+end
+
+procedure  edit  ep-nbr-to
+begin
+   if ep-nbr-to   > last-ep-nbr-of-fiscal-yr
+   then error   "*E* This Earnings Period is NOT within the Current Fiscal Year."
+   if ep-nbr-to   < current-ep-nbr
+   then warning "*W* This Earnings Period is PRIOR to the Current Earnings Period."
+end
+
+procedure process ep-nbr-from
+begin
+  let doc-nbr of f113-default-comp = w-doc-nbr
+end
+
+procedure  input  comp-code
+begin
+  if fieldtext = "."
+  then begin
+    let x-srch-code = " "
+    run screen $pb_obj/sy033.qkc clear lines 13 to 23 passing x-srch-code mode f
+    if x-srch-code ne " "
+    then let fieldtext = x-srch-code
+    else error "*E* A Compensation Code is required."
+  end
+end
+
+procedure  edit  comp-code
+begin
+  if comp-owner of f190-comp-codes ne "U"
+  then error "*E* This Compensation Code can't be input by the User."
+end
+
+procedure process comp-code
+begin
+  let doc-nbr of f113-default-comp = w-doc-nbr
+  display desc-short	of f190-comp-codes
+  let     factor	of f113-default-comp = factor of f190-comp-codes
+  display factor	of f113-default-comp
+  let     ep-nbr-entry of f113-default-comp = current-ep-nbr
+  display ep-nbr-entry of f113-default-comp
+end
+
+
+procedure  internal  calc-display
+begin
+  let amt-net   of f113-default-comp =(  amt-gross  of f113-default-comp &
+                                       * factor of f113-default-comp)  &
+				      / 10000
+  display amt-net      of f113-default-comp
+  display ep-nbr-entry of f113-default-comp
+end
+
+procedure internal accept-values
+  begin
+    accept ep-nbr-from	of f113-default-comp
+    accept ep-nbr-to	of f113-default-comp
+    accept comp-code	of f113-default-comp
+    display factor	of f113-default-comp
+    accept factor	of f113-default-comp
+    if units-dollars-flag of f190-comp-codes = "U"
+      then accept comp-units of f113-default-comp
+      else
+        begin
+           let comp-units of f113-default-comp = 0
+           display comp-units of f113-default-comp
+        end
+    if units-dollars-flag of f190-comp-codes = "D"
+      then accept amt-gross  of f113-default-comp
+    do calc-display
+  end
+
+procedure designer 01
+  begin
+    do accept-values
+  end
+
+procedure append
+  begin
+    do accept-values
+  end
+
+procedure entry
+  begin
+    for f113-default-comp
+      begin
+        do accept-values
+        end
+    end
+
+procedure update
+  begin
+;    PUT F020-DOCTOR-MSTR
+    for f113-default-comp
+      begin
+        put f113-default-comp
+        end
+    end
+
+build
+  

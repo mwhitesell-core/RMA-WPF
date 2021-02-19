@@ -1,0 +1,94 @@
+; DOC: HOLD81.QZS
+; DOC: LIST OF CLAIMS WITH "H"OLD STATUS FOR CLINIC 81
+; DOC: TO CHECK AND MAKE SURE CLAIMS ARE NOT STALE DATED.
+; DOC: RUN FOR: THEGLA
+;  NAME   : R030G5.QZS
+;  PURPOSE: LIST OF ALL CLAIMS WHITH "H"OLD STATUS SET SINCE A
+;           SPECIFIED DATE. SORTED BY 3 CHARACTERS IN THE REFERENCE
+;           FIELD AND THEN BY CLAIM NUMBER.HOLD STATUS AND NO CASH DATE
+;
+;  MODIFICATION HISTORY:
+;
+;  YY/MMM/DD     BY WHOM  WHY
+;  95/MAY/29    YASEMIN   -ORIGINAL
+;  99/nov/15	B.E.      -added test for clmhdr-date-cash-tape-payment 
+;			   equal to all zeros as well as blankds in select
+;  03/dec/12	A.A.	  - alpha doctor nbr
+;
+
+can clear
+
+set report nolimit
+
+access f002-claims-mstr                                         &
+  link clmhdr-pat-ohip-id-or-chart viaindex key-pat-mstr        &
+    to f010-pat-mstr
+
+;! choose key-clm-type "B", key-clm-batch-nbr 810000000 to 819999999
+choose key-clm-type "B", key-clm-batch-nbr '81000000' to '81ZZZ999'
+
+;y2k
+def date-from date = parm prompt "ENTER FROM DATE (YYYYMMDD): "
+;y2k
+def date-to   date = parm prompt "ENTER  TO  DATE (YYYYMMDD): "
+
+def clm-ref char*3 = clmhdr-reference [1:3]
+;! def clm-id char*10 = clmhdr-claim-id [1:2] + clmhdr-claim-id [4:8]
+def clm-id char*10 = clmhdr-claim-id [1:10]
+def clm-clinic char*2 = clmhdr-claim-id [1:2]
+
+sel f002-claims-mstr if clmhdr-oma-suff-adj = "000000"   &
+  and clmhdr-batch-type = "C"                            &
+  and clmhdr-tape-submit-ind = "H"
+
+;y2k
+sel if clmhdr-submit-date ge  date-from            &
+;y2k
+   and clmhdr-submit-date le  date-to              &
+;y2k
+   and (   clmhdr-date-cash-tape-payment = " "	   &
+        or clmhdr-date-cash-tape-payment = " 00000000")
+
+sort on clm-ref on clm-id
+
+set subfile name r030g5 keep
+rep summary clm-ref clm-id key-clm-batch-nbr key-clm-claim-nbr
+
+build $pb_obj/r030g5
+
+can clear
+set default
+set report nolimit
+set report device disc name hold81
+set page length 60 width 132
+set formfeed
+
+access *r030g5                                          &
+     link ("B",key-clm-batch-nbr, key-clm-claim-nbr) to &
+     key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr &
+     of f002-claims-mstr
+
+select if clmhdr-adj-oma-cd of f002-claims-mstr <> "0000" &
+      and clmhdr-adj-oma-cd of f002-claims-mstr <> "ZZZZ"
+
+sorted on clm-ref on clm-id
+
+page heading             &
+;y2k
+  tab 1   sysdate        &
+  tab 40 "HOLD CLAIMS FOR CLINIC 81"   &
+skip 2
+
+heading at clm-ref 					&
+	clm-ref    skip 2
+
+;y2k
+rep clm-id print at clm-id clmdtl-sv-date pic "^^^^/^^/^^"
+
+footing at clm-ref skip page
+
+
+build $pb_obj/r030g6
+
+
+  

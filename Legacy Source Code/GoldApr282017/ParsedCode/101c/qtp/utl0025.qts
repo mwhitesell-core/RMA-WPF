@@ -1,0 +1,126 @@
+; Program:  utl0025.qts
+; Purpose: 
+;	 recover f001 record after network goes down and user is 'red balled'
+; Logic: program gets the parameters (read from file in $HOME directory) passed
+;	 to it via d001.cbl.. 
+; 2006/09/27 MC - Brad request to pass payroll to the parameter list for RMA but not for HSC yet
+;
+cancel clear
+set lock record update
+set process nolimit
+
+request utl0025-one
+access iconst-mstr-rec
+choose iconst-clinic-nbr-1-2 22
+def x-batch char*8  = parm prompt 'Enter batch Nbr: '
+def x-loc char*4 = parm prompt 'Enter location cd: '  
+def x-agent zoned*1 unsigned = parm prompt 'Enter agent cd: '
+def x-in-out-ind char*1 = parm prompt 'Enter I/O ind: ' upshift
+
+; 2006/09/27 - MC
+@if rma
+def x-payroll  char*1 = parm prompt 'Enter payroll:  ' upshift
+@elseif hsc
+def x-payroll char*1 = 'A'
+@endif
+; 2006/09/27 - end
+
+
+def x-f001-rec-exists char*1 = parm prompt 'Enter f001 exists ind: ' upshift
+
+subfile utl0025  keep		&
+;	include    x-batch, x-loc, x-agent, x-in-out-ind,x-f001-rec-exists
+	include    x-batch, x-loc, x-agent, x-in-out-ind, x-payroll, x-f001-rec-exists
+
+request utl0025-two
+access *utl0025					&
+ link 'B', x-batch to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if   key-clm-serv-code = '00000'
+
+temp xcount zoned*4 unsigned
+item xcount = xcount + 1
+
+subfile utl0025_clmhdr keep at final 				&
+	include    x-batch, x-loc, x-agent, x-in-out-ind,	&
+		   x-payroll,					&
+                   clmhdr-tot-claim-ar-ohip, key-clm-claim-nbr, xcount 
+
+request utl0025-three
+access *utl0025_clmhdr					&
+ link 'B', x-batch to key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+sel if clmdtl-oma-cd <> '0000' and clmdtl-oma-cd <> 'ZZZZ'
+
+def x-consec-svc zoned*3 unsigned = ncon(clmdtl-consec-dates-r[1:1])	&
+				+   ncon(clmdtl-consec-dates-r[4:1])	&
+				+   ncon(clmdtl-consec-dates-r[7:1])
+
+temp x-clmdtl-fee-ohip zoned*8 signed
+item x-clmdtl-fee-ohip = x-clmdtl-fee-ohip + clmdtl-fee-ohip
+
+temp x-tot-svc zoned*4 unsigned
+item x-tot-svc = x-tot-svc + clmdtl-nbr-serv + x-consec-svc
+
+subfile utl0025_clmhdr_dtl keep at final 				&
+	include    x-batch, x-loc, x-agent, x-in-out-ind,		&
+		   x-payroll,						&
+                   clmhdr-tot-claim-ar-ohip of utl0025_clmhdr, 	&
+		   key-clm-claim-nbr of utl0025_clmhdr, xcount ,  	&
+		   x-tot-svc, x-clmdtl-fee-ohip
+
+request utl0025-four
+access *utl0025_clmhdr_dtl						&
+  link x-batch to batctrl-batch-nbr of f001-batch-control-file optional &
+  link x-batch[3:3] to doc-nbr of f020-doctor-mstr			&
+  link nconvert(x-batch[1:2]) to iconst-clinic-nbr-1-2 of iconst-mstr-rec      
+
+output f001-batch-control-file alias f001-update update &
+	if record f001-batch-control-file exists on errors report
+   item batctrl-last-claim-nbr final key-clm-claim-nbr
+   item batctrl-nbr-claims-in-batch final xcount
+   item batctrl-amt-act final x-clmdtl-fee-ohip
+   item batctrl-amt-est final x-clmdtl-fee-ohip
+   item batctrl-calc-tot-rev final x-clmdtl-fee-ohip
+   item batctrl-calc-ar-due final x-clmdtl-fee-ohip
+   item batctrl-svc-act final x-tot-svc
+   item batctrl-svc-est final x-tot-svc
+   item batctrl-batch-status final '1'
+
+output f001-batch-control-file alias f001-add add	&
+	if not record f001-batch-control-file exists on errors report
+   item batctrl-batch-nbr initial x-batch
+   item batctrl-batch-type initial 'C'
+   item batctrl-adj-cd-sub-type    initial 'S'
+   item batctrl-last-claim-nbr initial key-clm-claim-nbr
+   item batctrl-clinic-nbr initial iconst-clinic-nbr
+   item batctrl-doc-nbr-ohip initial  doc-ohip-nbr 
+   item batctrl-loc initial x-loc 
+   item batctrl-agent-cd initial x-agent
+   item batctrl-i-o-pat-ind initial x-in-out-ind
+   item batctrl-date-batch-entered initial ascii(sysdate,8)
+   item batctrl-date-period-end initial ascii(iconst-date-period-end,8)
+   item batctrl-cycle-nbr initial iconst-clinic-cycle-nbr
+   item batctrl-amt-act initial x-clmdtl-fee-ohip
+   item batctrl-amt-est initial x-clmdtl-fee-ohip
+   item batctrl-svc-act initial x-tot-svc
+   item batctrl-svc-est initial x-tot-svc
+   item batctrl-calc-ar-due initial x-clmdtl-fee-ohip
+   item batctrl-calc-tot-rev initial x-clmdtl-fee-ohip
+   item batctrl-batch-status initial '1'
+   item batctrl-nbr-claims-in-batch initial xcount
+   item batctrl-payroll initial x-payroll 
+
+subfile utl0025_save_clmhdr_dtl keep append include utl0025_clmhdr_dtl
+
+request utl0025-five
+; delete f001 if there is no claims associated with the batch
+
+access *utl0025					&
+ link x-batch to batctrl-batch-nbr of f001-batch-control-file  
+
+sel if batctrl-nbr-claims-in-batch = 0
+
+output f001-batch-control-file delete on errors report
+
+build $obj/utl0025

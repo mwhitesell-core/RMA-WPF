@@ -1,0 +1,110 @@
+; 2015/Jan/28	MC	original
+;			Portal eligibility rejects
+; 2015/Apr/15	MC1	add the parameter for selection to run 'REGULAR' or 'PORTAL'
+;			change define item x-doc-dept-nbr 
+; 2015/Apr/22	MC2     before it took an hours to run due to large record complex for sort,
+;			change program into A/B so that extract the require items in A and sort in B
+
+can clear 
+set rep nolimit
+
+access f087-submitted-rejected-claims-hdr  &
+  link submitted-rejected-claim, ped	   &
+   to  submitted-rejected-claim, ped of f087-submitted-rejected-claims-dtl &
+  link clmhdr-doc-nbr to doc-nbr      &
+    of f020-doctor-mstr opt           &
+  link ohip-err-code to ohip-err-code &
+    of f093-ohip-error-msg-mstr opt   &
+  link ('B', clmhdr-batch-nbr, clmhdr-claim-nbr, '00000', '0')                & 
+    to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, key-clm-serv-code, &
+       key-clm-adj-nbr  of f002-claims-mstr  opt 
+
+choose submitted-rejected-claim , ped parm prompt 'From PED: ' range toprompt 'To PED: '  1 time
+
+sel f087-submitted-rejected-claims-hdr if charge-status = 'Y' 
+sel f093-ohip-error-msg-mstr if ohip-err-cat-code <> "R"
+
+sel if ohip-err-code of f087-submitted-rejected-claims-hdr =  &
+       edt-dtl-err-cd-1 of f087-submitted-rejected-claims-dtl 
+
+; MC2
+set subfile name r134 keep
+
+rep summ clmhdr-doc-nbr                          	&
+	doc-dept					&
+	doc-name					&
+	submitted-rejected-claim 			&
+	edt-oma-service-cd-and-suffix			&
+	edt-service-date                      		&
+	edt-health-nbr        				&
+	edt-health-version-cd 				&
+	ohip-err-code         				&
+	ohip-err-description  				
+
+build $obj/r134a
+
+access *r134      
+
+set rep dev disc name r134
+set rep page length 62
+set rep page width 140 
+set formfeed
+
+;MC1
+def x-run-type char*7 = parm prompt 'Enter either "REGULAR" or "PORTAL" : '
+;MC1 - end
+
+def x-doc-dept-nbr char*7= '~' + clmhdr-doc-nbr + ascii(doc-dept,2) + '~'	&
+;MC1
+	if x-run-type = 'PORTAL'		&
+    else ' '
+;MC1 - end
+
+; MC2 - end
+
+sort on clmhdr-doc-nbr reset page  on submitted-rejected-claim
+
+page heading                                                    &
+        tab 1   "R134"                                          &
+        tab 40  "****  ELIGIBILITY REJECTS **** "               &
+        tab 100 "RUN DATE:"                                     &
+        tab 112  sysdate                                        &
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"               &
+        tab 133 x-doc-dept-nbr                                  &
+skip 2								&
+	tab  1  'Dept: '					&		
+	tab  7  doc-dept              				&
+	tab 12  'Doc#: '    					&
+	tab 18  clmhdr-doc-nbr        				&
+	tab 25  doc-name              				&
+	tab 133 x-doc-dept-nbr					&
+skip 2								&
+	tab  1  'Claim Nbr'					&
+	tab 15  'OMA cd'   					&
+	tab 24  'Serv Date'					&
+	tab 36  'Health Nbr'					&
+	tab 50  'Ver'						&
+	tab 56  'Error Code & Description'			&
+	tab 133 x-doc-dept-nbr					&
+skip 2
+		
+footing at submitted-rejected-claim 				&
+	tab  1  submitted-rejected-claim 			&
+	tab 15  edt-oma-service-cd-and-suffix			&
+	tab 24  edt-service-date pic "^^^^/^^/^^"     		&
+	tab 36  edt-health-nbr        				&
+	tab 50  edt-health-version-cd 				&
+	tab 56  ohip-err-code         				&
+	tab 62  ohip-err-description  				&
+	tab 133 x-doc-dept-nbr	      				&
+skip 1
+  
+footing at clmhdr-doc-nbr					&
+skip 1	tab  1 'Total Nbr of Eligibility rejects: '		&
+	tab 40 count at submitted-rejected-claim reset at clmhdr-doc-nbr pic '^^^^^'  	&
+	tab 133 x-doc-dept-nbr	      				&
+skip 3    
+;skip page 
+
+build $pb_obj/r134b
+

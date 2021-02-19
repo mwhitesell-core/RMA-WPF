@@ -1,0 +1,73 @@
+; 2008/nov/06	M.C.	-  modify if condition when output subfile
+; 2012/Mar/07   MC1     -  include percentage in the sort, this will pick up the active doctor first
+;                       -  add a new request to eliminate the zero amt or percentage record except for report only group
+
+cancel clear
+set process nolimit
+
+; 2012/03/07 - MC1
+request one
+; 2012/03/07 - end
+
+access *u140_d1
+
+sort	on doc-afp-paym-group	&
+	on doc-afp-paym-solo  	&
+; 2012/03/07 - MC1
+        on afp-multi-doc-ra-percentage d &
+; 2012/03/07 - end
+	on x-conversion-amt	&
+	on x-submission-amt
+
+temp last-doc-solo char*6
+temp last-doc-nbr  char*3
+temp last-doc-group char*4
+temp last-x-conversion-amt zoned*11
+temp last-x-submission-amt zoned*11
+
+; if incoming payment was split equally among a doctor's RMA numbers then
+; don't consider it a duplicate payment
+
+; 2012/03/07 - MC1
+;subfile u140_d2  keep if    last-doc-solo  <> doc-afp-paym-solo		&
+subfile u140_temp  keep if    last-doc-solo  <> doc-afp-paym-solo		&
+; 2012/03/07 - end
+			 or last-doc-group <> doc-afp-paym-group	&
+			 or last-x-conversion-amt <> x-conversion-amt	&
+			 or last-x-submission-amt <> x-submission-amt	&
+                         or (  last-doc-nbr   <> doc-nbr                &
+                             and x-conversion-amt <> 0                  &
+; 2008/11/06 - MC
+			     and afp-group-process-flag = 'E'		&
+; 2008/11/06 - end
+                            )                                           &
+; 2008/11/06 - MC - add for reporting group, no check on amt
+                         or (  last-doc-nbr   <> doc-nbr                &
+			     and afp-group-process-flag = 'R'		&
+                            )                                           &
+; 2008/11/06 - end
+
+   include u140_d1
+	
+item last-doc-solo         = doc-afp-paym-solo	reset at x-submission-amt
+item last-doc-nbr          = doc-nbr           reset at x-submission-amt
+item last-doc-group        = doc-afp-paym-group reset at x-submission-amt
+item last-x-conversion-amt = x-conversion-amt   reset at x-submission-amt
+item last-x-submission-amt = x-submission-amt   reset at x-submission-amt
+
+
+; 2012/03/07 - MC1
+request two
+
+access *u140_temp
+
+sel if afp-multi-doc-ra-percentage <> 0         &
+    or x-conversion-amt <> 0                    &
+    or x-conversion-amt <> 0			&
+    or dept-nbr = 0
+
+subfile  u140_d2 keep include u140_temp
+
+; 2012/03/07 - end
+
+build $obj/u140_d1_remove_dups

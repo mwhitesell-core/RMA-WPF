@@ -1,0 +1,81 @@
+;#> PROGRAM-ID.    u093.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :  DELETE THE ADJUSTMENT AND PAYMENT BATCH CONTROL
+;                       RECORDS FROM THE BATCH CONTROL FILE (F001) AND
+;                       THE ASSOCIATED RECORDS FOR THESE BATCHS IN THE
+;                       CLAIMS MASTER FILE (F002). BATCHES ARE SELECTED
+;                       BY P.E.D. FALLING WITHIN OPERATOR INPUT CUT-OFF DATE.
+;                       AN AUDIT REPORT IS PRINTED OF ALL BATCHES DELETED,
+;                       WITH TOTALS BY BATCH TYPE
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO     DESCRIPTION
+;
+; 03/dec/15	A.A.	alpha doctor nbr
+;
+
+cancel clear
+set process nolimit
+set lock record update
+
+request one on calculation errors report
+
+access f001-batch-control-file                                  &
+      link 'B', batctrl-batch-nbr                               &
+        to key-clm-type, key-clm-batch-nbr of f002-claims-mstr  &
+      link nconv(clmhdr-claim-id[1:2])                          &
+        to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+choose batctrl-batch-nbr parm prompt "Enter From Batch Number: " &
+  1 time range toprompt "Enter To Batch Number: "
+
+sorted on batctrl-batch-nbr  & 
+       on key-clm-claim-nbr
+
+define d-date date = parm prompt & 
+  "Enter NEW date now if constant-mstr P.E.D. is not acceptable: "
+
+define d-cut-off-date date = iconst-date-period-end if &	
+       d-date = 0 else d-date
+define d-batctrl-date-period-end date = nconv(batctrl-date-period-end)
+
+define d-delete-flag char*1 					&
+     = 'Y' if    (    batctrl-batch-type = 'P' 			&
+                   or batctrl-batch-type = 'A'			&
+	         )						&
+             and batctrl-batch-status = '4'                     &
+    	     and d-batctrl-date-period-end <= d-cut-off-date   	&
+  else 'N'
+
+subfile u093-delete-batch keep append at start of key-clm-claim-nbr  	&
+   if d-delete-flag = 'Y'					&
+            include 						&
+	f001-batch-control-file,				&
+	iconst-clinic-nbr-1-2 of iconst-mstr-rec,		&
+	clmhdr-adj-cd-sub-type of f002-claims-mstr,		&
+        clmhdr-tot-claim-ar-oma of f002-claims-mstr,      	& 
+  	clmhdr-tot-claim-ar-ohip of f002-claims-mstr,      	&
+  	clmhdr-manual-and-tape-payments of f002-claims-mstr,	&
+	d-cut-off-date							
+
+subfile u093-retain-batch keep append at start of key-clm-claim-nbr 	&
+   if d-delete-flag = 'N' 					&
+                include                                         &
+        f001-batch-control-file,                                &
+	iconst-clinic-nbr-1-2 of iconst-mstr-rec,		&
+	clmhdr-adj-cd-sub-type of f002-claims-mstr,		&
+        clmhdr-tot-claim-ar-oma of f002-claims-mstr,            &
+        clmhdr-tot-claim-ar-ohip of f002-claims-mstr,           &
+        clmhdr-manual-and-tape-payments of f002-claims-mstr ,	&
+	d-cut-off-date							
+
+output f002-claims-mstr delete on errors report		&
+	if d-delete-flag = 'Y'
+
+output f001-batch-control-file delete at batctrl-batch-nbr 	&
+	on errors report if d-delete-flag = 'Y'
+   
+
+build $obj/u093

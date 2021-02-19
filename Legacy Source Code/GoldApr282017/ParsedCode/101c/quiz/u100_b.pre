@@ -1,0 +1,85 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U100_B.QZS
+COMMENT "2014/Sep/23  MC - check  primary doctor (u100_b.qzs)"
+COMMENT "- to be run as last part of $cmd/verify_payroll_ok_to_run"
+COMMENT "- user is asked to pass 2 parameters, user should change the terminated date cutoff once after yearend"
+COMMENT "2014/Oct/9   yas      - If doc has only one number and have primary flag set then do not print on this report"
+COMMENT "We need the primary number so that system will calculate the TITHE for the doctor "
+COMMENT "2014/Oct/14 MC1 - include doctor name in subfile/report"
+COMMENT "- include constants-mstr-rec-7 in the access to extract previous fiscal yearend date"
+COMMENT "2014/Oct/23 MC2 - include doctor sub specialty cd     "
+COMMENT "2016/Feb/23   MC3     - change select statment for unique doctor check"
+CANCEL CLEAR
+SET REPORT NOLIMIT
+COMMENT "MC1 "
+ACCESS F020-DOCTOR-MSTR LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-EXTRA OPTIONAL LINK (7) TO CONST-REC-NBR OF CONSTANTS-MSTR-REC-7
+CHOOSE DOC-OHIP-NBR
+DEF PAYROLL-FLAG CHAR*1 = PARM PROMPT 'Enter Payroll (A = 101c, C = solo): '
+COMMENT "MC1"
+COMMENT "def term-date-cutoff date = parm prompt 'Enter terminate date cutoff: '"
+COMMENT "MC1 - end"
+SORTED ON DOC-OHIP-NBR
+COMMENT "MC1"
+COMMENT "or doc-date-fac-term > term-date-cutoff  &"
+COMMENT "MC1 - end"
+SEL IF ( DOC-DATE-FAC-TERM = 0 OR DOC-DATE-FAC-TERM > PREVIOUS-FISCAL-END-YYMMDD ) AND ( ( ( (DOC-DEPT = 4) OR (DOC-DEPT = 42) OR ( ( DOC-DEPT = 14 OR DOC-DEPT = 15 ) AND DOC-AFP-PAYM-GROUP = 'H111' ) ) AND PAYROLL-FLAG = 'A' ) OR ( ( DOC-DEPT = 31 AND DOC-AFP-PAYM-GROUP = 'H132' ) AND PAYROLL-FLAG = 'C' ) )
+SET SUBFILE NAME U100_B KEEP
+COMMENT "MC2"
+COMMENT "payroll-flag doc-name previous-fiscal-end-yymmdd"
+REP SUMM DOC-OHIP-NBR DOC-NBR DOC-DEPT DOC-AFP-PAYM-GROUP DOC-FLAG-PRIMARY DOC-DATE-FAC-START DOC-DATE-FAC-TERM PAYROLL-FLAG DOC-NAME PREVIOUS-FISCAL-END-YYMMDD DOC-SUB-SPECIALTY
+GO
+ACCESS *U100_B
+SORT ON DOC-OHIP-NBR ON DOC-FLAG-PRIMARY
+DEF DOCTOR-COUNT = 1
+SET SUBFILE NAME U100_B2 KEEP AT DOC-OHIP-NBR
+COMMENT "MC2"
+COMMENT "payroll-flag doc-name previous-fiscal-end-yymmdd doctor-count subt reset at doc-ohip-nbr"
+REP SUMM DOC-OHIP-NBR DOC-NBR DOC-DEPT DOC-AFP-PAYM-GROUP DOC-FLAG-PRIMARY DOC-DATE-FAC-START DOC-DATE-FAC-TERM PAYROLL-FLAG DOC-NAME PREVIOUS-FISCAL-END-YYMMDD DOCTOR-COUNT SUBT RESET AT DOC-OHIP-NBR DOC-SUB-SPECIALTY
+GO
+COMMENT "select for multiple doctors"
+ACCESS *U100_B2
+SEL IF DOCTOR-COUNT <> 1
+SET SUBFILE NAME U100_B_3A KEEP
+COMMENT "MC2"
+COMMENT "rep summ doc-ohip-nbr doctor-count payroll-flag doc-name previous-fiscal-end-yymmdd"
+REP SUMM DOC-OHIP-NBR DOCTOR-COUNT PAYROLL-FLAG DOC-NAME PREVIOUS-FISCAL-END-YYMMDD DOC-SUB-SPECIALTY
+GO
+COMMENT "select unique doctor that have not assigned primary flag to 'Y' "
+ACCESS *U100_B2
+COMMENT "MC3"
+COMMENT "sel if doc-flag-primary <> 'Y'"
+SEL IF DOC-FLAG-PRIMARY <> 'Y' AND DOCTOR-COUNT = 1
+COMMENT "MC3 - end"
+SET SUBFILE NAME U100_B_3B KEEP
+REP SUMM ALL
+GO
+ACCESS *U100_B_3A LINK DOC-OHIP-NBR TO DOC-OHIP-NBR OF F020-DOCTOR-MSTR LINK DOC-NBR TO DOC-NBR OF F020-DOCTOR-EXTRA OPTIONAL
+COMMENT "MC1"
+COMMENT "or doc-date-fac-term > term-date-cutoff  &"
+COMMENT "MC1 - end"
+SEL IF ( DOC-DATE-FAC-TERM = 0 OR DOC-DATE-FAC-TERM > PREVIOUS-FISCAL-END-YYMMDD ) AND ( ( ( (DOC-DEPT = 4) OR (DOC-DEPT = 42) OR ( ( DOC-DEPT = 14 OR DOC-DEPT = 15 ) AND DOC-AFP-PAYM-GROUP = 'H111' ) ) AND PAYROLL-FLAG = 'A' ) OR ( ( DOC-DEPT = 31 AND DOC-AFP-PAYM-GROUP = 'H132' ) AND PAYROLL-FLAG = 'C' ) )
+SET SUBFILE NAME U100_B_3B APPEND
+COMMENT "MC2"
+COMMENT "payroll-flag doc-name previous-fiscal-end-yymmdd doctor-count "
+REP SUMM DOC-OHIP-NBR DOC-NBR DOC-DEPT DOC-AFP-PAYM-GROUP DOC-FLAG-PRIMARY DOC-DATE-FAC-START DOC-DATE-FAC-TERM PAYROLL-FLAG DOC-NAME PREVIOUS-FISCAL-END-YYMMDD DOCTOR-COUNT DOC-SUB-SPECIALTY
+GO
+ACCESS *U100_B_3B
+SET REP DEV DISC NAME U100_B
+SET REP PAGE WIDTH 132 LENGTH 60
+SET FORMFEED
+SORT ON DOC-OHIP-NBR
+COMMENT "MC1"
+COMMENT "MC1 - end"
+PAGE HEADING TAB 1 'U100_b' TAB 10 'Run Date: ' TAB 20 SYSDATE TAB 70 'Page: ' TAB 79 SYSPAGE PIC '^^' SKIP 2 TAB 10 'Check if the Primary flag assigned to the correct doctor number' SKIP 1 TAB 20 'Doctor Termination Date Cutoff > ' TAB 55 PREVIOUS-FISCAL-END-YYMMDD SKIP 3 KEEP COLUMN HEADING
+COMMENT "MC2"
+COMMENT "rep doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  doc-name"
+REP DOC-OHIP-NBR DOC-NBR DOC-DEPT DOC-AFP-PAYM-GROUP DOC-FLAG-PRIMARY DOC-DATE-FAC-START DOC-DATE-FAC-TERM DOC-NAME DOC-SUB-SPECIALTY
+FOOTING AT DOC-OHIP-NBR SKIP 2
+GO
+ENDMODULE U100_B.QZS

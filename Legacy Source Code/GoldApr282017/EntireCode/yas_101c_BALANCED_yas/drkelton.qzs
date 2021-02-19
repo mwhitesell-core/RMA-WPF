@@ -1,0 +1,69 @@
+set rep nolimit
+
+access f002-claims-mstr                   &
+  link (ascii(clmdtl-diag-cd,3))          &
+  to   diag-cd of f091-diag-codes-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220908000 to 220908999,	&
+	key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+
+select f002-claims-mstr if                     &
+           clmdtl-sv-date      >= "990501"     &
+      and  clmdtl-oma-cd      <>  "0000"       & ; details only
+      and  clmdtl-oma-cd      <>  "ZZZZ"       & ; details only
+      and  clmdtl-oma-cd      <>  "PAID"       & ; details only
+      and  clmdtl-oma-cd      <>  "MICM"       & ; details only
+      and  clmdtl-oma-cd      <>  "MISJ"       & ; details only
+      and  clmdtl-oma-cd      <>  "MISC"       & ; details only
+      and  clmdtl-oma-cd      <>  "MICV"       & ; details only
+      and  clmdtl-oma-cd      <>  "MISP"       & ; details only
+      and  clmdtl-adj-nbr     = 0                ; regular details only
+
+set subfile name drkelton keep
+rep summ key-clm-batch-nbr key-clm-claim-nbr clmdtl-sv-date &
+	diag-cd-desc
+
+build $obj/drkelton
+
+
+set page length 62
+set page width 132
+set rep device disc name drkelton
+set formfee
+
+access *drkelton                          &
+  link ('B', key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0')	&
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,		&
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt	&
+  link clmhdr-pat-ohip-id-or-chart        &
+  to   key-pat-mstr of f010-pat-mstr opt
+
+def x-pat-name char*20 = pack(pat-surname+", "+pat-given-name)
+def x-chart-nbr cha*9 = pat-chart-nbr[2:4]+"0"+pat-chart-nbr[6:4]
+def x-diag-cd  cha*67 = diag-cd-desc[1:67]
+
+sort on x-pat-name      &
+     on clmdtl-sv-date
+
+page heading 						  	&
+       tab  1  sysdate                            		&
+       tab 12  "Regional Medical Associates of Hamilton" 	&
+skip 2 tab  1  "Patient Name"					&
+       tab 25  "Patient ID"					&
+       tab 40  "Date Seen"					&
+       tab 52  "Diagnosis"					&
+skip 1 tab 1   "============"					&
+       tab 25  "=========="					&
+       tab 40  "========="					&
+       tab 52  "========="					&
+skip 2
+
+footing at clmdtl-sv-date                         &
+skip 1 tab  1  x-pat-name  print at x-pat-name    &
+       tab 25  x-chart-nbr print at x-pat-name    &
+       tab 40  clmdtl-sv-date  pic "^^/^^/^^"     &
+       tab 52  x-diag-cd                          &
+skip 2
+
+build $obj/drkelton1

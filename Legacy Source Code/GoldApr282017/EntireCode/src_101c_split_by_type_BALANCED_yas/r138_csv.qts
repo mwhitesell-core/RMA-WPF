@@ -1,0 +1,121 @@
+; DOC: R138_CSV.QTS
+; DOC: DEFICIT REPORT
+; DOC: SORT BY COMPANY/DEPT
+; DOC: RUN FOR: Ross  
+;
+;PROGRAM PURPOSE : DEFICIT REPORT FOR PAYROLL
+;
+;DATE           WHO       DESCRIPTION
+;2016/Mar/15	MC	  ORIGINAL - this program will be run in $cmd/teb3; thus ep nbr has changed (+1)  
+;			  clone from original r138_csv.qzs
+;			  this will be the first pass program, second pass program is r138_csv.qzs
+;			  Brad suggested to extract DEFIC from f110 file in one pass, 
+;		     	  and then extract ADVOUT from f119 file in second pass;
+;			  merge into one record per doctor in the third pass
+;2016/Jul/01    MC1       change amount fields from zoned*6  numeric to zoned*7 numeric
+
+can clear
+set process nolimit
+set lock record update
+
+request extract_f110
+
+access constants-mstr-rec-6			&
+	link  current-ep-nbr            	&
+	 to   ep-nbr  of f110-compensation	&
+	link  doc-nbr				&
+	 to   doc-nbr of f020-doctor-mstr opt  	&
+	link  doc-dept				&
+	 to   dept-nbr of f070-dept-mstr opt
+
+choose const-rec-nbr 6
+
+sel if comp-code = 'DEFIC' and amt-net <> 0
+
+; MC1
+;def x-deficit-amt zoned*6 numeric = amt-net
+;def x-advout-amt  zoned*6 numeric = 0  
+def x-deficit-amt zoned*7 numeric = amt-net
+def x-advout-amt  zoned*7 numeric = 0  
+; MC1 - end
+
+subfile r138_csv keep include		&
+dept-company,				&
+doc-dept,				&
+doc-nbr of f110-compensation,	        &
+doc-name,				&
+ep-nbr,					&
+doc-ep-pay-code,			&
+doc-ep-pay-sub-code,			&
+x-deficit-amt,				&
+x-advout-amt
+
+
+request extract_f119
+
+access f119-doctor-ytd                          & 
+        link  6					&
+	 to   const-rec-nbr of constants-mstr-rec-6 &
+	link  doc-nbr				&
+	 to   doc-nbr of f020-doctor-mstr opt  	&
+	link  doc-dept				&
+	 to   dept-nbr of f070-dept-mstr opt
+
+choose doc-nbr, comp-code 'ADVOUT', rec-type 'A'
+
+sel if amt-mtd <> 0
+
+; MC1
+;def x-deficit-amt zoned*6 numeric = 0        
+;def x-advout-amt  zoned*6 numeric = amt-mtd
+def x-deficit-amt zoned*7 numeric = 0        
+def x-advout-amt  zoned*7 numeric = amt-mtd
+; MC1 - end
+
+subfile r138_csv append include		&
+dept-company,				&
+doc-dept,				&
+doc-nbr of f119-doctor-ytd,		&
+doc-name,				&
+current-ep-nbr,				&
+doc-ep-pay-code,			&
+doc-ep-pay-sub-code,			&
+x-deficit-amt,				&
+x-advout-amt
+
+
+;------------------------------
+  
+
+request merge_by_doc
+
+access *r138_csv      
+
+sort on doc-nbr 
+
+; MC1
+;temp deficit-amt zoned*6 numeric 
+temp deficit-amt zoned*7 numeric 
+; MC1 - end
+item deficit-amt = deficit-amt + x-deficit-amt reset at doc-nbr
+
+; MC1
+;temp advout-amt  zoned*6 numeric
+temp advout-amt  zoned*7 numeric
+; MC1 - end
+item advout-amt = advout-amt + x-advout-amt reset at doc-nbr
+
+subfile r138_csv_doc keep at doc-nbr include		&
+dept-company,				&
+doc-dept,				&
+doc-nbr,                   		&
+doc-name,				&
+ep-nbr,				        &
+doc-ep-pay-code,			&
+doc-ep-pay-sub-code,			&
+deficit-amt,				&
+advout-amt
+
+
+build $pb_obj/r138_csv   
+

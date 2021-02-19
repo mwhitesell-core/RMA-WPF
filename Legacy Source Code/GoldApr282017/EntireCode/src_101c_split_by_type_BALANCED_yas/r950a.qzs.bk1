@@ -1,0 +1,78 @@
+;doc: r950a.qzs
+;
+;program purpose : track negative adjustments of doctors 
+;		   for selected depts for current PED
+; 
+;  date       by whom   description
+;2010/aug/18  b.e.      original
+;
+;
+can clear
+set default
+set rep nolimit
+
+access f001-batch-control-file	&
+  link ("B" , batctrl-batch-nbr)				&
+  to   key-clm-type, key-clm-batch-nbr of f002-claims-mstr	&
+  link (nconvert(batctrl-batch-nbr[1:2]))			&
+  to   iconst-clinic-nbr-1-2 of  iconst-mstr-rec  opt           &
+  link (clmhdr-claim-id[3:3]) 					&
+  to   doc-nbr of f020-doctor-mstr 
+
+;choose batctrl-batch-nbr                                          &
+; parm range prompt "ENTER from batch nbr (22@) :            ;  "  &
+;          toprompt "ENTER  to  batch nbr (48@) :              "  1 time
+
+select f001-batch-control-file if				      &
+                 batctrl-batch-type = "A"		              &
+	  and    batctrl-batch-nbr[1:2] <>  "98"			&
+	  and    batctrl-date-period-end = "20100824"
+
+select f002-claims-mstr					 	     &
+  if         clmdtl-oma-cd = '0000'			;&       ; pick header rec's ONLY
+;	and  clmhdr-tot-claim-ar-oma < 0		
+select f020-doctor-mstr						&
+	  if     (   	(    clmhdr-doc-dept = 21 		&
+		        )					&
+	            and (   batctrl-batch-nbr[1:2] = "22"	&
+		         or batctrl-batch-nbr[1:2] = "42"	&
+		        )					&
+		 )						&
+             or  doc-rma-expense-percent-reg  <> 0		&
+	     or  doc-rma-expense-percent-misc <> 0	
+
+;INORE FOR TESTING ONLY 
+;select if  batctrl-date-period-end = ascii(iconst-date-period-end,8)	&
+;	and batctrl-batch-nbr = clmhdr-orig-batch-nbr
+
+
+def x-doc-name char*27 = pack(doc-name +" "+ doc-inits)
+
+def x-doc-nbr char*3  = clmhdr-claim-id[3:3]
+
+set subfile name  r950a  keep
+
+report summary							&
+;	iconst-date-period-end					&
+	batctrl-date-period-end					&
+        iconst-clinic-nbr-1-2  					&
+	iconst-clinic-nbr					&
+        iconst-clinic-name                                      &
+        clmhdr-doc-dept						&
+        x-doc-nbr 						&
+	x-doc-name						&
+	clmhdr-date-sys						&
+	clmhdr-reference					&
+	key-clm-batch-nbr					&
+	key-clm-claim-nbr                                       &
+        clmhdr-adj-cd-sub-type                                  &
+        clmhdr-batch-type					&
+	clmhdr-adj-cd						&
+	clmhdr-adj-cd-sub-type					&
+	batctrl-batch-type					&
+	batctrl-adj-cd						&
+	batctrl-adj-cd-sub-type   &
+	doc-rma-expense-percent-reg   &
+	doc-rma-expense-percent-misc 
+
+build $obj/r950a

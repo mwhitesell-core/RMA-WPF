@@ -1,0 +1,75 @@
+; 2016/Apr/19 MC	in web10, fix doctor 59P - 021392 for oma code from G538A to G373A
+;			there are 516 visits each oma code should be 6.75 instead of 4.50 
+
+can clear
+set process nolimit
+set lock record update
+
+request update_f002_suspend_hdr_dtl
+
+access f002-suspend-dtl                                 &
+  link clmdtl-doc-ohip-nbr, clmdtl-accounting-nbr       &
+    to clmhdr-doc-ohip-nbr, clmhdr-accounting-nbr       &
+    of f002-suspend-hdr
+
+choose        clmdtl-doc-ohip-nbr   021392       
+
+;select if     clmdtl-sv-date = "????????"
+
+select if     clmdtl-oma-cd = "G538"
+
+sorted on clmhdr-doc-ohip-nbr  &
+       on clmhdr-accounting-nbr 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; set variable to track each sum of detail records INCREASE in dollar amount
+;temp x-dtl-fee-oma  zoned*7
+;item x-dtl-fee-oma  = x-dtl-fee-oma  + 320 reset at clmhdr-accounting-nbr
+;temp x-dtl-fee-ohip zoned*7
+;item x-dtl-fee-ohip = x-dtl-fee-ohip + 320 reset at clmhdr-accounting-nbr
+
+;output f002-suspend-dtl update on errors report 
+;  item clmdtl-status          final  "U"
+;  item clmdtl-fee-oma         final  3515   
+;  item clmdtl-fee-ohip        final  3515   
+
+;output f002-suspend-hdr update at clmhdr-accounting-nbr on errors report
+;  item clmhdr-status            final  "U"        
+;  item CLMHDR-TOT-CLAIM-AR-OMA  final  CLMHDR-TOT-CLAIM-AR-OMA + x-dtl-fee-oma 
+;  item CLMHDR-TOT-CLAIM-AR-OHIP final  CLMHDR-TOT-CLAIM-AR-OHIP+ x-dtl-fee-ohip
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; update clmdtl-fee-oma and clmdtl-fee-ohip with 9.30 then update the header with this amount only one dtl for this code
+
+output f002-suspend-dtl update on errors report
+  item clmdtl-status          final  "U"
+  item clmdtl-oma-cd          final  "G373"
+  item clmdtl-fee-oma         final  675
+  item clmdtl-fee-ohip        final  675
+
+output f002-suspend-hdr update at clmhdr-accounting-nbr on errors report
+  item clmhdr-status            final  "U"
+  item CLMHDR-TOT-CLAIM-AR-OMA  final  clmdtl-fee-oma
+  item CLMHDR-TOT-CLAIM-AR-OHIP final  clmdtl-fee-ohip
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; update clmdtl-fee-oma and clmdtl-fee-ohip with 9.30 then update the header with this amount have more than ONE detail 
+
+;output f002-suspend-dtl update on errors report
+;  item clmdtl-status          final  "U"
+;  item clmdtl-oma-cd          final  "E083"
+;  item clmdtl-fee-oma         final  930
+;  item clmdtl-fee-ohip        final  930
+
+;output f002-suspend-hdr update at clmhdr-accounting-nbr on errors report
+;  item clmhdr-status            final  "U"
+;  item CLMHDR-TOT-CLAIM-AR-OMA  final  clmdtl-fee-oma
+;  item CLMHDR-TOT-CLAIM-AR-OHIP final  clmdtl-fee-ohip
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; update clmhdr status with "I"gnore if clmdtl-sv-date = "????????"                                                            
+
+;output f002-suspend-hdr update at clmhdr-accounting-nbr on errors report
+;  item clmhdr-status            final  "I"
+
+build $obj/update-suspend-hdr-dtl

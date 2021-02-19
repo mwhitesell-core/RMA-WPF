@@ -1,0 +1,146 @@
+;doc     : afp-peds.qts        
+;purpose : create report for AFP dept 3 and 7 pediatrics doctors
+;	   rep doc,$,nbr services 
+;who     : Coleen Fotheringham
+;
+; *************************************************************
+
+;Date		Who		Description
+;2003/05/09	Yasemin		Original
+
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access f002-claims-mstr                   &
+  link clmhdr-pat-ohip-id-or-chart        &
+    to key-pat-mstr of f010-pat-mstr opt  &
+  link (nconvert(clmhdr-claim-id[4:3]))   &
+    to doc-nbr of f020-doctor-mstr opt
+
+
+choose   key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr,  &
+                    key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+def x-doc cha*3 =clmhdr-claim-id[4:3]
+
+select f002-claims-mstr if                                                    &
+ ( (          clmhdr-doc-dept = 7                                             & 
+     or (     clmhdr-doc-dept = 3                                             &
+         and (   x-doc = "317" or x-doc = "340" or x-doc = "385"              &
+              or x-doc = "626" or x-doc = "909" or x-doc = "501"      )       &
+        )                                                                     &
+   )                                                                          &
+    and      clmhdr-agent-cd <> 1                                             &
+    and (   (clmhdr-batch-type  = 'C')                                        &
+         or (clmhdr-batch-type  = 'P' and clmhdr-adj-cd = 'M') 	              &
+         or (clmhdr-batch-type  = 'A' and clmhdr-adj-cd = 'B')                &
+        )                                                                     &
+  ) 
+
+
+def x-payment cha*3 = "HCP" if pat-prov-cd = "ON"    &
+                 else "RMB"
+
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile afp_peds      keep include               &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-loc                   of f002-claims-mstr,&
+clmhdr-agent-cd		     of f002-claims-mstr,&
+clmhdr-batch-type	     of f002-claims-mstr,&
+clmhdr-payroll               of f002-claims-mstr,&
+doc-name                     of f020-doctor-mstr,&
+x-clinic                                        ,&
+x-payment                                        
+
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *afp_peds                                                         &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr                                            
+
+select f002-claims-mstr if                                              &
+            clmdtl-sv-date     >= '20010401'                            &
+       and  clmdtl-sv-date     <= '20030331'                            &
+       and  (   x-clinic of afp_peds  <> "61"                           &
+             or x-clinic of afp_peds  <> "62"                           &
+             or x-clinic of afp_peds  <> "63"                           &
+             or x-clinic of afp_peds  <> "64"                           &
+             or x-clinic of afp_peds  <> "65"                           &
+             or x-clinic of afp_peds  <> "80"                           &
+             or x-clinic of afp_peds  <> "81")                          &
+       and  clmhdr-payroll     <> "B"                &; ignore clinic 85 ICU
+       and  clmdtl-oma-cd      <> "0000"             &; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"             &; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"             & ; no payments
+       and  (  	    (	clmdtl-adj-nbr     = 0            	        &   
+ 		    and clmhdr-batch-type of afp_peds     = 'C'         &
+		    )						        &
+              or    (   clmdtl-adj-nbr     = 1			        &
+	            and (clmhdr-batch-type of afp_peds     = 'P'  or	&
+			 clmhdr-batch-type of afp_peds     = 'A')	&
+		    )							&
+	    )
+	    
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]  
+
+def x-code cha*4 = "Y" if clmdtl-oma-cd = "MICM"    &
+                       or clmdtl-oma-cd = "MISJ"    &
+                       or clmdtl-oma-cd = "MISC"    &
+                       or clmdtl-oma-cd = "MICV"    &
+                       or clmdtl-oma-cd = "MISP"    &
+                       or clmdtl-oma-cd = "MICB"    &
+                       or clmdtl-oma-cd = "MIBR"    &
+                       or clmdtl-oma-cd = "MINH"    &
+                       or clmdtl-oma-cd = "MHSC"    &
+                       or clmdtl-oma-cd = "NHSC"    &
+                       or clmdtl-oma-cd = "MOHR"    &
+     else "N"
+
+sort on x-doc-nbr    
+
+temp x-2002 num*7
+item x-2002  = x-2002 + clmdtl-fee-ohip                                        &
+       if      (clmdtl-sv-date >= '20010401' and clmdtl-sv-date <= '20020331') &
+           and ( x-code    = "N"  )                                            &
+           and (clmhdr-agent-cd = 0  or clmhdr-agent-cd = 4)                   &
+      reset at x-doc-nbr 
+
+temp x-2003 num*7
+item x-2003  = x-2003 + clmdtl-fee-ohip                                        &
+       if      (clmdtl-sv-date >= '20020401' and clmdtl-sv-date <= '20030331') &
+           and ( x-code    = "N"  )                                            &
+           and (clmhdr-agent-cd = 0  or clmhdr-agent-cd = 4)                   &
+      reset at x-doc-nbr 
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile afp-pedsa  keep at x-doc-nbr include         &
+x-doc-nbr                                           ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+x-2002                                              ,&
+comma                                               ,&
+x-2003                                              ,&
+x-cr
+
+build $obj/afp_peds

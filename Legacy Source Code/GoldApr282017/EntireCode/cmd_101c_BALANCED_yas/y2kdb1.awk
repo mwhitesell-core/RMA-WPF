@@ -1,0 +1,428 @@
+found20 = index($0,"a-05-creation-date")
+found21 = index($0,"c-06-fund-available-date")
+found22 = index($0,"batctrl-date-batch-entered")
+found23 = index($0,"batctrl-date-period-end-yy")
+found24 = index($0,"batctrl-ar-yy-mm")
+found25 = index($0,"clmhdr-date-admit-yy")
+found26 = index($0,"clmhdr-date-cash-tape-payment")
+found27 = index($0,"clmhdr-period-end-yy")
+found28 = index($0,"clmhdr-date-sys")
+found29 = index($0,"clmhdr-submit-yy")
+found30 = index($0,"clmhdr-serv-date")
+found31 = index($0,"clmrec-hdr-date-claim")
+found32 = index($0,"clmrec-dtl-sv-date")
+found33 = index($0,"clmrec-hdr-date-claim-new")
+found34 = index($0,"clmrec-dtl-sv-date-new")
+found35 = index($0,"clmhdr-ref-date-yy")
+found36 = index($0,"clmhdr-ref-date2")
+found37 = index($0,"clmhdr-ref-date3")
+found38 = index($0,"clmhdr-ref-date4")
+found39 = index($0,"clmhdr-date-admit-yy")
+found40 = index($0,"clmhdr-date-cash-tape-payment")
+found41 = index($0,"clmhdr-period-end-yy")
+found42 = index($0,"clmhdr-date-sys")
+found43 = index($0,"clmhdr-submit-yy")
+found44 = index($0,"clmhdr-serv-date")
+found45 = index($0,"clmdtl-sv-yy")
+found46 = index($0,"clmdtl-date-period-end")
+found47 = index($0,"clmdtl-sv-yy")
+found48 = index($0,"clmdtl-date-period-end")
+found49 = index($0,"addr-birth-yy")
+found50 = index($0,"clmdtl-sv-yy")
+found51 = index($0,"clmdtl-date-period-end")
+found52 = index($0,"clmhdr-date-admit-yy")
+found53 = index($0,"clmhdr-date-cash-tape-payment")
+found54 = index($0,"clmhdr-period-end-yy")
+found55 = index($0,"clmhdr-date-sys")
+found56 = index($0,"clmhdr-wcb-accident-date")
+found57 = index($0,"new-pat-birth-date")
+found58 = index($0,"pat-yy")
+found59 = index($0,"pat-direct-yy")
+found60 = index($0,"pat-chart-yy")
+found61 = index($0,"pat-birth-date")
+found62 = index($0,"pat-birth-date-yy")
+found63 = index($0,"pat-date-last-maint")
+found64 = index($0,"pat-date-last-maint-yy")
+found65 = index($0,"pat-date-last-visit")
+found66 = index($0,"pat-date-last-visit-yy")
+found67 = index($0,"pat-date-last-admit")
+found68 = index($0,"pat-date-last-admit-yy")
+found69 = index($0,"pat-expiry-yy")
+found70 = index($0,"subscr-date-msg-nbr-eff-to")
+found71 = index($0,"subscr-date-msg-nbr-eff-to-yy")
+found72 = index($0,"subscr-date-last-statement")
+found73 = index($0,"subscr-date-last-statement-yy")
+found74 = index($0,"pat-date-last-elig-mailing")
+found75 = index($0,"pat-date-last-elig-maint")
+found76 = index($0,"pat-last-birth-date")
+found77 = index($0,"ws-pat-yy")
+found78 = index($0,"ws-pat-direct-yy")
+found79 = index($0,"ws-pat-chart-yy")
+found80 = index($0,"ws-pat-birth-date")
+found81 = index($0,"ws-pat-birth-date-yy")
+found82 = index($0,"ws-pat-date-last-maint")
+found83 = index($0,"ws-pat-date-last-maint-yy")
+found84 = index($0,"ws-pat-date-last-visit")
+found85 = index($0,"ws-pat-date-last-visit-yy")
+found86 = index($0,"ws-pat-date-last-admit")
+found87 = index($0,"ws-pat-date-last-admit-yy")
+found88 = index($0,"ws-pat-expiry-yy")
+found89 = index($0,"ws-subscr-dt-msg-no-eff-to")
+found90 = index($0,"ws-subscr-dt-msg-no-eff-to-yy")
+found91 = index($0,"ws-subscr-date-last-statement")
+found92 = index($0,"ws-subscr-date-last-stmnt-yy")
+found93 = index($0,"ws-pat-date-last-elig-mailing")
+found94 = index($0,"ws-pat-date-last-elig-maint")
+found95 = index($0,"ws-pat-last-birth-date")
+found96 = index($0,"acr-pat-yy")
+found97 = index($0,"acr-pat-direct-yy")
+found98 = index($0,"acr-pat-chart-yy")
+found99 = index($0,"acr-pat-birth-date")
+found100 = index($0,"acr-pat-birth-date-yy")
+found101 = index($0,"acr-pat-date-last-maint")
+found102 = index($0,"acr-pat-date-last-maint-yy")
+found103 = index($0,"acr-pat-date-last-visit")
+found104 = index($0,"acr-pat-date-last-visit-yy")
+found105 = index($0,"acr-pat-date-last-admit")
+found106 = index($0,"acr-pat-date-last-admit-yy")
+found107 = index($0,"acr-pat-expiry-yy")
+found108 = index($0,"od-subscr-dt-msg-no-eff-to")
+found109 = index($0,"acr-subscr-dt-msg-no-effto-yy")
+found110 = index($0,"acr-subscr-date-last-stmnt")
+found111 = index($0,"acr-subscr-dt-last-stmnt-yy")
+found112 = index($0,"acr-pat-dt-last-elig-mailing")
+found113 = index($0,"acr-pat-date-last-elig-maint")
+found114 = index($0,"acr-pat-last-birth-date")
+found115 = index($0,"chrt-pat-yy")
+found116 = index($0,"chrt-pat-direct-yy")
+found117 = index($0,"chrt-pat-chart-yy")
+found118 = index($0,"chrt-pat-birth-date")
+found119 = index($0,"chrt-pat-birth-date-yy")
+found120 = index($0,"chrt-pat-date-last-maint")
+found121 = index($0,"chrt-pat-date-last-maint-yy")
+found122 = index($0,"chrt-pat-date-last-visit")
+found123 = index($0,"chrt-pat-date-last-visit-yy")
+found124 = index($0,"chrt-pat-date-last-visit-mm")
+found125 = index($0,"chrt-pat-date-last-admit")
+found126 = index($0,"chrt-pat-date-last-admit-yy")
+found127 = index($0,"chrt-pat-expiry-yy")
+found128 = index($0,"od-subscr-dt-msg-no-eff-to")
+found129 = index($0,"chrt-subscr-dt-msg-no-effto-yy")
+found130 = index($0,"chrt-subscr-date-last-stmnt")
+found131 = index($0,"chrt-subscr-dt-last-stmnt-yy")
+found132 = index($0,"chrt-pat-dt-last-elig-mailing")
+found133 = index($0,"chrt-pat-date-last-elig-maint")
+found134 = index($0,"chrt-pat-last-birth-date")
+found135 = index($0,"hc-pat-yy")
+found136 = index($0,"hc-pat-direct-yy")
+found137 = index($0,"hc-pat-chart-yy")
+found138 = index($0,"hc-pat-birth-date")
+found139 = index($0,"hc-pat-birth-date-yy")
+found140 = index($0,"hc-pat-date-last-maint")
+found141 = index($0,"hc-pat-date-last-maint-yy")
+found142 = index($0,"hc-pat-date-last-visit")
+found143 = index($0,"hc-pat-date-last-visit-yy")
+found144 = index($0,"hc-pat-date-last-admit")
+found145 = index($0,"hc-pat-date-last-admit-yy")
+found146 = index($0,"hc-pat-expiry-yy")
+found147 = index($0,"hc-subscr-dt-msg-no-eff-to")
+found148 = index($0,"hc-subscr-dt-msg-no-eff-to-yy")
+found149 = index($0,"hc-subscr-date-last-statement")
+found150 = index($0,"hc-subscr-date-last-stmnt-yy")
+found151 = index($0,"hc-pat-date-last-elig-mailing")
+found152 = index($0,"hc-pat-date-last-elig-maint")
+found153 = index($0,"hc-pat-last-birth-date")
+found154 = index($0,"new-pat-yy")
+found155 = index($0,"new-pat-direct-yy")
+found156 = index($0,"new-pat-chart-yy")
+found157 = index($0,"new-pat-birth-date")
+found158 = index($0,"new-pat-birth-date-yy")
+found159 = index($0,"new-pat-date-last-maint")
+found160 = index($0,"new-pat-date-last-maint-yy")
+found161 = index($0,"new-pat-date-last-visit")
+found162 = index($0,"new-pat-date-last-visit-yy")
+found163 = index($0,"new-pat-date-last-admit")
+found164 = index($0,"new-pat-date-last-admit-yy")
+found165 = index($0,"new-pat-expiry-yy")
+found166 = index($0,"subscr-date-msg-nbr-eff-to")
+found167 = index($0,"subscr-date-msg-nbr-eff-to-yy")
+found168 = index($0,"subscr-date-last-statement")
+found169 = index($0,"subscr-date-last-statement-yy")
+found170 = index($0,"new-pat-date-last-elig-mailing")
+found171 = index($0,"new-pat-date-last-elig-maint")
+found172 = index($0,"new-pat-last-birth-date")
+found173 = index($0,"od-pat-yy")
+found174 = index($0,"od-pat-direct-yy")
+found175 = index($0,"od-pat-chart-yy")
+found176 = index($0,"od-pat-birth-date")
+found177 = index($0,"od-pat-birth-date-yy")
+found178 = index($0,"od-pat-date-last-maint")
+found179 = index($0,"od-pat-date-last-maint-yy")
+found180 = index($0,"od-pat-date-last-visit")
+found181 = index($0,"od-pat-date-last-visit-yy")
+found182 = index($0,"od-pat-date-last-admit")
+found183 = index($0,"od-pat-date-last-admit-yy")
+found184 = index($0,"od-pat-expiry-yy")
+found185 = index($0,"od-subscr-dt-msg-no-eff-to")
+found186 = index($0,"od-subscr-dt-msg-no-eff-to-yy")
+found187 = index($0,"od-subscr-date-last-statement")
+found188 = index($0,"od-subscr-date-last-stmnt-yy")
+found189 = index($0,"od-pat-date-last-elig-mailing")
+found190 = index($0,"od-pat-date-last-elig-maint")
+found191 = index($0,"od-pat-last-birth-date")
+found192 = index($0,"tp-pat-birth-date")
+found193 = index($0,"tp-pat-birth-yy")
+found194 = index($0,"tp-pat-id-no-yy")
+found195 = index($0,"doc-date-fac-start-yy")
+found196 = index($0,"doc-date-fac-term-yy")
+found197 = index($0,"doc-date-fac-yy")
+found198 = index($0,"doc-ep-date-deposit")
+found199 = index($0,"doc-ep-ped")
+found200 = index($0,"fee-date-yy")
+found201 = index($0,"chq-reg-pay-date")
+found202 = index($0,"pat-last-birth-date")
+found203 = index($0,"const-yy")
+found204 = index($0,"const-yy-curr")
+found205 = index($0,"const-yy-prev")
+found206 = index($0,"iconst-date-period-end-yy")
+found207 = index($0,"wf-service-date-yy")
+found208 = index($0,"wf-claim-date-sys-yy")
+found209 = index($0,"parm-date-period-end-yy")
+found210 = index($0,"parm-ped-yy")
+found211 = index($0,"wk-period-end-yy")
+found212 = index($0,"wk-ser-yy")
+found213 = index($0,"wk-period-end-yy")
+found214 = index($0,"wk-ser-yy")
+found215 = index($0,"param-date-period-end-yy")
+found216 = index($0,"param-date-yy")
+found217 = index($0,"hdr-birth-date")
+found218 = index($0,"hdr-admit-yy")
+found219 = index($0,"hdr-wcb-accident-date")
+found220 = index($0,"sys-date-long")
+found221 = index($0,"sys-yy")
+found222 = index($0,"run-yy")
+found223 = index($0,"ohip-effective-yr")
+found224 = index($0,"ohip-termination-yr")
+found225 = index($0,"rat-1-payment-date-yy")
+found226 = index($0,"rat-5-service-date")
+found227 = index($0,"rat-7-trans-date")
+found228 = index($0,"rat-145-payment-date")
+found229 = index($0,"rat-145-service-date")
+found230 = index($0,"rat-67-trans-date")
+found231 = index($0,"rat-rmb-payment-date")
+found232 = index($0,"rat-rmb-service-date")
+found233 = index($0,"")
+found= found20
+	   + found21	\
+	   + found22	\
+	   + found23	\
+	   + found24	\
+	   + found25	\
+	   + found26	\
+	   + found27	\
+	   + found28	\
+	   + found29	\
+	   + found30	\
+	   + found31	\
+	   + found32	\
+	   + found33	\
+	   + found34	\
+	   + found35	\
+	   + found36	\
+	   + found37	\
+	   + found38	\
+	   + found39	\
+	   + found40	\
+	   + found41	\
+	   + found42	\
+	   + found43	\
+	   + found44	\
+	   + found45	\
+	   + found46	\
+	   + found47	\
+	   + found48	\
+	   + found49	\
+	   + found50	\
+	   + found51	\
+	   + found52	\
+	   + found53	\
+	   + found54	\
+	   + found55	\
+	   + found56	\
+	   + found57	\
+	   + found58	\
+	   + found59	\
+	   + found60	\
+	   + found61	\
+	   + found62	\
+	   + found63	\
+	   + found64	\
+	   + found65	\
+	   + found66	\
+	   + found67	\
+	   + found68	\
+	   + found69	\
+	   + found70	\
+	   + found71	\
+	   + found72	\
+	   + found73	\
+	   + found74	\
+	   + found75	\
+	   + found76	\
+	   + found77	\
+	   + found78	\
+	   + found79	\
+	   + found80	\
+	   + found81	\
+	   + found82	\
+	   + found83	\
+	   + found84	\
+	   + found85	\
+	   + found86	\
+	   + found87	\
+	   + found88	\
+	   + found89	\
+	   + found90	\
+	   + found91	\
+	   + found92	\
+	   + found93	\
+	   + found94	\
+	   + found95	\
+	   + found96	\
+	   + found97	\
+	   + found98	\
+	   + found99	\
+	   + found100	\
+	   + found101	\
+	   + found102	\
+	   + found103	\
+	   + found104	\
+	   + found105	\
+	   + found106	\
+	   + found107	\
+	   + found108	\
+	   + found109	\
+	   + found110	\
+	   + found111	\
+	   + found112	\
+	   + found113	\
+	   + found114	\
+	   + found115	\
+	   + found116	\
+	   + found117	\
+	   + found118	\
+	   + found119	\
+	   + found120	\
+	   + found121	\
+	   + found122	\
+	   + found123	\
+	   + found124	\
+	   + found125	\
+	   + found126	\
+	   + found127	\
+	   + found128	\
+	   + found129	\
+	   + found130	\
+	   + found131	\
+	   + found132	\
+	   + found133	\
+	   + found134	\
+	   + found135	\
+	   + found136	\
+	   + found137	\
+	   + found138	\
+	   + found139	\
+	   + found140	\
+	   + found141	\
+	   + found142	\
+	   + found143	\
+	   + found144	\
+	   + found145	\
+	   + found146	\
+	   + found147	\
+	   + found148	\
+	   + found149	\
+	   + found150	\
+	   + found151	\
+	   + found152	\
+	   + found153	\
+	   + found154	\
+	   + found155	\
+	   + found156	\
+	   + found157	\
+	   + found158	\
+	   + found159	\
+	   + found160	\
+	   + found161	\
+	   + found162	\
+	   + found163	\
+	   + found164	\
+	   + found165	\
+	   + found166	\
+	   + found167	\
+	   + found168	\
+	   + found169	\
+	   + found170	\
+	   + found171	\
+	   + found172	\
+	   + found173	\
+	   + found174	\
+	   + found175	\
+	   + found176	\
+	   + found177	\
+	   + found178	\
+	   + found179	\
+	   + found180	\
+	   + found181	\
+	   + found182	\
+	   + found183	\
+	   + found184	\
+	   + found185	\
+	   + found186	\
+	   + found187	\
+	   + found188	\
+	   + found189	\
+	   + found190	\
+	   + found191	\
+	   + found192	\
+	   + found193	\
+	   + found194	\
+	   + found195	\
+	   + found196	\
+	   + found197	\
+	   + found198	\
+	   + found199	\
+	   + found200	\
+	   + found201	\
+	   + found202	\
+	   + found203	\
+	   + found204	\
+	   + found205	\
+	   + found206	\
+	   + found207	\
+	   + found208	\
+	   + found209	\
+	   + found210	\
+	   + found211	\
+	   + found212	\
+	   + found213	\
+	   + found214	\
+	   + found215	\
+	   + found216	\
+	   + found217	\
+	   + found218	\
+	   + found219	\
+	   + found220	\
+	   + found221	\
+	   + found222	\
+	   + found223	\
+	   + found224	\
+	   + found225	\
+	   + found226	\
+	   + found227	\
+	   + found228	\
+	   + found229	\
+	   + found230	\
+	   + found231	\
+	   + found232	\
+	   + found233	\

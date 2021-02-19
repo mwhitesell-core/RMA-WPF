@@ -1,0 +1,165 @@
+Q U I Z   (7.33.E)
+Copyright 1996 COGNOS INCORPORATED
+Licensed PH-RUNTIME for customer: 5139390001 C.O.T.A UNIX
+
+> ; 2014/Sep/23 	MC	- check  primary doctor (u100_b.qzs)
+> ;			- to be run as last part of $cmd/verify_payroll_ok_to_run
+> ;			- user is asked to pass 2 parameters
+> 
+> cancel clear
+> set report nolimit
+> 
+> access f020-doctor-mstr                         &
+>         link doc-nbr                            &
+>           to  doc-nbr of f020-doctor-extra  optional
+> 
+> choose doc-ohip-nbr
+*W* Item (DOC-OHIP-NBR) is stored by the file system as a character type.
+Choose viaindex DOC-OHIP-NBR.
+> 
+> def payroll-flag char*1 = parm prompt 'Enter Payroll (A = 101c, C = solo): '
+> def term-date-cutoff date = parm prompt 'Enter terminate date cutoff: '
+> 
+> sorted on doc-ohip-nbr
+> 
+> sel if  	                                      &
+>  	(	doc-date-fac-term = 0 		      &
+>       	     or doc-date-fac-term > term-date-cutoff  &
+> 	)					      &
+>    and						      &
+>         (   (    (   (doc-dept = 4)                   &
+>                   or (doc-dept = 42)                  &
+>                   or (    (    doc-dept = 14          &
+>                             or doc-dept = 15          &
+>                           )                           &
+>                       and doc-afp-paym-group = 'H111' &
+>                      )                                &
+>                  )                                    &
+>               and payroll-flag = 'A'                  &
+>             )                                         &
+>          or (    (    doc-dept = 31                   &
+>                   and doc-afp-paym-group = 'H132'     &
+>                  )                                    &
+>              and payroll-flag = 'C'                   &
+>             )					      &
+>        )
+> 
+> set subfile name check_prim_doc keep
+> rep summ doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  &
+> term-date-cutoff payroll-flag
+> go
+
+
+Enter Payroll (A = 101c, C = solo): A
+
+Enter terminate date cutoff: 20140630
+
+Records selected:  316
+Records written:   316
+
+> 
+> 
+> access *check_prim_doc
+> 
+> sort on doc-ohip-nbr on doc-flag-primary
+> 
+> def doctor-count = 1
+> 
+> set subfile name check_prim_doc2 keep at doc-ohip-nbr
+> 
+> rep summ doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  &
+> term-date-cutoff payroll-flag doctor-count subt reset at doc-ohip-nbr
+> go
+
+Records selected:  316
+Records sorted:    316
+Records written:   294
+
+> 
+> ; select for multiple doctors
+> access *check_prim_doc2
+> 
+> sel if doctor-count <> 1
+> 
+> set subfile name check_prim_doc3a keep
+> 
+> rep summ doc-ohip-nbr doctor-count term-date-cutoff payroll-flag
+> 
+> go
+
+Records selected:  21
+Records written:   21
+
+> 
+> ;select unique doctor that have not assigned primary flag to 'Y'
+> access *check_prim_doc2
+> 
+> sel if doc-flag-primary <> 'Y'
+> 
+> set subfile name check_prim_doc3b keep
+> 
+> rep summ all
+> 
+> go
+
+Records selected:  13
+Records written:   13
+
+> 
+> access *check_prim_doc3a link doc-ohip-nbr to doc-ohip-nbr of f020-doctor-mstr	&
+>         link doc-nbr                            &
+>           to  doc-nbr of f020-doctor-extra  optional
+> 
+> 
+> sel if  	                                      &
+>  	(	doc-date-fac-term = 0 		      &
+>       	     or doc-date-fac-term > term-date-cutoff  &
+> 	)					      &
+>    and						      &
+>         (   (    (   (doc-dept = 4)                   &
+>                   or (doc-dept = 42)                  &
+>                   or (    (    doc-dept = 14          &
+>                             or doc-dept = 15          &
+>                           )                           &
+>                       and doc-afp-paym-group = 'H111' &
+>                      )                                &
+>                  )                                    &
+>               and payroll-flag = 'A'                  &
+>             )                                         &
+>          or (    (    doc-dept = 31                   &
+>                   and doc-afp-paym-group = 'H132'     &
+>                  )                                    &
+>              and payroll-flag = 'C'                   &
+>             )					      &
+>        )
+> 
+> set subfile name check_prim_doc3b append
+> 
+> rep summ doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term  &
+> term-date-cutoff payroll-flag doctor-count
+> 
+> go
+
+Records selected:  43
+Records written:   43
+
+> 
+> access *check_prim_doc3b
+> set rep dev disc name check_prim_doc3
+> set rep page width 142 length 60
+> set formfeed
+> 
+> sort on doc-ohip-nbr
+> 
+> rep doc-ohip-nbr doc-nbr doc-dept doc-afp-paym-group doc-flag-primary doc-date-fac-start doc-date-fac-term
+> 
+> footing at doc-ohip-nbr  skip 2
+> go
+
+Records selected:  56
+Records sorted:    56
+Lines printed:     64
+Pages printed:     2
+
+> 
+> exit

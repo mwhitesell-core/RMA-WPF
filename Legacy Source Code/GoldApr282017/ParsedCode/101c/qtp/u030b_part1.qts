@@ -1,0 +1,227 @@
+;#> PROGRAM-ID.     U030B.QTS
+;
+; ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : SECOND PASS OF U030
+;                    THIS IS THE MAIN PROGRAM OF THE ORIGINAL
+;                       U030.CB
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/20 M.C.         - ORIGINAL (SMS 138)
+;     91/JUL/27 M.C.        - PDR 511
+;                      - ADD TWO NEW REQUESTS IN THE BEGINNING
+;                          EDIT AND SORT RECORDS
+;     91/OCT/01 M.C.             - PDR 520
+;                      - ADD TWO NEW REQUESTS BETWEEN REQUESTS
+;                          'CREATE_ISAM_DTL' AND 'MATCH_DTL'
+;                            - TRY TO MATCH RAT DTL WITH EQUIVALENCE
+;                          TABLE FOR THE DTL THAT DO NOT MATCH TO
+;                         CLAIM MSTR
+;                           - ADD NEW FIELD 'PART-DTL-EQUIV-FLAG' IN
+;                         PART-PAID-DTL RECORD
+;                         - SAVE 'X-BAL-FLAG' IN U030_NO_ADJ SUBFILE.
+;     91/DEC/16 M.C.         - ADD SEL IF CONDITION IN MATCH_DTL REQUEST
+;                            - ADD SELECTION AND STORE TWO MORE FIELDS
+;                        IN THE SUBFILE IN SORT_BEFORE_ADJ REQUEST
+;                            - COMMENT THE LINKAGE TO F002-CLMHDR AND
+;                         SOME DEFINE STATEMENTS AND SELECTION
+;                           CONDITION IN  SORT_BEFORE_ADJ REQUEST
+;                        - COMMENT THE LINKAGE TO F002-CLMDTL AND
+;                         SOME DEFINE STATEMENTS AND SELECTION
+;                           CONDITION IN CREATE_B_ADJUSTMENT REQUEST
+;                             - IN CREATE_B_ADJUSTMENT REQUEST, CREATE
+;                         A NEW SUBFILE TO STORE ALL ADJUSTED
+;                            BATCHES
+;                      - ADD A NEW REQUEST TO UPDATE THE ADJUSTED
+;                               BATCHES INTO THE INTERMEDIATE FILE
+;                             PART_ADJ_BATCH
+;     92/MAR/20 M.C.            - PDR 550
+;                              - AGENT 4 CLAIMS GOT PROCESSED IN TAPE,
+;                          MODIFY REQUEST 'EXTRACT-CLAIMS', TO
+;                            UPDATE CLAIMS MSTR AND/OR CREATE
+;                               PART-PAID-HDR FOR AGENT 4 AS WELL
+;
+;     92/AUG/17 M.C.        - TAKE OUT THE SELECTION CRITERIA  IN
+;                            MATCH_DTL REQUEST
+;     93/FEB/19 M.C.         - PDR 560 - WHEN CREATING THE ADJUSTMENT
+;                         USE THE DOC-DEPT INSTEAD OF THE DEPT OF
+;                        THE ORIGINAL CLAIM DEPT
+;
+;     93/AUG/10 M.C.          - PDR 565 - SET THE CLMDTL-LINE-NO
+;
+;     93/SEP/02 M.C.         - SMS 143 - EXTEND THE FILE DEFINITION
+;                                     IN PART-PAID-HDR AND
+;                                   PART-PAID-DTL FILE TO STORE
+;                                    THE NECESSARY INFO FOR RU030B
+;                                  REPORT
+;     94/JAN/06 M.C.          - SMS 144 - INCLUDE THE LOGIC FOR SOCIAL
+;                                   CONTRACT ADJUSTMENT (IE. HOLD
+;                                  BACK OR OVERPAY)
+;     94/FEB/01 M.C.        - COMMENT OUT THE REQUEST 'CREATE_DUMMY_
+;                         SERV_CODE', DO NOT CREATE AUTO ADJUSTMENT
+;                              FOR DUMMY CODE Y999A, REPORT ON THE NEW
+;                        REPORT FOR MANUALLY ADJUSTMENT BY USER
+;     94/FEB/21 M.C.            - SUBTOTAL THE OUTSTANDING BALANCE BY CLAIM
+;                              AND UPDATE TO THE CLAIM HEADER IN A NEW
+;                        SEPARATE REQUEST
+;     94/AUG/03 M.C.         - SMS 146 - CHECK THE APPROPRIATE SOCIAL
+;                                    CONTRACT REDUCTION FACTOR BASED
+;                                        ON THE SERVICE DATE
+;     95/APR/25 M.C.             - PDR 615 - PRESET THE AGENT  OF AUTOMATIC
+;                                         ADJUSTMENT CLAIM TO BE THE SAME
+;                                        AS THE ORIGINAL CLAIM
+;                                - PRESET THE BATCTRL AGENT OF THE
+;                                        AUTOMATIC ADJUSTMENT TO BE THE
+;                                         SAME AS THE LAST CLAIM IN THE
+;                                  BATCH
+;     96/MAR/11 M.C.           - PDR 637 - UPDATE OHIP CLAIM NBR INTO
+;                                     F002-CLAIMS-EXTRA IN PROCEDURE
+;                                         HOLD_CLAIM_STATUS
+;
+;     96/OCT/08 M.C.      - MODIFY REQUEST 'EXTRACT_CLAIMS' TO ADD
+;                         CLMHDR-AGENT-CD IN U030_PAID_AMT SUBFILE
+;                             - MODIFY REQUEST 'UPDATE_CASH_MSTR' TO USE
+;                               CLMHDR-AGENT-CD TO LINK F051-DOC-CASH-MSTR
+;     97/APR/14 YAS.        - PDR 656 - NEW CLINIC 82 - NO AUTO ADJUST
+;     97/AUG/06 YAS.          - PDR 664 - NEW CLINIC 83 - NO AUTO ADJUST
+;     97/DEC/03 M.C.          - PDR 663 - ADD TO LINK TO F099 FILE
+;                             SUBSTITUTE RAT-145-GROUP-NBR WITH X-GROUP-NBR
+;                          FROM REQUEST EXTRACT_CLAIMS AND ONWARD
+;     98/MAR/25 YAS.            - PDR 668 - ADD CLINIC 80
+;     98/Sep/10 B.E.	- for clinic 60-65, if ohip no-payment reason code
+;			  is 80 and autoajustment created should affect
+;			  only techical portion of claim.
+;    1999/May/21 S.B.     - Added the use file
+;                           def_batctrl_batch_status.def to 
+;                           prevent hardcoding of batctrl-batch-status.
+;    1999/May/31 S.B.     - Added the use file
+;                           def_clmhdr_status_ohip.def to 
+;                           prevent hard coding of clmhdr-status-ohip.
+;    1999/oct/20 B.E.	  - y2k format of date assignments changed from 6 to 8
+;    1999/dec/20 M.C.	  - create P key when creating f002 hdr/dtl adjustment
+;    2000/feb/14 M.C.	  - correct the formula when creating p key dtl record 
+;    2001/feb/06 M.C.	  - Yas requests to update MOH's claim number with all
+;			    claims.  Modify request extract_claims and 
+;			    hold_claim_status
+; 2001/nov/16 B.E.   - transfer last 'request' from u030b to u030bb to 
+;                      reduce complexity/size of u030b
+; 2002/sep/05 yas.   - add new linic 95 (AA2K)
+; 2002/sep/09 M.C.   - undo the transfer done on 2001/nov/16 by Brad
+;		     - transfer back the first 'request'from u030bb to u030b for
+;		       updating amount in clmhdr
+;		     - u030b_special2.qts has already included this logic 
+;                       of updating clmhdr amount.  
+;                      If u030b_special1/2.qts are run to replace u030b.qts,
+;		       currently update clmhdr amount will be double.
+;jun/02/04    yas   - add new clinics AA5V AA5W AA5X AA5Y 6317
+;                    
+; 2003/oct/22 M.C.  - Mary Ann/Yasemin requested not to automatically adjust
+;		      if department = 26 and reason code = D7 or 35
+; 2003/nov/04 M.C.  - Mary Ann/Yasemin requested not to automatically adjust
+;		      if department = 26 only           
+; 2003/nov/12 M.C.  - comment out the clinics when creating u030_auto_adj or
+;		      u030_no_adj subfiles, they are redundant codes, they 
+;		      can determine based on the values defined for each limit
+;		      for each clinic in the constants mstr
+; 2003/dec/12 A.A.  - alpha doctor nbr
+; 2004/aug/10 M.C.  - allow first 3 character to be alpha numeric
+;			when pattern matching against rat-145-account-nbr
+; 2004/nov/25 M.C.  - check to make sure 3 digit doc nbr match with their
+;		      own 6 digit ohip nbr; otherwise, it considers as error
+;		    - add f020 to the access statement
+; 2006/apr/04 M.C.  - change the sort on explan cd in descending order 
+;		      in the last request  
+; 2010/Apr/07 MC1   - use set lock record update
+
+can clear
+set default
+set process nolimit
+; 2010/04/07 - MC1
+;set lock file update
+set lock record update
+; 2010/04/07 - end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request edit_records on calculation errors report on edit errors report
+                              ;Edit the account nbrs, make sure they
+                          ;are 8 digits.  If invalid, put them
+                            ;into the unmatch subfile; otherwise
+                            ;put into a good subfile
+
+access u030-tape-145-file                                       &
+  link  'B', 							&
+;!             nconvert(rat-145-group-nbr[1:2] 			&
+             rat-145-group-nbr[1:2] 				&
+;!	   + '0' 						&
+	   + rat-145-account-nbr[1:6] , 			&
+             nconvert(rat-145-account-nbr[7:2]) , 		&
+        '00000', 						&
+	'0'       						&
+   to key-clm-type, 						&
+      key-clm-batch-nbr, 					&
+      key-clm-claim-nbr,      					&
+      key-clm-serv-code, 					&
+      key-clm-adj-nbr of f002-claims-mstr opt 			&
+; 2004/11/25 - MC
+   link rat-145-account-nbr[1:3]				&
+    to  doc-nbr of f020-doctor-mstr opt				&
+; 2004/11/25 - end
+  link rat-145-account-nbr 					&
+    to accounting-nbr of f099-group-claim-mstr opt
+
+def x-group-nbr char*2 						&
+      = rat-145-group-nbr[1:2]     				&
+       	     if record f002-claims-mstr exists       		&
+; 2004/06/07 - MC - alpha doc nbr
+;   else ascii(claim-id of f099-group-claim-mstr,11)[1:2] 	&
+   else claim-id of f099-group-claim-mstr[1:2] 			&
+; 2004/06/07 - end
+	     if record f099-group-claim-mstr exists
+
+define good-rec char*1 = 'Y'                      &
+; 2004/08/10 - MC
+;       if matchpattern(rat-145-account-nbr,'########') &
+       if matchpattern(rat-145-account-nbr,'???#####') &
+; 2004/08/10 - end
+; 2004/11/25 - MC
+	and  doc-ohip-nbr = rat-145-doc-nbr		&
+; 2004/11/25 - end
+       else 'N'
+
+define x-type char*1 = 'H'
+define x-oma-found char*1  = ' '
+define x-tech-amt int*7 signed = 0
+define x-prof-amt int*7 signed = 0
+
+;SUBFILE U030_GOOD_145_REC KEEP IF GOOD-REC = 'Y' &
+subfile u030_good_145_rec      if good-rec = 'Y' &
+;    INCLUDE U030-TAPE-145-FILE
+      include u030-tape-145-file, x-group-nbr
+
+subfile u030_unmatch keep if good-rec = 'N' &
+;   INCLUDE U030-TAPE-145-FILE, X-TYPE, X-OMA-FOUND, &
+      include u030-tape-145-file, x-group-nbr, x-type, x-oma-found, &
+         x-tech-amt, x-prof-amt
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request sort_good_records on calculation errors report on edit errors report
+                                ; sort the record by account nbr from
+                           ; food subfile
+
+access *u030_good_145_rec
+
+;SORT ON RAT-145-ACCOUNT-NBR ON RAT-145-EXPLAN-CD
+
+; 2006/04/04 - MC
+;sort on x-group-nbr on rat-145-account-nbr on rat-145-explan-cd
+sort on x-group-nbr on rat-145-account-nbr on rat-145-explan-cd d
+; 2006/04/04 - end
+
+
+subfile u030_sort_145_file keep include u030_good_145_rec
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+build $pb_obj/u030b_part1

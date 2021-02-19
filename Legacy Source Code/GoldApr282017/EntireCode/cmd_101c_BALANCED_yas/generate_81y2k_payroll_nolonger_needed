@@ -1,0 +1,166 @@
+#!/bin/ksh
+# file: generate_81y2k_payroll
+# 01/feb/15 B.E. - original
+# 01/apr/25 B.E. - new runs u933a_part2 
+# 01/jun/06 B.E. - u119 changed to u119_icu
+
+clear
+echo  Running  \'generate_81y2k_payroll\'
+echo
+echo Note: "run_81y2k_reports" must have already been run in normal Production Environment
+
+echo
+# ensure running in correct environment
+if [ 1 = 2 ]
+#if [ `pwd` != /alpha/rmabill/rmabill81y2k/production ]
+then
+  echo "ERROR - you are in the wrong location to run this macro"
+else
+
+echo
+echo
+echo  Starting run ..... `date "+%T"`
+echo 
+
+# remove 'appended to' subfile so that reruns start with empty file
+rm f119.sf*  1>/dev/null 2>&1
+
+echo "--- fix_sequence_nbrs/u105/u105a --- zero mth values/106 delete deficit"
+
+qtp << QTP_EXIT
+use $src/fix_seq_nbrs nolist
+cancel clear
+set default
+execute $obj/u105
+execute $obj/u105a
+execute $obj/u106
+QTP_EXIT
+
+echo "Running u112/u113 - update f112/f110/u933a_part2"
+echo
+qtp << QTP_EXIT2
+exec $obj/u112.qtc
+exec $obj/u113.qtc
+exec $obj/u933a_part2.qtc
+4.4
+1.30
+QTP_EXIT2
+
+echo "Running quiz r934b ..."
+echo " "
+quiz auto=$obj/r934b.qzu
+
+##lp -n 2 r934b.txt
+
+echo "Running quiz r934a ..."
+echo " "
+quiz auto=$obj/r934a.qzu
+
+##lp -n 2 r934a.txt
+
+echo "Running u933b - upate f110 ..."
+echo " "
+qtp auto=$obj/u933b.qtc
+
+echo "Running u933c - update f119 ..."
+echo " "
+qtp auto=$obj/u933c.qtc
+
+echo "Running u117/8/9"
+echo
+qtp << QTP_EXIT3
+exec $obj/u117.qtc
+cancel clear
+set default
+exec $obj/u118_icu.qtc
+cancel clear
+set default
+exec $obj/u119_icu.qtc
+cancel clear
+set default
+exec $obj/u119b.qtc
+set default
+execute $obj/u121
+!ls -l *f119*
+cancel clear
+set default
+execute $obj/u122
+QTP_EXIT3
+
+echo "--- cobol program r123 ---"
+$cmd/r123
+rm r123*_${1}.txt 1>/dev/null 2>&1
+mv r123a r123a_${1}.txt
+mv r123b r123b_${1}.txt
+mv r123c r123c_${1}.txt
+echo "--- PH program r123d ---"
+quiz auto=$obj/r123d1.qzc
+mv r123d.txt r123d_${1}.txt
+
+echo "--- generate_r120 ---"
+$cmd/generate_r120 $1
+quiz auto=$obj/r120b.qzc
+
+rm r123a.sf*
+rm r124b.txt
+
+echo "---   r124a_icu / r124b_icu  ---"
+quiz << QUIZ_EXIT
+execute $obj/r124a_icu
+execute $obj/r124b_icu
+QUIZ_EXIT
+
+
+# KEEP BACKUP OF SUBFILE IN CASE STATEMENTS NEED TO BE RE-GENERATED
+
+rm r124a_${1}.sf 1>/dev/null 2>&1
+mv r124a.sf r124a_81_${1}.sf
+rm r124a_${1}.sfd 1>/dev/null 2>&1
+mv r124a.sfd r124a_81_${1}.sfd
+rm r124b_${1}.txt 1>/dev/null 2>&1
+mv r124b.txt r124b_81_${1}.txt
+
+echo "--- u126 and u127 ---"
+qtp << QTP_EXIT
+set default
+execute $obj/u126
+execute $obj/u127
+QTP_EXIT
+
+echo "--- r125 debugu114 debugu116 dumpf119ytd check94 ---"
+rm r125.txt 1>/dev/null 2>&1
+quiz << QUIZ_EXIT
+execute $obj/r125
+;execute $obj/dumpf119
+execute $obj/dumpf119ytd
+QUIZ_EXIT
+
+rm dumpf119_${1}.txt 1>/dev/null 2>&1
+mv dumpf119.txt dumpf119_${1}.txt
+rm dumpf119ytd_${1}.txt 1>/dev/null 2>&1
+mv dumpf119ytd.txt dumpf119ytd_${1}.txt
+
+rm u110_${1}.sf* 1>/dev/null 2>&1
+mv u110.sf  u110_${1}.sf
+mv u110.sfd u110_${1}.sfd
+
+rm f119_${1}.sf* 1>/dev/null 2>&1
+mv f119.sf  f119_${1}.sf
+mv f119.sfd f119_${1}.sfd
+
+lp r120.txt
+lp r120b.txt
+#lp r125.txt
+#lp r111b_${1}.txt
+lp r123d_${1}.txt
+lp r123ef
+
+echo
+echo "If all reports balance then run the MONTH END TAPE backup ..."
+echo
+#$cmd/backup_earnings_monthend ${1}
+#echo
+#echo
+
+echo  Finished Time `date "+%T"`
+fi

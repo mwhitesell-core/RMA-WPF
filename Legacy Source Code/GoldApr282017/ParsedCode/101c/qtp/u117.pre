@@ -1,0 +1,127 @@
+;-------------------------------------------------------------------
+;CORE SOFTWARE CORP. (R) 32-bit PowerHouse Preprocessor for 80x86
+;CORE Migration PREP Version 4.1.3.
+;Copyright (C) CORE SOFTWARE CORP. 1997-1999. Patent Pending.
+;All rights reserved.
+;-------------------------------------------------------------------
+;
+BEGINMODULE U117.QTS
+COMMENT "#> PROGRAM         U117.QTS"
+COMMENT "((C)) Dyad Technologies"
+COMMENT "PURPOSE: SUB-PROCESS WITHIN  EARNINGS GENERATION  PROCESS."
+COMMENT "CALCULATE any 'percentage' based 'deduction' type transaction"
+COMMENT "such as'TAX' for all pay codes"
+COMMENT "All percentage based deductions are applied against the "
+COMMENT "Potential Payment amount ('PAYPOT')"
+COMMENT "MODIFICATION HISTORY"
+COMMENT "DATE    SAF #  WHO      DESCRIPTION"
+COMMENT "93/JAN/01  ____   B.E.     - original"
+COMMENT "93/MAY/20  ____   B.E.     - optimize, removed SELECT, round calc"
+COMMENT "93/JUN/08  ____   B.E.     - round using ROUND function"
+COMMENT "1999/Feb/18         S.B.     - Checked for Y2K."
+COMMENT "1999/June/01  S.B.     - Added the use file"
+COMMENT "def_compensation_status.def to "
+COMMENT "prevent hard coding of compensation-status."
+COMMENT "2001/may/22 B.E. subfile f119 made permanent for icu payroll"
+COMMENT "2001/may/23 B.E. gross amount of TAX was original the total dollars taxed"
+COMMENT "which was a figure that was not used. Using this amount"
+COMMENT "also increased the gross amount of the TOTDED transaction"
+COMMENT "and this made the gross amt of the PAYEFT transaction"
+COMMENT "be lower than the net amt since the gross amount was "
+COMMENT "calculated as TOTBIL - TOTDED. "
+COMMENT "This gross amount now set equal to net amount."
+COMMENT "2001/nov/09 B.E. - modified this program to not process specifically 'TAX'"
+COMMENT "deductions but all 'percentage' based 'deductions'."
+COMMENT "2001/nov/27 B.E. - the nov/09 changed restricted the copying of 'fixed"
+COMMENT "amount' deductions from being copied into the f119.sf"
+COMMENT "and therefore there never appeared in f119-ytd so"
+COMMENT "changed this program to select them but only"
+COMMENT "process them into the subfile and be ignored in all"
+COMMENT "other updates"
+COMMENT "- the method of determining the amount of the deduction "
+COMMENT "is determined by the 'F' lat or 'P'ercentage factor"
+COMMENT "of deduction "
+COMMENT "2003/dec/24    - alpha doctor nbr"
+COMMENT "2006/may/10 b.e.      - $1M payroll changes to size of calculated fields"
+COMMENT "2016/Sep/13 MC1  - Helena requested to not allow negative TAX calculation"
+CANCEL CLEAR
+RUN U117
+SET DEFAULT
+SET PROCESS NOLIMIT
+GLOBAL TEMP W-CURRENT-EP-NBR NUMERIC
+GLOBAL TEMP W-CURRENT-EP-NBR-MINUS1 NUMERIC
+GLOBAL TEMP PAYPOT-SEQ ZONED*2 UNSIGNED
+GLOBAL TEMP PAYPOT-TYPE CHAR*1
+GLOBAL TEMP PAYPOT-GROUP CHAR*1
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS"
+REQUEST U117_CONST_MSTR_GET_EP_NBR ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6
+CHOOSE CONST-REC-NBR 6
+ITEM W-CURRENT-EP-NBR FINAL CURRENT-EP-NBR
+ITEM W-CURRENT-EP-NBR-MINUS1 FINAL CURRENT-EP-NBR - 1
+COMMENT "DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'"
+COMMENT "FOR THE TRANSACTIONS BEING CREATED IN THIS RUN"
+REQUEST U117A_GET_PAYPOT ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS F190-COMP-CODES
+CHOOSE COMP-CODE "PAYPOT"
+ITEM PAYPOT-SEQ = PROCESS-SEQ
+ITEM PAYPOT-TYPE = COMP-TYPE
+COMMENT "-------------------------------------------------------------------------------"
+COMMENT "PAY CODE 0/1/2/3/4"
+REQUEST U117_CALC_PERCENTAGE_DEDUCTIONS ON EDIT ERRORS REPORT ON CALCULATION ERRORS REPORT
+ACCESS CONSTANTS-MSTR-REC-6 LINK CURRENT-EP-NBR VIAINDEX COMPENSATION-KEY2 TO EP-NBR OF F110-COMPENSATION LINK COMP-CODE OF F110-COMPENSATION TO COMP-CODE OF F190-COMP-CODES OPT LINK DOC-NBR OF F110-COMPENSATION, EP-NBR OF F110-COMPENSATION, PAYPOT-SEQ, "PAYPOT" TO DOC-NBR, EP-NBR, PROCESS-SEQ, COMP-CODE OF F110-COMPENSATION ALIAS F110-PAYPOT OPTIONAL
+CHOOSE CONST-REC-NBR 6
+COMMENT "('flat' deductions have a factor = 1.0 - percentage deductions are < 1.0000)"
+COMMENT "select ALL deductions (B.E. 2001/nov/27"
+COMMENT "Percentage vs Flat "
+DEFINE W-DEDUCTION-TYPE CHAR*1 = "P" IF FACTOR OF F110-COMPENSATION < 10000 ELSE "F"
+SELECT IF COMP-TYPE OF F190-COMP-CODES = "D"
+COMMENT "select  if (    comp-type of f190-comp-codes   =   D  &"
+COMMENT "and factor    of f110-compensation < 10000 &"
+COMMENT ")"
+COMMENT "if 'P ercentage based deduction take percentage of Potential Pay, otherwise"
+COMMENT "if 'F'lat based deduction use amount on deduction transaction "
+COMMENT "temp amt-net-deduc integer*8 signed size 4    "
+TEMP AMT-NET-DEDUC INTEGER*10 SIGNED
+COMMENT "MC1"
+COMMENT "MC1 - end"
+ITEM AMT-NET-DEDUC = ROUND( ( AMT-NET OF F110-PAYPOT * FACTOR OF F110-COMPENSATION) /10000,0,NEAR ) IF W-DEDUCTION-TYPE = "P" AND COMP-CODE OF F110-COMPENSATION = 'TAX' AND AMT-NET OF F110-PAYPOT > 0 ELSE 0 IF W-DEDUCTION-TYPE = "P" AND COMP-CODE OF F110-COMPENSATION = 'TAX' AND AMT-NET OF F110-PAYPOT <= 0 ELSE ROUND( ( AMT-NET OF F110-PAYPOT * FACTOR OF F110-COMPENSATION) /10000,0,NEAR ) IF W-DEDUCTION-TYPE = "P" ELSE AMT-NET OF F110-COMPENSATION
+BEGININCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_COMPENSATION_STATUS.DEF
+COMMENT "(ensure positive)"
+COMMENT "DELETED this - to allow a 'bonus' calculation that is a negative deduction)"
+COMMENT "item amt-net-deduc     &"
+COMMENT "= 0 if amt-net-deduc < 0    &"
+COMMENT "else amt-net-deduc"
+COMMENT "DEF_COMPENSATION_STATUS.DEF"
+COMMENT "This program is called from the following programs:"
+COMMENT "holdbk6.qts, u111c.qts, u113.qts, u114a.qts, u115c.qts,"
+COMMENT "u116_paycode0.qts, u116_paycode1.qts, u116_paycode2.qts,"
+COMMENT "u116_paycode34.qts, u116_paycode5.qts, u117.qts,"
+COMMENT "u118.qts, u119.qts "
+DEF COMPENSATION-STATUS-ACCEPTED CHAR*1 = " "
+ENDINCLUDE C:\CLIENTS\RMA\GOLDAPR282017\PARSEDCODE\USE\DEF_COMPENSATION_STATUS.DEF
+SUBFILE U117_AUDIT KEEP INCLUDE DOC-NBR OF F110-COMPENSATION , EP-NBR OF F110-COMPENSATION , COMP-CODE OF F110-COMPENSATION , PAYPOT-SEQ , AMT-NET OF F110-PAYPOT , FACTOR OF F110-COMPENSATION , AMT-NET-DEDUC
+COMMENT "--------- deduction transaction  ---------"
+COMMENT "(if percentage based calculation update calculation in f110 transaction)"
+OUTPUT F110-COMPENSATION ALIAS F110-UPDATE-DEDUC-TRANSACTION UPDATE IF FACTOR OF F110-COMPENSATION < 10000
+COMMENT "item ep-nbr          =  current-ep-nbr"
+COMMENT "item ep-nbr-entry    =  current-ep-nbr"
+COMMENT "item comp-code       =  comp-code   of f110-compensation"
+COMMENT "item process-seq     =  process-seq of f190-comp-codes"
+COMMENT "item factor          =  factor     of f110-compensation"
+ITEM FACTOR-OVERRIDE = "*"
+COMMENT "item comp-units      =  comp-units of f110-paypot"
+ITEM AMT-GROSS = AMT-NET-DEDUC
+ITEM AMT-NET = AMT-NET-DEDUC
+ITEM COMPENSATION-STATUS = COMPENSATION-STATUS-ACCEPTED
+ITEM LAST-MOD-DATE = SYSDATE
+ITEM LAST-MOD-TIME = SYSTIME / 10000
+ITEM LAST-MOD-USER-ID = "U117 gen'd"
+COMMENT "define x-not-needed integer*8 signed size 4 = 0"
+DEFINE X-NOT-NEEDED INTEGER*10 SIGNED = 0
+DEFINE X-REC-TYPE CHAR*1 = "A"
+DEFINE X-COMP-CODE CHAR*6 = COMP-CODE OF F110-COMPENSATION
+SUBFILE F119 KEEP APPEND INCLUDE DOC-NBR OF F110-COMPENSATION , X-COMP-CODE , REPORTING-SEQ OF F190-COMP-CODES , COMP-CODE-GROUP OF F190-COMP-CODES , X-REC-TYPE , X-NOT-NEEDED , AMT-NET-DEDUC
+BUILD $PB_OBJ/U117
+ENDMODULE U117.QTS

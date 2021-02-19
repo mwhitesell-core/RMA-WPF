@@ -1,0 +1,174 @@
+;Program: u931.qts
+;Purpose: select records for the R932 Alternative Payment Plan report
+;
+; 94/MAY/31  M.C.	- ORIGINAL (SMS 145)
+;			- ICU/APP FOR CLINIC 81 AGENT 8
+; 95/JAN/17  YAS.	- TAKE OUT AGENT 8 SELECT ALL CLINIC 81
+; 98/Sep/23  B.E.	- added 'set lock file update' statement
+;			- change definition of conseq-flag to not
+;			  consider "0  " entries as consecutive entries
+; 1999/May/13 S.B.	- Y2K version.  This was the origional (which is now 
+;			  called u931_non_y2k).  
+; 2001/oct/23 M.C.      - add conditional compile icu   & 81y2k
+
+cancel clear
+set lock file update
+set process nolimit
+run u931
+
+request explode_claims on calculation errors report on edit errors report  
+
+;;ACCESS *CLAIMS_SUBFILE_81
+access  claims_history_subfile  alias claims_subfile
+
+def x-oma-cd  char*4 = clmdtl-id[12:4]
+
+; 98/sep/23 added "0  logic 
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "
+
+def x-clmdtl-sv-nbr-1 zoned*2 unsigned =			&
+			nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+			if consec-flag = "Y"			&
+			else 0
+
+def x-clmdtl-sv-nbr-2 zoned*2 unsigned = 			&
+			nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+			if consec-flag = "Y"			&
+			else 0
+
+def x-clmdtl-sv-nbr-3 zoned*2 unsigned = 			&
+			nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+			if consec-flag = "Y"			&
+			else 0
+
+def x-tot-serv = clmdtl-nbr-serv + x-clmdtl-sv-nbr-1  +   &
+		 x-clmdtl-sv-nbr-2 + x-clmdtl-sv-nbr-3
+
+def x-serv-fee = clmdtl-fee-ohip / x-tot-serv
+
+def x-fee-ohip   float = x-serv-fee * clmdtl-nbr-serv
+def x-fee-ohip-1 float = x-serv-fee * x-clmdtl-sv-nbr-1
+def x-fee-ohip-2 float = x-serv-fee * x-clmdtl-sv-nbr-2
+def x-fee-ohip-3 float = x-serv-fee * x-clmdtl-sv-nbr-3
+
+def x-clmdtl-sv-day-1 = nconvert(ascii(clmdtl-consec-dates,9)[2:2]) &
+			if consec-flag = "Y"			&
+			else 0
+def x-clmdtl-sv-day-2 = nconvert(ascii(clmdtl-consec-dates,9)[5:2]) &
+			if consec-flag = "Y"			&
+			else 0
+def x-clmdtl-sv-day-3 = nconvert(ascii(clmdtl-consec-dates,9)[8:2]) &
+			if consec-flag = "Y"			&
+			else 0
+
+;(y2k)
+;def x-serv-date-1 char*6 = clmdtl-sv-date[1:4] +	&
+;			ascii(clmdtl-consec-dates,9)[2:2]
+;def x-serv-date-2 char*6 = clmdtl-sv-date[1:4] +	&
+;			ascii(clmdtl-consec-dates,9)[5:2]
+;def x-serv-date-3 char*6 = clmdtl-sv-date[1:4] +	&
+;			ascii(clmdtl-consec-dates,9)[8:2]
+def x-serv-date-1 char*8 = clmdtl-sv-date[1:6] +	&
+			ascii(clmdtl-consec-dates,9)[2:2]
+def x-serv-date-2 char*8 = clmdtl-sv-date[1:6] +	&
+			ascii(clmdtl-consec-dates,9)[5:2]
+def x-serv-date-3 char*8 = clmdtl-sv-date[1:6] +	&
+			ascii(clmdtl-consec-dates,9)[8:2]
+
+def x-doc-nbr zoned*3 unsigned = nconvert(clmdtl-id[4:3])
+
+@if 81y2k  
+;SEL IF CLMHDR-AGENT-CD = 8  AND CLMDTL-ID[1:2] = '81'
+  sel if clmdtl-id[1:2] = '81'
+
+@elseif icu   
+  sel if clmdtl-id[1:2] = '22' and clmhdr-agent-cd = 5 
+         
+@else
+      error - program must be compiled using conditional statements
+@endif
+
+subfile icuapp keep include				&
+	x-doc-nbr,					&
+	clmhdr-doc-dept of claims_subfile,		&
+	x-oma-cd,					&
+	clmdtl-sv-date of claims_subfile,		&
+	clmdtl-nbr-serv of claims_subfile,		&
+	x-fee-ohip,					&
+	clmhdr-pat-ohip-id-or-chart of claims_subfile
+
+subfile icuapp alias consec-1 keep          		&
+	if x-clmdtl-sv-day-1  <> 0 include		&
+	x-doc-nbr,					&
+	clmhdr-doc-dept of claims_subfile,		&
+	x-oma-cd,					&
+	x-serv-date-1,   				&
+	x-clmdtl-sv-nbr-1,				&
+	x-fee-ohip-1,					&
+	clmhdr-pat-ohip-id-or-chart of claims_subfile
+
+subfile icuapp alias consec-2 keep          		&
+	if x-clmdtl-sv-day-2  <> 0 include		&
+	x-doc-nbr,					&
+	clmhdr-doc-dept of claims_subfile,		&
+	x-oma-cd,					&
+	x-serv-date-2,   				&
+	x-clmdtl-sv-nbr-2,				&
+	x-fee-ohip-2,					&
+	clmhdr-pat-ohip-id-or-chart of claims_subfile
+
+subfile icuapp alias consec-3 keep          		&
+	if x-clmdtl-sv-day-3  <> 0 include		&
+	x-doc-nbr,					&
+	clmhdr-doc-dept of claims_subfile,		&
+	x-oma-cd,					&
+	x-serv-date-3,    				&
+	x-clmdtl-sv-nbr-3,				&
+	x-fee-ohip-3,					&
+	clmhdr-pat-ohip-id-or-chart of claims_subfile
+
+request nonexplode_consec_days
+
+access *icuapp link x-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+sel if fee-special-m-suffix-ind = 'Y' or clmdtl-nbr-serv of icuapp  = 1
+
+output icu-app-file add
+   item doc-nbr final x-doc-nbr
+   item clmhdr-doc-dept final clmhdr-doc-dept of icuapp
+   item fee-oma-cd final x-oma-cd
+   item clmdtl-sv-date final clmdtl-sv-date of icuapp
+   item clmdtl-nbr-serv final clmdtl-nbr-serv of icuapp
+   item clmdtl-fee-ohip final x-fee-ohip
+   item clmhdr-pat-ohip-id-or-chart final clmhdr-pat-ohip-id-or-chart of icuapp
+
+
+request explode_consec_days
+
+access *icuapp link x-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+sel if fee-special-m-suffix-ind <> 'Y' and clmdtl-nbr-serv of icuapp > 1
+
+output icu-app-file-explode add
+   item doc-nbr final x-doc-nbr
+   item clmhdr-doc-dept final clmhdr-doc-dept of icuapp
+   item fee-oma-cd final x-oma-cd
+   item clmdtl-sv-date final clmdtl-sv-date of icuapp
+   item clmdtl-nbr-serv final clmdtl-nbr-serv of icuapp
+   item clmdtl-fee-ohip final x-fee-ohip
+   item clmhdr-pat-ohip-id-or-chart final clmhdr-pat-ohip-id-or-chart of icuapp
+
+@if 81y2k 
+build $pb_obj/u931
+
+@elseif icu
+build $pb_obj/u931_icu
+
+@else
+   error - program must be compiled using conditional compile
+@endif
+
+  

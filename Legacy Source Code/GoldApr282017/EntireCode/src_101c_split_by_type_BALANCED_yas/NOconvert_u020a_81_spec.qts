@@ -1,0 +1,251 @@
+;#> PROGRAM-ID.     U020A.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : READ F001-BATCH-CONTROL-FILE AND SELECT
+;		       BALANCED BATCHES WITHIN PED AND CYCLE #,
+;		       LINK TO CLAIMS, PATIENTS, AND DOCTOR FILES
+;		       AND EXTRACT DATA NEEDED FOR OHIP TAPE OR
+;		       CLAIM SHADOW
+;		       IF CHANGES REQUIRED FOR HOSPITAL CODES, MAKE
+;		       SURE TO CHANGE IN HOSPITAL_CODE.DEF
+;
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/12 D.B.         - ORIGINAL (SMS 138)
+;     93/MAR/17 M.C.	     - SMS 140
+;			     - CONVERT THE FIRST PASS R020A1 INTO
+;			       HERE U020A.QTS
+;     93/MAY/06 M.C.	     - SMS 141		
+;			     - ADD PAT-MESS-CODE IN EACH SUBFILE
+;   1999/Jun/03 S.B.	     - Altered the call to hospital_code.def
+;			       to call from $use instead of src.
+;
+;
+	
+
+can clear
+set process nolimit
+
+access f001-batch-control-file	&
+  link  floor(batctrl-batch-nbr / 10000000), batctrl-agent-cd      &
+   to  clinic-nbr, agent-cd of contract-dtl    			    &
+  link  "B", batctrl-batch-nbr  to key-clm-type, key-clm-batch-nbr &
+	of f002-claims-mstr					    &
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr opt &
+  link  floor(batctrl-batch-nbr / 10000000) to iconst-clinic-nbr-1-2  &
+	of iconst-mstr-rec
+
+choose batctrl-batch-nbr 810000000 to 819999999
+
+;BML;SELECT F001-BATCH-CONTROL-FILE IF BATCTRL-BATCH-STATUS = '1'
+
+select f002-claims-mstr if clmhdr-adj-oma-cd = '0000'
+
+;use $pb_src/hospital_code.def nolist
+use $use/hospital_code.def nolist
+
+def w-pat-ohip-mmyy char*15	=			&
+	     pat-ohip-mmyy if pat-health-nbr = 0	&
+	 and pat-ohip-mmyy <> ' '			&
+	else ' '
+
+def w-pat-sex char*1 = '1' if pat-sex = 'M'	&
+		else   '2' if pat-sex = 'F'
+
+def doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[3:4])
+
+subfile u020a1_a keep if contract-code = 'A' 			&
+include       							&
+  batctrl-batch-nbr of f001-batch-control-file,  		&
+  batctrl-batch-type of f001-batch-control-file,		&
+  batctrl-clinic-nbr of f001-batch-control-file, 		&
+  batctrl-doc-nbr-ohip of f001-batch-control-file,		&
+  batctrl-loc of f001-batch-control-file,			&
+  batctrl-agent-cd of f001-batch-control-file,			&
+  batctrl-date-batch-entered of f001-batch-control-file,	&
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,			&
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,			&
+  iconst-date-period-end of iconst-mstr-rec,			&
+  clmhdr-claim-id of f002-claims-mstr,				&
+  clmhdr-claim-nbr of f002-claims-mstr,				&
+  w-clmhdr-hosp,						&
+  clmhdr-date-admit of f002-claims-mstr,			&
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,		&
+  clmhdr-refer-doc-nbr of f002-claims-mstr,			&
+  clmhdr-loc of f002-claims-mstr,				&
+  clmhdr-i-o-pat-ind of f002-claims-mstr,			&
+  clmhdr-agent-cd of f002-claims-mstr,				&
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,			&
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,			&
+  clmhdr-status-ohip of f002-claims-mstr,			&
+  clmhdr-sub-nbr of f002-claims-mstr,				&
+  clmhdr-manual-review of f002-claims-mstr,			&
+  doc-nbr,							&
+  clmhdr-doc-dept of f002-claims-mstr,				&
+  clmhdr-doc-spec-cd of f002-claims-mstr,			&
+  pat-health-nbr of f010-pat-mstr,				&
+  pat-version-cd of f010-pat-mstr,				&
+  w-pat-ohip-mmyy,						&
+  pat-chart-nbr of f010-pat-mstr,				&
+  pat-surname of f010-pat-mstr,					&
+  pat-given-name of f010-pat-mstr,				&
+  pat-acronym of f010-pat-mstr,					&
+  pat-birth-date of f010-pat-mstr,				&
+  w-pat-sex,							&
+  pat-prov-cd of f010-pat-mstr,					&
+  subscr-addr1 of f010-pat-mstr,				&
+  subscr-addr2 of f010-pat-mstr,				&
+  subscr-addr3 of f010-pat-mstr,				&
+  subscr-postal-cd of f010-pat-mstr,				&
+  moh-flag of contract-dtl,					&
+  dollar-flag of contract-dtl,					&
+  pat-mess-code of f010-pat-mstr
+
+subfile u020a1_b keep if contract-code = 'B' 			&
+include       							&
+  batctrl-batch-nbr of f001-batch-control-file,  		&
+  batctrl-batch-type of f001-batch-control-file,		&
+  batctrl-clinic-nbr of f001-batch-control-file, 		&
+  batctrl-doc-nbr-ohip of f001-batch-control-file,		&
+  batctrl-loc of f001-batch-control-file,			&
+  batctrl-agent-cd of f001-batch-control-file,			&
+  batctrl-date-batch-entered of f001-batch-control-file,	&
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,			&
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,			&
+  iconst-date-period-end of iconst-mstr-rec,			&
+  clmhdr-claim-id of f002-claims-mstr,				&
+  clmhdr-claim-nbr of f002-claims-mstr,				&
+  w-clmhdr-hosp,						&
+  clmhdr-date-admit of f002-claims-mstr,			&
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,		&
+  clmhdr-refer-doc-nbr of f002-claims-mstr,			&
+  clmhdr-loc of f002-claims-mstr,				&
+  clmhdr-i-o-pat-ind of f002-claims-mstr,			&
+  clmhdr-agent-cd of f002-claims-mstr,				&
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,			&
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,			&
+  clmhdr-status-ohip of f002-claims-mstr,			&
+  clmhdr-sub-nbr of f002-claims-mstr,				&
+  clmhdr-manual-review of f002-claims-mstr,			&
+  doc-nbr,							&
+  clmhdr-doc-dept of f002-claims-mstr,				&
+  clmhdr-doc-spec-cd of f002-claims-mstr,			&
+  pat-health-nbr of f010-pat-mstr,				&
+  pat-version-cd of f010-pat-mstr,				&
+  w-pat-ohip-mmyy,						&
+  pat-chart-nbr of f010-pat-mstr,				&
+  pat-surname of f010-pat-mstr,					&
+  pat-given-name of f010-pat-mstr,				&
+  pat-acronym of f010-pat-mstr,					&
+  pat-birth-date of f010-pat-mstr,				&
+  w-pat-sex,							&
+  pat-prov-cd of f010-pat-mstr,					&
+  subscr-addr1 of f010-pat-mstr,				&
+  subscr-addr2 of f010-pat-mstr,				&
+  subscr-addr3 of f010-pat-mstr,				&
+  subscr-postal-cd of f010-pat-mstr,				&
+  moh-flag of contract-dtl,					&
+  dollar-flag of contract-dtl,					&
+  pat-mess-code of f010-pat-mstr
+
+
+subfile u020a1_c keep if contract-code = 'C' 			&
+include       							&
+  batctrl-batch-nbr of f001-batch-control-file,  		&
+  batctrl-batch-type of f001-batch-control-file,		&
+  batctrl-clinic-nbr of f001-batch-control-file, 		&
+  batctrl-doc-nbr-ohip of f001-batch-control-file,		&
+  batctrl-loc of f001-batch-control-file,			&
+  batctrl-agent-cd of f001-batch-control-file,			&
+  batctrl-date-batch-entered of f001-batch-control-file,	&
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,			&
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,			&
+  iconst-date-period-end of iconst-mstr-rec,			&
+  clmhdr-claim-id of f002-claims-mstr,				&
+  clmhdr-claim-nbr of f002-claims-mstr,				&
+  w-clmhdr-hosp,						&
+  clmhdr-date-admit of f002-claims-mstr,			&
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,		&
+  clmhdr-refer-doc-nbr of f002-claims-mstr,			&
+  clmhdr-loc of f002-claims-mstr,				&
+  clmhdr-i-o-pat-ind of f002-claims-mstr,			&
+  clmhdr-agent-cd of f002-claims-mstr,				&
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,			&
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,			&
+  clmhdr-status-ohip of f002-claims-mstr,			&
+  clmhdr-sub-nbr of f002-claims-mstr,				&
+  clmhdr-manual-review of f002-claims-mstr,			&
+  doc-nbr,							&
+  clmhdr-doc-dept of f002-claims-mstr,				&
+  clmhdr-doc-spec-cd of f002-claims-mstr,			&
+  pat-health-nbr of f010-pat-mstr,				&
+  pat-version-cd of f010-pat-mstr,				&
+  w-pat-ohip-mmyy,						&
+  pat-chart-nbr of f010-pat-mstr,				&
+  pat-surname of f010-pat-mstr,					&
+  pat-given-name of f010-pat-mstr,				&
+  pat-acronym of f010-pat-mstr,					&
+  pat-birth-date of f010-pat-mstr,				&
+  w-pat-sex,							&
+  pat-prov-cd of f010-pat-mstr,					&
+  subscr-addr1 of f010-pat-mstr,				&
+  subscr-addr2 of f010-pat-mstr,				&
+  subscr-addr3 of f010-pat-mstr,				&
+  subscr-postal-cd of f010-pat-mstr,				&
+  moh-flag of contract-dtl,					&
+  dollar-flag of contract-dtl,					&
+  pat-mess-code of f010-pat-mstr
+
+
+subfile u020a1_d keep if contract-code = 'D' 			&
+include       							&
+  batctrl-batch-nbr of f001-batch-control-file,  		&
+  batctrl-batch-type of f001-batch-control-file,		&
+  batctrl-clinic-nbr of f001-batch-control-file, 		&
+  batctrl-doc-nbr-ohip of f001-batch-control-file,		&
+  batctrl-loc of f001-batch-control-file,			&
+  batctrl-agent-cd of f001-batch-control-file,			&
+  batctrl-date-batch-entered of f001-batch-control-file,	&
+  iconst-clinic-nbr-1-2 of iconst-mstr-rec,			&
+  iconst-clinic-cycle-nbr of iconst-mstr-rec,			&
+  iconst-date-period-end of iconst-mstr-rec,			&
+  clmhdr-claim-id of f002-claims-mstr,				&
+  clmhdr-claim-nbr of f002-claims-mstr,				&
+  w-clmhdr-hosp,						&
+  clmhdr-date-admit of f002-claims-mstr,			&
+  clmhdr-pat-ohip-id-or-chart of f002-claims-mstr,		&
+  clmhdr-refer-doc-nbr of f002-claims-mstr,			&
+  clmhdr-loc of f002-claims-mstr,				&
+  clmhdr-i-o-pat-ind of f002-claims-mstr,			&
+  clmhdr-agent-cd of f002-claims-mstr,				&
+  clmhdr-tot-claim-ar-oma of f002-claims-mstr,			&
+  clmhdr-tot-claim-ar-ohip of f002-claims-mstr,			&
+  clmhdr-status-ohip of f002-claims-mstr,			&
+  clmhdr-sub-nbr of f002-claims-mstr,				&
+  clmhdr-manual-review of f002-claims-mstr,			&
+  doc-nbr,							&
+  clmhdr-doc-dept of f002-claims-mstr,				&
+  clmhdr-doc-spec-cd of f002-claims-mstr,			&
+  pat-health-nbr of f010-pat-mstr,				&
+  pat-version-cd of f010-pat-mstr,				&
+  w-pat-ohip-mmyy,						&
+  pat-chart-nbr of f010-pat-mstr,				&
+  pat-surname of f010-pat-mstr,					&
+  pat-given-name of f010-pat-mstr,				&
+  pat-acronym of f010-pat-mstr,					&
+  pat-birth-date of f010-pat-mstr,				&
+  w-pat-sex,							&
+  pat-prov-cd of f010-pat-mstr,					&
+  subscr-addr1 of f010-pat-mstr,				&
+  subscr-addr2 of f010-pat-mstr,				&
+  subscr-addr3 of f010-pat-mstr,				&
+  subscr-postal-cd of f010-pat-mstr,				&
+  moh-flag of contract-dtl,					&
+  dollar-flag of contract-dtl,					&
+  pat-mess-code of f010-pat-mstr
+
+
+build $pb_obj/u020a_81_spec
+  

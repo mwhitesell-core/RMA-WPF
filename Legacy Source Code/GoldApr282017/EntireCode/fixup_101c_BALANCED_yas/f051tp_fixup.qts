@@ -1,0 +1,121 @@
+;#> PROGRAM-ID.     f051tp_fixup.qts  
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :update doc revenue/cash mstr from selected batches
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2001/Oct/11 M.C.         - ORIGINAL (convert from f050_f051_fixup.cbl)
+;			     'C'ash type 'P'ayments, update cash only
+;			     'M'isc type 'P'ayments, update cash and revenue
+;			     and all others update revenue only
+;   2001/Oct/18 M.C.	     -Brad requested to link to f923 for clinic nbr
+;			      translation before update to f050 & f051 files
+;   2001/nov/06 B.E.	     -added copybook to allow definition of batch
+;			      control batch status without hardcoding values
+;   2001/nov/08 B.E.	- changed program's access of f923 to reflect the
+;			  change in that file to use clmhdr-payroll field
+;			  rather than agent-cd
+
+
+can clear
+
+set process nolimit
+set lock file update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_rev_cash on calculation errors report on edit errors report
+			; claims, adjustments and  misc payments update revenue
+			; payments update cash  
+
+access *extf001f002dtl 				&
+   link nconvert(clmhdr-doc-nbr), 		&
+	nconvert(clmhdr-clinic-nbr), 		&
+	clmhdr-payroll	 			&
+     to doc-nbr, 				&
+	clinic-nbr, 				&
+	clmhdr-payroll of f923-doc-revenue-translation opt
+
+select extf001f002dtl if batctrl-batch-type = 'P'
+
+sorted on batctrl-batch-nbr on key-clm-claim-nbr
+
+def x-suff char*1 						&
+      = clmhdr-adj-cd-sub-type					&
+		if     clmhdr-adj-cd-sub-type <= '9' 		&
+	   	   and batctrl-adj-cd = 'M'			&
+  else '0' 	if batctrl-adj-cd = 'M'				&
+  else clmdtl-oma-suff
+			
+def x-i-o-ind char*1 = 'I'			&
+	if clmhdr-i-o-pat-ind <> 'I' and	&
+	   clmhdr-i-o-pat-ind <> 'O'		&
+	else clmhdr-i-o-pat-ind
+
+def x-prof-fee zoned*8 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed
+
+def x-nbr-svc zoned*4 signed = 0 if batctrl-batch-type = 'A'	&
+	else x-nbr-serv
+
+def x-payments zoned*8 signed = 0 - clmhdr-manual-and-tape-payments	&
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-manual-and-tape-payments if batctrl-batch-type = 'P'
+
+def x-tech-paid zoned*8 signed = 0 - clmhdr-amt-tech-paid               & 
+	if batctrl-batch-type = 'P' and clmhdr-adj-cd = 'C'		&
+	else clmhdr-amt-tech-paid     if batctrl-batch-type = 'P'
+
+def x-prof-paid zoned*8 signed = x-payments - x-tech-paid  		&	 
+	if batctrl-batch-type = 'P' 
+
+def x-translated-clinic char*2 = ascii(clinic-nbr-translated,2)		&
+	if record f923-doc-revenue-translation exists			&
+	else clmhdr-clinic-nbr
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+temp x-rev-upd zoned*8 signed 
+item x-rev-upd = x-rev-upd + clmdtl-fee-ohip	&
+	if batctrl-batch-type <> 'P' or batctrl-adj-cd <> 'C'		&
+	reset at batctrl-batch-nbr
+
+temp x-cash-upd zoned*8 signed 
+item x-cash-upd = x-cash-upd + x-payments 	&
+	if batctrl-batch-type  = 'P'		&
+	at key-clm-claim-nbr			&
+	reset at batctrl-batch-nbr
+
+temp x-rev-rec      zoned*6 unsigned
+item x-rev-rec      = x-rev-rec   + 1 		&
+	if batctrl-batch-type <> 'P' or batctrl-adj-cd <> 'C'		&
+	reset at batctrl-batch-nbr
+
+temp x-cash-rec     zoned*6 unsigned
+item x-cash-rec      = x-cash-rec      + 1      &
+	if batctrl-batch-type = 'P'		&
+	at key-clm-claim-nbr			&
+	reset at batctrl-batch-nbr
+
+def x-nbr-processed zoned*6 unsigned = x-rev-rec + x-cash-rec
+
+
+;e;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;s
+; 2001/12/18 - reverse payment in YTD
+;for clinic 60's, 'P'ayments update 'cash' records	
+;only claim header record is processed for payments
+;assume nbr of svc is zero
+output f051tp-doc-cash-mstr    update at key-clm-claim-nbr		&
+    if  x-translated-clinic[1:1] = '6'	and	&
+        batctrl-batch-type = 'P'	  	&
+	via docashtp-key			&
+	using  (x-translated-clinic +		&
+		ascii(clmhdr-agent-cd,1) +	&
+		clmhdr-loc +			&
+		clmhdr-doc-nbr) 		&
+	on errors report
+   item docashtp-tech-out-ytd   subtotal  x-tech-paid negative
+   item docashtp-prof-out-ytd   subtotal  x-prof-paid negative
+
+
+build f051tp_fixup

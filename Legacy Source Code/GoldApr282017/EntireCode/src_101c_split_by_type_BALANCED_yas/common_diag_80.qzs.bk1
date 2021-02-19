@@ -1,0 +1,85 @@
+; DOC: COMMON-DIAG.QZS
+; DOC: MOST COMMON DIAGNOSTIC CODES USED CLINIC 80
+; DOC: RUN FOR: THEKLA
+;
+;PROGRAM PURPOSE : 20 MOST COMMON DIAGNOSTIC CODES USED CLINIC 80
+;
+;
+;DATE       BY WHOM   DESCRIPTION
+;95/07/11   YASEMIN   ORIGINAL
+;02/11/25   M.C.      wrong choose stataement - not compile properly
+;
+can clear
+set default
+set report nolimit
+
+access f002-claims-mstr
+
+; 2002/11/25 - MC - wrong choose statement
+;choose key-clm-type 'B', key-clm-nbr 800000000 to 809999999
+choose key-clm-type 'B', key-clm-batch-nbr 800000000 to 809999999
+; 2002/11/25 - end
+
+sel f002-claims-mstr if     clmhdr-oma-suff-adj = '000000'  &
+                        and clmhdr-batch-type = 'C'
+
+set subfile name diag1_80 keep
+
+report summary   &
+clmhdr-claim-id  &
+clmhdr-diag-cd
+
+build $pb_obj/diag1_80
+
+
+can clear
+set default
+set report nolimit
+
+access *diag1_80
+
+def x-docnbr cha*3 = clmhdr-claim-id[4:3]
+def x-count num*1 = 1
+
+sort on x-docnbr on clmhdr-diag-cd
+
+set subfile name diag2_80 keep at clmhdr-diag-cd
+
+report summary  &
+x-docnbr        &
+clmhdr-diag-cd  &
+x-count subtotal
+
+build $pb_obj/diag2_80
+
+can clear
+set default
+set report nolimit
+set report device disc name diag_80
+set page length 60 width 132
+set formfeed
+
+access *diag2_80 &
+  link (nconvert(x-docnbr)) to doc-nbr of f020-doctor-mstr opt &
+  link (ascii(clmhdr-diag-cd,3)) to diag-cd of f091-diag-codes-mstr opt
+
+def x-name cha*30 =pack(doc-name +" "+ doc-inits)
+
+sort on clmhdr-diag-cd
+
+page heading &
+skip 1  tab 1   "COMMON_DIAG_80.QZS"        &
+        tab 30  "DIAGNOSTIC CODES USED FOR CLINIC 80"  &
+        tab 66  syspage                  &
+skip 3
+
+footing at clmhdr-diag-cd                &
+skip 1   tab 1  clmhdr-diag-cd  fill '0'  &
+         tab 7  diag-cd-desc              &
+         tab 56 x-count pic "^^^^^"      &
+skip 2
+
+build $pb_obj/diag3_80
+
+
+  

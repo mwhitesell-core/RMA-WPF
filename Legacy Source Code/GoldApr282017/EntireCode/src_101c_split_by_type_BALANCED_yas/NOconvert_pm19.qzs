@@ -1,0 +1,145 @@
+; NAME    : PM19.QZS
+; PURPOSE : Create a report YTD version of the PWO ACTIVITY BREAKDOWN
+;	    Report.  This is the last pass to generate the report.
+; MODIFICATION HISTORY
+; YY/MMM/DD 	By WHOM      	WHY
+; ??/???/?? 	?. ????????? 	- ORIGINAL
+; 87/JUN/16 	B. ELLIOTT   	- ADDED PRINTING OF BILLABLE
+;				  (IE. INVOICE) AMOUNTS
+; 90/MAY/29 	B. ELLIOTT   	- 'ACTIVITY BUDGET' PRINTS DOLLAR AMT
+;				  IF AVAILABLE OTHERWISE MULTIPLE
+;			          BUDGETED DAYS * 7.5 * EMPLOYEE'S RATE
+; 92/FEB/28	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+;				- SET REPORT NOLIMIT
+;				- TAKE OUT CURRENT MONTH INFO
+
+can clear
+set default
+set report device printer
+set page length 60 width 80
+set report nolimit
+
+access *tpwoacts &
+       link client   to client of fclients               &
+       and  pwo-num  to pwo-num of fpwos                 &
+       and  tsht-emp                                     &
+                     to emp-num of femployees            &
+       and  (characters(tsht-emp) + characters(pwo-num)) &
+                     to emppwo-key of femppwos           &
+       and  (ascii(pwo-num,5) + activity)                &
+                     to pwoact-key of fpwoacts
+
+
+define x-bill-amt-ytd numeric*8 = x-bill-hrs-ytd * bill-rate/100
+define x-act-desc     character size 34  &
+       		      = ": (" + truncate(act-desc) + ")"
+
+;DEFINE X-RUN-TYPE CHAR*5  = "PM19T"  IF RUN-TYPE = "T"      &
+;                     ELSE  "PM19I"  IF RUN-TYPE = "I"      &
+;                     ELSE  "ERROR"
+
+define x-budget numeric*8 = duration-days of fpwoacts * 	&
+		hrs-per-day of fpwos if hrs-per-day of fpwos <> 0 &
+                      else  duration-days of fpwoacts * 7.5
+
+define year character*2 = characters(x-invoice-yymm)[1:2]
+define month character*9 = &
+ 	"  JANUARY" if characters(x-invoice-yymm)[3:2] = "01" else &
+        " FEBRUARY" if characters(x-invoice-yymm)[3:2] = "02" else &
+        "    MARCH" if characters(x-invoice-yymm)[3:2] = "03" else &
+        "    APRIL" if characters(x-invoice-yymm)[3:2] = "04" else &
+        "      MAY" if characters(x-invoice-yymm)[3:2] = "05" else &
+        "     JUNE" if characters(x-invoice-yymm)[3:2] = "06" else &
+        "     JULY" if characters(x-invoice-yymm)[3:2] = "07" else &
+        "   AUGUST" if characters(x-invoice-yymm)[3:2] = "08" else &
+        "SEPTEMBER" if characters(x-invoice-yymm)[3:2] = "09" else &
+        "  OCTOBER" if characters(x-invoice-yymm)[3:2] = "10" else &
+        " NOVEMBER" if characters(x-invoice-yymm)[3:2] = "11" else &
+        " DECEMBER" if characters(x-invoice-yymm)[3:2] = "12"
+define year1 character*2 = characters(x-start-yymm)[1:2]
+define month1 character*9 = &
+ 	"  JANUARY" if characters(x-start-yymm)[3:2] = "01" else &
+        "  FEBUARY" if characters(x-start-yymm)[3:2] = "02" else &
+        "    MARCH" if characters(x-start-yymm)[3:2] = "03" else &
+        "    APRIL" if characters(x-start-yymm)[3:2] = "04" else &
+        "      MAY" if characters(x-start-yymm)[3:2] = "05" else &
+        "     JUNE" if characters(x-start-yymm)[3:2] = "06" else &
+        "     JULY" if characters(x-start-yymm)[3:2] = "07" else &
+        "   AUGUST" if characters(x-start-yymm)[3:2] = "08" else &
+        "SEPTEMBER" if characters(x-start-yymm)[3:2] = "09" else &
+        "  OCTOBER" if characters(x-start-yymm)[3:2] = "10" else &
+        " NOVEMBER" if characters(x-start-yymm)[3:2] = "11" else &
+        " DECEMBER" if characters(x-start-yymm)[3:2] = "12"
+
+sort on client reset page on pwo-num on activity on tsht-emp
+
+page heading                 				    &
+        tab 3  sysdate format yymmmdd                              &
+        tab 29 "DYAD TECHNOLOGIES INC."			    &
+        tab 70 "PAGE: "					    &
+	tab 76 syspage	skip 2				    &
+	tab 27 "PWO/ACTIVITY YTD BREAKDOWN"		    &
+        skip 1                                              &
+        tab  33 month tab 42 "/" tab 43 year                &
+	skip 3 "Client:" tab 15 cl-name                     &
+        skip 2 "PWO # :" tab 15 pwo-num bwz tab 25 pwo-desc &
+        skip 2                                              &
+;       TAB 60 "----CURRENT MONTH---"                       &
+        tab 35 "YTD SINCE"                                  &
+        tab 45  month1 tab 54  "/" tab 55  year1            &
+        tab 58  " ACTIVITY   AMOUNT "                       &
+        skip 1 						    &
+        "ACTIVITY" tab 15 "EMPLOYEE"                        &
+;       TAB 61  "   N/C       BILLED"                       &
+        tab 38  "   N/C       BILLED"                       &
+        tab 58  "   BUDGET  INVOICED"                       &
+        skip 2
+
+heading at activity	  &
+        tab 03 activity   &
+        tab 07 x-act-desc
+
+report  tab  15 name                                 &
+;       TAB  58 X-NOBILL-HRS     PIC "^^^^^^.^^" BWZ &
+;       TAB  71 X-BILL-HRS       PIC "^^^^^^.^^" BWZ &
+        tab  35 x-nobill-hrs-ytd pic "^^^^^^.^^" bwz &
+        tab  46 x-bill-hrs-ytd   pic "^^^^^^.^^" bwz &
+        tab  68 x-bill-amt-ytd   pic "^^^^^^.^^" bwz
+
+footing at activity skip 1                                    &
+;       TAB  71 "---------"                                   &
+;       TAB  38 "---------"                                   &
+        tab  35 "---------"                                   &
+        tab  46 "---------"                                   &
+        tab  57 "---------"                                   &
+        tab  68 "---------"                                   &
+        skip 1                                                &
+        tab  25 "TOTAL:"                                       &
+;       TAB  58 X-NOBILL-HRS     SUBTOTAL PIC "^^^^^^.^^" BWZ &
+;       TAB  71 X-BILL-HRS       SUBTOTAL PIC "^^^^^^.^^" BWZ &
+        tab  35 x-nobill-hrs-ytd subtotal pic "^^^^^^.^^" bwz &
+        tab  46 x-bill-hrs-ytd   subtotal pic "^^^^^^.^^" bwz &
+        tab  57 x-budget                  pic "^^^^^^^.^"     &
+        tab  68 x-bill-amt-ytd   subtotal pic "^^^^^^.^^" bwz &
+	skip 2
+ footing at pwo-num  						 &
+ 	skip 2 				         		 &
+;	TAB  58 "=========" 					 &
+;	TAB  71 "========="					 &
+ 	tab  35 "=========" 					 &
+ 	tab  46 "=========" 					 &
+ 	tab  57 "=========" 					 &
+ 	tab  68 "=========" 					 &
+        skip 1							 &
+        tab 15 "TOTAL PWO HOURS:" 				 &
+;       TAB 58  X-NOBILL-HRS      SUBTOTAL PIC "^^^^^^.^^" BWZ   &
+;       TAB 71  X-BILL-HRS        SUBTOTAL PIC "^^^^^^.^^" BWZ   &
+        tab 34  x-nobill-hrs-ytd  subtotal pic "^^^^^^.^^" bwz   &
+        tab 46  x-bill-hrs-ytd    subtotal pic "^^^^^^.^^" bwz   &
+        tab 57  x-budget          subtotal pic "^^^^^^^.^"       &
+        tab 68  x-bill-amt-ytd    subtotal pic "^^^^^^.^^" bwz   &
+        skip page
+
+build $pb_obj/pm19
+  

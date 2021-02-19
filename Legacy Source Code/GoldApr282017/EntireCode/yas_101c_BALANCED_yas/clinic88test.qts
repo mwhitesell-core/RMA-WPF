@@ -1,0 +1,263 @@
+;doc     : clinic88_claims.qts
+;Purpose : clinic 88 claims only  no agent 6 and no RMB 
+;          report doc name/nbr/HIN#/claim#/servicedate/oma code/number of services/amount billed
+;who     : Leena                                  
+;
+; *************************************************************
+
+;Date           Who             Description
+;2010/04/23     Yasemin         
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "88@",               &
+         key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if       clmhdr-batch-type = 'C'    &
+			   and	 clmhdr-agent-cd <> 6
+
+subfile clinic88     keep include                    &
+clmhdr-claim-id               of f002-claims-mstr,&
+key-clm-batch-nbr             of f002-claims-mstr,&
+key-clm-claim-nbr             of f002-claims-mstr,&
+clmhdr-loc                    of f002-claims-mstr,&
+clmhdr-hosp                   of f002-claims-mstr,&
+clmhdr-pat-ohip-id-or-chart
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *clinic88                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select f002-claims-mstr if                   &
+            clmdtl-sv-date     >= '20091001' &
+       and  clmdtl-sv-date     <= '20100331' &
+       and  clmdtl-oma-cd      <> "0000"     & ; details only
+       and  clmdtl-oma-cd      <> "ZZZZ"     & ;   
+       and  clmdtl-oma-cd      <> "PAID"     & ; no payments
+       and  clmdtl-oma-cd      <> "MICM"     & ; no miscellaneous billings
+       and  clmdtl-oma-cd      <> "MISJ"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICV"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MISP"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MOHR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MICB"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MIBR"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MINH"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "MHSC"     & ; "  "             "
+       and  clmdtl-oma-cd      <> "NHSC"     &
+       and  clmdtl-oma-cd      <> "DHSC"     &
+       and  clmdtl-oma-cd      <> "AGEP"     &
+       and  clmdtl-oma-cd      <> "MICA"     &
+       and  clmdtl-oma-cd      <> "MICC"     &
+       and  clmdtl-oma-cd      <> "MICD"     &
+       and  clmdtl-oma-cd      <> "MICE"     &
+       and  clmdtl-oma-cd      <> "MICF"     &
+       and  clmdtl-oma-cd      <> "MICG"     &
+       and  clmdtl-oma-cd      <> "MICH"     &
+       and  clmdtl-oma-cd      <> "MICJ"     &
+       and  clmdtl-oma-cd      <> "MICK"     &
+       and  clmdtl-oma-cd      <> "MICL"     &
+       and  clmdtl-oma-cd      <> "T995"       ;clinic 60 proff fees
+;       and  clmdtl-adj-nbr     =  0           ; regular claim detail only 
+;       and  clmdtl-adj-nbr     =  1           ; adjustment or miscellaneous payment detail only
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+def x-prof-fee = clmdtl-fee-ohip - clmdtl-amt-tech-billed & 
+        if key-clm-batch-nbr[1:2] > '60' and key-clm-batch-nbr[1:2] <= '66'  &
+     else clmdtl-fee-ohip
+
+def x-fee = x-prof-fee  / x-nbr-svcs
+
+; regular claim detail (clmdtl-adj-nbr = 0) should have non-zero nbr-of-serv
+; but for adjustment claim and misc payment  detail(clmdtl-adj-nbr = 1) nbr-serv and consecute date are always ZERO
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee     &
+                if clmdtl-adj-nbr = 0                   &
+        else    x-prof-fee
+
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+
+subfile clinic881     keep include           &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-1                      ,&
+x-sv-date-1                              ,&
+x-sv-nbr1                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of clinic88           ,&
+clmhdr-hosp           of clinic88           ,&
+clmhdr-pat-ohip-id-or-chart of clinic88      
+
+subfile clinic881 alias clinic88_svc2 append keep if  x-sv-nbr2 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-2                      ,&
+x-sv-date-2                              ,&
+x-sv-nbr2                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of clinic88           ,&
+clmhdr-hosp           of clinic88           ,&
+clmhdr-pat-ohip-id-or-chart of clinic88    
+
+subfile clinic881 alias clinic88_svc3 append keep if  x-sv-nbr3 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-3                      ,&
+x-sv-date-3                              ,&
+x-sv-nbr3                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of clinic88           ,&
+clmhdr-hosp           of clinic88           ,&
+clmhdr-pat-ohip-id-or-chart of clinic88   
+
+subfile clinic881 alias clinic88_svc4 append keep if  x-sv-nbr4 <> 0 include &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+x-clmdtl-fee-ohip-4                      ,&
+x-sv-date-4                              ,&
+x-sv-nbr4                                ,& 
+clmdtl-diag-cd        of f002-claims-mstr,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of clinic88           ,&
+clmhdr-hosp           of clinic88           ,&
+clmhdr-pat-ohip-id-or-chart of clinic88   
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *clinic881                                                           &
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr opt     &
+  link clmhdr-loc to loc-nbr of f030-locations-mstr opt                     &
+  link clmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt                 &
+  link clmdtl-id[3:3] to doc-nbr of f020-doctor-mstr opt                    &
+  link (ascii(clmdtl-diag-cd,3)) to diag-cd of f091-diag-codes-mstr opt  
+
+def pat-birth-date-yy zoned*4 unsigned = nconvert(ascii(pat-birth-date,8)[1:4])
+def pat-birth-date-mm zoned*2 unsigned = nconvert(ascii(pat-birth-date,8)[5:2])
+def pat-birth-date-dd zoned*2 unsigned = nconvert(ascii(pat-birth-date,8)[7:2])
+
+def clmdtl-sv-yy zoned*4 unsigned = nconvert(x-sv-date-1[1:4])
+def clmdtl-sv-mm zoned*2 unsigned = nconvert(x-sv-date-1[5:2])
+def clmdtl-sv-dd zoned*2 unsigned = nconvert(x-sv-date-1[7:2])
+
+def x-age zoned*4 unsigned  =  clmdtl-sv-yy - pat-birth-date-yy     &
+        if   ( clmdtl-sv-mm >  pat-birth-date-mm)                   &
+          or ((clmdtl-sv-mm =  pat-birth-date-mm) and               &
+              (clmdtl-sv-dd >= pat-birth-date-dd))                  &
+        else clmdtl-sv-yy - pat-birth-date-yy - 1
+
+sel if pat-prov-cd = 'ON'   ;and x-age < 18 
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile clinic882 portable keep  include             &
+clmdtl-id                                           ,&
+comma                                               ,&
+doc-clinic-nbr                                      ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+pat-health-nbr                                      ,&
+comma                                               ,&
+pat-version-cd                                      ,&
+comma                                               ,&
+pat-birth-date                                      ,&
+comma                                               ,&
+x-age                                               ,&
+comma                                               ,&
+x-sv-date-1                                         ,&
+comma                                               ,&
+x-clmdtl-fee-ohip-1                                 ,&
+comma                                               ,&
+clmdtl-oma-cd                                       ,&
+comma                                               ,&
+x-sv-nbr1                                           ,&
+comma                                               ,&
+fee-desc                                            ,&
+comma                                               ,&
+clmdtl-diag-cd                                      ,&
+comma                                               ,&
+diag-cd-desc                                        ,&
+x-cr
+
+build $obj/clinic88_claims

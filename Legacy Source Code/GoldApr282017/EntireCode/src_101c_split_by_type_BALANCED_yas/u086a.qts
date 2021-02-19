@@ -1,0 +1,93 @@
+;#> PROGRAM-ID.     u086a.qts
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE:	When a claim is assigned to the wrong patient the
+;			users are allowed to update the 'ikey' of the claim
+;			to point to the corrected patient. If ALL claims
+;		        of the "original" or "old" patient are to be re-assigned
+;			to the "new" patient then the old/new patient info
+;			is write to f086a-orig-new-pat-ids file.
+;			This file is used by this program as a driver file
+;			to change ownership of the claims.
+;
+;    MODIFICATION HISTORY
+;     DATE   WHO        DESCRIPTION
+;  01/mar/20 B.E.	- original 
+;  03/dec/23 A.A.	- alpha doctor nbr
+;  05/aug/16 M.C.	- add more criteria when setting 'X' to submit ind
+;                         also add bal-due
+
+can clear
+set default
+set process nolimit
+set lock record update
+
+run u086a
+
+request patient_claims_update
+
+access f086a-orig-new-pat-ids					&
+   link "P", (orig-clmhdr-pat-ohip-id-or-chart[2:17])		&
+     to  key-p-clm-type, key-p-clm-data				&
+			 of f002-claims-mstr			&
+   link orig-clmhdr-pat-ohip-id-or-chart			&
+     to key-pat-mstr of f010-pat-mstr alias f010-orig opt	&
+   link      clmhdr-pat-ohip-id-or-chart			&
+     to key-pat-mstr of f010-pat-mstr alias f010-new  opt	&
+   link clmhdr-batch-nbr of f002-claims-mstr                    &
+    to  batctrl-batch-nbr of f001-batch-control-file  opt
+
+use $use/def_batctrl_batch_status.def
+
+; 2005/08/16  - MC
+def bal-due zoned*7 signed = clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+; 2005/08/16 - end
+
+; (set ohip submit indicator - 
+def submit-ind char*1 							   &
+;      (if f001 found and NOT submitted to ohip)
+     = " "								   &
+;!	   if     batctrl-batch-nbr of f001-batch-control-file   <>  0     &
+	   if     batctrl-batch-nbr of f001-batch-control-file   <> '00000000' &
+              and batctrl-batch-status <   batctrl-batch-status-ohip-sent  &
+;      (if f001 found and not submitted to ohip)
+  else "X"								   &
+           if  clmhdr-submit-date  = 0				   &
+; 2005/08/16 - MC - add more criteria
+           and bal-due > 0                                              &
+           and clmhdr-status-ohip <> 'I2'                                &
+; else "R"
+  else "R" if clmhdr-submit-date <> 0                                   &
+          and bal-due > 0                                               &
+          and clmhdr-status-ohip <> 'I2'                                
+; 2005/08/16 - end
+
+; (update claim's 'p' key and i-key link to f010 with new pat's info)
+output f002-claims-mstr update on errors report
+   item clmhdr-pat-ohip-id-or-chart of f002-claims-mstr	final		&
+	clmhdr-pat-ohip-id-or-chart of f086a-orig-new-pat-ids 
+
+    item key-p-clm-data of f002-claims-mstr 	final			&
+	 clmhdr-pat-ohip-id-or-chart  of f086a-orig-new-pat-ids[2:17]
+
+   item clmhdr-pat-acronym  of f002-claims-mstr	final			&
+	       pat-acronym  of f010-new
+
+   item clmhdr-tape-submit-ind final submit-ind
+
+; (save before/after for audit purposes)
+subfile u086a_audit keep include		&
+	f086a-orig-new-pat-ids, 		&
+	clmhdr-pat-ohip-id-or-chart  of f002-claims-mstr,	&
+	clmhdr-pat-acronym		of f002-claims-mstr,	&
+	pat-surname 			of f010-orig,		&
+	pat-given-name			of f010-orig,		&
+	pat-surname 			of f010-new, 		&
+	pat-given-name			of f010-new, 		&
+	clmhdr-claim-id 		of f002-claims-mstr,	&
+	key-claims-mstr   		of f002-claims-mstr,	&
+	key-p-claims-mstr       	of f002-claims-mstr
+
+build $pb_obj/u086a
+  

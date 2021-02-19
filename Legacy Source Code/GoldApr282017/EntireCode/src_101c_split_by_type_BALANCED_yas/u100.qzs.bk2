@@ -1,0 +1,221 @@
+; 2009/may/20 	MC1	- link f020-doctor-extra in access
+;			- include dept, primary flag start & term date paym group
+;			- change selection criteria
+; 2009/06/24    yas     - add heading
+; 2009/10/05    MC2	- a new request to report blank doc-paym-group
+; 2011/11/29    MC3	- a new request to report doctors have revenue but blank record in f112-pycdceilings
+; 2012/11/01    MC4	- a new request to report doctors with special payment but blank record in f112-pycdceilings
+;			- correct page heading for third request
+; 2012/Dec/20   MC5     - pass the payroll flag as part of the selection, payroll A = 101c, payroll C = solo
+; 2013/Dec/11   MC6     - change the selection criteria to check up to 1 year before rundate to consider active doctor
+;			- include if f112 record exists and pay-code = 0 in the selection in the 4th request
+; 2014/Feb/11   MC7     - include dept, term date for each section of the report
+;			- exclude dept 10, 13 & 21 for f114 file which is the last request 
+;                       - separate f114 check into 2 separate passes - one is if no f112 record exists for the doctor,
+;			  two is if f112 records exists for previous ep-nbr but with pay code 0
+; 2014/Oct/14   MC8	- comment out the first pass as it has transferred to u100_b.qzs
+
+cancel clear
+set rep nolimit
+set rep dev disc name u100
+set rep page length 60
+set rep page width 132 
+set formfeed
+set noclose
+
+; MC8
+
+;;access *u100_prim_doc link DOC-OHIP-NBR                    &
+                   to DOC-OHIP-NBR of f020-doctor-mstr opt &
+; 2009/05/20 - MC1
+;;	link doc-nbr to doc-nbr of f020-doctor-extra opt
+; 2009/05/20 - end
+
+; 2013/12/11 - MC6
+;;def one-year-before date = sysdate - 10000
+; 2013/12/11 - end
+
+; 2009/05/20 - MC1
+;sel if doc-count <> 1 and doc-date-fac-term = 0
+;;sel if doc-count <> 1 				&
+; 2013/12/11 - MC6 - not sure why hard code the date, assuming to select active doctor, let allow 1 year before current rundate
+;  and    (    doc-date-fac-term > 20080630     &
+;;   and    (    doc-date-fac-term > one-year-before   &
+; 2013/12/11 - end
+;;            or doc-date-fac-term = 0		&
+;;          ) 					&
+;;   and 		                      		&
+; 2012/12/20 - MC5 - add the payroll-flag check with selection condition
+;;      (   (    (   (doc-dept = 4)                   &
+;;                or (    (    doc-dept = 14          &
+;;                          or doc-dept = 15          &
+;;                        )                           &
+;;                    and doc-afp-paym-group = 'H111' &
+;;                   )                                &
+;;               )                                    &
+;;           and payroll-flag = 'A'                   &
+;;          )                                         &
+;;       or (    (    doc-dept = 31                   &
+;;                and doc-afp-paym-group = 'H132'     &
+;;               )                                    &
+;;           and payroll-flag = 'C'                   &
+;;          )					    &
+;;      )
+; 2012/12/20 - end
+
+; 2009/05/20 - end
+
+;;page heading                                    &
+;;tab  1 'U100'					&
+;;tab 10 'Run Date: '				&
+;;tab 20 sysdate					&
+;;tab 70 'Page: '                                 &
+;;tab 79 syspage pic '^^'                         &
+;;skip 2						&
+;;tab 10 'Check if the Primary flag assigned to the correct doctor number'       & 
+;;skip 3 keep column heading
+
+
+;;rep               &
+;;doc-nbr           &
+;;doc-name          &
+;;doc-inits         &
+;;DOC-OHIP-NBR 	  &
+; 2009/05/20 - MC1
+;;doc-dept	  &
+;;doc-afp-paym-group &
+;;doc-date-fac-start &
+;;doc-date-fac-term  &
+;;doc-flag-primary
+; 2009/05/20 - end
+
+
+;;build $obj/u100 
+
+; 2009/10/05 - MC2 - add new request
+access *u100_blank_paym_grp                                    
+; 2009/05/20 - MC1
+
+
+page heading                                    &
+tab  1 'U100'					&
+tab 10 'Run Date: '				&
+tab 20 sysdate					&
+tab 70 'Page: '                                 &
+tab 79 syspage pic '^^'                         &
+skip 2						&
+tab 10 'Doctors with blank payment group in doctor mstr'  &
+skip 3 keep column heading
+
+
+rep all                           
+
+build $obj/u100_b
+
+; 2009/10/05 - end 
+
+
+; 2011/11/29 - MC3 - add new request
+access *u100_blank_f112_rec                                    
+
+page heading                                    &
+tab  1 'U100'					&
+tab 10 'Run Date: '				&
+tab 20 sysdate					&
+tab 70 'Page: '                                 &
+tab 79 syspage pic '^^'                         &
+skip 2						&
+; 2012/11/01 - MC4
+;tab 10 'Doctors with blank record in 91 screen (f112)'  &
+tab 10 'Doctors have revenue with blank record in 91 screen (f112)'  &
+skip 3 keep column heading
+
+
+rep all                           
+
+build $obj/u100_c
+
+
+; 2012/11/01 - MC4  - new request to check for blank f112 for the doctor in f114 file
+access f114-special-payments 		&
+; MC7 - include f020 to pick up dept and term date
+	link doc-nbr to doc-nbr of f020-doctor-mstr	&
+; MC7 - end
+	link to f112-pycdceilings opt 
+
+; 2013/12/11 - MC6 - include if f112 record exists and pay-code = 0
+
+;sel if not record f112-pycdceilings exists      
+
+; MC7 
+;sel if not record f112-pycdceilings exists      &
+;  or  (    record f112-pycdceilings exists      &
+;       and doc-pay-code = '0'			&
+;      )
+sel if     not record f112-pycdceilings exists      &
+       and doc-dept <> 10		&
+       and doc-dept <> 13		&
+       and doc-dept <> 21
+; MC7 - end
+
+sorted on doc-nbr
+
+; 2013/12/11 - end
+
+page heading                                    &
+tab  1 'U100'					&
+tab 10 'Run Date: '				&
+tab 20 sysdate					&
+tab 70 'Page: '                                 &
+tab 79 syspage pic '^^'                         &
+skip 2						&
+tab 10 'Doctors have special payments with blank record in 91 screen (f112)'  &
+; 2013/12/11 - MC6 
+; MC7
+; skip 1						&
+;tab 10 '             or record in 91 screen (f112) with pay code ZERO      '  &
+; MC7 - end
+; 2013/12/11 - end
+skip 3 keep column heading
+
+; 2013/12/11 - MC6 
+;rep doc-nbr comp-code ep-nbr-from rec-type amt-gross amt-net 
+; MC7
+;footing at doc-nbr doc-nbr comp-code ep-nbr-from rec-type amt-gross amt-net doc-pay-code
+footing at doc-nbr doc-nbr comp-code ep-nbr-from rec-type amt-gross amt-net  &
+	doc-dept doc-date-fac-term
+; MC7 - end
+
+build $obj/u100_d
+
+
+; MC7 - new request to check if f112 record exists for previous ep-nbr in f114 file
+access f114-special-payments 				&
+	link doc-nbr to doc-nbr of f020-doctor-mstr	&
+	link (doc-nbr, ep-nbr-from - 1) 		&
+	 to   doc-nbr, ep-nbr of f112-pycdceilings 
+
+sel if     doc-pay-code = '0'	        &		
+       and doc-dept <> 10		&
+       and doc-dept <> 13		&
+       and doc-dept <> 21
+
+sorted on doc-nbr
+
+page heading                                    &
+tab  1 'U100'					&
+tab 10 'Run Date: '				&
+tab 20 sysdate					&
+tab 70 'Page: '                                 &
+tab 79 syspage pic '^^'                         &
+skip 2						&
+tab 10 'Doctors have special payments with record in 91 screen (f112)'  &
+skip 1						&
+tab 10 '     with previous ep nbr and pay code ZERO      '  &
+skip 3 keep column heading
+
+footing at doc-nbr doc-nbr comp-code ep-nbr-from rec-type amt-gross amt-net doc-pay-code		&
+	doc-dept doc-date-fac-term ep-nbr
+
+build $obj/u100_e
+

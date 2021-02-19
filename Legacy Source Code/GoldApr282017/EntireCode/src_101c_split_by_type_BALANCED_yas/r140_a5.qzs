@@ -1,0 +1,145 @@
+;  2009/Jun/10 M.C.	- original - clone from r140_a3.qzs  section/group/sequence       
+
+cancel clear
+set rep nolimit
+set report dev disc name r140_a_summ
+set page width 132 length 62 
+set nohead
+
+access *r140_a1                                                 &
+        link doc-afp-paym-group                                 &
+        to   doc-afp-paym-group  of f074-afp-group-mstr opt	&
+        link doc-afp-paym-group                                 &
+        to   doc-afp-paym-group  of f074-afp-group-sequence-mstr opt	
+
+sort    on afp-reporting-mth	&
+	on const-section        &
+        on reporting-seq      
+
+use $pb_src/printer_codes.def nol
+
+def x-percentage char*5 = '   ' + ascii(afp-payment-percentage,2)	&
+			if afp-payment-percentage <> 0			&
+	else '10/60'
+
+def x-afp-group-name-shortened char*70 = afp-group-name[1:70]
+
+def x-payment-grand-total = x-payment-amt-subtotal + afp-payment-amt-total
+
+def rma-total     zoned*10 numeric = x-payment-amt	&
+;	if 	doc-afp-paym-group = 'H061'   		&
+;	   or  (doc-afp-paym-group >= 'H103'  and 	&
+;	        doc-afp-paym-group <= 'H107')
+	if     total-flag = 'R'
+
+def rma-inc-total     zoned*10 numeric = x-payment-amt	&
+;	if 	doc-afp-paym-group = 'H055'   		&
+;	   or  (doc-afp-paym-group >= 'H108'  and 	&
+;	        doc-afp-paym-group <= 'H112') 		&
+;	   or   doc-afp-paym-group = 'H147'  
+	if     total-flag = 'I'
+
+def solo-total    zoned*10 numeric = x-payment-amt	&
+;	if     (doc-afp-paym-group >= 'H129'  and 	&
+;	        doc-afp-paym-group <= 'H135')
+	if     total-flag = 'S'
+
+def other-total     zoned*10 numeric = x-payment-amt	&
+;	if 	doc-afp-paym-group = 'H262'   		&
+;	   or  (doc-afp-paym-group >= 'H513'  and 	&
+;	        doc-afp-paym-group <= 'H524') 		&
+;	   or  (doc-afp-paym-group >= 'H526'  and 	&
+;	        doc-afp-paym-group <= 'H529') 		
+	if     total-flag = 'O'
+  
+def rma-inc-sub-total  zoned*10 numeric = 		&
+	rma-inc-total + solo-total + other-total
+
+def grand-total  zoned*10 numeric = 			&
+	rma-total + rma-inc-total + solo-total + other-total
+
+
+page heading                                    &
+    tab   1 x-ff				&	
+    tab   2 "r140_a_summ"                       &
+    tab  30 "Governance SUMMARY Report(s)"      &
+    tab 106 "Page: "                            &
+    tab 112 syspage                             &
+  skip 1
+
+heading at afp-reporting-mth                            &
+    tab 38 "for "                                       &
+    tab 43 afp-reporting-mth pic "^^^^/^^"              &
+  skip 2                                                &
+    tab  01 "Governance Group: HAMILTON ACADEMIC HEALTH SCIENCES ORGANIZATION" &
+    tab  79 "Fixed Monthly Payment:"                    &
+    tab 103 afp-payment-amt-total                       &
+  skip 2                                                &
+    tab   1 "Group"                                     &
+    tab  68 "Billing"                                   &
+    tab  79 "Conversion"                                &
+    tab  92 "Conversion"                                &
+    tab 120 "Submission"                                &
+  skip 1                                                &
+    tab   1 "Name"                                      &
+    tab  67 " Number"                                   &
+    tab  81 "Rate (%)"                                  &
+    tab  92 "Amount ($)"                                &
+    tab 121 "Amount ($)"                                &
+  skip 2
+
+rep                                             	&
+  tab   1 x-afp-group-name-shortened            	&
+  tab  71 doc-afp-paym-group                    	&
+  tab  81 x-percentage                          	&
+  tab  87 x-payment-amt    pic " ^^^,^^^,^^^.^^ " 	&
+  tab 116 x-submission-amt pic " ^^^,^^^,^^^.^^ "                       
+
+footing at const-section				&
+skip 							&
+  tab  90 "------------"                                &
+  tab 119 "------------"                                &
+skip  							&
+  tab  1 'Total'					&
+  tab  87 x-payment-amt  subt  pic " ^^^,^^^,^^^.^^ " 	&
+  tab 116 x-submission-amt subt pic " ^^^,^^^,^^^.^^ "  & 
+skip 2                     
+
+
+final footing                                           &
+  tab  90 "------------"                                &
+  tab 118 "-------------"                               &
+  skip 3                                                &
+  tab  55 "Total Group Conversion Payments:"		&
+  tab  87 x-payment-amt subt    pic " ^^^,^^^,^^^.^^"	&
+  tab 116 x-submission-amt subt pic " ^^^,^^^,^^^.^^"	&
+skip 2							&
+  tab  62 "Total Payment/Submission:" 			&	
+  tab  87 x-payment-amt subt    pic " ^^^,^^^,^^^.^^"	&
+  tab 116 x-submission-amt subt pic " ^^^,^^^,^^^.^^"	&
+  skip 4						&
+  tab  02 'Solo          : '				&
+  tab  25  solo-total subt pic '^^,^^^,^^^.^^'		&
+  skip 1						&
+  tab  02 'RMA Inc.      : '				&
+  tab  25  rma-inc-total subt pic '^^,^^^,^^^.^^'	&
+  skip 1						&
+  tab  02 'Other         : '				&
+  tab  25  other-total subt pic '^^,^^^,^^^.^^'		&
+  skip 1						&
+  tab  25 '-------------'				&
+  skip 1						&
+  tab  02 'Inc.   Total  : '				&
+  tab  25  rma-inc-sub-total subt pic '^^,^^^,^^^.^^'	&
+  skip 2						&
+  tab  02 'RMA    Total  : '				&
+  tab  25  rma-total subt pic '^^,^^^,^^^.^^'		&
+  skip 1						&
+  tab  25 '-------------'				&
+  skip 1						&
+  tab  02 'Total Payment : '			        &
+  tab  25  grand-total       subt pic '^^,^^^,^^^.^^'	&
+  skip 1						&
+  tab  25 '============='
+
+build $obj/r140_a5

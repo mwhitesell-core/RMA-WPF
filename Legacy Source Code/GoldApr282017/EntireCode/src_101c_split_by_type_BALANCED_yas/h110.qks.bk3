@@ -1,0 +1,109 @@
+cancel clear
+set verify errors
+
+;------------------------------------------------------------------
+; SCREEN H110 COMPENSATION HISTORY
+;
+;
+; MOD HISTORY
+;------------
+; 95/JUN/29	B.M.L.	- ORIGINAL COPIED FROM D110
+; 1999/Apr/21   S.B.	- Fixed date sizes and alignment for Y2K.
+;			- Removed the display field ' proecess-seq'
+;			  in order to make space for the Y2K changes.
+; 1999/Jun/07   S.B.     - Altered the call to scrtitle.use and
+;                          stdhilite.use to be called from $use
+;                          instead of src.
+;                        - Removed the call to secfile.use because
+;                          it was not doing anything.
+;
+screen $pb_obj/h110.qkc 					&
+	on line 6 for 18 				&
+	activities find					&
+	message on line 24				&
+	receiving 	w-doc-nbr, 			&
+			w-ep-nbr-from,			&
+		  	constants-mstr-rec-6, 		&
+			f020-doctor-mstr
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 master
+temp w-doc-nbr
+temp w-ep-nbr-from
+temp x-srch-code char*6
+
+description of screen                                                 &
+"                                                                    "&
+"       This screen allows a User to query Physician Earnings history"&
+"       transactions.                                                "&
+"                                                                    "
+
+;use $pb_src/secfile.use   nol nod
+
+file  f110-compensation-history  primary  occurs 15
+	access viaindex compensation-history-key via doc-nbr, ep-nbr &
+	       using w-doc-nbr, w-ep-nbr-from
+
+file f190-comp-codes      reference
+     access viaindex comp-code 				&
+	using comp-code of f110-compensation-history
+
+file f191-earnings-period reference
+     access viaindex ep-nbr 				&
+	using ep-nbr of f110-compensation-history
+
+
+define x-screen-name char*55 = "EARNINGS - HISTORY   "
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+;Y2K changes.
+"   E/P     T                                      -------AMOUNT---------   ENTRY" &
+;"   E/P     T                                          ------AMOUNT-------- ENTRY" &
+	at ,1
+skip
+title &
+;Y2K changes.
+ "   NBR    Y CODE   DESCRIPTION      FACTOR   UNITS     GROSS         NET *   E/P" &
+; "   NBR SEQ Y CODE   DESCRIPTION      FACTOR   UNITS      GROSS         NET * E/P" &
+	at ,1
+
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;01 YYMM 99 x xxxxxx-xxxxxxxxxxxxxxx99.9999*99,999- 999,999.99- 999,999.99- *9101
+;Y2K changes.
+;align (1,,4)(,,9)(,,12)(,,14) (,20,21)(,,37)(,,44)(,,45)(,,53)(,,65)(,,76) (,,77)
+align (1,,4)(,,11)(,,13)(,19,20)(,,36)(,,43)(,,44)(,,51)(,,63)(,,74) (,,75)
+cluster occurs with f110-compensation-history
+field ep-nbr		of f110-compensation-history 			
+;Y2K changes.  Removed the 'process-seq' field.
+field comp-type 	of f110-compensation-history
+field comp-code         of f110-compensation-history	
+field desc-short	of f190-comp-codes label "-"
+field factor		of f110-compensation-history
+field factor-override	of f110-compensation-history
+;Y2K changes. Added the pic.
+field comp-units	of f110-compensation-history if units-dollars-flag of f190-comp-codes = "U" bwz pic "^^^^^^"
+field amt-gross		of f110-compensation-history if units-dollars-flag of f190-comp-codes = "D" bwz
+field amt-net		  of f110-compensation-history
+field compensation-status of f110-compensation-history
+field ep-nbr-entry        of f110-compensation-history
+
+; PROCS ------------------------------------------------------------
+
+procedure find
+  begin
+    for f110-compensation-history
+      begin
+        get f110-compensation-history viaindex compensation-history-key via doc-nbr, &
+              ep-nbr using w-doc-nbr, w-ep-nbr-from
+        end
+    end
+build
+  

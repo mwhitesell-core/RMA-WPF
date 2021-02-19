@@ -1,0 +1,175 @@
+; Program: u140_b
+; Purpose: After the RA is run and f075 updated with RA payments this program
+;	   will determine the percentage by RMA doctor number of the RA
+;	   payments at the doctor's OHIP number level.
+;	   Later programs will use this percentage to split the AFP payment
+; mod history
+; 2004/jul/01 b.e.	- originla
+; 2004/aug/12 b.e.	- changed 'count' of doctors with same ohip number
+;			  to count with same ohip nbr within doc-afp-paym-group 
+; 2005/mar/08 M.C.	- substitute afp-payment-percentage with afp-multi-doc-ra-percentage
+;			  divide by 100000 instead of 100 because we carry 5 decimal places
+; 2005/apr/08 b.e. - set lock update statement
+; 2005/jun/09 M.C. - change from sorted to sort
+;	           - change temp amount field from default to zoned*11 numeric
+; 2007/feb/22 b.e. - access group flag and skip any records for groups whose
+;		     afp group flag says 'R'eport only as these doctors won't
+;		     won't have any rma number and no split between those nbrs
+;		     to calculate
+; 2012/feb/22 MC1  - modify last request to link fo f020-doctor-mstr, change sort so that active doctor
+;		     will be selected
+
+cancel clear
+
+run u140_b
+set process nolimit
+;set lock file update
+set lock record update
+
+request f075_calc_ra_total                   &
+                on edit        errors report &
+                on calculation errors report
+
+access f075-afp-doc-mstr				&
+	link doc-afp-paym-group				&
+	to   doc-afp-paym-group	of f074-afp-group-mstr  
+
+select if afp-group-process-flag = "E" ; process EARNINGS groups only
+
+; 2005/06/09 - MC
+;sorted	on doc-ohip-nbr	&
+sort	on doc-ohip-nbr	&
+; 2005/06/09 - end
+	on doc-afp-paym-group 
+
+; 2005/06/09 - MC
+;temp x-ra-total
+temp x-ra-total zoned*11 numeric
+; 2005/06/09 - end
+item x-ra-total				&
+	= x-ra-total + ra-payment-amt	&
+		reset at doc-afp-paym-group
+
+; 2005/04/12 - MC
+;subfile u140_b keep at doc-ohip-nbr include 		&
+subfile u140_b keep at doc-afp-paym-group  include 	&
+; 2005/04/12 - end
+  doc-ohip-nbr,						&
+  doc-afp-paym-group of f075-afp-doc-mstr,		&
+  x-ra-total
+
+
+request f075_update_doc_recs_with_ra_total   &
+                on edit        errors report &
+                on calculation errors report
+
+access *u140_b				&
+   link doc-ohip-nbr			&
+     to doc-ohip-nbr of f075-afp-doc-mstr
+
+select if   doc-afp-paym-group of u140_b		&
+          = doc-afp-paym-group of f075-afp-doc-mstr 
+
+; 2005/03/08 - MC
+;def x-ra-percentage zoned*5					&
+;	= round(   (  ra-payment-amt of f075-afp-doc-mstr	&
+;	            / x-ra-total				&
+;	           )						&
+;	         * 100						&
+;	       )
+def x-ra-percentage zoned*6					&
+	= round(   (  ra-payment-amt of f075-afp-doc-mstr	&
+	            / x-ra-total				&
+	           )						&
+	         * 100000					&
+	       )
+; 2005/03/08 - end
+
+
+subfile u140_b_audit_1 keep include		&
+  doc-ohip-nbr of u140_b,			&
+  doc-nbr,					&
+  ra-payment-amt,				&
+  x-ra-total,					&	
+  x-ra-percentage		
+
+output f075-afp-doc-mstr alias f075-update update
+  item ra-payment-amt-total	final x-ra-total of u140_b
+; 2005/03/08 - MC
+;  item afp-payment-percentage	final x-ra-percentage
+   item afp-multi-doc-ra-percentage	final x-ra-percentage
+; 2005/03/08 - end
+
+
+request f075_ensure_percentage_is_100        &
+                on edit        errors report &
+                on calculation errors report
+
+; 2012/02/22 - MC1
+;access f075-afp-doc-mstr
+access f075-afp-doc-mstr			&
+	link doc-nbr to doc-nbr of f020-doctor-mstr
+; 2012/02/22 - end
+
+
+; 2012/02/22 - MC1 - add define & change sort
+
+def x-term-date  date = 20991231 if doc-date-fac-term = 0	&
+		else    doc-date-fac-term
+
+;sort	on doc-ohip-nbr		&
+;	on doc-afp-paym-group
+
+sort	on doc-ohip-nbr of f075-afp-doc-mstr   	     &
+	on doc-afp-paym-group of f075-afp-doc-mstr   &
+	on x-term-date				     &
+	on doc-nbr of f075-afp-doc-mstr
+; 2012/02/22 - end
+
+temp x-rec-count
+item x-rec-count =x-rec-count + 1 reset at doc-afp-paym-group
+
+; add up all percentages except the last one
+;  2005/03/08 - MC
+;temp x-ra-percentage zoned*5
+temp x-ra-percentage zoned*6
+; 2005/03/08 - -end
+item x-ra-percentage						&
+	=   x-ra-percentage					&
+; 2005/03/08 - MC
+;	  + afp-payment-percentage				&
+	  + afp-multi-doc-ra-percentage				&
+; 2005/03/08 - end
+		if x-rec-count <> afp-duplicate-doc-count	&
+     else x-ra-percentage reset at doc-afp-paym-group
+
+;def x-final-percentage = 1 - (x-ra-percentage / 1000)
+; 2005/03/08 - MC
+;def x-final-percentage = 100 - x-ra-percentage 
+def x-final-percentage = 100000 - x-ra-percentage 
+; 2005/03/08 - end
+
+subfile u140_b_audit_2 keep include		&
+; 2012/02/22 - MC1 - include doc-nbr, doc-afp-paym-group
+;  doc-ohip-nbr,				&
+  doc-ohip-nbr of f075-afp-doc-mstr,		&
+  doc-nbr of f075-afp-doc-mstr,			&
+  doc-afp-paym-group of f075-afp-doc-mstr,	&
+; 2012/02/22 - end
+  x-ra-percentage,				&	
+; 2005/03/08 - MC
+;  afp-payment-percentage,			&
+  afp-multi-doc-ra-percentage,			&
+; 2005/03/08 - end
+  x-final-percentage,				&
+  x-rec-count,					&
+  afp-duplicate-doc-count
+  
+output f075-afp-doc-mstr alias f075-update update 	&
+	if x-rec-count = afp-duplicate-doc-count
+; 2005/03/08 - MC 
+;  item afp-payment-percentage	final x-final-percentage
+  item afp-multi-doc-ra-percentage	final x-final-percentage
+; 2005/03/08 - end
+
+build $obj/u140_b

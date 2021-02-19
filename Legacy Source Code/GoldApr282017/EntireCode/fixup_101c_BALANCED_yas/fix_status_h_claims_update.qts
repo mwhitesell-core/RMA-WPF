@@ -1,0 +1,64 @@
+; Program: fix_status_h_claims_update.qts 
+; Purpose: ;- update status "H" claims going to OHIP that have a submit date 
+;	   ;  of 'zero' to "X" if the reference field is blank otherwise
+;	   ;  to "C" to have RMA process manually with card. 
+;          - update "X" status claims to "H"old if patient has a message 
+;
+; 2000/may/24 B.E.   - original
+;
+
+cancel clear
+set process nolimit
+set lock record update
+
+access f002-claims-mstr				&
+  link clmhdr-batch-nbr				&
+    to batctrl-batch-nbr			&
+	of f001-batch-control-file   opt	&
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr 
+
+;choose key-clm-type "B"
+
+define claim-ped-cutoff-date date = parm prompt "Check claims with PED >= what date: "
+
+def bal-due = clmhdr-manual-and-tape-payments +  clmhdr-tot-claim-ar-ohip
+
+select f002-claims-mstr                                 &
+  if    clmhdr-adj-oma-cd       = "0000"                &;check hdrs only
+     and clmhdr-date-period-end >= claim-ped-cutoff-date&; >=Operator selection
+     and clmhdr-batch-type = "C"                        &
+     and clmhdr-status-ohip <> "I2"                     &
+     and bal-due > 0                                    &
+     AND clmhdr-tape-submit-ind = "X"			&
+     AND clmhdr-submit-date = 0				
+select if pat-mess-code <> " "
+
+def flag-f001-missing char*1 				&
+    = "Y" if not  record f001-batch-control-file exists	&
+ else "N"
+
+sorted on clmhdr-claim-id
+output f002-claims-mstr update
+  item clmhdr-tape-submit-ind = "H" 
+;  item clmhdr-tape-submit-ind = "X" if clmhdr-reference = " "	&
+;			   else "C"
+
+subfile fix_status_h_claims_update2  keep  at clmhdr-claim-id	&
+ if flag-f001-missing = "N" 				&
+ include 			 &
+  clmhdr-claim-id		,&
+  clmhdr-date-sys 		,&
+  clmhdr-date-period-end	,&
+  clmhdr-submit-date		,&
+  clmhdr-cycle-nbr		,&	
+  bal-due			, &
+  clmhdr-reference		, &
+  clmhdr-pat-ohip-id-or-chart   , &
+; key-clm-type  always "B"    
+  key-clm-batch-nbr 		, &
+  key-clm-claim-nbr 		, &
+  key-clm-serv-code
+; key-clm-adj-nbr always "0"
+
+build $pb_obj/fix_status_h_claims_update
+

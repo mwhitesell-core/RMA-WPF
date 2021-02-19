@@ -1,0 +1,359 @@
+;#> PROGRAM-ID.
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :  DELETE THE ADJUSTMENT AND PAYMENT BATCH CONTROL
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO     DESCRIPTION
+; 2002/07/09	M.C.	- change the definiition for oma amt
+; 2003/dec/15	A.A.	- alpha doctor nbr
+; 2007/jun/26   M.C.    - include clinic 70's
+; 2010/jul/05   MC1     - modify d-iconst-clinic-nbr-1-2 to define  clinic 70's to be clinic 71 to 75 inclusive
+;			  and clinic 60's to be clinic 61 to 65 inclusive
+; 2011/jul/06   MC2     - also include clinic 66 as part of 60's
+
+cancel clear
+set report nolimit
+
+access *u093-retain-batch 			    	&
+;!	link (nconv(ascii(batctrl-batch-nbr)[1:2])) 	&
+	link (nconv(batctrl-batch-nbr[1:2])) 		&
+          to iconst-clinic-nbr-1-2 of iconst-mstr-rec  
+
+sorted on batctrl-batch-nbr
+
+define d-clinic num = nconv(ascii(iconst-clinic-nbr-1-2)[1:1])
+
+;; 2010/07/05 - MC1
+;;define d-iconst-clinic-nbr-1-2 int size 2 = iconst-clinic-nbr-1-2 & 
+; 2007/06/26 - MC
+;       if d-clinic <> 6 else 60
+;;       if d-clinic <> 6 and d-clinic <> 7	&
+;;	else 60 if d-clinic = 6 		&
+;;	else 70 if d-clinic = 7
+; 2007/06/26 - end
+
+define d-iconst-clinic-nbr-1-2 int size 2 =					& 
+; 2011/07/06 - MC2
+;             60 if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 65  &
+             60 if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 66  &
+; 2011/07/06 - end
+	else 70 if iconst-clinic-nbr-1-2 >= 71 and iconst-clinic-nbr-1-2 <= 75  &
+        else iconst-clinic-nbr-1-2 
+;; 2010/07/05 - end
+
+define d-retain-count zoned*1 numeric = 1
+define d-delete-count zoned*1 numeric = 0
+define r-batctrl-calc-ar-due zoned*7 numeric = 0 - batctrl-calc-ar-due &
+       if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'	       &
+	else batctrl-calc-ar-due
+define r-batctrl-calc-tot-rev zoned*7 numeric =0 -  batctrl-calc-tot-rev &
+       if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'		 &
+	else batctrl-calc-tot-rev
+define r-batctrl-manual-pay-tot zoned*7 numeric =0 -  batctrl-manual-pay-tot &
+       if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'		 &
+	else batctrl-manual-pay-tot
+define d-batctrl-calc-ar-due zoned*7 numeric = 0
+define d-batctrl-calc-tot-rev zoned*7 numeric = 0
+define d-batctrl-manual-pay-tot zoned*7 numeric = 0
+
+define d-batctrl-adj-cd char*1 = ascii(batctrl-agent-cd) if 	&
+       batctrl-batch-type = 'C' else batctrl-adj-cd
+
+
+set subfile name u093-purge-validate keep append at batctrl-batch-nbr
+report summary  d-iconst-clinic-nbr-1-2 		&
+		iconst-date-period-end		&
+		d-cut-off-date			&
+		iconst-clinic-cycle-nbr		&
+		d-retain-count			&
+		d-delete-count			&
+		batctrl-batch-type 		&
+		d-batctrl-adj-cd		&
+		batctrl-cycle-nbr		&
+                r-batctrl-calc-ar-due           &
+                r-batctrl-calc-tot-rev          &
+                r-batctrl-manual-pay-tot	&
+                d-batctrl-calc-ar-due           &
+                d-batctrl-calc-tot-rev          &
+                d-batctrl-manual-pay-tot      
+
+build $obj/r093a
+
+
+access *u093-delete-batch 			 	&
+;!        link (nconv(ascii(batctrl-batch-nbr)[1:2])) 	&
+        link (nconv(batctrl-batch-nbr[1:2])) 		&
+          to iconst-clinic-nbr-1-2 of iconst-mstr-rec	
+
+sorted on batctrl-batch-nbr
+
+define d-clinic num = nconv(ascii(iconst-clinic-nbr-1-2)[1:1])
+
+;; 2010/07/05 - MC1
+;;define d-iconst-clinic-nbr-1-2 int size 2 = iconst-clinic-nbr-1-2 & 
+; 2007/06/26 - MC
+;       if d-clinic <> 6 else 60
+;;       if d-clinic <> 6 and d-clinic <> 7	&
+;;	else 60 if d-clinic = 6 		&
+;;	else 70 if d-clinic = 7
+; 2007/06/26 - end
+
+define d-iconst-clinic-nbr-1-2 int size 2 =					& 
+; 2011/07/06 - MC2
+;             60 if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 65  &
+             60 if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 66  &
+; 2011/07/06 - end
+	else 70 if iconst-clinic-nbr-1-2 >= 71 and iconst-clinic-nbr-1-2 <= 75  &
+        else iconst-clinic-nbr-1-2 
+;; 2010/07/05 - end
+
+define d-retain-count zoned*1 numeric = 0
+define d-delete-count zoned*1 numeric = 1
+define r-batctrl-calc-ar-due zoned*7 numeric = 0
+define r-batctrl-calc-tot-rev zoned*7 numeric = 0
+define r-batctrl-manual-pay-tot zoned*7 numeric = 0
+define d-batctrl-calc-ar-due zoned*7 numeric = 0 - batctrl-calc-ar-due &
+       if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'	       &
+	else batctrl-calc-ar-due
+define d-batctrl-calc-tot-rev zoned*7 numeric =0 -  batctrl-calc-tot-rev &
+       if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'		 &
+	else batctrl-calc-tot-rev
+define d-batctrl-manual-pay-tot zoned*7 numeric =0 -  batctrl-manual-pay-tot &
+       if batctrl-batch-type = 'P' and batctrl-adj-cd = 'C'		&
+	else batctrl-manual-pay-tot
+
+set subfile name u093-purge-validate append at batctrl-batch-nbr
+report summary  d-iconst-clinic-nbr-1-2		&
+                iconst-date-period-end          &
+		d-cut-off-date			&
+		iconst-clinic-cycle-nbr		&
+		d-retain-count			&
+		d-delete-count			&
+		batctrl-batch-type 		&
+		batctrl-adj-cd			&
+		batctrl-cycle-nbr		&
+                r-batctrl-calc-ar-due           &
+                r-batctrl-calc-tot-rev          &
+                r-batctrl-manual-pay-tot	&
+                d-batctrl-calc-ar-due           &
+                d-batctrl-calc-tot-rev          &
+                d-batctrl-manual-pay-tot  
+build $obj/r093b
+
+
+access *u093-purge-validate
+	
+define d-clinic-parm int unsigned size 2 = parm prompt "Enter clinic nbr: "
+
+select if d-iconst-clinic-nbr-1-2 = d-clinic-parm
+
+define d-batch-type num*1 =   				&
+	        1 if batctrl-batch-type = "C"		&
+           else 2 if batctrl-batch-type = "A"   	&
+           else 3
+
+sort on d-iconst-clinic-nbr-1-2   &
+     on d-batch-type      	&
+     on d-batctrl-adj-cd
+
+define d-type char*11 = "CLAIMS"				&
+	 	if batctrl-batch-type = "C"           		&
+	      else "ADJUSTMENTS" if batctrl-batch-type = "A" 	&
+	      else "PAYMENTS" if batctrl-batch-type = "P"
+
+page heading                                             &
+        tab   1 "R093A"                                  &
+	tab  41 "BATCH CONTROL FILE DELETIONS"		 &
+        tab 100 "RUN DATE"                               &
+        tab 109 sysdate                                  &
+        tab 124 "PAGE"                                   &
+        tab 129 syspage pic "^^^"     			 &
+skip 1							 &
+ 	tab  40 "ADJUSTMENT AND PAYMENT BATCHES"	 &
+skip 2
+
+heading at d-iconst-clinic-nbr-1-2			 &
+	tab   1 "CLINIC "				 &
+	tab   9 d-iconst-clinic-nbr-1-2			 &
+	tab  16 "PERIOD END DATE:"			 &
+	tab  33 iconst-date-period-end			 &
+	tab  50 "CYCLE"					 &
+	tab  58 iconst-clinic-cycle-nbr			 &
+	tab  63 "CUT-OFF DATE:"				 &
+	tab  78 d-cut-off-date				 &
+skip 2							 &
+        tab  22 "--------------------R E T A I N E D------------------" &
+	tab  78 "--------------------D E L E T E D--------------------" &
+skip 2							 &
+	tab   1 "BATCH-CONTROL FILE"  			 &
+	tab  22 "EFFECT ON A/R"				 &
+	tab  37 "EFFECT ON REV"				 &
+	tab  52 "EFFECT ON CASH"			 &
+	tab  68 "NUMBER"				 &
+	tab  78 "EFFECT ON A/R"				 &
+	tab  93 "EFFECT ON REV"				 &
+	tab 109 "EFFECT ON CASH"			 &
+	tab 124 "NUMBER"				 &
+skip 2 
+
+heading at d-batch-type			 	 	 &
+	tab   1 d-type				 
+
+footing at d-batctrl-adj-cd                              &
+        tab   13 "-"                                     &
+        tab   16 d-batctrl-adj-cd                        &
+        tab   22 r-batctrl-calc-ar-due subtotal          &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   37 r-batctrl-calc-tot-rev subtotal         &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   53 r-batctrl-manual-pay-tot subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   68 d-retain-count subtotal pic '^^,^^^'    &
+        tab   78 d-batctrl-calc-ar-due subtotal          &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   93 d-batctrl-calc-tot-rev subtotal         &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab  110 d-batctrl-manual-pay-tot subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab  124 d-delete-count subtotal pic '^^,^^^'    &
+skip 1
+
+footing at d-batch-type				  	 &
+skip 1                                                   &
+        tab    7 "TOTAL"                                 &
+        tab   22 r-batctrl-calc-ar-due subtotal          &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   37 r-batctrl-calc-tot-rev subtotal         &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   53 r-batctrl-manual-pay-tot subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   68 d-retain-count subtotal pic '^^,^^^'    &
+        tab   78 d-batctrl-calc-ar-due subtotal          &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   93 d-batctrl-calc-tot-rev subtotal         &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab  110 d-batctrl-manual-pay-tot subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab  124 d-delete-count subtotal pic '^^,^^^'    &
+skip 2
+
+footing at d-iconst-clinic-nbr-1-2 			 &
+        tab    1 "GRAND TOTAL"                           &
+        tab   22 r-batctrl-calc-ar-due subtotal          &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   37 r-batctrl-calc-tot-rev subtotal         &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   53 r-batctrl-manual-pay-tot subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   68 d-retain-count subtotal pic '^^,^^^'    &
+        tab   78 d-batctrl-calc-ar-due subtotal          &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab   93 d-batctrl-calc-tot-rev subtotal         &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab  110 d-batctrl-manual-pay-tot subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab  124 d-delete-count subtotal pic '^^,^^^'    &
+skip 2
+
+set page length 30
+set page width 132
+set formfeed
+set report device disc name r093a
+build $obj/r093c
+
+
+access *u093-delete-batch                               &
+;!        link (nconv(ascii(batctrl-batch-nbr)[1:2]))     &
+        link (nconv(batctrl-batch-nbr[1:2]))     	&
+          to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+define d-clinic num = nconv(ascii(iconst-clinic-nbr-1-2)[1:1])
+
+;; 2010/07/05 - MC1
+;;define d-iconst-clinic-nbr-1-2 int size 2 = iconst-clinic-nbr-1-2 & 
+; 2007/06/26 - MC
+;       if d-clinic <> 6 else 60
+;;       if d-clinic <> 6 and d-clinic <> 7	&
+;;	else 60 if d-clinic = 6 		&
+;;	else 70 if d-clinic = 7
+; 2007/06/26 - end
+
+define d-iconst-clinic-nbr-1-2 int size 2 =					& 
+; 2011/07/06 - MC2
+;             60 if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 65  &
+             60 if iconst-clinic-nbr-1-2 >= 61 and iconst-clinic-nbr-1-2 <= 66  &
+; 2011/07/06 - end
+	else 70 if iconst-clinic-nbr-1-2 >= 71 and iconst-clinic-nbr-1-2 <= 75  &
+        else iconst-clinic-nbr-1-2 
+;; 2010/07/05 - end
+
+
+define d-clinic-parm int unsigned size 2 = parm prompt "Enter clinic nbr: "
+
+select if d-iconst-clinic-nbr-1-2 = d-clinic-parm and 		&
+  (batctrl-batch-type = "A" or batctrl-batch-type = "P")
+
+sort on d-iconst-clinic-nbr-1-2 &
+     on batctrl-batch-type      &
+     on batctrl-adj-cd
+
+define d-type char*11 = "ADJUSTMENTS" if batctrl-batch-type = "A"    &
+                   else "PAYMENTS" if batctrl-batch-type = "P"
+
+define d-delete-count zoned*1 numeric = 1
+
+define d-clmhdr-tot-claim-ar-ohip num = clmhdr-tot-claim-ar-ohip  &
+                                      + clmhdr-manual-and-tape-payments
+
+; 2002/07/09 - MC
+;define d-clmhdr-tot-claim-ar-oma num = clmhdr-tot-claim-ar-ohip  &
+define d-clmhdr-tot-claim-ar-oma num = clmhdr-tot-claim-ar-oma   &
+; 2002/07/09 - end
+                                     + clmhdr-manual-and-tape-payments
+
+page heading                                             &
+        tab   1 "CLAIMS MASTER"                          &
+        tab  93 "AMOUNT OHIP"                            &
+        tab 111 "AMOUNT OMA"                             &
+        tab 124 "NUMBER"                                 &
+skip 2
+
+heading at batctrl-batch-type                            &
+        tab   1 d-type
+
+footing at batctrl-adj-cd                                &
+        tab  13 "-"                                      &
+        tab  16 batctrl-adj-cd                           &
+        tab  93 d-clmhdr-tot-claim-ar-ohip subtotal      &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab 110 d-clmhdr-tot-claim-ar-oma subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab 124 d-delete-count subtotal pic '^^,^^^'     &
+skip 1
+
+footing at batctrl-batch-type                            &
+skip 2                                                   &
+        tab   5 "TOTAL"                                  &
+        tab  93 d-clmhdr-tot-claim-ar-ohip subtotal      &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab 110 d-clmhdr-tot-claim-ar-oma subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab 124 d-delete-count subtotal pic '^^,^^^'     &
+skip 2
+
+footing at d-iconst-clinic-nbr-1-2                       &
+        tab    1 "GRAND TOTAL"                           &
+        tab  93 d-clmhdr-tot-claim-ar-ohip subtotal      &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab 110 d-clmhdr-tot-claim-ar-oma subtotal       &
+                  pic "^^,^^^,^^^.^^ " trail "-"         &
+        tab 124 d-delete-count subtotal pic '^^,^^^'
+
+
+set page length 30
+set page width 132
+set formfeed
+set report device disc name r093b
+build $obj/r093d

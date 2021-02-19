@@ -1,0 +1,637 @@
+;#> PROGRAM-ID.     U035A.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : To print the direct bill invoices
+;		       This pgm is the first series of the 3 pgms     
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2001/MAR/27 M.C.         - ORIGINAL (convert from u035a/b/c.cbl)
+
+can clear
+set lock file update
+set process  nolimit
+
+request extract-u035a on calculation errors report              &
+                   on edit errors report
+
+access f002-claim-shadow                                        &
+  link clm-shadow-patient to key-pat-mstr of f010-pat-mstr opt  &
+  link 'B', clm-shadow-batch-nbr, clm-shadow-claim-nbr, '00000', '0'  &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt &
+  link (nconvert(ascii(clm-shadow-batch-nbr,9)[4:3]))           &
+   to  doc-nbr of f020-doctor-mstr opt
+
+def x-bal-due zoned*8 signed = clmhdr-tot-claim-ar-oma +        &
+                               clmhdr-manual-and-tape-payments
+
+subfile u035a  keep if record f010-pat-mstr exists      &
+                and    record f002-claims-mstr exists   &
+                and    clmhdr-agent-cd <> 4             &
+                and    x-bal-due > 64                   &
+                and    clmhdr-reprint-flag = 'Y'        &
+        include                                         &
+        clmhdr-agent-cd of f002-claims-mstr ,           &
+        clm-shadow-clinic of f002-claim-shadow,         &
+        clm-shadow-subdivision of f002-claim-shadow,    &
+        pat-surname of f010-pat-mstr,                   &
+        pat-given-name of f010-pat-mstr,                &
+        clm-shadow-patient of f002-claim-shadow,        &               
+        clm-shadow-batch-nbr of f002-claim-shadow,      &       
+        clm-shadow-claim-nbr of f002-claim-shadow,      &
+; capture patient and clmhdr info for later use 
+        clmhdr-msg-nbr of f002-claims-mstr,             &
+        clmhdr-hosp of f002-claims-mstr,                &
+        clmhdr-fee-complex of f002-claims-mstr,         &
+        clmhdr-date-sys   of f002-claims-mstr,          &
+        subscr-msg-nbr of f010-pat-mstr,                &
+        subscr-addr1 of f010-pat-mstr,                  &
+        subscr-addr2 of f010-pat-mstr,                  &
+        subscr-addr3 of f010-pat-mstr,                  &
+        subscr-postal-cd of f010-pat-mstr,              &
+        pat-country of f010-pat-mstr,                   &
+        pat-ohip-mmyy of f010-pat-mstr,                 &
+        doc-name of f020-doctor-mstr
+
+subfile ru035a  keep if not record f010-pat-mstr exists &
+                or not record f002-claims-mstr exists   &
+        include                                         &
+        clmhdr-agent-cd of f002-claims-mstr ,           &
+        clm-shadow-clinic of f002-claim-shadow,         &
+        clm-shadow-subdivision of f002-claim-shadow,    &
+        clm-shadow-patient of f002-claim-shadow,        &               
+        clm-shadow-batch-nbr of f002-claim-shadow,      &       
+        clm-shadow-claim-nbr of f002-claim-shadow
+
+request sort-u035a on calculation errors report		&
+		   on edit errors report
+
+access *u035a
+
+sort    on clmhdr-agent-cd 	   &
+	on clm-shadow-clinic       &
+	on clm-shadow-subdivision  &
+	on pat-surname 		   &
+	on pat-given-name 	   &
+	on clm-shadow-patient 	   &		
+ 	on clm-shadow-batch-nbr    &	
+ 	on clm-shadow-claim-nbr 
+
+subfile u035b keep include u035a
+
+subfile u035bb keep at clm-shadow-patient include u035a
+
+request extract_clm_dtl  on calculation errors report		&
+		   	 on edit errors report
+
+access *u035b			&
+  link 'B', clm-shadow-batch-nbr, clm-shadow-claim-nbr	        &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr of f002-claims-mstr &
+  link clmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+sel if clmdtl-oma-cd <> '0000' and clmdtl-oma-cd <> 'ZZZZ'
+
+def x-serv-date date = nconvert(clmhdr-date-sys  of u035b)		&
+   if  (clmdtl-adj-cd = 'A' or clmdtl-adj-cd = 'B' or clmdtl-adj-cd = 'C')  &
+                  else nconvert(clmdtl-sv-date)        
+
+def x-nbr-serv num*2 = clmdtl-nbr-serv  if clmdtl-adj-cd = ' '
+
+def x-claim-no char*8 = ascii(clm-shadow-batch-nbr,9)[4:6] +	&
+			ascii(clm-shadow-claim-nbr,2)		
+
+def x-ohip-cd char*5 = clmdtl-oma-cd + clmdtl-oma-suff		
+
+def x-doc-name char*24 = doc-name 
+
+def x-hosp char*1 = clmhdr-hosp of u035b 
+
+def x-desc char*47 							&
+      = 'OFF HOUR VISIT PREMIUM'					&
+			if  clmdtl-oma-cd = 'H110'			&
+			 or clmdtl-oma-cd = 'H106' 			&
+   else 'PAYMENT - THANK YOU'						&
+			if    clmdtl-adj-cd = 'C' 			&
+			  and clmdtl-fee-oma < 0			&
+   else 'PAYMENT REVERSAL - EXPLANATION ENCLOSED' 			&
+			if clmdtl-adj-cd = 'C'				&
+   else 'ADJUSTMENT'							&
+			if   clmdtl-adj-cd = 'A' 			&
+			  or clmdtl-adj-cd = 'B'			&
+   else fee-desc							&
+			if clmhdr-fee-complex of u035b = 'H'		&
+   else 'PROCEDURE'							&
+			if   fee-icc-sec = 'NM' 			&
+			  or fee-icc-sec = 'PF' 			&
+			  or fee-icc-sec = 'DR' 			&
+			  or fee-icc-sec = 'DU' 			&
+			  or (    (   fee-icc-sec = 'CP'		&
+				   or fee-icc-sec = 'DT'		&
+				  ) 					&
+			      and clmdtl-oma-suff = 'A'			&
+			     )						&
+    else 'ANAESTHESIA'							&
+			if (    (   fee-icc-sec = 'CP' 			&
+			         or fee-icc-sec = 'DT' 			&
+				 or fee-icc-sec = 'SP'			&
+			        )					&
+			    and clmdtl-oma-suff = 'C'			&
+			   ) 						&
+    else 'ASSISTING'   							&
+		        if    fee-icc-sec     = 'SP' 			&
+			  and clmdtl-oma-suff = 'B'			&
+    else 'SURGICAL PROCEDURE'						&
+       			if    fee-icc-sec     = 'SP' 			&
+			  and clmdtl-oma-suff = 'A'			&
+    else 'OBSTETRICS'        						&
+		        if    fee-icc-code    = 'SP0447' 		&
+			  and clmdtl-oma-suff = 'A'			&
+    else 'VISITS'            						&
+   			if fee-icc-sec = 'CV'				&
+    else 'LAB WORK'							&
+			if fee-icc-sec = 'LM'				
+
+def x-charge zoned*8 signed = clmdtl-fee-oma 		&
+	if   (   (   clmdtl-adj-cd = 'A' 		&
+	           or clmdtl-adj-cd = 'B'		&
+	 	   or clmdtl-adj-cd = 'C'		&
+	          )					&
+	      and	clmdtl-fee-oma > 0		&
+	     )						&
+ 	  or clmdtl-adj-cd = ' '
+
+def x-credit zoned*8 signed = clmdtl-fee-oma 		&
+	if (    (   clmdtl-adj-cd = 'A'			&
+		 or clmdtl-adj-cd = 'B' 		&
+		 or clmdtl-adj-cd = 'C'			&
+		) 					&
+	    and	clmdtl-fee-oma < 0			&
+	   )			
+
+def x-type num*1 = 1 
+def x-pat  num*1 = 1
+
+subfile u035dtl keep include				&
+	clmhdr-agent-cd of u035b ,                      &
+	clm-shadow-clinic ,                    		&
+	clm-shadow-subdivision ,                    	&
+	pat-surname ,                			&
+	pat-given-name ,                		&
+	clm-shadow-patient ,                    	&		
+ 	clm-shadow-batch-nbr ,                    	&	
+	clm-shadow-claim-nbr ,                    	&
+	subscr-addr1 ,                			&
+	subscr-addr2 ,                			&
+	subscr-addr3 ,                			&
+	subscr-postal-cd ,                		&
+	pat-country ,                			&
+	pat-ohip-mmyy ,                			&
+	x-serv-date,					&
+	x-nbr-serv,					&
+	x-claim-no,					&
+	x-ohip-cd,					&
+	x-doc-name,					&
+	x-hosp,						&
+	x-desc,						&
+	x-charge,					&
+	x-credit,					&
+	x-type,						&
+	x-paT
+
+subfile u035pay keep if clmdtl-adj-cd = 'C' include	&
+ 	clm-shadow-batch-nbr of u035b ,                    	&	
+	clm-shadow-claim-nbr  of u035b
+
+
+request extract_clm_desc on calculation errors report		&
+		   	 on edit errors report
+
+access *u035b			&
+  link 'B', clm-shadow-batch-nbr, clm-shadow-claim-nbr	        &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr of f002-claims-mstr 
+
+sel if clmdtl-oma-cd = 'ZZZZ'
+
+sorted  on clmhdr-agent-cd 	   &
+	on clm-shadow-clinic       &
+	on clm-shadow-subdivision  &
+	on pat-surname 		   &
+	on pat-given-name 	   &
+	on clm-shadow-patient 	   &		
+ 	on clm-shadow-batch-nbr    &	
+ 	on clm-shadow-claim-nbr 
+
+temp x-desc-rec-counter
+item  x-desc-rec-counter 				&
+    = x-desc-rec-counter + 1				&
+		reset at clm-shadow-claim-nbr  
+
+temp x-desc12 char*47
+item x-desc12						&
+    = clmdtl-desc 					&
+		if x-desc-rec-counter = 1		&
+ else x-desc12[1:22] + clmdtl-desc			&
+		if x-desc-rec-counter = 2		&
+		reset at clm-shadow-claim-nbr  
+
+temp x-desc34 char*47
+item x-desc34						&
+    = clmdtl-desc 					&
+		if x-desc-rec-counter = 3		&
+ else x-desc34[1:22] + clmdtl-desc			&
+		if x-desc-rec-counter = 4		&
+		reset at clm-shadow-claim-nbr  
+
+temp x-desc5  char*47
+item x-desc5 						&
+    = clmdtl-desc 					&
+		if x-desc-rec-counter = 5		&
+		reset at clm-shadow-claim-nbr  
+
+def x-serv-date date = 0
+
+def x-nbr-serv num*2 = 0 
+
+def x-claim-no char*8 = ' '  
+
+def x-ohip-cd char*5 = 'ZZZZZ'
+
+def x-doc-name char*24 = ' ' 
+
+def x-hosp char*1 = ' '   
+
+def x-charge zoned*8 signed = 0 
+
+def x-credit zoned*8 signed = 0 
+
+def x-type num*1 = 2 
+def x-pat  num*1 = 1
+
+subfile u035dtl alias desc12   append at clm-shadow-claim-nbr   &
+	if x-desc12 <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	x-desc12,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+
+subfile u035dtl alias desc34   append at clm-shadow-claim-nbr   &
+	if x-desc34 <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	x-desc34,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+
+subfile u035dtl alias desc5    append at clm-shadow-claim-nbr   &
+	if x-desc5  <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	x-desc5, 						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+
+request extract_clm_msgs on calculation errors report		&
+		   	 on edit errors report
+
+access *u035b			&
+   link 'M', clmhdr-msg-nbr 	&
+    to msg-sub-key-1, msg-sub-key-23 of f094-msg-mstr
+
+def x-serv-date date = 0
+
+def x-nbr-serv num*2 = 0 
+
+def x-claim-no char*8 = ' '  
+
+def x-ohip-cd char*5 = ' '
+
+def x-doc-name char*24 = ' ' 
+
+def x-hosp char*1 = ' '   
+
+def x-charge zoned*8 signed = 0 
+
+def x-credit zoned*8 signed = 0 
+
+def x-type num*1 = 3 
+def x-pat  num*1 = 1
+
+subfile u035dtl alias clm-msg1 append	 			&
+	if msg-dtl1 <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl1,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+subfile u035dtl alias clm-msg2 append	 			&
+	if msg-dtl1 <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl2,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+subfile u035dtl alias clm-msg3 append	 			&
+	if msg-dtl3 <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl3,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+subfile u035dtl alias clm-msg4 append	 			&
+	if msg-dtl4 <> ' ' include				&
+	clmhdr-agent-cd of u035b,              	                &
+	clm-shadow-clinic of u035b,                    		&
+	clm-shadow-subdivision of u035b,                    	&
+	pat-surname of u035b,                			&
+	pat-given-name of u035b,                		&
+	clm-shadow-patient of u035b,                    	&		
+ 	clm-shadow-batch-nbr of u035b,                    	&	
+	clm-shadow-claim-nbr of u035b,                    	&
+	subscr-addr1 of u035b,                			&
+	subscr-addr2 of u035b,                			&
+	subscr-addr3 of u035b,                			&
+	subscr-postal-cd of u035b,                		&
+	pat-country of u035b,                			&
+	pat-ohip-mmyy of u035b,                			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl4,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+request extract_pat_msgs on calculation errors report		&
+		   	 on edit errors report
+
+access *u035bb			&
+   link 'M', subscr-msg-nbr 	&
+    to msg-sub-key-1, msg-sub-key-23 of f094-msg-mstr
+
+def x-serv-date date = 0
+
+def x-nbr-serv num*2 = 0 
+
+def x-claim-no char*8 = ' '  
+
+def x-ohip-cd char*5 = ' '
+
+def x-doc-name char*24 = ' ' 
+
+def x-hosp char*1 = ' '   
+
+def x-charge zoned*8 signed = 0 
+
+def x-credit zoned*8 signed = 0 
+
+def x-type num*1 = 4 
+def x-pat  num*1 = 1
+
+subfile u035dtl alias pat-msg1 append	 			&
+	if msg-dtl1 <> ' ' include				&
+	clmhdr-agent-cd of u035bb,             	                &
+	clm-shadow-clinic of u035bb,                   		&
+	clm-shadow-subdivision of u035bb,                    	&
+	pat-surname of u035bb,                			&
+	pat-given-name of u035bb,                		&
+	clm-shadow-patient of u035bb,                    	&		
+ 	clm-shadow-batch-nbr of u035bb,                    	&	
+	clm-shadow-claim-nbr of u035bb,                    	&
+	subscr-addr1 of u035bb,                			&
+	subscr-addr2 of u035bb,                			&
+	subscr-addr3 of u035bb,                			&
+	subscr-postal-cd of u035bb,                		&
+	pat-country of u035bb,                			&
+	pat-ohip-mmyy of u035bb,               			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl1,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+subfile u035dtl alias pat-msg2 append	 			&
+	if msg-dtl1 <> ' ' include				&
+	clmhdr-agent-cd of u035bb,             	                &
+	clm-shadow-clinic of u035bb,                   		&
+	clm-shadow-subdivision of u035bb,                    	&
+	pat-surname of u035bb,                			&
+	pat-given-name of u035bb,                		&
+	clm-shadow-patient of u035bb,                    	&		
+ 	clm-shadow-batch-nbr of u035bb,                    	&	
+	clm-shadow-claim-nbr of u035bb,                    	&
+	subscr-addr1 of u035bb,                			&
+	subscr-addr2 of u035bb,                			&
+	subscr-addr3 of u035bb,                			&
+	subscr-postal-cd of u035bb,                		&
+	pat-country of u035bb,                			&
+	pat-ohip-mmyy of u035bb,               			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl2,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+subfile u035dtl alias pat-msg3 append	 			&
+	if msg-dtl3 <> ' ' include				&
+	clmhdr-agent-cd of u035bb,             	                &
+	clm-shadow-clinic of u035bb,                   		&
+	clm-shadow-subdivision of u035bb,                    	&
+	pat-surname of u035bb,                			&
+	pat-given-name of u035bb,                		&
+	clm-shadow-patient of u035bb,                    	&		
+ 	clm-shadow-batch-nbr of u035bb,                    	&	
+	clm-shadow-claim-nbr of u035bb,                    	&
+	subscr-addr1 of u035bb,                			&
+	subscr-addr2 of u035bb,                			&
+	subscr-addr3 of u035bb,                			&
+	subscr-postal-cd of u035bb,                		&
+	pat-country of u035bb,                			&
+	pat-ohip-mmyy of u035bb,               			&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl3,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+subfile u035dtl alias pat-msg4 append	 			&
+	if msg-dtl4 <> ' ' include				&
+	clmhdr-agent-cd of u035bb,              	        &  
+	clm-shadow-clinic of u035bb,                     	&
+	clm-shadow-subdivision of u035bb,                    	&
+	pat-surname of u035bb,                			&
+	pat-given-name of u035bb,                		&
+	clm-shadow-patient of u035bb,                    	&		
+ 	clm-shadow-batch-nbr of u035bb,                    	&	
+	clm-shadow-claim-nbr of u035bb,                    	&
+	subscr-addr1 of u035bb,                			&
+	subscr-addr2 of u035bb,                			&
+	subscr-addr3 of u035bb,                			&
+	subscr-postal-cd of u035bb,                		&
+	pat-country of u035bb,                			&
+	pat-ohip-mmyy of u035bb,                		&
+	x-serv-date,						&
+	x-nbr-serv,						&
+	x-claim-no,						&
+	x-ohip-cd,						&
+	x-doc-name,						&
+	x-hosp,							&
+	msg-dtl4,						&
+	x-charge,						&
+	x-credit,						&
+	x-type,							&
+	x-pat
+
+build $pb_obj/u035a  
+
+

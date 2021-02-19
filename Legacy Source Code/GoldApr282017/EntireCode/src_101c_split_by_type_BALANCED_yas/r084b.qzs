@@ -1,0 +1,114 @@
+; DOC:R084B.QZS
+;
+;PROGRAM PURPOSE : REPORT CLAIM INFORMATION BY CLINIS, DOCTOR AND BATCH 
+;                  RECEIVED DATE
+;
+;    DATE    BY WHOM    DESCRIPTION
+; 00/Feb/10  B.Annis    - original
+; 00/feb/28  B.E.       - cosmetics
+; 00/fef/29  B.Annis    - added new run
+;                       - changed origional access statement to only extract
+;                         those records related to the previous current-ep-nbr
+; 00/jul/10 B.E.	- added sort/report by clinic number
+;
+can clear
+set rep limit 1
+
+access constants-mstr-rec-6 link current-ep-nbr   &
+       to ep-nbr of f191-earnings-period
+
+choose const-rec-nbr 6
+
+;def x-ep-nbr num = current-ep-nbr - 1 if ep-fiscal-nbr <> 1   &
+;         else current-ep-nbr - 89
+def x-ep-nbr num = current-ep-nbr 
+
+set subfile name cur-er-nbr keep
+rep summary x-ep-nbr
+go
+
+set rep nolimit
+set rep device disc name r084b
+set page width 132
+
+;access f084-claims-inventory 		&
+;   link 				&
+;   to   f020-doctor-mstr		&
+;   link billing-clerk-initials		&
+;   to   f083-user-mstr
+
+access *cur-er-nbr link x-ep-nbr                                        &
+                     to current-ep-nbr of f084-claims-inventory         &
+                   link doc-nbr of f084-claims-inventory                &
+                     to doc-nbr of f020-doctor-mstr                     &
+                   link billing-clerk-initials of f084-claims-inventory &
+                     to billing-clerk-initials of f083-user-mstr 	&
+                   link current-ep-nbr of f084-claims-inventory         &
+                     to ep-nbr of f191-earnings-period
+
+;sort on billing-clerk-initials 
+sort on full-name	&
+     on clmhdr-clinic-nbr-1-2
+
+define  d-received-claims     =   nbr-claims-batches  &
+                               +  nbr-claims-queried
+define  d-unregistered-claims = nbr-claims-batches  &
+        if doc-ohip-nbr = 0
+
+page heading                                            &
+        tab  1  "r084b"                             	&
+        tab 24 "Monthly Claims Inventory Report"	&
+        tab 60 sysdate 					& 
+        tab 72 "Page "					&
+        tab 77 syspage pic "^^^"                	&
+skip 1  						&
+        tab 31 "By Billing Clerk" 			&
+skip 2							&
+  tab 48 "   Total"                                     &
+skip 1							&
+  tab 01 "Clerk"                                        &
+  tab 31 "Clinic" 					&
+  tab 38 "Claims"                                       &
+  tab 47 "Queries"                                      &
+  tab 55 "Received"					&
+  tab 65 "Unprocessed"                                  &
+  tab 78 "Unregistered"                                 &
+skip 1							&
+  tab 01 "-----"                                        &
+  tab 31 "------"					&
+  tab 38 "------"                                       &
+  tab 47 "-------"                                      &
+  tab 55 "--------"                                     &
+  tab 65 "-----------"                                  &
+  tab 78 "------------"                                 &
+skip 2 						
+
+heading at full-name skip 2
+
+footing at clmhdr-clinic-nbr-1-2       	 		&
+  tab 01 full-name print at full-name			&
+  tab 34 clmhdr-clinic-nbr-1-2				&
+  tab 41 nbr-claims-batches      subtotal pic '^^^'     &
+  tab 51 nbr-claims-queried      subtotal pic '^^^'     &
+  tab 60 d-received-claims       subtotal pic '^^^'     &
+  tab 73 nbr-claims-unprocessed  subtotal pic '^^^'     &
+  tab 87 d-unregistered-claims   subtotal pic '^^^'   
+
+
+final footing 		             	 		&
+ skip 2							&
+  tab 38 "======"                                       &
+  tab 47 "======="                                      &
+  tab 55 "========"                                     &
+  tab 65 "==========="                                  &
+  tab 78 "============"                                 &
+ skip 1							&
+  tab 01 "Grand Totals:"              			&
+  tab 41 nbr-claims-batches      subtotal pic '^^^'     &
+  tab 51 nbr-claims-queried      subtotal pic '^^^'     &
+  tab 60 d-received-claims       subtotal pic '^^^'     &
+  tab 73 nbr-claims-unprocessed  subtotal pic '^^^'     &
+  tab 87 d-unregistered-claims   subtotal pic '^^^'   
+
+
+build $obj/r084b

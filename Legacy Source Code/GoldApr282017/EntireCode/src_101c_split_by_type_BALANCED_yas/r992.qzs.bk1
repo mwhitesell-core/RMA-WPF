@@ -1,0 +1,72 @@
+; Program: r992.qzs 
+; Purpose: Check that f001 record exists for all claims
+;
+;   DATE      WHOM   DESCRIPTION
+; 2000/mar/14 B.E.   - original
+;
+
+cancel clear
+set rep nolimit
+set page length 62 width  132
+set rep device disc name r992
+
+
+access f002-claims-mstr				&
+  link clmhdr-batch-nbr				&
+    to batctrl-batch-nbr			&
+	of f001-batch-control-file   opt
+
+;choose key-clm-type "B"
+
+define claim-ped-cutoff-date date = parm prompt "Check claims with PED >= what date: "
+
+select f002-claims-mstr 				&
+  if    clmhdr-adj-oma-cd       = "0000" 		&;check hdrs only
+     and clmhdr-date-period-end >= claim-ped-cutoff-date ; >=Operator selection
+
+select if  not  record f001-batch-control-file exists	; missing f001!
+
+;  link (floor(batctrl-batch-nbr / 10000000))                &
+;    to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+
+page heading                                              	&
+	tab 1   "r992"  			          	&
+	tab 10  "P.E.D."                                        &
+;        tab 18  iconst-date-period-end pic "^^^^/^^/^^"         &
+	tab 43  "Claims missing Batch Control File(f001) record" &
+	tab 98  "Run Date:"                               	&
+;y2k
+	tab 110  sysdate                                  	&
+        tab 124 "Page:" tab 129 syspage pic "^^^"      	 	&
+skip 3  tab 1   "Batch Nbr"                                     &
+      	tab 11  "Orig Batch"					&
+	tab 25  "Batch Type"					&
+	tab 37  "Agent"						&
+	tab 44  "Entry Date"					&
+        tab 60  "PED"                         	        	&
+	tab 70 "Submit Date"					&
+        tab 83  "Cycle		"				&
+skip 1  tab 01  "--------- ----------    ----------  ----- "	&
+        tab 44  "----------    ---------   ----------   -----"	&
+skip 2
+
+define x-batch      char*8 = clmhdr-claim-id[1:2] 		&
+		           + clmhdr-claim-id[4:6]
+define x-temp-orig  char*9 = ascii(clmhdr-orig-batch-nbr)
+define x-orig-batch char*8 = x-temp-orig[1:2] 	&
+			   + x-temp-orig[4:6]
+
+report 								&
+  tab 02 x-batch						&
+  Tab 13 x-orig-batch						&
+  tab 30 clmhdr-batch-type					&
+  Tab 39 clmhdr-agent-cd					&
+  tab 45 clmhdr-date-sys pic "^^^^/^^/^^"			&
+  tab 58 clmhdr-date-period-end					&
+  tab 71 clmhdr-submit-date					&
+  tab 86 clmhdr-cycle-nbr					&
+ tab 100 clmhdr-adj-oma-cd 
+
+build $pb_obj/r992
+

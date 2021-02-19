@@ -1,0 +1,189 @@
+; Program: u110_rma_2.qts
+; Purpose: Transfer 'payroll' transactions from revenue subsystem into payroll
+;
+; Logic:  Extract 'payroll' revenue transactions and create a BILL compensation
+;	  in u110.sf that will used by u111.qts to upload into payroll subsytem
+;
+; 1999/feb/24 B.E.	- added codes MICB/MIBR/MINH
+; 1999/dec/20 B.E.	- added codes MHSC (NHSC mistakenly entered - s/b MHSC)
+; 2003/dec/16 A.A.	- alpha doctor nbr
+; 2004/mar/01 b.e.	- added link to f090 to determine if clinic is one
+;			  of the 'new afp' clinics and needs to be passed
+;			  into the payroll system (flag stored in the
+;			  blue/yellow card colour field)
+;			- added link to f020 to check if doctor 'new afp' member
+;			  If new afp clinic then use AFPIN/AFPOUT as comp code
+;			  for revenue rather than the regular "BILL" comp code
+;			- changed out of "AFPIN/OUT" so that it's output for
+;			  'new afp' doctors only if it has non-zero amount
+; 2006/jul/11 b.e.	- changes related to NHSC and then made the code DHSC
+; 2006/jul/11 b.e.	- added AGEP comp code processing
+; 2006/oct/04 b.e.	- fixed DHSC variable for AGEP variable bug
+; 2007/jul/03 b.e.	- added MICA - thru MICL
+; 2008/may/26 M.C.      - create subfile with 'keep append' instead of 'keep'
+;			  because this copybook gets called from u110_1.qts & u110_2.qts
+;			- in $cmd/teb1, u110*sf* files must be deleted before the run of u110*
+; 2011/jan/25 MC1       - Yasemin would like to include clinic 23 to be same as clinic 22
+; 2012/jan/18 MC2       - Yasemin would like to include clinic 24 to be same as clinic 22
+; 2012/jun/20 MC3       - Yasemin would like to include clinic 25 to be same as clinic 22
+; 2015/mar/10 MC4       - Yasemin would like to include clinic 26 to be same as clinic 22
+; 2015/Dec/08 MC5       - add MACC, MIBD, MPAP, MSLP, MMDU, MBRT
+
+access f050-doc-revenue-mstr		&
+   link docrev-doc-nbr			&
+     to doc-nbr of f020-doctor-mstr	&
+   link nconvert(docrev-clinic-1-2)	&
+     to iconst-clinic-nbr-1-2  		&
+     of iconst-mstr-rec	
+
+; 'regular' payroll (ie.BILL type transaction use only clinic 22 however
+; 'new AFP' payroll create AFPIN/AFPOUT transaction from any clinic if the 
+;  clinic's AFP flag (blue/yellow card colour field) is set to 'Y'es and the
+;  doctor belongs to an AFP group
+
+; 2011/01/25 - MC1
+;select if   docrev-clinic-1-2 = "22"                            &
+; 2012/01/18 - MC2
+;select if   (docrev-clinic-1-2 = "22"  or docrev-clinic-1-2 = "23")  &
+select if   (    docrev-clinic-1-2 = "22"                       &
+              or docrev-clinic-1-2 = "23"                       &
+              or docrev-clinic-1-2 = "24"                       &
+; 2012/06/20 - MC3
+              or docrev-clinic-1-2 = "25"                       &
+; 2012/06/20 - end
+; MC4
+              or docrev-clinic-1-2 = "26"                       &
+; MC4 - end
+            )                                                   &
+; 2012/01/18 - end
+; 2011/01/25 - end
+         or (     iconst-clinic-card-colour = "Y"               &
+             and  doc-afp-paym-group of f020-doctor-mstr <> " " &
+	     and  (   docrev-clinic-1-2 <  "71"			&
+	           or docrev-clinic-1-2 >  "75"			&
+		  )						&
+	    )       
+							
+
+sorted on docrev-clinic-1-2, docrev-dept, docrev-doc-nbr, docrev-location
+
+; 2007/jul/03 B.E.	- added MICF
+temp mtd-micf zoned*8 signed
+item mtd-micf =  mtd-micf                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MICF" 	&
+          else    mtd-micf                                      	&
+                           reset at docrev-doc-nbr
+; 2007/jul/03 B.E.	- added MICG
+temp mtd-micg zoned*8 signed
+item mtd-micg =  mtd-micg                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MICG" 	&
+          else    mtd-micg                                      	&
+                           reset at docrev-doc-nbr
+; 2007/jul/03 B.E.	- added MICH
+temp mtd-mich zoned*8 signed
+item mtd-mich =  mtd-mich                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MICH" 	&
+          else    mtd-mich                                      	&
+                           reset at docrev-doc-nbr
+; 2007/jul/03 B.E.	- added MICJ
+temp mtd-micj zoned*8 signed
+item mtd-micj =  mtd-micj                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MICJ" 	&
+          else    mtd-micj                                      	&
+                           reset at docrev-doc-nbr
+; 2007/jul/03 B.E.	- added MICK
+temp mtd-mick zoned*8 signed
+item mtd-mick =  mtd-mick                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MICK" 	&
+          else    mtd-mick                                      	&
+                           reset at docrev-doc-nbr
+; 2007/jul/03 B.E.	- added MICL
+temp mtd-micl zoned*8 signed
+item mtd-micl =  mtd-micl                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MICL" 	&
+          else    mtd-micl                                      	&
+                           reset at docrev-doc-nbr
+; 2013/may/22 MC2 	- added MOHD
+temp mtd-mohd zoned*8 signed
+item mtd-mohd =  mtd-mohd                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MOHD" 	&
+          else    mtd-mohd                                      	&
+                           reset at docrev-doc-nbr
+
+
+; MC5                                   
+temp mtd-macc zoned*8 signed
+item mtd-macc =  mtd-macc                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MACC" 	&
+          else    mtd-macc                                      	&
+                           reset at docrev-doc-nbr
+
+temp mtd-mibd zoned*8 signed
+item mtd-mibd =  mtd-mibd                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MIBD" 	&
+          else    mtd-mibd                                      	&
+                           reset at docrev-doc-nbr
+
+temp mtd-mpap zoned*8 signed
+item mtd-mpap =  mtd-mpap                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MPAP" 	&
+          else    mtd-mpap                                      	&
+                           reset at docrev-doc-nbr
+
+temp mtd-mslp zoned*8 signed
+item mtd-mslp =  mtd-mslp                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MSLP" 	&
+          else    mtd-mslp                                      	&
+                           reset at docrev-doc-nbr
+
+temp mtd-mmdu zoned*8 signed
+item mtd-mmdu =  mtd-mmdu                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MMDU" 	&
+          else    mtd-mmdu                                      	&
+                           reset at docrev-doc-nbr
+
+temp mtd-mbrt zoned*8 signed
+item mtd-mbrt =  mtd-mbrt                                      		&
+                + docrev-mtd-in-rec                              	&
+                + docrev-mtd-out-rec                             	&
+          if      docrev-location of f050-doc-revenue-mstr ="MISC"  	&
+             and  docrev-oma-code of f050-doc-revenue-mstr ="MBRT" 	&
+          else    mtd-mbrt                                      	&
+                           reset at docrev-doc-nbr
+; MC5 - end

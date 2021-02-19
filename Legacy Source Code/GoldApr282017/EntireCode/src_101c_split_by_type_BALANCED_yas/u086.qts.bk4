@@ -1,0 +1,96 @@
+;#> PROGRAM-ID.     U086.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : UPDATE ALL PATIENT CLAIMS FROM "H"OLD TO
+;                       "R"ESUBMIT, RESET CONFIDENTIAL FLAG TO "N"
+;                        DELETE REJECTED CLAIMS FROM F085-REJECT.....
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     93/APR/28 AGK.         - ORIGINAL (SMS 141)
+;     93/MAY/28 M.CHAN	     - PDR 573
+;			     - A NEW REQUEST TO RESUBMIT SUBMITTED
+;			       CLAIMS THAT HAVE NOT BEEN PAID
+;     96/DEC/10 M. CHAN	     - REVISED THE ACCESS AND SELECT STMT
+;     98/DEC/08 M. CHAN	     - add a new request to sort f086-pat-id to create
+;			       unique ikey into the subfile, and using the 
+;			       subfile as the driver file for each request
+;			     - add on errors report on each output statement
+;			     - use pkey index of f002-claims-mstr instead of 
+;			       bkey index in request resubmit_submitted_claims
+;  1999/jan/31 B.E.	- y2k
+;  1999/Feb/01 M.C.          - change to access to key-p-clm-data instead of the
+;			       individual segments for p key
+;  1999/nov/25 B.E.	- added select if clmhdr-date-cash-tape-payment = blanks;			  to existing test for all zeros
+
+can clear
+set default
+set process nolimit
+
+run u086
+
+request sort_f086_pat_id
+
+access f086-pat-id
+
+sort on clmhdr-pat-ohip-id-or-chart
+
+subfile sortf086 keep at clmhdr-pat-ohip-id-or-chart		&
+  include clmhdr-pat-ohip-id-or-chart
+
+request patient_claims_update
+
+; 98/12/08 access f086-pat-id						&
+access *sortf086               		 			&
+  link clmhdr-pat-ohip-id-or-chart        			&
+   to clmhdr-pat-ohip-id-or-chart  of rejected-claims		&
+  link ("B"), 							&
+	(nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6])), &
+	(nconvert(ascii(claim-nbr,10)[9:2])),  			&
+	"00000", "0" 						&
+   to key-clm-type, key-clm-batch-nbr, 				&
+      key-clm-claim-nbr, key-clm-serv-code,    			&
+      key-clm-adj-nbr of f002-claims-mstr
+
+output f002-claims-mstr update	on errors report 
+   item clmhdr-tape-submit-ind final "R" 			&
+		if clmhdr-tape-submit-ind = "H"
+   item clmhdr-confidential-flag final "N" 			&
+                if clmhdr-confidential-flag = "Y"
+
+request delete_rejected_claims
+
+; 98/12/08  access f086-pat-id						&
+access *sortf086  						&
+  link clmhdr-pat-ohip-id-or-chart        			&
+   to clmhdr-pat-ohip-id-or-chart  of rejected-claims
+
+output rejected-claims delete on errors report
+
+request resubmit_submitted_claims
+
+; 98/12/08  access f086-pat-id						&
+access *sortf086  	 					&
+;99/02/01  link "P", nconvert(clmhdr-pat-ohip-id-or-char2:9]),		&
+  link "P", (clmhdr-pat-ohip-id-or-chart[2:17])				&
+;99/02/01       nconvert(clmhdr-pat-ohip-id-or-chart[11:2]),		&
+;99/02/01       (clmhdr-pat-ohip-id-or-chart[13:4] + " "), " "		&
+; 98/12/08   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+;98/12/08        key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+;99/02/01   to  key-p-clm-type, key-p-clm-batch-nbr, key-p-clm-claim-nbr, &
+;99/02/01       key-p-clm-serv-code, key-p-clm-adj-nbr of f002-claims-mstr
+   to  key-p-clm-type, key-p-clm-data of f002-claims-mstr   
+
+sel f002-claims-mstr if clmhdr-tape-submit-ind = "S"            &
+    and (clmhdr-agent-cd =  0  or clmhdr-agent-cd =  2)         &
+;   AND CLMHDR-DATE-CASH-TAPE-PAYMENT = " "
+;y2k
+    and (   clmhdr-date-cash-tape-payment = "00000000"		&
+         or clmhdr-date-cash-tape-payment = " ")
+
+output f002-claims-mstr update on errors report
+   item clmhdr-tape-submit-ind final "R"
+
+build $pb_obj/u086
+  

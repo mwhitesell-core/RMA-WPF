@@ -1,0 +1,55 @@
+; Program: utl0003.qzs
+; Purpose: For a hard coded PED verify if 'C'laim f002 hdr amts = f001 amts
+;
+;          This is the 3rd pass of the procedure.
+;          The previous pass summarized the f002 claim header amounts by
+;	   batch into a single record. This subfile is now printed
+;	   and "*" value are printed if any of the amounts don't match.
+;
+;	   Subsequence passes verify if the f002 hdr amount matches the 
+;	   f002 detail amounts
+;
+cancel clear
+set rep  nolimit
+set rep dev disc name utl0003
+set page length 0 width 132
+
+access *utl0002
+
+select if  BATCTRL-CALC-AR-DUE <> CLMHDR-TOT-CLAIM-AR-OMA    	&
+	or BATCTRL-CALC-AR-DUE <> CLMHDR-TOT-CLAIM-AR-OHIP 	&
+	or BATCTRL-CALC-AR-DUE <> BATCTRL-CALC-TOT-REV  
+
+def flag1 char*1 							&
+	= "*" if BATCTRL-CALC-AR-DUE <> CLMHDR-TOT-CLAIM-AR-OMA		&
+     else " "
+def flag2 char*1 							&
+	= "*" if BATCTRL-CALC-AR-DUE <> CLMHDR-TOT-CLAIM-AR-OHIP	&
+      else " "
+def flag3 char*1 							&
+	= "*" if BATCTRL-CALC-AR-DUE <> BATCTRL-CALC-TOT-REV 		&
+     else " "
+
+def diff numeric							&
+	= (BATCTRL-CALC-AR-DUE - CLMHDR-TOT-CLAIM-AR-OMA )		&
+		if flag1 = "*" 						&
+     else (BATCTRL-CALC-AR-DUE - CLMHDR-TOT-CLAIM-AR-OHIP)		&
+		if flag2 = "*" 						&
+     else (BATCTRL-CALC-AR-DUE - BATCTRL-CALC-TOT-REV)
+
+rep	batctrl-batch-nbr  	&
+	BATCTRL-CALC-AR-DUE   	&
+	BATCTRL-CALC-TOT-REV	&
+	CLMHDR-TOT-CLAIM-AR-OMA	&
+	CLMHDR-TOT-CLAIM-AR-OHIP&
+	flag1 flag2 flag3 	&
+	diff pic "^^^,^^^.^^ "
+
+final footing 						&
+	batctrl-batch-nbr  				&
+	BATCTRL-CALC-AR-DUE subt pic "^^^,^^^.^^ " 	&
+	BATCTRL-CALC-TOT-REV subt pic "^^^,^^^.^^ " 	&
+	CLMHDR-TOT-CLAIM-AR-OMA subt pic "^^^,^^^.^^ "	&
+	diff subt pic "^^^,^^^.^^ "
+
+build $obj/utl0003

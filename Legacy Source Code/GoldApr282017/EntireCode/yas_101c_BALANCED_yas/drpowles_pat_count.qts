@@ -1,0 +1,70 @@
+;doc     : drpowles_pat_count.qts              
+;purpose : Number of patients seen for Dr. Powels from September 2011 to Sept 2012
+
+;
+; *************************************************************
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link (clmhdr-claim-id[3:3])             &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "22K24@",               &
+                                              "23K24@",               &
+                                              "98K24@",               &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if         clmhdr-batch-type = 'C'             
+
+def x-claim cha*10 = clmhdr-claim-id[1:10]
+
+subfile powels     keep include       &
+clmhdr-claim-id                      ,&
+key-clm-batch-nbr                    ,&
+key-clm-claim-nbr                    ,&
+clmhdr-serv-date                     ,&
+x-claim                              ,&
+doc-nbr                              ,&
+doc-name                             ,&
+doc-inits
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *powels
+
+select if      clmhdr-serv-date   >= 20110901  &
+          and  clmhdr-serv-date   <= 20120930
+
+sort on x-claim on doc-nbr  
+
+temp x-count  num*6
+item x-count  = x-count + 1 if x-claim  = "1"   &  
+               reset at doc-nbr
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile powels2 portable keep at doc-nbr  include    &
+clmhdr-claim-id                                     ,&
+comma                                               ,&
+doc-nbr                                             ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+clmhdr-serv-date                                    ,&
+comma                                               ,&
+x-count                                             ,&
+x-cr

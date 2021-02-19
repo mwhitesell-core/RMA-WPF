@@ -1,0 +1,250 @@
+;#> PROGRAM-ID.     R020A.QZS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : READ F001-BATCH-CONTROL-FILE AND SELECT
+;		       BALANCED BATCHES WITHIN PED AND CYCLE #,
+;		       LINK TO CLAIMS, PATIENTS, AND DOCTOR FILES
+;		       AND EXTRACT DATA NEEDED FOR OHIP TAPE OR
+;		       CLAIM SHADOW
+;		       IF CHANGES REQUIRED FOR HOSPITAL CODES, MAKE
+;		       SURE TO CHANGE IN HOSPITAL_CODE.DEF
+;
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/12 D.B.         - ORIGINAL (SMS 138)
+;     91/APR/29 M.C.	     - SMS 138 (ENHANCEMENT)
+;			     - DO NOT REQUIRE TO LINK TO F020 FILE
+;     91/MAY/01 M.C.	     - ADD EXTRA PASS TO EXTRACT ALL CLAIMS
+;			       WITH MANUAL REVIEW "ON"
+;     91/OCT/07 M.C.	     - PDR 521 - OPTIMIZATION
+;			     - REDUCE FROM 7 PASSES TO 3 PASSES
+;     98/Aug/18 B.E.	     - test for "description" records changed
+;			       to test only the first 4 characters for
+;			       "ZZZZ" rather than entire field since
+;			       description recs are now "ZZZZ1", "ZZZZ2",etc.
+;     93/MAR/17 M.C.	     - SMS 140
+;			     - CONVERT THE FIRST PASS R020A1 INTO
+;			       U020A.QTS
+;			     - FOR R020A2, INSTEAD OF SELECTING
+;			       WHAT AGENT, USE THE MOH-FLAG TO
+;			       DETERMINE WHAT GOES TO THE OHIP
+;			     - NOW R020A ONLY CONTAINS TWO PASSES
+;			       AND BOTH ARE RELATED TO MANUAL REVIEW "Y"
+;			     - THEY SHOULD BE RUN ONLY IF TAPE IS
+;			       REQUIRED
+;     93/MAY/06 M.C.	     - SMS 141
+;			     - ONLY SELECT IF PAT-MESS-CODE = " "
+;     95/JAN/12 YAS 	     - HARD CODE "AA03" CL81 FOR R020MR
+;     97/MAR/12 YAS 	     - HARD CODE "AA21" NEW CLINIC 8200
+;     97/JUN/12 KEV	     - MODIFIED TO SORT AND REPORT ON NEW
+;			       "TRANSLATED-GROUP-NBR"
+;     97/AUG/18 M.C.	     - MODIFY TO SORT ON TRANSLATED-GROUP-NBR
+;			       ON CLMHDR-CLAIM-ID
+;     98/Aug/18 B.E.	     - page length changed from 63 to 66 lines
+; 
+;     03/dec/12	A.A.	     - alpah doctor nbr
+;     05/dec/02 M.C.	     - include patient name in u020a2 subfile
+;			       as well as on the manual review report
+;			     - show the report more to the left as requested
+;			       by Yasemin
+;     08/Apr/10 yas          - add physician name to the report   
+;                              and sort by clinic by physician name
+;     08/Apr/21 M.C.         - link doc-nbr to f020-doctor-mstr instead of doc-ohip-nbr
+;     08/May/07 yas.         - go back to original srt group/claim nbr
+;                               requested by MOH
+;     10/Jun/07 MC1	     - include clmhdr-doc-dept in the subfile u020a2
+;				and suppress printing if dept = 41, 42, 43 or 75      
+;			        and description contains 1 or 2 or 3 or 4 or 5
+
+; R020A1 PASS HAS CONVERTED INTO U020A.QTS ON 93/03/17 BY MC
+
+can clear
+set default
+set report nolimit
+
+
+access *u020a1					&
+;!  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),	&
+;!             (nconvert(clmhdr-claim-id[10:2])))	&
+  link ("B" ,clmhdr-claim-id[1:8],	&
+             nconvert(clmhdr-claim-id[9:2]))	&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr	&
+	of f002-claims-mstr
+
+select u020a1 if batctrl-batch-type = "C"			&
+;	AND (BATCTRL-AGENT-CD = 0 OR BATCTRL-AGENT-CD = 2)	&
+	and moh-flag = "Y"                                	&
+	and clmhdr-manual-review = "Y"				&
+	and pat-mess-code = " "
+
+select f002-claims-MSTR if clmhdr-adj-oma-cd[1:4] <> "0000" &
+		       and clmhdr-adj-oma-cd[1:4] <> "ZZZZ"
+
+;SORTED ON CLMHDR-CLAIM-ID
+;SORT ON TRANSLATED-GROUP-NBR
+sort on translated-group-nbr on clmhdr-claim-id
+
+set subfile name u020a2 at clmhdr-claim-id keep
+;SET SUBFILE NAME U020A2 AT TRANSLATED-GROUP-NBR KEEP
+report summary			&
+  batctrl-doc-nbr-ohip		&
+  batctrl-agent-cd		&
+  batctrl-clinic-nbr		&
+  clmhdr-claim-id		&
+  translated-group-nbr		&
+  clmhdr-doc-spec-cd		&
+  pat-health-nbr		&
+; 2005/12/01 - MC 
+  pat-surname			&
+  pat-given-name		&
+; 2005/12/01 - end
+  w-pat-ohip-mmyy		&
+  pat-prov-cd			&
+  iconst-clinic-nbr-1-2         &
+; 2010/06/07 - MC1 - include clmhdr-doc-dept
+  clmhdr-doc-dept		&
+; 2010/06/07 - end
+  clmdtl-sv-date
+
+build $pb_obj/r020a2
+
+can clear
+set default
+set rep nolimit
+set rep device disc name ru020mr
+set page length 63 
+set page width 80
+set nohead
+set formfeed
+
+access *u020a2							&
+;!  link ("B" ,(nconvert(clmhdr-claim-id[1:9])),		&
+  link ("B" ,clmhdr-claim-id[1:8] ,				&
+;            (nconvert(clmhdr-claim-id[10:2])), "ZZZZ0")	&
+;  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,	&
+;             key-clm-serv-code					&
+;!             (nconvert(clmhdr-claim-id[10:2])))		&
+             nconvert(clmhdr-claim-id[9:2]))			&
+  to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr		&
+	of f002-claims-mstr opt                                 &
+; 2008/04/21 - MC - use doc-nbr to link to f020 file
+;  link batctrl-doc-nbr-ohip                                     &
+;    to doc-ohip-nbr of f020-doctor-mstr opt
+   link (clmhdr-claim-id[3:3])                                   &
+     to doc-nbr of f020-doctor-mstr opt
+; 2008/04/21 - end
+
+select if key-clm-serv-code[1:4] = "ZZZZ"
+
+; 2010/06/07 - MC1
+def suppress-print char*1 = 'Y'			&
+	if    (    clmhdr-doc-dept = 41		&
+		or clmhdr-doc-dept = 42		&
+		or clmhdr-doc-dept = 43		&
+		or clmhdr-doc-dept = 75		&
+	      )					&
+	  and (    clmdtl-desc = '1'		&
+		or clmdtl-desc = '2'		&
+		or clmdtl-desc = '3'		&
+		or clmdtl-desc = '4'		&
+		or clmdtl-desc = '5'		&
+	      )					&
+	else 'N'
+
+and sel if suppress-print = 'N'
+; 2010/06/07 - end
+
+;1997/JUN/12 - KEVIN MILES
+;DEF W-GROUP-NBR CHAR*4 = "AA03" IF ICONST-CLINIC-NBR-1-2 = 81	&
+;                    ELSE "AA21" IF ICONST-CLINIC-NBR-1-2 = 82   &
+;                    ELSE  ASCII(BATCTRL-CLINIC-NBR,4)
+
+def w-health-nbr char*12 =	&
+	ascii(pat-health-nbr,10) if pat-health-nbr <> 0	&
+;y2k
+	else w-pat-ohip-mmyy
+
+; 2004/04/17 - MC
+;!def w-clmhdr-claim-id char*8 = clmhdr-claim-id[4:8]
+def w-clmhdr-claim-id char*8 = clmhdr-claim-id[3:8]
+
+def w-wcb char*1 = "Y" if batctrl-agent-cd = 2
+
+def w-clmdtl-desc char*22 = clmdtl-desc	&
+	if clmhdr-adj-oma-cd[1:4] = "ZZZZ"
+
+;2005/12/05 - MC
+def patient-name char*30 = truncate(pat-surname) +', ' + truncate(pat-given-name)
+;2005/12/05 - end
+
+;1997/JUN/12 - KEVIN MILES
+;SORTED ON CLMHDR-CLAIM-ID
+;1997/AUG/18 - MOIRA CHAN
+;SORT ON TRANSLATED-GROUP-NBR
+
+;yas - back to original sort of group number, claim number
+;sort on translated-group-nbr on doc-name on clmhdr-claim-id
+sort on translated-group-nbr on clmhdr-claim-id
+
+heading at clmhdr-claim-id	&
+skip page			&
+tab  1 " "			&
+skip 10			&
+  tab 30 "MANUAL REVIEW REPORT"	&
+skip 1				&
+  tab 30 "--------------------"	&
+skip 3				&
+  tab 06 "DATE SUBMITTED:"	&
+  tab 22 sysdate		&
+  tab 35 "Physician: Dr. "      &
+  tab 50 doc-name               &
+skip 3				&
+  tab 06 "HNUMBER:"		&
+  tab 21 "CLINIC #:"		&
+  tab 36 "PROVIDER #:"		&
+  tab 51 "SPEC CD"		&
+skip 1				&
+  tab 06 "--------"		&
+  tab 21 "---------"		&
+  tab 36 "-----------"		&
+  tab 51 "-------"		&
+skip 1				&
+  tab 06 w-health-nbr pic "^^^^^^^^^^"	&
+  tab 23 translated-group-nbr		&
+  tab 38 batctrl-doc-nbr-ohip pic "^^^^^^"	&
+  tab 53 clmhdr-doc-spec-cd	&
+skip 3				&
+  tab 06 "ACCOUNTING #:"	&
+  tab 23 "PROV"			&
+  tab 36 "W C B"		&
+  tab 45 "PATIENT NAME"		&
+skip 1				&
+  tab 06 "--------------"	&
+  tab 23 "----"			&
+  tab 36 "-----"		&
+  tab 45 "------------"		&
+skip 1				&
+  tab 06 w-clmhdr-claim-id pic "^^^^^^^^"	&
+  tab 23 pat-prov-cd		&
+  tab 36 w-wcb			&
+  tab 45 patient-name		&
+skip 3				&
+  tab 06 "ATTACHMENTS"		&
+  tab 31 "SERVICE DATE:"	&
+  tab 46 clmdtl-sv-date pic "^^^^/^^/^^"	&
+skip 1				&
+  tab 46 "----------"		&
+skip 3				&
+  tab 11 "( ) OP REPORT"	&
+  tab 41 "( ) OTHER"		&
+skip 3				&
+  tab 06 "DESCRIPTION:"
+
+report				&
+  tab 22 w-clmdtl-desc
+
+build $pb_obj/r020a3
+
+

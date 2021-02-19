@@ -1,0 +1,111 @@
+; NAME   : PM17.QZS
+; PURPOSE: Create a report of the PWO invoiced hours and $ amounts
+;          broken down by Activity Code
+; MODIFICATION HISTORY
+; YY/MMM/DD by whom     why
+; ??/???/?? ?. ????????  - original
+; 87/Jun/16 B. Elliott   - added billable (ie. invoice) dollar amounts to report
+; 87/Aug/05 S. BLAIR     - change order of paramater input.
+; 88/Feb/09 M. SO	 - Provide flexibility to optionally print
+;			   marketing activity codes (ie MK01 and MK02)
+; 88/Mar/22 B. Elliott   - fixed bug discovered with upgrade to 500D.
+;			   Variable EMP-NUM in SORT and FOOTING replaced
+;			   with TSHT-EMP.
+; 88/SEP/16 B. Elliott   - MODIFY SORT SEQUENCE TO SORT ON PWO # ETC.
+; 89/MAY/31 K. Zatzman	 - Display non-billable "wriiten-off" hours
+
+
+set default
+set report device printer
+set page length 60
+set report limit 10000
+access ftimesht &
+       link to fclients   &
+       and  to fpwos      &
+       link(ascii(pwo-num)+activity) to pwoact-key of fpwoacts &
+       and  tsht-emp to emp-num of femployees &
+       and  (characters(tsht-emp) + characters(pwo-num)) to emppwo-key of femppwos
+define x-pwo zoned*5 unsigned = parm &
+       prompt "Select PWO # without period (Enter new line to select all): "
+define x-mark char*1 = parm prompt		&
+	"Do you want to print MARKETING activity code (Y)es or (N)o? "
+
+
+define x-yymm zoned*4 unsigned = parm &
+	prompt "ENTER YYMM FOR INVOICING: "
+define year character*2 = characters(x-yymm)[1:2]
+define month character*9 = &
+ 	"  JANUARY" if characters(x-yymm)[3:2] = "01" else &
+        "  FEBUARY" if characters(x-yymm)[3:2] = "02" else &
+        "    MARCH" if characters(x-yymm)[3:2] = "03" else &
+        "    APRIL" if characters(x-yymm)[3:2] = "04" else &
+        "      MAY" if characters(x-yymm)[3:2] = "05" else &
+        "     JUNE" if characters(x-yymm)[3:2] = "06" else &
+        "     JULY" if characters(x-yymm)[3:2] = "07" else &
+        "   AUGUST" if characters(x-yymm)[3:2] = "08" else &
+        "SEPTEMBER" if characters(x-yymm)[3:2] = "09" else &
+        "  OCTOBER" if characters(x-yymm)[3:2] = "10" else &
+        " NOVEMBER" if characters(x-yymm)[3:2] = "11" else &
+        " DECEMBER" if characters(x-yymm)[3:2] = "12"
+;DEFINE X-INVOICE CHAR*1 = PARM                             &
+;      PROMPT "Do you wish INVOICED AMOUNT printed (Y)es or (N)o: "
+define x-bill-hrs pic '^^^^^^.^^' &
+       = tot if billable = ' '  &
+       else 0
+define x-bill-dollar-amt numeric*8 = x-bill-hrs * bill-rate/100 &
+                                     if invoiced-amount = "Y" else 0
+define x-nobill-hrs pic '^^^^^^.^^' &
+       = tot if billable = '*'  &
+       else 0
+define x-nobill-dollar-amt numeric*8 = x-nobill-hrs * bill-rate/100 &
+                                     if billable = "*" else 0
+define x-invoiced char*8 = "INVOICED" if invoiced-amount = "Y" else " "
+define x-amount   char*8 = " AMOUNT " if invoiced-amount = "Y" else " "
+define x-writeoff char*11  = "WRITTEN OFF"
+
+define x-line1    char*8 = "--------" if invoiced-amount = "Y" else " "
+define x-line2    char*8 = "========" if invoiced-amount = "Y" else " "
+
+select if (tsht-yymm = x-yymm and x-pwo =  0 and x-mark = "Y")	    &
+       or (tsht-yymm = x-yymm and x-pwo = pwo-num and x-mark = "Y") &
+       or (tsht-yymm = x-yymm and x-pwo =  0 and 		    &
+	   x-mark = "N" and activity of ftimesht <> "MK01"  and	    &
+	   activity of ftimesht <> "MK02")			    &
+       or (tsht-yymm = x-yymm and x-pwo = pwo-num and		    &
+	   x-mark = "N" and activity of ftimesht <> "MK01"  and	    &
+	   activity of ftimesht <> "MK02")
+
+sort on pwo-num reset page on activity on tsht-emp
+page heading sysdate format yymmmdd tab 29 "DYAD TECHNOLOGIES INC." tab 70 "PAGE: " &
+	tab 76 syspage	skip 2 tab 29 "PWO/ACTIVITY BREAKDOWN" &
+        skip 1 &
+        tab  33 month tab 42 "/" tab 43 year &
+	skip 3 "Client:" tab 15 cl-name &
+        skip 2 "PWO # :" tab 15 pwo-num bwz tab 25 pwo-desc &
+        skip 3 "ACTIVITY" tab 41 "EMPLOYEE" tab 61 "-------- HOURS ----" &
+                           tab 84 x-invoiced         &
+			   tab 97 x-writeoff	     &
+        skip 1 tab 61 "   N/C     BILLABLE" tab 84 x-amount skip 2
+
+footing at tsht-emp tab 05 activity print at activity &
+                    tab 10 act-desc print at activity &
+        tab 41 name                       &
+        tab 58 x-nobill-hrs   subtotal pic "^^^^^^.^^" bwz &
+        tab 71 x-bill-hrs   subtotal pic "^^^^^^.^^" bwz &
+        tab 84 x-bill-dollar-amt subtotal pic "^^^^^^.^^" bwz &
+	tab 97 x-nobill-dollar-amt subtotal pic "^^^^^^.^^" bwz
+
+footing at activity skip 1 tab 58 "---------" tab 71 "---------" tab 84 x-line1     &
+        skip 1 tab 41 "TOTAL ACTIVITY:" &
+        tab 58 x-nobill-hrs subtotal pic "^^^^^^.^^" bwz &
+        tab 71 x-bill-hrs subtotal pic "^^^^^^.^^" bwz &
+        tab 84 x-bill-dollar-amt subtotal pic "^^^^^^.^^" bwz skip 2 &
+	tab 97 x-nobill-dollar-amt subtotal pic "^^^^^^.^^" bwz
+
+footing at pwo-num  skip 2 tab 58 "=========" tab 71 "=========" &
+        tab 84 x-line2 skip 1 tab 46 "TOTAL PWO:" &
+        tab 58 x-nobill-hrs subtotal pic "^^^^^^.^^" bwz &
+        tab 71 x-bill-hrs subtotal pic "^^^^^^.^^" bwz &
+        tab 84 x-bill-dollar-amt subtotal pic "^^^^^^.^^" bwz skip page
+build $pb_obj/pm17_agfix
+  

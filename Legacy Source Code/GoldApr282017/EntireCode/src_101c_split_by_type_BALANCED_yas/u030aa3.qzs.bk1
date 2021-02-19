@@ -1,0 +1,75 @@
+;#> PROGRAM-ID.     U030AA3.QZS
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : PRINT THE UNMATCH CLAIMS ON RU030A REPORT
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     98/JAN/04 Y.B.         - ORIGINAL (PDR 667)
+;   2001/MAY/29 M.C.	     - Yas requested to add f002-claims-mstr in the
+;			        access statement and sel if clmhdr-adj-cd-sub-type <> 'D'
+;   2003/JUN/10 M.C.	     - include clinic-nbr to link to f071
+;   2003/dec/16 A.A.	     - alpha doctor nbr
+;   2004/mar/08 yas          - select if adj sub type = W only
+;   2004/Apr/27 yas          - select if adj sub type = W and C
+;   2004/Jul/13 M.C.	     - Yas reqested not to show on the report if claims in f002
+;			       has reason code I2 and incoming record has reason code 35
+;   2005/jun/22 M.C.	     - user may forget to add doc record in f073 file, hence no
+;			       report generated for the doctors.  Add optional to f073 each file
+;			       in the access will generate the report.
+
+can clear
+set default
+;set stacksize 1500
+set report nolimit
+set rep dev  disc name mohprice
+set nohead
+
+access u030-tape-145-file 					&
+;!       link (ncon(rat-145-account-nbr[1:3]))			&
+       link (rat-145-account-nbr[1:3])				&
+; 2005/06/22 - MC
+;            to doc-nbr of f073-client-doc-mstr      		&
+            to doc-nbr of f073-client-doc-mstr opt     		&
+; 2005/06/22- end
+; 2003/06/10 - MC
+;       link (nconvert(rat-145-account-nbr)) 			&
+;         to claim-nbr-rma  of  f071-client-rma-claim-nbr 	&
+       link (nconvert(rat-145-group-nbr[1:2]),			&
+;!	     nconvert(rat-145-account-nbr)) 			&
+	     rat-145-account-nbr)	 			&
+         to clinic-nbr, claim-nbr-rma  of  f071-client-rma-claim-nbr 	&
+; 2003/06/10 - end
+       link ('B', 						&
+;!	     nconvert(ascii(clinic-nbr,2) 			&
+;!	     + '0' 						&
+;!	     + ascii(claim-nbr-rma,8)[1:6]),			&
+	     (ascii(clinic-nbr,2) 				&
+	     + claim-nbr-rma[1:6]),				&
+;!	             nconvert(ascii(claim-nbr-rma,8)[7:2]),	&
+	             nconvert(claim-nbr-rma[7:2]),	&
+		 '00000', '0') 				&
+	to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,  &
+	   key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+;YAS - change select to sel only "W"
+;def t-client char*5 = parm prompt 'ENTER CLIENT ID: ' upshift
+;sel if t-client = client-id of f073-client-doc-mstr
+;and sel if clmhdr-adj-cd-sub-type <> 'D'
+;sel if clmhdr-adj-cd-sub-type = "W"
+sel if clmhdr-adj-cd-sub-type = "W" or clmhdr-adj-cd-sub-type = "C"
+
+; 2004/07/13 - MC
+and sel if clmhdr-status-ohip <> 'I2' or rat-145-explan-cd <> '35'
+; 2004/07/13 - end
+
+def doc-account-nbr char*8 = claim-nbr-client[7:8]
+
+report  tab 1   doc-account-nbr                         &
+        tab 9   rat-145-service-cd                      &
+        tab 14  rat-145-amt-paid pic '^^^^^^' fill '0'  &
+        tab 20  rat-145-explan-cd
+
+
+build $pb_obj/u030aa3

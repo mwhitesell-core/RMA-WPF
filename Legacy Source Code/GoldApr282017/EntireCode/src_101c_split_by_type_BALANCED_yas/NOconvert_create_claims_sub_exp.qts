@@ -1,0 +1,279 @@
+; filename: create_claims_sub_exp.qts
+; purpose:  split out the repetitive services into separate reocrds from claims_subfile history file for each clinic
+;
+; Modification History
+;     2012/01/11.  M.C  Orig - requested by Brad 
+;
+
+can clear
+
+set default
+set process nolimit
+
+access *claims_subfile  
+
+def clmdtl-consec-dates-r char*9 = char(clmdtl-consec-dates)
+
+def consec-flag  char*1 = "Y" if clmdtl-consec-dates-r[1:3] ne "0OP"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0MR"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0BI"  &
+                             and clmdtl-consec-dates-r[1:3] ne "0  "  &
+                             and clmdtl-consec-dates-r[1:3] ne " 00"  &
+                             and clmdtl-consec-dates-r[1:3] ne "000"  &
+                             and clmdtl-consec-dates-r[1:3] ne "   "
+
+def x-sv-nbr1 zoned*2 unsigned = clmdtl-nbr-serv
+
+def x-sv-nbr2 zoned*2 unsigned =                                    &
+                        nconvert(ascii(clmdtl-consec-dates,9)[1:1]) &
+                        if consec-flag = "Y"                        &
+                        else 0
+
+def x-sv-nbr3 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[4:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-sv-nbr4 zoned*2 unsigned =                                     &
+                        nconvert(ascii(clmdtl-consec-dates,9)[7:1])  &
+                        if consec-flag = "Y"                         &
+                        else 0
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-prof-fee-ohip = clmdtl-fee-ohip - clmdtl-amt-tech-billed 	  &
+        if    (clmdtl-id[1:2] > '60' and clmdtl-id[1:2] <= '66')  &
+           or (clmdtl-id[1:2] > '70' and clmdtl-id[1:2] <= '75')  &
+     else clmdtl-fee-ohip
+
+def x-fee-ohip = x-prof-fee-ohip  / x-nbr-svcs
+
+def x-fee-ohip-1 zoned*7 numeric = x-sv-nbr1 * x-fee-ohip     
+def x-fee-ohip-2 zoned*7 numeric = x-sv-nbr2 * x-fee-ohip
+def x-fee-ohip-3 zoned*7 numeric = x-sv-nbr3 * x-fee-ohip
+def x-fee-ohip-4 zoned*7 numeric = x-sv-nbr4 * x-fee-ohip
+
+def x-prof-fee-oma = clmdtl-fee-oma - clmdtl-amt-tech-billed 	  &
+        if    (clmdtl-id[1:2] > '60' and clmdtl-id[1:2] <= '66')  &
+           or (clmdtl-id[1:2] > '70' and clmdtl-id[1:2] <= '75')  &
+     else clmdtl-fee-oma
+
+def x-fee-oma = x-prof-fee-oma  / x-nbr-svcs
+
+def x-fee-oma-1 zoned*7 numeric = x-sv-nbr1 * x-fee-oma     
+def x-fee-oma-2 zoned*7 numeric = x-sv-nbr2 * x-fee-oma
+def x-fee-oma-3 zoned*7 numeric = x-sv-nbr3 * x-fee-oma
+def x-fee-oma-4 zoned*7 numeric = x-sv-nbr4 * x-fee-oma
+
+def x-tech-bill = clmdtl-amt-tech-billed / x-nbr-svcs
+
+def x-tech-bill-1 zoned*6 numeric = x-sv-nbr1 * x-tech-bill     
+def x-tech-bill-2 zoned*6 numeric = x-sv-nbr2 * x-tech-bill
+def x-tech-bill-3 zoned*6 numeric = x-sv-nbr3 * x-tech-bill
+def x-tech-bill-4 zoned*6 numeric = x-sv-nbr4 * x-tech-bill
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2] &
+                        if consec-flag = "Y"                              &
+                        else " "
+
+subfile claims_subfile_exp keep include							&
+  clmdtl-id        			 of claims_subfile,				&
+;  clmdtl-nbr-serv    			 of claims_subfile,				&
+;  clmdtl-sv-date			 of claims_subfile,				&
+  x-sv-nbr1                                              ,				& 
+  x-sv-date-1                                             ,				& 
+  clmdtl-consec-dates                 	 of claims_subfile,				&
+;  clmdtl-amt-tech-billed		 of claims_subfile,				&
+;  clmdtl-fee-oma   			 of claims_subfile,				&
+;  clmdtl-fee-ohip    			 of claims_subfile,				&
+  x-tech-bill-1                                           ,				& 
+  x-fee-oma-1      			                  ,				&
+  x-fee-ohip-1     			                  ,				&
+  clmdtl-date-period-end		 of claims_subfile,				&
+  clmhdr-hosp				 of claims_subfile,				&
+  clmhdr-doc-dept  			 of claims_subfile,				&
+  clmhdr-agent-cd    			 of claims_subfile,				&
+  clmhdr-pat-ohip-id-or-chart 		 of claims_subfile,				&
+  clmhdr-loc       			 of claims_subfile,				&
+  clmhdr-refer-doc-nbr 			 of claims_subfile,				&
+  clmdtl-diag-cd			 of claims_subfile,				&
+  clmhdr-doc-spec-cd 			 of claims_subfile,				&
+  clmhdr-i-o-pat-ind 			 of claims_subfile,				&
+  clmhdr-date-admit			 of claims_subfile,				&
+  clmhdr-doc-nbr-ohip			 of claims_subfile,				&
+  pat-ohip-mmyy    			 of claims_subfile,				&
+  pat-chart-nbr      			 of claims_subfile,				&
+  pat-chart-nbr-2    			 of claims_subfile,				&
+  pat-chart-nbr-3    			 of claims_subfile,				&
+  pat-chart-nbr-4    			 of claims_subfile,				&
+  pat-chart-nbr-5    			 of claims_subfile,				&
+  pat-health-nbr			 of claims_subfile,				&
+  pat-version-cd   			 of claims_subfile,				&
+  pat-prov-cd                  		 of claims_subfile,				&
+  pat-birth-date   			 of claims_subfile,				&
+  pat-sex            			 of claims_subfile,				&
+  pat-surname				 of claims_subfile,				&
+  pat-given-name   			 of claims_subfile,				&
+  pat-init				 of claims_subfile,				&
+  pat-phone-nbr      			 of claims_subfile,				&
+  subscr-addr1				 of claims_subfile,				&
+  subscr-addr2  			 of claims_subfile,				&
+  subscr-addr3				 of claims_subfile,				&
+  subscr-prov-cd 			 of claims_subfile,				&
+  subscr-postal-cd			 of claims_subfile
+
+subfile claims_subfile_exp alias claims_subfile_svc2 append keep if  x-sv-nbr2 <> 0 include &
+   clmdtl-id        			 of claims_subfile,				&
+;  clmdtl-nbr-serv    			 of claims_subfile,				&
+;  clmdtl-sv-date			 of claims_subfile,				&
+  x-sv-nbr2                                              ,				& 
+  x-sv-date-2                                             ,				& 
+  clmdtl-consec-dates                 	 of claims_subfile,				&
+;  clmdtl-amt-tech-billed		 of claims_subfile,				&
+;  clmdtl-fee-oma   			 of claims_subfile,				&
+;  clmdtl-fee-ohip    			 of claims_subfile,				&
+  x-tech-bill-2                                           ,				& 
+  x-fee-oma-2      			                  ,				&
+  x-fee-ohip-2     			                  ,				&
+  clmdtl-date-period-end		 of claims_subfile,				&
+  clmhdr-hosp				 of claims_subfile,				&
+  clmhdr-doc-dept  			 of claims_subfile,				&
+  clmhdr-agent-cd    			 of claims_subfile,				&
+  clmhdr-pat-ohip-id-or-chart 		 of claims_subfile,				&
+  clmhdr-loc       			 of claims_subfile,				&
+  clmhdr-refer-doc-nbr 			 of claims_subfile,				&
+  clmdtl-diag-cd			 of claims_subfile,				&
+  clmhdr-doc-spec-cd 			 of claims_subfile,				&
+  clmhdr-i-o-pat-ind 			 of claims_subfile,				&
+  clmhdr-date-admit			 of claims_subfile,				&
+  clmhdr-doc-nbr-ohip			 of claims_subfile,				&
+  pat-ohip-mmyy    			 of claims_subfile,				&
+  pat-chart-nbr      			 of claims_subfile,				&
+  pat-chart-nbr-2    			 of claims_subfile,				&
+  pat-chart-nbr-3    			 of claims_subfile,				&
+  pat-chart-nbr-4    			 of claims_subfile,				&
+  pat-chart-nbr-5    			 of claims_subfile,				&
+  pat-health-nbr			 of claims_subfile,				&
+  pat-version-cd   			 of claims_subfile,				&
+  pat-prov-cd                  		 of claims_subfile,				&
+  pat-birth-date   			 of claims_subfile,				&
+  pat-sex            			 of claims_subfile,				&
+  pat-surname				 of claims_subfile,				&
+  pat-given-name   			 of claims_subfile,				&
+  pat-init				 of claims_subfile,				&
+  pat-phone-nbr      			 of claims_subfile,				&
+  subscr-addr1				 of claims_subfile,				&
+  subscr-addr2  			 of claims_subfile,				&
+  subscr-addr3				 of claims_subfile,				&
+  subscr-prov-cd 			 of claims_subfile,				&
+  subscr-postal-cd			 of claims_subfile
+
+subfile claims_subfile_exp alias claims_subfile_svc3 append keep if  x-sv-nbr3 <> 0 include &
+  clmdtl-id        			 of claims_subfile,				&
+;  clmdtl-nbr-serv    			 of claims_subfile,				&
+;  clmdtl-sv-date			 of claims_subfile,				&
+  x-sv-nbr3                                              ,				& 
+  x-sv-date-3                                             ,				& 
+  clmdtl-consec-dates                 	 of claims_subfile,				&
+;  clmdtl-amt-tech-billed		 of claims_subfile,				&
+;  clmdtl-fee-oma   			 of claims_subfile,				&
+;  clmdtl-fee-ohip    			 of claims_subfile,				&
+  x-tech-bill-3                                           ,				& 
+  x-fee-oma-3      			                  ,				&
+  x-fee-ohip-3     			                  ,				&
+  clmdtl-date-period-end		 of claims_subfile,				&
+  clmhdr-hosp				 of claims_subfile,				&
+  clmhdr-doc-dept  			 of claims_subfile,				&
+  clmhdr-agent-cd    			 of claims_subfile,				&
+  clmhdr-pat-ohip-id-or-chart 		 of claims_subfile,				&
+  clmhdr-loc       			 of claims_subfile,				&
+  clmhdr-refer-doc-nbr 			 of claims_subfile,				&
+  clmdtl-diag-cd			 of claims_subfile,				&
+  clmhdr-doc-spec-cd 			 of claims_subfile,				&
+  clmhdr-i-o-pat-ind 			 of claims_subfile,				&
+  clmhdr-date-admit			 of claims_subfile,				&
+  clmhdr-doc-nbr-ohip			 of claims_subfile,				&
+  pat-ohip-mmyy    			 of claims_subfile,				&
+  pat-chart-nbr      			 of claims_subfile,				&
+  pat-chart-nbr-2    			 of claims_subfile,				&
+  pat-chart-nbr-3    			 of claims_subfile,				&
+  pat-chart-nbr-4    			 of claims_subfile,				&
+  pat-chart-nbr-5    			 of claims_subfile,				&
+  pat-health-nbr			 of claims_subfile,				&
+  pat-version-cd   			 of claims_subfile,				&
+  pat-prov-cd                  		 of claims_subfile,				&
+  pat-birth-date   			 of claims_subfile,				&
+  pat-sex            			 of claims_subfile,				&
+  pat-surname				 of claims_subfile,				&
+  pat-given-name   			 of claims_subfile,				&
+  pat-init				 of claims_subfile,				&
+  pat-phone-nbr      			 of claims_subfile,				&
+  subscr-addr1				 of claims_subfile,				&
+  subscr-addr2  			 of claims_subfile,				&
+  subscr-addr3				 of claims_subfile,				&
+  subscr-prov-cd 			 of claims_subfile,				&
+  subscr-postal-cd			 of claims_subfile
+
+
+
+subfile claims_subfile_exp alias claims_subfile_svc4 append keep if  x-sv-nbr4 <> 0 include &
+  clmdtl-id        			 of claims_subfile,				&
+;  clmdtl-nbr-serv    			 of claims_subfile,				&
+;  clmdtl-sv-date			 of claims_subfile,				&
+  x-sv-nbr4                                              ,				& 
+  x-sv-date-4                                             ,				& 
+  clmdtl-consec-dates                 	 of claims_subfile,				&
+;  clmdtl-amt-tech-billed		 of claims_subfile,				&
+;  clmdtl-fee-oma   			 of claims_subfile,				&
+;  clmdtl-fee-ohip    			 of claims_subfile,				&
+  x-tech-bill-4                                           ,				& 
+  x-fee-oma-4      			                  ,				&
+  x-fee-ohip-4     			                  ,				&
+  clmdtl-date-period-end		 of claims_subfile,				&
+  clmhdr-hosp				 of claims_subfile,				&
+  clmhdr-doc-dept  			 of claims_subfile,				&
+  clmhdr-agent-cd    			 of claims_subfile,				&
+  clmhdr-pat-ohip-id-or-chart 		 of claims_subfile,				&
+  clmhdr-loc       			 of claims_subfile,				&
+  clmhdr-refer-doc-nbr 			 of claims_subfile,				&
+  clmdtl-diag-cd			 of claims_subfile,				&
+  clmhdr-doc-spec-cd 			 of claims_subfile,				&
+  clmhdr-i-o-pat-ind 			 of claims_subfile,				&
+  clmhdr-date-admit			 of claims_subfile,				&
+  clmhdr-doc-nbr-ohip			 of claims_subfile,				&
+  pat-ohip-mmyy    			 of claims_subfile,				&
+  pat-chart-nbr      			 of claims_subfile,				&
+  pat-chart-nbr-2    			 of claims_subfile,				&
+  pat-chart-nbr-3    			 of claims_subfile,				&
+  pat-chart-nbr-4    			 of claims_subfile,				&
+  pat-chart-nbr-5    			 of claims_subfile,				&
+  pat-health-nbr			 of claims_subfile,				&
+  pat-version-cd   			 of claims_subfile,				&
+  pat-prov-cd                  		 of claims_subfile,				&
+  pat-birth-date   			 of claims_subfile,				&
+  pat-sex            			 of claims_subfile,				&
+  pat-surname				 of claims_subfile,				&
+  pat-given-name   			 of claims_subfile,				&
+  pat-init				 of claims_subfile,				&
+  pat-phone-nbr      			 of claims_subfile,				&
+  subscr-addr1				 of claims_subfile,				&
+  subscr-addr2  			 of claims_subfile,				&
+  subscr-addr3				 of claims_subfile,				&
+  subscr-prov-cd 			 of claims_subfile,				&
+  subscr-postal-cd			 of claims_subfile
+
+
+build $pb_obj/create_claims_sub_exp

@@ -1,0 +1,520 @@
+;#> program-id.     d020.qks
+;
+;               note: 1) some programming remains to pass ep-minus-1
+;                        to sub-screens. should defaut ep to "E" mode
+;                        and ep-1 to find mode
+;
+;       ((c)) dyad technologies
+;
+;    program purpose : maintenance of doctor - payroll data
+;
+; modification history
+;    date   who         description
+; 92/jan/02 b.e.        - original
+; 92/oct/13 b.e.        - default from-ep-nbr for sub-screens using
+;                         previous ep not current ep.
+; 93/jul/02 y.b.        - change column clinic to class
+;
+; 93/jul/30 m.c.        - changed doc-dept-expense-percent from noid ti
+;			  id same
+; 93/sep/21 b.e.        - added rma/dept reg/misc billing percents
+;
+; 95/jun/29 b.m.l.	- added designer procs. h110,hi12,hi13 & hi19
+;
+; 95/nov/07 m.c.	- for 91 & 98 screens, do not prompt for ep-nbr
+;			- for 94 history screen, prompt for ep nbr
+; 95/nov/15 m.c.	- add f020-doctor-extra as secondary and pass
+;			  it to the tot screen (d020a)
+; 96/jan/22 m.c.	- sms 147 - include new screen option 92 for
+;			  require & target revenue entry
+; 98/jan/06 j.c.	- sms 148 - include for 1,col in last two cluster
+;                         statements otherwise error compilation 
+;
+; 1999/Jan/18 S.B.      - Fixed 'start' and 'term' dates for 
+;			  Y2K compliance.
+; 1999/Jun/07 S.B.	- Altered the call to scrtitle.use and
+;			  stdhilite.use to be called from $use
+;			  instead of src.
+;			- Removed the call to secfile.use because
+;			  it was not doing anything.
+;
+; 99/sep/20 B.E.	- added UPSHIFT to gst flag
+; 2003/nov/10 b.e.      - alpha doctor nbr
+; 2004/jul/20 b.e.	- added field doc-afp-paym-group
+; 2006/may/30 b.e.	- restrict activities on screen so no add/delete
+; 2008/may/07 b.e.	- add call to d119gov.qkc for goverance transactions
+; 2008/may/21 M.C.	- add call to d119tithe.qkc for tithe calculation          
+;
+screen $pb_obj/d020 activities find, change; on 1 for 23
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows select of doctors for maintenance of        " &
+"       Earnings related information.                                  " &
+"                                                                      "
+
+;use $pb_src/secfile.use   nol nod
+
+file  f020-doctor-mstr  primary
+
+file  f020-doctor-extra secondary
+
+file f199-user-defined-fields                    designer
+file f199-user-defined-fields alias f199-2nd-rec designer
+file f198-user-defined-totals                    designer
+file f198-user-defined-totals alias f198-2nd-rec designer
+
+file f070-dept-mstr reference
+        access viaindex dept-nbr using doc-dept
+
+file f112-pycdceilings    designer
+
+file constants-mstr-rec-6 designer
+
+def w-year = nconvert(ascii(sysdate,6)[1:2])
+def w-mth = nconvert(ascii(sysdate,6)[3:2])
+def w-comp-date = nconvert(ascii((w-year - 1),2) + '0701') if w-mth < 7 &
+    else          nconvert(ascii(w-year,2) + '0701')
+def w-note-type char*1 = "A"
+
+temp x-doc-nbr-length
+temp w-current-pycode    char*1
+temp w-current-pysubcode char*1
+temp w-curr-ceil-earn numeric
+temp w-curr-ceil-expn numeric
+temp w-password    char*5
+temp w-delete-flag char*1
+temp w-old-pay-code char*1
+temp w-doc-nbr  char*3
+temp w-ep-nbr-from  num*4 reset at startup
+temp w-ep-nbr-to    num*4 reset at startup
+temp w-ep-nbr-yy
+
+; the following defn to change when proper file accessed to get ccorrect
+; (ep - 1) record!
+define w-current-ep-nbr-minus-1 = current-ep-nbr - 1
+
+file f080-bank-mstr reference
+        access viaindex bank-cd using   &
+        (ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+
+temp w-date date initial sysdate
+
+define x-screen-name char*55 = "PHYSICIAN EARNINGS Info"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+skip to 3
+align (1,4,12) (,16,22) (,47,55) (,65,75)
+field doc-nbr of f020-doctor-mstr      display label "DOCTOR:" upshift
+field doc-name of f020-doctor-mstr     display label "NAME:"      noid
+field doc-inits of f020-doctor-mstr    display label "INITS :"    noid
+field doc-ohip-nbr of f020-doctor-mstr display label "OHIP/REG#:" noid
+skip
+align (,4,11) (,,16) (,47,55) (,56,67)
+field doc-dept  of f020-doctor-mstr lookup on f070-dept-mstr label "DEPT :" display noid
+field dept-name of f070-dept-mstr display noid
+field doc-full-part-ind of f020-doctor-mstr label "CLASS :" display noid
+title "EARNING/EXPENSE" at ,63
+skip
+
+align (,4,11) (,22,28) (,39,47) (,,48) (,54,59) (,69,70)
+field doc-date-fac-start label 'START:' noid
+field doc-date-fac-term  label 'TERM:'   noid
+field w-current-pycode   label "PAY CD:" noid
+field w-current-pysubcode                noid
+field w-curr-ceil-earn          label "CURR: " pic "^^^^,^^^" noid
+field w-curr-ceil-expn          label "/"      pic "^^^^,^^^" noid
+skip
+;align (1,4,19) (,54,59) (,70,71)
+align (1,4,18) (,54,59) (,70,71)
+field doc-bank-nbr of f020-doctor-mstr label "BANK NBR:" pic "^^^^" display
+field doc-yrly-ceiling-computed label "COMP:"  pic "^^^^,^^^.^^" noid
+field doc-yrly-expense-computed label "/"      pic "^^^,^^^.^^" noid
+;title "REGULAR/MISC" at ,37
+title "REGULAR/MISC    GST F." at ,31
+;align (,4,18) (27,30,35) (,43,45) (54,57,63)
+;;align (,4,18) (27,30,35) (,43,45)
+align (,4,17) (23,26,31) (,38,39) (,,47)
+field doc-bank-branch of f020-doctor-mstr label "BRANCH  :" pic "^^^^^" display noid
+@if dg and hsc
+field doc-rma-expense-percent-reg  label "HSC :" pic "^^.^^^^"
+@elseif dg and rma
+field doc-rma-expense-percent-reg  label "RMA :" pic "^^.^^^^"
+@endif
+field doc-rma-expense-percent-misc label "/"     pic "^^.^^^^" id same
+field factor-gst-income-reg id same
+;;align (,4,11) (27,30,35) (,43,45)
+align (,4,10) (23,26,31) (,38,39) (,,47)
+field doc-bank-acct of f020-doctor-mstr   label "ACCT#:" display noid
+field doc-dept-expense-percent-reg    label "DEPT:" pic "^^.^^^^"
+field doc-dept-expense-percent-misc   label "/"     pic "^^.^^^^" id same
+field factor-gst-income-misc id same
+skip to 7
+;align                 (54,57,67)
+align                 (55,58,68)
+field doc-ind-pays-gst             label "GST?     :" UPSHIFT
+skip to 8
+;align                 (54,57,67)
+align                 (55,58,68) (70,73,77)
+field doc-ind-holdback-active	   label "HOLDBACK?:"
+;align                 (69,72,76)
+field doc-afp-paym-group of f020-doctor-mstr label 'AFP:' display
+
+skip to 9
+;draw from ,1 to 20,80
+title                                                                           &
+" YTD Totals "         &
+at ,36
+skip to 10
+align (,,3)
+cluster occurs with field-desc of f199-user-defined-fields at 10,1 for 1,41
+ field field-desc of f199-user-defined-fields noid display
+skip 1
+cluster ; 1
+skip to 10
+align (,,24)
+cluster occurs with user-total of f198-user-defined-totals at 10,24 for 1,40
+  field user-total of f198-user-defined-totals noid display
+skip 1
+cluster ;2
+
+skip to 10
+align (,,45)
+cluster occurs with field-desc of f199-2nd-rec             at 10,45 for 1,30
+ field field-desc of f199-2nd-rec             noid display
+skip 1
+cluster ; 3
+skip to 10
+align (,,66)
+cluster occurs with user-total of f198-2nd-rec             at 10,66 for 1,15
+  field user-total of f198-2nd-rec             noid display
+skip 1
+cluster ;4
+;         1         2         3         4         5         6         7         8
+;....v....0....v....0....v....0....v....0....v....0....v....0....v....0....v....0
+;             earnings period (e/p): yymm thru yymm
+
+skip to 21
+align (,14,37)(,50,66)
+field w-ep-nbr-from  label "EARNINGS PERIOD (E/P):" pic "^^^^^^" noid
+field w-ep-nbr-yy    label "EARNINGS YEAR:" pic "^^^^" noid
+;skip to 21
+;align (,42,47)
+;field w-ep-nbr-to label "thru"    pic "^^^^" noid
+
+skip to 22
+title "91 Pay Codes/Ceilings        "	at ,1
+title "92 Require/Target Rev  "		at ,30
+title "93 Earnings     "        	at ,52
+title "94 YTD Totals"      		at ,68
+skip
+title "95 Messages       " 		at ,1
+title "96 Gov(hidden)  " 		at ,14
+title "97 Tithe Calculations   " 	at ,30
+title "98 Default Comp   " 		at ,52
+title "99 Notes     "  			at ,68
+;title   &
+;"92 MESSAGES - E/P:                                 99 NOTES               " &
+;    at ,1
+
+;skip to 23
+;align (,,75)
+;field w-password noid display noecho
+
+procedure initialize
+begin
+  get constants-mstr-rec-6 using 6 optional
+  if not accessok
+  then error "Error - Can't read Constants Master record #6!"
+
+; ??????!!!!!!  this logic should open f??? ep file and do read on current
+;                ep record and then read backwards to pickup most previous
+;                ep record - then do assignment !!!!!
+;
+;  let     w-ep-nbr-from = current-ep-nbr
+   let     w-ep-nbr-from = w-current-ep-nbr-minus-1
+;  let     w-ep-nbr-to   = last-ep-nbr-of-fiscal-yr
+   let     w-ep-nbr-to   = w-current-ep-nbr-minus-1
+end
+
+
+procedure postfind
+begin
+  let w-old-pay-code = doc-pay-code
+  display w-ep-nbr-from
+; display w-ep-nbr-to
+
+; (obtain field titles for "PHYSICIAN YTD TOTALS" - value 0/9 and 10/19
+  get f199-user-defined-fields using "A" optional
+  for field-desc of f199-user-defined-fields
+  begin
+    display field-desc of f199-user-defined-fields
+  end
+; (obtain "PHYSICIAN YTD TOTALS" - totals 0/9)
+;1  get f198-user-defined-totals using "A", doc-nbr optional
+;1  for user-total of f198-user-defined-totals
+;1  begin
+;1    display user-total of f198-user-defined-totals
+;1  end
+  get f199-2nd-rec             using "B" optional
+  for field-desc of f199-2nd-rec
+  begin
+    display field-desc of f199-2nd-rec
+  end
+; (obtain "PHYSICIAN YTD TOTALS" - totals 10/19)
+  get f198-2nd-rec             using "B", doc-nbr optional
+  for user-total of f198-2nd-rec
+  begin
+    display user-total of f198-2nd-rec
+  end
+;  (re-get const mstr due to bug that clears record record in initial proc)
+  get constants-mstr-rec-6 using 6 optional
+; (obtain doctor's current ep paycode/ceiling)
+  get f112-pycdceilings viaindex pycdceilings using doc-nbr, current-ep-nbr optional
+; (if current ep record not found use most recent for the doctor)
+  if not accessok
+  then
+;   get f112-pycdceilings         using doc-nbr, current-ep-nbr backwards optional
+    get f112-pycdceilings viaindex pycdceilings                 backwards optional
+  if accessok and doc-nbr of f112-pycdceilings = doc-nbr of f020-doctor-mstr
+  then
+    begin
+      let w-current-pycode          = doc-pay-code     of f112-pycdceilings
+      let w-current-pysubcode       = doc-pay-sub-code of f112-pycdceilings
+      let w-curr-ceil-earn          = doc-yrly-ceiling of f112-pycdceilings
+      let w-curr-ceil-expn          = doc-yrly-expense of f112-pycdceilings
+    end
+  else
+    begin
+      let w-current-pycode    = "?"
+      let w-current-pysubcode =" "
+    end
+  display w-current-pycode
+  display w-current-pysubcode
+  display doc-yrly-ceiling-computed of f020-doctor-mstr
+  display doc-yrly-expense-computed of f020-doctor-mstr
+end
+
+
+procedure edit doc-nbr
+begin
+use $use/pad_doc_nbr.qks
+end
+
+procedure process doc-bank-nbr
+begin
+  if doc-bank-nbr = 0
+    then begin
+      let doc-bank-branch = 0
+      let doc-bank-acct = ' '
+      end
+    end
+
+procedure edit doc-bank-branch
+begin
+  get f080-bank-mstr viaindex bank-cd using     &
+        (ascii(doc-bank-nbr,4) + ascii(doc-bank-branch,5))
+  if not accessok
+    then error "Error - Invalid BANK/BRANCH."
+  end
+
+
+procedure process doc-date-fac-term
+begin
+  if    doc-date-fac-start > doc-date-fac-term  &
+    and doc-date-fac-term <> 0
+  then error "INVALID DATE"
+;  else let doc-date-fac-term = ascii(w-doc-date-fac-term,6)
+  end
+
+
+procedure designer 91 help 'PAY CODES / CEILINGS'
+;91 pay codes / ceilings
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d112 mode same clear lines 7 to 23                 &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+  display doc-yrly-ceiling-computed of f020-doctor-mstr
+  display doc-yrly-expense-computed of f020-doctor-mstr
+end
+
+
+procedure designer hi91 help 'PAY CODES / CEILINGS HISTORY'
+;91 pay codes / ceilings history
+begin
+  accept w-ep-nbr-yy
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/h112 mode same clear lines 7 to 23                 &
+                passing w-doc-nbr, w-ep-nbr-yy,                 &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 92 help 'REQUIRE/TARGET REVENUE'
+;92 require/target revenue
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d112a mode same clear lines 7 to 23                 &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi92 help 'REQUIRE/TARGET REVENUE HISTORY'
+;92 require/target revenue history
+begin
+; accept w-ep-nbr-from
+  accept w-ep-nbr-yy
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/h112a mode same clear lines 7 to 23                 &
+;               passing w-doc-nbr, w-ep-nbr-from,               &
+                passing w-doc-nbr, w-ep-nbr-yy,                 &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+
+procedure designer 93 help 'EARNINGS'
+;93 earnings - e/p:
+begin
+;  accept w-password
+   let w-password = "EARN"
+   if w-password = 'EARN'
+   then begin
+     accept w-ep-nbr-from
+     let w-ep-nbr-to = w-ep-nbr-from
+;    accept w-ep-nbr-to
+     let w-doc-nbr = doc-nbr
+;     get constants-mstr-rec-6 using 6 optional
+;     if not accessok
+;     then error "Error - Can't read Constants Master record #6!"
+     run screen $pb_obj/d110 mode same clear lines 6 to 23              &
+                passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+                        constants-mstr-rec-6, f020-doctor-mstr
+   end
+end
+
+procedure designer hi93 help 'EARNINGS HISTORY'
+;93 earnings - history
+begin
+     accept w-ep-nbr-from
+     let w-doc-nbr = doc-nbr
+     run screen $pb_obj/h110 mode same clear lines 6 to 23              &
+                passing w-doc-nbr, w-ep-nbr-from,               &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 94 help 'YTD TOTALS'
+;94 ytd totals
+begin
+  let w-doc-nbr = doc-nbr
+; accept w-ep-nbr-from
+; let w-ep-nbr-to = w-ep-nbr-from
+; accept w-ep-nbr-to
+; get constants-mstr-rec-6 using 6 optional
+; if not accessok
+;   then error "Error - Can't read Constants Master record #6!"
+  run screen $pb_obj/d119 mode same clear lines 6 to 23         &
+;               passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi94 help 'YTD TOTALS HISTORY'
+;94 ytd totals history
+begin
+  let w-doc-nbr = doc-nbr
+; accept w-ep-nbr-yy
+  accept w-ep-nbr-from
+  run screen $pb_obj/h119 mode same clear lines 6 to 23         &
+;               passing w-doc-nbr, w-ep-nbr-yy,                 &
+                passing w-doc-nbr, w-ep-nbr-from,               &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 95 help 'MESSAGES'
+;95 messages - e/p:
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d118 mode same clear lines 6 to 23                 &
+                passing w-doc-nbr, w-ep-nbr-from, w-ep-nbr-to,  &
+                                              f020-doctor-mstr
+end
+
+procedure designer 96 help 'Goverance Transactions'
+;96 Goverance transactions 
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d119gov mode same clear lines 6 to 23         &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+; 2008/05/21 - MC
+procedure designer 97 help 'Tithe Calculation'            
+;97 tithe Calculation      
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d119tithe mode same clear lines 6 to 23         &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+; 2008/05/21 - end
+
+procedure designer 98 help 'DEFAULT COMPENSATION'
+;98 default compensation
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d113 mode same clear lines 6 to 23         &
+                passing w-doc-nbr,                              &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer hi98 help 'DEFAULT COMPENSATION HISTORY'
+;98 default compensation history
+begin
+  let w-doc-nbr = doc-nbr
+  accept w-ep-nbr-yy
+  run screen $pb_obj/h113 mode same clear lines 6 to 23         &
+                passing w-doc-nbr, w-ep-nbr-yy,                     &
+                        constants-mstr-rec-6, f020-doctor-mstr
+end
+
+procedure designer 99 help 'NOTES'
+;99 notes
+begin
+  let w-doc-nbr = doc-nbr
+  run screen $pb_obj/d199  mode f  clear lines 6 to 23          &
+                passing w-doc-nbr
+end
+
+procedure designer tot help 'DOCTOR TOT SCREEN'
+;ytd and ep totals stored in f020 to optimize speed by reducing reads to f110
+begin
+  run screen $pb_obj/d020a mode f  clear lines 7 to 23          &
+                passing f020-doctor-mstr, f020-doctor-extra
+end
+
+
+procedure designer htot help 'DOCTOR TOT HISTORY SCREEN'
+begin
+  let w-doc-nbr = doc-nbr
+; accept w-ep-nbr-yy
+  accept w-ep-nbr-from
+  run screen $pb_obj/h020a mode f  clear lines 7 to 23          &
+;               passing w-doc-nbr, w-ep-nbr-yy
+                passing w-doc-nbr, w-ep-nbr-from
+end
+
+procedure designer adj help 'CURRENT OUTSTANDING CEILING ADJUSTMENT VALUES'
+;current outstanding ceiling adjustments values
+begin
+  run screen $pb_obj/d020b mode f  clear lines 6 to 23          &
+                passing f020-doctor-mstr
+end
+
+
+build
+  

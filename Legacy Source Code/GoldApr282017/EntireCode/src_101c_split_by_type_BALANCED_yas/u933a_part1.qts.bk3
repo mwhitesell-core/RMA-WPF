@@ -1,0 +1,144 @@
+; Program: u933a_part1.qts
+; Purpose: create payroll transactions for ICU doctors
+
+; 94/JUN/22	M.C.	- ORIGINAL (SMS 145)
+;			- ICU/APP FOR CLINIC 81 AGENT 8
+; 98/Sep/22     B.E.    - added "set lock file update" statement
+; 00/nov/06	B.E.	- total billings reduced by 95%S
+; 00/feb/06 	B.E.	- added logic to obtain current adjustment/payments
+;			  for doctors for which payroll is to be performed.
+;			- ALL doctors are put into u933a2 subfile
+;			  which is then accessed within the payroll 
+;			  generation process, however for RMA doctors
+;			  these is no 'charge' or 'expense' transactions
+;			  and no 'potential pay'(PAYPOT) transaction
+; 01/mar/13    B.E.	- access to f001 to pickup all 81 adjustments not
+;			  just those for ICU doctors
+; 2001/apr/24 B.E.      - split u933.qts into u933a_part1/2 to create
+;                         this pgm.
+;                         This pgm must run in the clinic 81's normal production
+;			  directory!
+;			  
+;
+
+can clear
+run u933
+
+set process nolimit
+set lock file update
+
+;---------------------------------------------------------------------
+request one
+;------------------------------------------------------------
+
+access icu-app-file
+
+sort on doc-nbr 			&
+     on clmhdr-pat-ohip-id-or-chart	&
+     on clmdtl-sv-date
+
+temp x-nbr-claims
+item x-nbr-claims = x-nbr-claims + 1 at clmdtl-sv-date reset at doc-nbr
+
+temp x-nbr-svcs
+item x-nbr-svcs = x-nbr-svcs + clmdtl-nbr-serv reset at doc-nbr
+
+temp x-tot-fees-billed
+item x-tot-fees-billed = x-tot-fees-billed + clmdtl-fee-ohip reset at doc-nbr
+
+temp x-tot-adjustments
+item x-tot-adjustments = 0
+
+subfile u933_claim_adjust_totals   keep at doc-nbr      include         &
+        doc-nbr, 							&
+	x-nbr-claims, 							&
+	x-nbr-svcs,             					&
+        x-tot-fees-billed,                                              &
+        x-tot-adjustments
+
+;------------------------------------------------------------
+request u933_2_get_current_adjustments 
+;------------------------------------------------------------
+; Purpose: pickup adjustments that affect ICU payroll calculations and
+;          bring them into f110 as ICUADJ MINUS "R"evenue calculation
+;
+
+access f001-batch-control-file  &
+  link "B" , batctrl-batch-nbr                                &
+  to   key-clm-type, key-clm-batch-nbr of f002-claims-mstr      &
+  link (floor(batctrl-batch-nbr / 10000000))                    &
+  to   iconst-clinic-nbr-1-2 of  iconst-mstr-rec  opt           &
+  link (nconvert(clmhdr-claim-id[4:3]))                         &
+  to   doc-nbr of f020-doctor-mstr  opt
+
+use $use/icu_depts.def nol
+
+choose batctrl-batch-nbr 810000000 to 819999999 ; clinic 81 claims only
+
+; (current PED adjustments only)
+select f001-batch-control-file                                  &
+        if    (   (     batctrl-batch-type = "A"                &
+                   and (   batctrl-adj-cd = "B"                 &
+                        or batctrl-adj-cd = "R"                 &
+                       )                                        &
+                  )                                             &
+               or (     batctrl-batch-type = "P"                &
+                    and batctrl-adj-cd     = "M"                &
+                  )                                             &
+             )
+
+select if batctrl-date-period-end  = ascii(iconst-date-period-end,8) 
+
+select f002-claims-mstr                                              &
+   if    clmhdr-oma-suff-adj = "000000" ; &	; PICK HEADER REC"S ONLY
+
+;  and clmhdr-doc-dept = icu-dept-1   ; clinic 81 ICU doctors only
+
+def doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[4:3])
+
+sorted on doc-nbr
+
+temp x-nbr-claims
+item x-nbr-claims = 0
+temp x-nbr-svcs
+item x-nbr-svcs = 0
+temp x-tot-fees-billed
+item x-tot-fees-billed = 0
+temp x-tot-adjustments
+item x-tot-adjustments =  x-tot-adjustments 				&
+			+ clmhdr-tot-claim-ar-ohip    reset at doc-nbr
+
+subfile u933_claim_adjust_totals  append  keep at doc-nbr      include   &
+        doc-nbr, 							&
+	x-nbr-claims, 							&
+	x-nbr-svcs,             					&
+        x-tot-fees-billed,                                              &
+        x-tot-adjustments
+
+;---------------------------------------------------------------------
+request u933_3_merge_doctors_claim_adj_records
+;------------------------------------------------------------
+
+access *u933_claim_adjust_totals
+
+sort on doc-nbr
+
+temp tot-nbr-claims
+item tot-nbr-claims = tot-nbr-claims + x-nbr-claims 	   reset at doc-nbr
+temp tot-nbr-svcs
+item tot-nbr-svcs   = tot-nbr-svcs   + x-nbr-svcs	   reset at doc-nbr
+
+temp tot-fees-billed
+item tot-fees-billed = tot-fees-billed + x-tot-fees-billed reset at doc-nbr
+temp tot-adjustments
+item tot-adjustments = tot-adjustments + x-tot-adjustments reset at doc-nbr
+
+subfile u933_totals keep at doc-nbr include 				&
+  doc-nbr,								&
+  tot-nbr-claims, 							&
+  tot-nbr-svcs,             						&
+  tot-fees-billed,							&
+  tot-adjustments
+
+build $obj/u933a_part1
+

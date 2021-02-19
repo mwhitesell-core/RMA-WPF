@@ -1,0 +1,185 @@
+; U020C_USE.QTS
+; COMMON PART OF U020B.QTS AND U022B.QTS (CREATE TAPE SUBFILE)
+; 97/MAR/01 Y.B.  - ADD GROUP AA21 NEW CLINIC 82
+; 97/JUN/01 K.M.  - ADDED THE TRANSLATED-GROUP-NBR TO THE SORT AND
+;                   CHANGED W-GROUP-NBR TO TRANSLATED-GROUP-NBR
+; 97/AUG/08 B.E.  - OUTPUT/ADD OF F099 FILE MADE CONDITIONAL UPON
+;		    RECORD IN F099 NOT ALREADY EXISTING
+;
+
+request create_tape on calculation errors report
+
+access *u020b
+
+def w-clmhdr-claim-id char*19 = clmhdr-claim-id + pat-version-cd
+
+def w-dtl char*27  = w-clmhdr-claim-id + ascii(clmdtl-line-no,2) + &
+		     clmdtl-sv-date
+
+;97/JUN/12 - K..M. - ADDED THE TRANSLATED-GROUP-NBR TO THE SORT
+sort	on translated-group-nbr    	&
+	on batctrl-batch-nbr		&
+	on w-clmhdr-claim-id		&
+	on w-dtl
+
+temp w-batch-count zoned*4
+  item w-batch-count  count at batctrl-batch-nbr initial 1
+
+temp w-b-count zoned *4
+  item w-b-count count reset at batctrl-batch-nbr
+
+temp w-b-count-r zoned *4
+  item w-b-count-r count reset at batctrl-batch-nbr
+
+temp w-h-count zoned*4
+  item w-h-count count at w-clmhdr-claim-id reset at batctrl-batch-nbr
+
+temp w-r-count zoned*4
+  item w-r-count count at w-clmhdr-claim-id if w-pat-ohip-mmyy <> ' ' &
+	reset at batctrl-batch-nbr
+
+temp w-t-count zoned*4
+  item w-t-count count at w-dtl reset at batctrl-batch-nbr
+
+temp w-a-count zoned*4
+  item w-a-count count at w-clmhdr-claim-id if w-pat-ohip-mmyy <> ' ' &
+	and pat-prov-cd = 'ON'		&
+	reset at batctrl-batch-nbr
+
+temp w-count
+  item w-count count reset at w-clmhdr-claim-id
+
+def w-batch-ind char*12 = ascii(((sysdate * 10000) + w-batch-count),12)
+
+def w-oper-nbr char*6 = '000805'
+
+;DEF W-GROUP-NBR CHAR*4 = '2215' IF ICONST-CLINIC-NBR-1-2 = 22	&
+;	    ELSE  '6008' IF ICONST-CLINIC-NBR-1-2 = 60		&
+;	    ELSE  '9595' IF ICONST-CLINIC-NBR-1-2 = 61		&
+;	    ELSE  '9598' IF ICONST-CLINIC-NBR-1-2 = 62		&
+;	    ELSE  '9607' IF ICONST-CLINIC-NBR-1-2 = 63		&
+;	    ELSE  '9619' IF ICONST-CLINIC-NBR-1-2 = 64		&
+;	    ELSE  '9632' IF ICONST-CLINIC-NBR-1-2 = 65 		
+
+;DEF W-GROUP-NBR CHAR*4 = 'AA03' IF ICONST-CLINIC-NBR-1-2 = 81	&
+;                   ELSE 'AA21' IF ICONST-CLINIC-NBR-1-2 = 82   &
+;                  ELSE  ASCII(BATCTRL-CLINIC-NBR,4)
+
+def w-clmdtl-oma-suff char*1 = clmdtl-oma-suff	&
+	  if clmdtl-oma-suff <> 'M'		&
+	else 'A'
+
+def w-batch-ident  char*4 = 'HEBG'
+def w-claim-1-ident char*3 = 'HEH'
+def w-claim-2-ident char*3 = 'HER'
+def w-item-ident char*3 = 'HET'
+def w-addr-ident char*3 = 'HEA'
+def w-trail-ident char*3 = 'HEE'
+
+def w-pay-program char*3 =	&
+;	     'HCP' IF (BATCTRL-AGENT-CD = 0 AND PAT-PROV-CD = 'ON') &
+;	ELSE 'WCB' IF BATCTRL-AGENT-CD = 2			&
+;	ELSE 'RMB' IF PAT-PROV-CD <> 'ON'
+	     'RMB' if pat-prov-cd <> 'ON'		&
+	else 'WCB' if batctrl-agent-cd = 2		&
+	else 'HCP'
+
+def w-payee char*1 = 'P'
+
+def w-pat-ohip-nbr char*12 = w-pat-ohip-mmyy[1:8] if pat-prov-cd = 'ON'&
+	else w-pat-ohip-mmyy[1:12]
+
+def w-subscr-addr-1 char*25 = subscr-addr1
+def w-subscr-addr-2 char*25 = w-subscr-addr2
+def w-subscr-addr-3 char*18 = w-subscr-addr3
+
+def w-pat-health-nbr char*10 =	&
+	ascii(pat-health-nbr,10) if pat-health-nbr <> 0	&
+	else ' '
+
+def w-clmhdr-refer-doc-nbr char*6 =	&
+	ascii(clmhdr-refer-doc-nbr of u020b,6)	&
+	if clmhdr-refer-doc-nbr of u020b <> 0	&
+	else ' '
+
+def w-clmhdr-date-admit char*6 =	&
+	clmhdr-date-admit if clmhdr-date-admit <> '000000'	&
+	else ' '
+
+def w-subscr-postal-cd char*6 =	&
+	subscr-postal-cd if subscr-postal-cd <> ' 0 0 0'	&
+	else 'L8S4K1'
+
+def w-batch-header-rec char*79 		&
+	= w-batch-ident			&
+	+ w-batch-ind			&
+	+ w-oper-nbr			&
+;	+ W-GROUP-NBR			&
+        + translated-group-nbr		&
+	+ ascii(batctrl-doc-nbr-ohip,6)	&
+	+ ascii(clmhdr-doc-spec-cd,2)
+
+def w-claim-header-rec-1 char*79	&
+	= w-claim-1-ident		&
+	+ w-pat-health-nbr		&
+	+ pat-version-cd		&
+	+ ascii(pat-birth-date,6)	&
+        + clmhdr-claim-id[4:8]		&
+	+ w-pay-program			&
+        + w-payee			&
+	+ w-clmhdr-refer-doc-nbr	&
+	+ w-clmhdr-hosp			&
+	+ w-clmhdr-date-admit		&
+	+ '    '			&
+	+ clmhdr-manual-review
+
+def w-claim-header-rec-2 char*79	&
+	= w-claim-2-ident		&
+	+ w-pat-ohip-nbr		&
+	+ pat-surname[1:9]		&
+	+ pat-given-name[1:5]		&
+	+ w-pat-sex			&
+	+ pat-prov-cd
+
+def w-item-rec char*79			&
+	= w-item-ident			&
+	+ clmdtl-oma-cd			&
+	+ w-clmdtl-oma-suff		&
+	+ '  '				&
+	+ ascii(w-clmdtl-fee-ohip,6)	&
+	+ ascii(clmdtl-nbr-serv,2)	&
+	+ clmdtl-sv-date		&
+	+ ascii(clmdtl-diag-cd,3)
+
+def w-address-rec char*79		&
+	= w-addr-ident			&
+	+ w-subscr-addr-1		&
+	+ w-subscr-addr-2		&
+	+ w-subscr-addr-3		&
+	+ w-subscr-postal-cd
+
+def w-trailer-rec char*79		&
+	= w-trail-ident			&
+	+ ascii(w-h-count,4)		&
+	+ ascii(w-r-count,4)		&
+	+ ascii(w-t-count,5)		&
+	+ ascii(w-a-count,4)
+
+subfile u020_tp keep if w-b-count = 1 include w-batch-header-rec
+
+subfile u020_tp alias u020_tape_h1 keep if w-count = 1 	&
+	include w-claim-header-rec-1
+
+subfile u020_tp alias u020_tape_h2 keep			&
+	if w-count = 1 and w-pat-ohip-mmyy <> ' '	&
+	include w-claim-header-rec-2
+
+subfile u020_tp alias u020_tape_i keep at w-dtl include w-item-rec
+
+subfile u020_tp alias u020_tape_a keep if w-count = 1       	&
+	and w-pat-ohip-nbr <> ' ' and pat-prov-cd = 'ON'	&
+	include w-address-rec
+
+subfile u020_tp alias u020_tape_t keep at batctrl-batch-nbr	&
+	include w-trailer-rec
+

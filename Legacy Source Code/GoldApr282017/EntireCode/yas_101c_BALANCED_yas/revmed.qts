@@ -1,0 +1,104 @@
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f050-doc-revenue-mstr-history                            
+
+choose ep-yr 2004, iconst-date-period-end 20050601
+
+select if     docrev-dept = 4             &             
+          and (docrev-clinic-1-2  = "22"   &
+          or   docrev-clinic-1-2  = "34")
+
+sort on docrev-doc-nbr
+
+temp x-rev    zoned*9 signed
+item x-rev    = x-rev    +  DOCREV-YTD-IN-REC + DOCREV-YTD-OUT-REC    &
+        reset at docrev-doc-nbr
+
+temp x-revm   zoned*9 signed
+item x-revm   = x-revm   +  DOCREV-YTD-IN-REC + DOCREV-YTD-OUT-REC    &
+                if docrev-oma-cd =  "MISC"                            &
+        reset at docrev-doc-nbr
+
+subfile revmed1 keep at docrev-doc-nbr	&
+	include	 docrev-doc-nbr,	&
+                 docrev-dept,		&
+		 x-rev,                 &
+		 x-revm               
+
+;------------------------------------------------------------------------------
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *revmed1                                                 &
+ link docrev-doc-nbr, 200413 					&		
+  to  doc-nbr, ep-nbr of f119-doctor-ytd-history opt
+
+sorted on docrev-doc-nbr
+
+temp x-afpadj zoned*9 signed  
+item x-afpadj = x-afpadj +  amt-ytd if comp-code = "AFPADJ" and amt-ytd ne 0  &
+	reset at docrev-doc-nbr
+
+temp x-afpcon zoned*9 signed
+item x-afpcon = x-afpcon +  amt-ytd if comp-code = "AFPCON" and amt-ytd ne 0  &
+        reset at docrev-doc-nbr
+
+temp x-totinc zoned*9 signed
+item x-totinc = x-totinc +  amt-ytd if comp-code = "TOTINC" and amt-ytd ne 0  &
+        reset at docrev-doc-nbr
+
+subfile revmed2 keep at docrev-doc-nbr	&
+	include	 docrev-doc-nbr,	&
+                 docrev-dept,		&
+		 x-rev,                 &
+		 x-revm,		&
+		 x-afpadj,              &
+		 x-afpcon,              &
+		 x-totinc             
+
+
+;------------------------------------------------------------------------------
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *revmed2                                 &
+ link docrev-doc-nbr            		&		
+  to  doc-nbr of f020-doctor-mstr opt  
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile revmed keep  include         	&
+docrev-doc-nbr        ,&
+comma                 ,&
+doc-dept              ,&
+comma                 ,&
+doc-name              ,&
+comma                 ,&
+doc-inits             ,&
+comma                 ,&
+x-rev                 ,&
+comma                 ,&
+x-revm                ,&
+comma                 ,&
+x-afpadj              ,&
+comma                 ,&
+x-afpcon              ,&
+comma                 ,&
+x-totinc              ,&
+x-cr
+
+build $pb_obj/revmed
+

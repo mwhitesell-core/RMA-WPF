@@ -1,0 +1,555 @@
+cancel clear
+set verify errors
+;------------------------------------------------------------------
+;/T/ DOCTOR PURGE  U023A.QTS
+;
+;/A/ 
+;
+;/P/ Dyad Systems Inc.
+;
+;/Q/ QTP
+;
+;/D/ THIS PROGRAM COMBINES U023.CB U021.CB AND U024.CB.
+;/D/ THIS PROGRAM WILL EXECUTE EVERY TIME THERE ARE NEW ASSIGNED DOCTORS
+;/D/ FROM THE F021-AVAIL-DOCTOR-MSTR.  THIS PROGRAM CHECKS TO MAKE SURE
+;/D/ THE NEW ASSIGNED DOCTORS DO NOT HAVE ANY RECORDS IN THE FOLLOWING
+;/D/ FILES:
+;/D/                F002-CLAIMS-MSTR
+;/D/                F050-DOC-REVENUE-MSTR
+;/D/                F050TP-DOC-REVENUE-MSTR
+;/D/                F051-DOC-CASH-MSTR
+;/D/                F051TP-DOC-CASH-MSTR
+;/D/                F110-COMPENSATION
+;/D/                F112-PYCDCEILINGS
+;/D/                F113-DEFAULT-COMP
+;/D/                F119-DOCTOR-YTD
+;/D/
+;/D/   IF NO RECORD EXISTS, HISTORY RECORDS ASSOCIATED WITH THE DOCTORS
+;/D/   WILL BE DELETED AS FOLLOWS:
+;/D/                F020-DOC-MSTR-HISTORY
+;/D/                F110-COMPENSATION-HISTORY
+;/D/                F112-PYCDCEILINGS-HISTORY
+;/D/                F113-DEFAULT-COMP-HISTORY
+;/D/                F119-DOCTOR-YTD-HISTORY
+;/D/  ALSO, DELETED DOCTORS WILL BE ADDED TO F022-DELETED-DOC-MSTR AND
+;/D/  OLD DOCTORS WILL BE DELETED IN F020-DOCTOR-MSTR AND RECREATE
+;/D/  WITH NEW DOCTOR INFORMATION.
+;/D/
+;/M/ Modification History
+;/M/ --------------------
+;/M/ Date     Programmer      Description
+;/M/
+;/M/ 950317      BML             CREATION FROM U023.CB
+;/M/ 950814        MC              DELETE THE HISTORY FILES AS WELL WHEN
+;/M/                               DELETING DOCTORS
+;/M/ 971118     MC              ADD CALCULATION & EDIT ON ERRORS REPORT
+;/M/                             FOR EACH REQUEST
+;/M/ 1999/jan/31 B.E.		- y2k
+;/M/ 1999/June/02 S.B.    - Added the use file
+;/M/                        def_doc_status.def to 
+;/M/                        prevent hard coding of doc-status.
+;/M/ 2000/feb/01 B.E.	- simplified logic
+;/M/ 2002/aug/08 M.C.   - the logic of deleting the history files are 
+;/M/			  not correct, it will only be deleting one record
+;/M/			  in each history file, create a new request to 
+;/M/			  delete the history files properly
+
+run u023a
+
+  set process nolimit
+;  set lock file request
+  set lock file  update
+
+;------------------------------------------------------------------
+request extract_docs_from_claims  &
+       on calculation errors report on edit errors report
+
+access f002-claims-mstr
+
+choose key-clm-type "B"
+
+select f002-claims-mstr         if clmhdr-adj-oma-cd =  "0000"
+
+  temp t_clinic                   character * 2
+  item t_clinic                    = clmhdr-claim-id[1:2]
+
+  temp t_doc_nbr          zoned*3 unsigned
+  item t_doc_nbr                = ncon(clmhdr-claim-id[3:4])
+
+sorted      on t_clinic                                             &
+       on t_doc_nbr
+
+output tmp-counters                                         &
+       add                                                     &
+       update                                                  &
+       at t_doc_nbr                                            &
+       via     tmp-counter-key                                 &
+       using   t_doc_nbr
+
+  item tmp-counter-key         final   t_doc_nbr
+
+;------------------------------------------------------------------
+request extract_docs_from_revenue   &
+       on calculation errors report on edit errors report
+
+access f050-doc-revenue-mstr
+
+sorted    on docrev-clinic-1-2                                    &
+       on docrev-dept                                          &
+       on docrev-doc-nbr
+
+output tmp-counters                                            &
+       add                                                     &
+       update                                                  &
+       at docrev-doc-nbr                                       &
+       via     tmp-counter-key                                 &
+       using   docrev-doc-nbr
+
+  item tmp-counter-key            final   docrev-doc-nbr
+
+;------------------------------------------------------------------
+request extract_docs_from_tp_revenue   &
+       on calculation errors report on edit errors report
+
+access f050tp-doc-revenue-mstr
+
+sorted  on docrevtp-clinic-nbr                                  &
+       on docrevtp-agent-cd                                    &
+       on docrevtp-loc-cd                                      &
+       on docrevtp-oma-cd                                      &
+       on docrevtp-doc-nbr
+
+output tmp-counters                                          &
+       add                                                     &
+       update                                                  &
+       at docrevtp-doc-nbr                                     &
+       via     tmp-counter-key                                 &
+       using   docrevtp-doc-nbr
+
+  item tmp-counter-key          final   docrevtp-doc-nbr
+
+;------------------------------------------------------------------
+request extract_docs_from_doc_cash   &
+       on calculation errors report on edit errors report
+
+access f051-doc-cash-mstr
+
+sorted       on docash-clinic-1-2                                    &
+       on docash-dept                                          &
+       on docash-doc-nbr
+
+output tmp-counters                                            &
+       add                                                     &
+       update                                                  &
+       at docash-doc-nbr                                       &
+       via     tmp-counter-key                                 &
+       using   docash-doc-nbr
+
+  item tmp-counter-key            final   docash-doc-nbr
+
+;------------------------------------------------------------------
+request extract_docs_from_tp_doc_cash  &
+       on calculation errors report on edit errors report
+
+access f051tp-doc-cash-mstr
+
+sorted     on docashtp-clinic-nbr                                  &
+       on docashtp-agent-cd                                    &
+       on docashtp-loc-cd                                      &
+       on docashtp-doc-nbr
+
+output tmp-counters                                          &
+       add                                                     &
+       update                                                  &
+       at docashtp-doc-nbr                                     &
+       via     tmp-counter-key                                 &
+       using   docashtp-doc-nbr
+
+  item tmp-counter-key          final   docashtp-doc-nbr
+
+;------------------------------------------------------------------
+request compare_to_doc_mstr  &
+       on calculation errors report on edit errors report
+
+; Select 'assgined' doctors that do not have any records in f002, f050, f051
+
+access    f021-avail-doctor-mstr                               &
+       link    doc-no                                          &
+       to      tmp-counter-key                                 &
+               of tmp-counters optional
+
+use $use/def_doc_status.def
+
+select if doc-status = doc-status-assigned
+
+define doc-nbr zoned*3 = doc-no
+
+subfile u023aa                                                  &
+       if not record tmp-counters exists                       &
+       keep                                                    &
+       include                                                 &
+               doc-nbr
+
+define d-file-loc character * 30  = "f002 or f050/tp or f051/tp"
+
+subfile u023a_doc_not_processed                                &
+       keep                                                    &
+       if     record tmp-counters exists                       &
+       include                                                 &
+               doc-nbr,                                        &
+               d-file-loc
+;------------------------------------------------------------------
+;------------------------------------------------------------------
+request compare_docs_to_compensation       &
+       on calculation errors report on edit errors report
+
+access *u023aa                                                        &
+       link doc-nbr of u023aa                                  &
+       viaindex compensation-key                               &
+       to   doc-nbr of f110-compensation optional
+
+sort on doc-nbr
+
+subfile u023ab                                                        &
+       keep                                                    &
+       if not record f110-compensation exists                  &
+       include                                                 &
+               u023aa
+
+define d-file-loc character * 30  = "F110-COMPENSATION"
+
+subfile u023a_doc_not_processed                                &
+       keep  at doc-nbr					       &
+       if record f110-compensation exist                       &
+       include                                                 &
+               doc-nbr of u023aa,                              &
+               d-file-loc
+              
+;------------------------------------------------------------------
+request compare_docs_to_pycdceilings &
+       on calculation errors report on edit errors report
+
+access *u023ab                                                        &
+       link doc-nbr of u023ab                                  &
+       viaindex pycdceilings                                   &
+       to   doc-nbr of f112-pycdceilings optional
+
+sort on doc-nbr
+
+subfile u023ac                                                        &
+       keep                                                    &
+       if not record f112-pycdceilings exists                  &
+       include                                                 &
+               u023ab
+
+define d-file-loc character * 30  = "F112-PYCDCEILINGS"
+
+subfile u023a_doc_not_processed                                &
+       keep at doc-nbr                                         &
+       append                                                  &
+       if record f112-pycdceilings exist                       &
+       include                                                 &
+               doc-nbr of u023ab,                              &
+               d-file-loc
+
+;------------------------------------------------------------------
+request compare_docs_to_def_comp   &
+       on calculation errors report on edit errors report
+
+access *u023ac                                                        &
+       link doc-nbr of u023ac                                  &
+       viaindex f113-default-comp                              &
+       to   doc-nbr of f113-default-comp optional
+
+sort on doc-nbr 
+
+subfile u023ad                                                        &
+       keep                                                    &
+       if not record f113-default-comp exists                  &
+       include                                                 &
+               u023ac
+
+define d-file-loc character * 30  = "F113-DEFAULT-COMP"
+
+subfile u023a_doc_not_processed                                &
+       keep at doc-nbr                                         &
+       append                                                  &
+       if record f113-default-comp exist                       &
+       include                                                 &
+               doc-nbr of u023ac,                              &
+               d-file-loc
+
+;------------------------------------------------------------------
+request compare_docs_to_doc_ytd    &
+       on calculation errors report on edit errors report
+
+access *u023ad                                                        &
+       link doc-nbr of u023ad                                  &
+       viaindex f119-doctor-ytd                                &
+       to   doc-nbr of f119-doctor-ytd optional
+
+sort on doc-nbr
+
+;  This subfile contains doctors that do not have any records in
+;  F002, F050, F051, F110, F112, F113, F119
+
+subfile u023ae                                                       &
+       keep                                                    &
+       if not record f119-doctor-ytd exists                    &
+       include                                                 &
+               u023ad
+
+define d-file-loc character * 30  = "F119-DOCTOR-YTD"
+
+subfile u023a_doc_not_processed                                &
+       keep at doc-nbr                                         &
+       append                                                  &
+       if record f119-doctor-ytd exist                         &
+       include                                                 &
+               doc-nbr of u023ad,                              &
+               d-file-loc
+
+
+;------------------------------------------------------------------
+request delete_doctors_history     &
+       on calculation errors report on edit errors report
+; doctor nbrs in u023ae have passed all above "tests" and can be 
+;re-used 
+; if existing doctors have termination date,
+; delete all old doctor history records
+; 2000/feb/15 B.E. - added opt on f020 
+access *u023ae                                                 &
+       link doc-nbr of u023ae                                  &
+       to   doc-no  of f021-avail-doctor-mstr                  &
+       link doc-nbr of u023ae                                  &
+       to   doc-nbr of f020-doctor-mstr opt
+
+;S.B.
+use $use/def_doc_status.def
+
+;(select doctor numbers that have been "assigned" and for whom
+; the last doctor using that number has already been terminated)
+
+select f021-avail-doctor-mstr if doc-status = doc-status-assigned
+select f020-doctor-mstr if    doc-date-fac-term <> 0            &
+                          and doc-date-fac-term <= sysdate
+
+; 2000/feb/14 B.E. - audit file not needed. (deleted doctors stored
+; in f022, added doctors stored in u023a_new_doc and unprocessed
+; doctors in u023a_not_processed)
+subfile u023a_audit                                            &
+       keep                                                    &
+       include                                                 &
+               f020-doctor-mstr ,			        &
+   		f021-avail-doctor-mstr
+
+;99/jan/18 B.E.
+; (keep an audit of the doctor being deleted from f020)
+;output f022-deleted-doc-audit-file                                  &
+;  add							    	    &
+;   if record f020-doctor-mstr exists
+;  item doc-nbr                  final doc-nbr 		of f020-doctor-mstr
+;  item doc-ohip-nbr		final doc-ohip-nbr	of f020-doctor-mstr
+;  item doc-sin-nbr		final doc-sin-nbr	of f020-doctor-mstr
+;  item doc-name			final doc-name		of f020-doctor-mstr
+;  item doc-inits		final doc-inits		of f020-doctor-mstr
+;  item doc-dept  		final doc-dept		of f020-doctor-mstr
+;  item doc-clinic-nbr		final doc-clinic-nbr	of f020-doctor-mstr
+;  item doc-date-fac-term	final doc-date-fac-term of f020-doctor-mstr
+;  item doc-full-part-ind	final doc-full-part-ind	of f020-doctor-mstr
+;  item date-doc-rec-deleted 	final sysdate
+
+
+; 2002/08/08 - MC - comment out the following 5 output for history files
+;		    because they are not working properly
+;		  - delete history files in the next request
+;output f110-compensation-history                               &
+;       delete                                                  &
+;       via doc-nbr using doc-no  of f021-avail-doctor-mstr     &
+;       viaindex compensation-history-key                       &
+;       on errors report
+
+;output f112-pycdceilings-history                                &
+;       delete                                                   &
+;       via doc-nbr using doc-no  of f021-avail-doctor-mstr	&
+;       viaindex pycdceilings-history-key                        &
+;       on errors report
+
+;output f113-default-comp-history                                &
+;       delete                                                   &
+;       via doc-nbr using doc-no  of f021-avail-doctor-mstr	&
+;       viaindex default-comp-history-key                        &
+;       on errors report
+
+;output f119-doctor-ytd-history                                  &
+;       delete                                                   & 
+;       via doc-nbr using doc-no  of f021-avail-doctor-mstr	&
+;       viaindex f119-doctor-ytd-history                         &
+;       on errors report
+
+;output f020-doc-mstr-history                                    &
+;       delete                                                   &
+;       via doc-nbr using doc-no  of f021-avail-doctor-mstr	&
+;       viaindex f020-doc-history                                &  
+;       on errors report
+; 2002/08/08 - end
+
+
+;delete rec pertaining to last doctor using the number
+output f020-doctor-mstr                                         &
+  delete						        &
+    if record f020-doctor-mstr exists
+
+; for new doctor that will use this number add name/dept nbr
+output f020-doctor-mstr alias f020-re-add                       &
+       add noitems
+   item doc-nbr 		final doc-no        of f021-avail-doctor-mstr 
+   item doc-name 		final doc-full-name of f021-avail-doctor-mstr
+   item doc-name-soundex 	final soundex(doc-name)
+   item doc-dept 		final doc-dept-no   of f021-avail-doctor-mstr
+
+; keep file for reporting newly added doctors
+subfile u023a_new_doc                                           &
+    keep                                                    	&
+      include 							&
+   doc-no        of f021-avail-doctor-mstr,			& 
+   doc-full-name of f021-avail-doctor-mstr,			&
+   doc-dept-no   of f021-avail-doctor-mstr
+
+
+;delete doctor number from the avail master
+; (when doctor has termination date set they will again be put
+;  into this file)
+output f021-avail-doctor-mstr                                    &
+       delete
+
+
+
+;------------------------------------------------------------------
+
+; 2002/08/08 - MC - add this new request to delete doctors' history
+;		    files properly
+
+request delete_doctors_history_files     &
+      on calculation errors report on edit errors report
+
+access *u023a_audit                                            &
+       link to f110-compensation-history opt                   &
+       and  to f112-pycdceilings-history opt                   &
+       and  to f113-default-comp-history opt                   &
+       and  to f119-doctor-ytd-history opt            	       &
+       and  to f020-doc-mstr-history opt
+
+output f110-compensation-history                               &
+       delete if record f110-compensation-history exists       &
+       on errors report
+
+output f112-pycdceilings-history                                &
+       delete if record f112-pycdceilings-history exists          &
+       on errors report
+
+output f113-default-comp-history                                &
+       delete if record f113-default-comp-history exists         &
+       on errors report
+
+output f119-doctor-ytd-history                                  &
+       delete if record f119-doctor-ytd-history exists          & 
+       on errors report
+
+output f020-doc-mstr-history                                    &
+       delete if record f020-doc-mstr-history exists            &
+       on errors report
+
+; 2002/08/08 - end
+
+
+;------------------------------------------------------------------
+
+;  99/dec/14 B.E. - removed this code
+;request delete_add_to_avail_doc_mstr   &
+;       on calculation errors report on edit errors report
+;
+;access *u023a_audit                                           &
+;       link doc-nbr of u023a_audit                             &
+;       to   doc-no  of f021-avail-doctor-mstr  
+;
+;;S.B.
+;use $use/def_doc_status.def
+;
+;output f020-doctor-mstr                                         &
+;       add noitems
+;   item doc-nbr final doc-nbr of u023a_audit
+;   item doc-name final doc-full-name of f021-avail-doctor-mstr
+;   item doc-name-soundex final soundex(doc-name)
+;   item doc-dept final doc-dept-no
+;
+;output f021-avail-doctor-mstr                                    &
+;       delete
+
+; 99/10/07 M.C. - do not add back to f021 for new active doctor,
+;		  the following output/item statements are commented out
+
+;output f021-avail-doctor-mstr alias f021add                       &
+;       add on errors report
+;  item doc-no of f021add  final doc-nbr of u023a_audit
+;  item date-added of f021add final sysdate
+;  item doc-dept-no of f021add final 0
+;  item doc-full-name of f021add final ' '
+;  item date-taken of f021add final 0
+;S.B.
+;  item doc-status of f021add final ' '
+;  item doc-status of f021add final doc-status-active
+
+;subfile u023a_new_doc                                               &
+;       keep                                                    &
+;       include f020-doctor-mstr
+
+
+;-------------------------------------------------------------------
+
+; 99/dec/14 B.E. removed this request
+;request check_avail_doctor  &
+;       on calculation errors report on edit errors report
+;
+;; create new assigned doctors that have never been existed in doctor
+;; mstr
+;
+;
+;access f021-avail-doctor-mstr                                       &
+;       link  doc-no to doc-nbr of f020-doctor-mstr   optional
+;
+;;S.B.
+;use $use/def_doc_status.def
+;
+;;select f021-avail-doctor-mstr if doc-status = 'T'
+;select f021-avail-doctor-mstr if doc-status = doc-status-terminated
+;
+;select if not record f020-doctor-mstr exists
+;
+;output f020-doctor-mstr alias f020add                                &
+;       add noitems
+;   item doc-nbr final   doc-no of f021-avail-doctor-mstr
+;   item doc-name final   doc-full-name of f021-avail-doctor-mstr
+;   item doc-name-soundex final soundex(doc-name of f020add)
+;   item doc-dept final   doc-dept-no
+;
+;output f021-avail-doctor-mstr                                         &
+;       delete
+;
+;output f021-avail-doctor-mstr alias f021add                       &
+;       add on errors report
+;  item doc-no of f021add  final doc-nbr of f020add
+;  item date-added of f021add final sysdate
+;  item doc-dept-no of f021add final 0
+;  item doc-full-name of f021add final ' '
+;  item date-taken of f021add final 0
+;;S.B.
+;;  item doc-status of f021add final ' '
+;  item doc-status of f021add final doc-status-active
+;
+;subfile u023a_new_doc                                           &
+;       keep append                                             &
+;       include f020add
+
+
+build $pb_obj/u023a

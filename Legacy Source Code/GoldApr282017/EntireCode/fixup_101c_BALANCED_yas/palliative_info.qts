@@ -1,0 +1,100 @@
+2009/06/09	yas	- change  CLMHDR-DATE-PERIOD-END to  CLMHDR-DATE-ADMIT 
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "89@",                   &
+        key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if       clmhdr-batch-type = 'C'          &
+                            and  clmhdr-submit-date  = 20090511
+ 
+subfile palliative_mc     keep include                    &
+clmhdr-claim-id               of f002-claims-mstr,&
+key-clm-batch-nbr             of f002-claims-mstr,&
+key-clm-claim-nbr             of f002-claims-mstr,&
+clmhdr-doc-nbr-ohip           of f002-claims-mstr,&
+CLMHDR-DATE-ADMIT             of f002-claims-mstr,&
+clmhdr-loc                    of f002-claims-mstr,&
+clmhdr-hosp                   of f002-claims-mstr,&
+clmhdr-serv-date	      of f002-claims-mstr,&
+clmhdr-pat-ohip-id-or-chart
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *palliative_mc                                                       &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr opt
+
+select f002-claims-mstr if                   &
+            clmdtl-oma-cd      =  "ZZZZ"  ;   & ; description  
+
+subfile palliative_desc keep include      &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmhdr-doc-nbr-ohip   of palliative_mc      ,&
+CLMHDR-DATE-ADMIT     of palliative_mc      ,&
+CLMDTL-DESC-REC       of f002-claims-mstr,&
+clmhdr-loc            of palliative_mc      ,&
+clmhdr-hosp           of palliative_mc      ,&
+clmhdr-serv-date      of palliative_mc      ,&
+clmhdr-pat-ohip-id-or-chart of palliative_mc      
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+access *palliative_desc		&
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr opt     &
+  link clmdtl-id[3:3] to doc-nbr of f020-doctor-mstr opt                    
+
+def x-claim-nbr cha*8 = clmdtl-id[3:8]
+def x-group cha*4 = "C022"
+
+def x-pat-name char*42 = pack(pat-surname+", "+pat-given-name)
+
+def clmdtl-sv-yy zoned*4 unsigned = nconvert(ascii(clmhdr-serv-date,8)[1:4])
+def clmdtl-sv-mm zoned*4 unsigned = nconvert(ascii(clmhdr-serv-date,8)[5:2])
+def clmdtl-sv-dd zoned*4 unsigned = nconvert(ascii(clmhdr-serv-date,8)[7:2])
+
+def x-age zoned*4 unsigned  =  clmdtl-sv-yy - pat-birth-date-yy     &
+        if   ( clmdtl-sv-mm >  pat-birth-date-mm)                   &
+          or ((clmdtl-sv-mm =  pat-birth-date-mm) and               &
+              (clmdtl-sv-dd >= pat-birth-date-dd))                  &
+        else clmdtl-sv-yy - pat-birth-date-yy - 1
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile palliative2_desc  portable keep  include           &
+x-claim-nbr                                         ,&
+comma                                               ,&
+PAT-SURNAME                                         ,&
+comma                                               ,&
+x-age                                               ,&
+comma                                               ,&
+PAT-SEX                                             ,&
+comma                                               ,&
+pat-health-nbr                                      ,&
+comma                                               ,&
+pat-version-cd                                      ,&
+comma                                               ,&
+clmhdr-doc-nbr-ohip                                 ,&
+comma                                               ,&
+CLMHDR-DATE-ADMIT                                   ,&
+comma                                               ,&
+CLMDTL-DESC-REC                                     ,&
+x-cr
+

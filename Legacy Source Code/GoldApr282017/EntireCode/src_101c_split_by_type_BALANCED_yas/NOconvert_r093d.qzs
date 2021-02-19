@@ -1,0 +1,92 @@
+;#> PROGRAM-ID.
+;
+;       ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE :  DELETE THE ADJUSTMENT AND PAYMENT BATCH CONTROL
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO     DESCRIPTION
+;
+cancel clear
+set report nolimit
+
+access *u093-delete-batch                               &
+        link (nconv(ascii(batctrl-batch-nbr)[1:2]))     &
+          to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+select if batctrl-batch-type = "A" or batctrl-batch-type = "P"
+
+sort on iconst-clinic-nbr-1-2   &
+     on batctrl-batch-type      &
+     on batctrl-adj-cd
+
+define d-type char*11 = "ADJUSTMENTS" if batctrl-batch-type = "A"    &
+                   else "PAYMENTS" if batctrl-batch-type = "P"
+
+define d-delete-count zoned*1 numeric = 1
+
+page heading                                             &
+        tab   1 "R093B"                                  &
+	tab  41 "BATCH CONTROL FILE DELETIONS"		 &
+        tab 100 "RUN DATE"                               &
+        tab 109 sysdate                                  &
+        tab 124 "PAGE"                                   &
+        tab 129 syspage pic "^^^"     			 &
+skip 1							 &
+ 	tab  40 "ADJUSTMENT AND PAYMENT BATCHES"	 &
+skip 2
+
+heading at iconst-clinic-nbr-1-2			 &
+	tab   1 "CLINIC "				 &
+	tab   9 iconst-clinic-nbr-1-2			 &
+	tab  16 "PERIOD END DATE:"			 &
+	tab  33 iconst-date-period-end			 &
+	tab  50 "CYCLE"					 &
+	tab  58 iconst-clinic-cycle-nbr			 &
+	tab  63 "CUT-OFF DATE:"				 &
+	tab  78 d-cut-off-date				 &
+skip 2							 &
+        tab  22 "--------------------R E T A I N E D------------------" &
+	tab  78 "--------------------D E L E T E D--------------------" &
+skip 2							 &
+	tab   1 "CLAIMS MASTER"				 &
+	tab  89 "AMOUNT OHIP"				 &
+	tab 107 "AMOUNT OMA"			 	 &
+	tab 121 "NUMBER"				 &
+skip 2 
+
+heading at batctrl-batch-type			 	 &
+	tab   1 d-type				 
+
+footing at batctrl-adj-cd				 &
+	tab  13 "-"					 &
+	tab  16 batctrl-adj-cd				 &
+	tab  86 clmhdr-tot-claim-ar-ohip subtotal	 &
+		  pic " ^,^^^,^^^.^^" 		    	 &
+	tab 104 clmhdr-tot-claim-ar-oma subtotal	 &
+		  pic " ^,^^^,^^^.^^" 		    	 &
+	tab 120 d-delete-count subtotal pic '^^,^^^'	 &
+skip 1
+
+footing at batctrl-batch-type				 &
+skip 1							 &
+	tab   5 "TOTAL"				 	 &
+        tab  86 clmhdr-tot-claim-ar-ohip subtotal        &
+                  pic " ^,^^^,^^^.^^"                    &
+        tab 104 clmhdr-tot-claim-ar-oma subtotal         &
+                  pic " ^,^^^,^^^.^^"                    &
+        tab 120 d-delete-count subtotal pic '^^,^^^'     & 
+skip 2 
+
+footing at iconst-clinic-nbr-1-2 			 &
+	tab    1 "GRAND TOTAL"				 &
+        tab  86 clmhdr-tot-claim-ar-ohip subtotal        &
+                  pic " ^,^^^,^^^.^^"                    &
+        tab 104 clmhdr-tot-claim-ar-oma subtotal         &
+                  pic " ^,^^^,^^^.^^"                    &
+        tab 120 d-delete-count subtotal pic '^^,^^^'     
+
+set page width 132
+set report device disc name r093b
+set formfeed
+build $obj/r093d

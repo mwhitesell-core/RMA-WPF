@@ -1,0 +1,429 @@
+; DOC: R051CAATP.QZS
+; DOC: PHYSICIAN REVENUE ANALYSIS
+; DOC: SORT BY CLINIC/DEPT/CLASS/DOC #/OMA CODE (DETAIL REPORT)
+; DOC: RUN FOR: MUMC DIAGNOSTICS
+;
+;PROGRAM PURPOSE : PHYSICIAN REVENUEE ANALYSIS
+;                  R051A/B/C.CB CONVERSTION TO POWERHOUSE R051CAATP.QZS
+;                  THIS IS THE FIRST OF 3 PROGRAMS APPEND
+;                  R051CABTP.TXT R051CACTP.TXT END OF R051CAATP.TXT
+;
+;DATE       BY WHOM   DESCRIPTION
+;92/06/02   YASEMIN   ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r051caatp
+set formfee
+
+
+access f050tp-doc-revenue-mstr                             &
+  link docrevtp-doc-nbr                                    &
+    to doc-nbr of f020-doctor-mstr  opt                    &
+  link docrevtp-clinic-nbr                                 &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec  opt       &
+  link doc-dept                                            &
+    to dept-nbr of f070-dept-mstr  opt                     &
+  link docrevtp-oma-cd                                     &
+    to fee-oma-cd of f040-oma-fee-mstr  opt
+
+choose docrevtp-key "60@" to "65@"
+
+sort on docrevtp-clinic-nbr on doc-dept on doc-full-part-ind  &
+     on docrevtp-doc-nbr on docrevtp-oma-cd
+
+def x-class cha*18 = "FULL TIME"         if doc-full-part-ind = "F"   &
+                else "PART TIME"         if doc-full-part-ind = "P"   &
+                else "CLINICAL SCHOLARS" if doc-full-part-ind = "C"   &
+                else "OTHER"             if doc-full-part-ind = "S"
+
+def x-fee-desc cha*48 = fee-desc if record f040-oma-fee-mstr exists   &
+                               else "MISCELLANEOUS INCOME"
+
+def t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1)  +  &
+                              docrevtp-out-tech-amt-billed(1)  +  &
+                              docrevtp-in-tech-amt-adjusts(1)  +  &
+                              docrevtp-out-tech-amt-adjusts(1))
+
+def p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1) +  &
+                             docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))
+
+def t-p-svc-mtd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(1)  +     &
+                              docrevtp-out-tech-nbr-svc(1)       &
+;                          IF FEE-TECH-IND = "Y"                 &
+                           if docrevtp-out-tech-nbr-svc(1) ne 0  &
+                         else docrevtp-in-prof-nbr-svc(1)  +     &
+                              docrevtp-out-prof-nbr-svc(1)
+
+def total-amt-mtd zoned*8 signed = (t-amt-mtd + p-amt-mtd)
+
+def t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2) +  &
+                              docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))
+
+def p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2) +  &
+                             docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))
+
+def t-p-svc-ytd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(2)  +  &
+                              docrevtp-out-tech-nbr-svc(2)    &
+;                          IF FEE-TECH-IND = "Y"              &
+                           if docrevtp-out-tech-nbr-svc(2) ne 0  &
+                         else docrevtp-in-prof-nbr-svc(2)  +  &
+                              docrevtp-out-prof-nbr-svc(2)
+
+def total-amt-ytd zoned*8 signed = (t-amt-ytd + p-amt-ytd)
+
+def full-t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1)  +  &
+                              docrevtp-out-tech-amt-billed(1)  +  &
+                              docrevtp-in-tech-amt-adjusts(1)  +  &
+                              docrevtp-out-tech-amt-adjusts(1))   &
+                           if doc-full-part-ind = "F"
+
+def full-p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1) +  &
+                             docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))  &
+                          if doc-full-part-ind = "F"
+
+def full-t-p-svc-mtd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(1)  +  &
+                              docrevtp-out-tech-nbr-svc(1)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "F" &
+    if docrevtp-out-tech-nbr-svc(1) ne 0 and doc-full-part-ind = "F"  &
+          else                docrevtp-in-prof-nbr-svc(1)  +  &
+                              docrevtp-out-prof-nbr-svc(1)    &
+                           if doc-full-part-ind = "F"
+
+def full-total-amt-mtd zoned*8 signed = (t-amt-mtd + p-amt-mtd)  &
+                           if doc-full-part-ind = "F"
+
+def full-t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2) +  &
+                              docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))  &
+                           if doc-full-part-ind = "F"
+
+def full-p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2) +  &
+                             docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))  &
+                           if doc-full-part-ind = "F"
+
+def full-t-p-svc-ytd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(2)  +  &
+                              docrevtp-out-tech-nbr-svc(2)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "F" &
+    if docrevtp-out-tech-nbr-svc(2) ne 0 and doc-full-part-ind = "F"  &
+          else                docrevtp-in-prof-nbr-svc(2)  +  &
+                              docrevtp-out-prof-nbr-svc(2)    &
+                           if doc-full-part-ind = "F"
+
+def full-total-amt-ytd zoned*8 signed = (t-amt-ytd + p-amt-ytd)  &
+                           if doc-full-part-ind = "F"
+
+def part-t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1)  +  &
+                              docrevtp-out-tech-amt-billed(1)  +  &
+                              docrevtp-in-tech-amt-adjusts(1)  +  &
+                              docrevtp-out-tech-amt-adjusts(1))   &
+                           if doc-full-part-ind = "P"
+
+def part-p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1) +  &
+                             docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))  &
+                          if doc-full-part-ind = "P"
+
+def part-t-p-svc-mtd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(1)  +  &
+                              docrevtp-out-tech-nbr-svc(1)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "P" &
+    if docrevtp-out-tech-nbr-svc(1) ne 0 and doc-full-part-ind = "P"  &
+          else                docrevtp-in-prof-nbr-svc(1)  +  &
+                              docrevtp-out-prof-nbr-svc(1)    &
+                           if doc-full-part-ind = "P"
+
+def part-total-amt-mtd zoned*8 signed = (t-amt-mtd + p-amt-mtd)  &
+                           if doc-full-part-ind = "P"
+
+def part-t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2) +  &
+                              docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))  &
+                           if doc-full-part-ind = "P"
+
+def part-p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2) +  &
+                             docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))  &
+                           if doc-full-part-ind = "P"
+
+def part-t-p-svc-ytd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(2)  +  &
+                              docrevtp-out-tech-nbr-svc(2)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "P" &
+    if docrevtp-out-tech-nbr-svc(2) ne 0 and doc-full-part-ind = "P"  &
+          else                docrevtp-in-prof-nbr-svc(2)  +  &
+                              docrevtp-out-prof-nbr-svc(2)    &
+                           if doc-full-part-ind = "P"
+
+def part-total-amt-ytd zoned*8 signed = (t-amt-ytd + p-amt-ytd)  &
+                           if doc-full-part-ind = "P"
+
+def cs-t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1)  +  &
+                              docrevtp-out-tech-amt-billed(1)  +  &
+                              docrevtp-in-tech-amt-adjusts(1)  +  &
+                              docrevtp-out-tech-amt-adjusts(1))   &
+                           if doc-full-part-ind = "C"
+
+def cs-p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1) +  &
+                             docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))  &
+                          if doc-full-part-ind = "C"
+
+def cs-t-p-svc-mtd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(1)  +  &
+                              docrevtp-out-tech-nbr-svc(1)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "C" &
+    if docrevtp-out-tech-nbr-svc(1) ne 0 and doc-full-part-ind = "C"  &
+          else                docrevtp-in-prof-nbr-svc(1)  +  &
+                              docrevtp-out-prof-nbr-svc(1)    &
+                           if doc-full-part-ind = "C"
+
+def cs-total-amt-mtd zoned*8 signed = (t-amt-mtd + p-amt-mtd)  &
+                           if doc-full-part-ind = "C"
+
+def cs-t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2) +  &
+                              docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))  &
+                           if doc-full-part-ind = "C"
+
+def cs-p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2) +  &
+                             docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))  &
+                           if doc-full-part-ind = "C"
+
+def cs-t-p-svc-ytd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(2)  +  &
+                              docrevtp-out-tech-nbr-svc(2)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "C" &
+    if docrevtp-out-tech-nbr-svc(2) ne 0 and doc-full-part-ind = "C"  &
+          else                docrevtp-in-prof-nbr-svc(2)  +  &
+                              docrevtp-out-prof-nbr-svc(2)    &
+                           if doc-full-part-ind = "C"
+
+def cs-total-amt-ytd zoned*8 signed = (t-amt-ytd + p-amt-ytd)  &
+                           if doc-full-part-ind = "C"
+
+def ps-t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1)  +  &
+                              docrevtp-out-tech-amt-billed(1)  +  &
+                              docrevtp-in-tech-amt-adjusts(1)  +  &
+                              docrevtp-out-tech-amt-adjusts(1))   &
+                           if doc-full-part-ind = "S"
+
+def ps-p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1) +  &
+                             docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))  &
+                          if doc-full-part-ind = "S"
+
+def ps-t-p-svc-mtd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(1)  +  &
+                              docrevtp-out-tech-nbr-svc(1)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "S" &
+    if docrevtp-out-tech-nbr-svc(1) ne 0 and doc-full-part-ind = "S"  &
+          else                docrevtp-in-prof-nbr-svc(1)  +  &
+                              docrevtp-out-prof-nbr-svc(1)    &
+                           if doc-full-part-ind = "S"
+
+def ps-total-amt-mtd zoned*8 signed = (t-amt-mtd + p-amt-mtd)  &
+                           if doc-full-part-ind = "S"
+
+def ps-t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2) +  &
+                              docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))  &
+                           if doc-full-part-ind = "S"
+
+def ps-p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2) +  &
+                             docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))  &
+                           if doc-full-part-ind = "S"
+
+def ps-t-p-svc-ytd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(2)  +  &
+                              docrevtp-out-tech-nbr-svc(2)    &
+;           IF FEE-TECH-IND = "Y" AND DOC-FULL-PART-IND = "S" &
+    if docrevtp-out-tech-nbr-svc(2) ne 0 and doc-full-part-ind = "S"  &
+          else                docrevtp-in-prof-nbr-svc(2)  +  &
+                              docrevtp-out-prof-nbr-svc(2)    &
+                           if doc-full-part-ind = "S"
+
+def ps-total-amt-ytd zoned*8 signed = (t-amt-ytd + p-amt-ytd)  &
+                           if doc-full-part-ind = "S"
+
+;y2k
+def x-period cha*1 = "."
+ 
+def x-name cha*30 =pack(doc-name +" "+ doc-inits)
+
+page heading                                              	&
+	tab 1   "R051CA"    		          	        &
+	tab 7   "/"          	          	                &
+	tab 8   docrevtp-clinic-nbr                           &
+	tab 13  "P.E.D"				          	&
+;y2k
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 50  "* PHYSICIAN REVENUE ANALYSIS *"          	&
+	tab 103 "RUN DATE:"                               	&
+;y2k
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 55  iconst-clinic-name                        	&
+        tab 103 "CLINIC:"                                       &
+        tab 111  docrevtp-clinic-nbr                          &
+        tab 114  "-"                                            &
+        tab 116  iconst-clinic-nbr                              &
+skip 2  tab 50  "DEPT"                                          &
+        tab 55  "#"  tab 56 doc-dept fill "0"           	&
+        tab 59  "-"  tab 61 dept-name                           &
+skip 2  tab 52  "------------- M . T . D. --------------"       &
+        tab 93  "------------- Y . T . D. --------------"       &
+skip 1  tab 54  "SVC"                                           &
+        tab 64  "TECH"                                          &
+        tab 75  "PROF"                                          &
+        tab 86  "TOTAL"                                         &
+        tab 95  "SVC"                                           &
+        tab 105 "TECH"                                          &
+        tab 116 "PROF"                                          &
+        tab 127 "TOTAL"
+
+
+heading at docrevtp-clinic-nbr  skip page
+
+heading at docrevtp-doc-nbr   skip page                         &
+        tab 1   "DOCTOR"                                        &
+        tab 8   doc-nbr fill "0"                                &
+        tab 14  x-name                                          &
+skip 1  tab 1   "CLASS"  tab 8  doc-full-part-ind               &
+        tab 10  "-"      tab 12 x-class                         &
+skip 2  tab 1   "OHIP"                                          &
+        tab 7   "------------OHIP CODE DESCRIPTION------------"
+
+footing at docrevtp-oma-cd                                       &
+skip 1  tab 1   docrevtp-oma-cd                                  &
+        tab 7   x-fee-desc                                       &
+        tab 52  t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58  t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69  p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80  total-amt-mtd  subtotal pic "^^^^,^^^.^^"         &
+        tab 93  t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99  t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110 p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121 total-amt-ytd  subtotal pic "^^^^,^^^.^^"         &
+skip 1
+
+footing at docrevtp-doc-nbr                                      &
+skip 2  tab 1   "DOCTOR"                                         &
+        tab 9   doc-nbr  fill "0"                                &
+        tab 15  "TOTALS"                                         &
+        tab 52  t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58  t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69  p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80  total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 93  t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99  t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110 p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121 total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2
+
+heading at doc-dept skip page
+
+footing at doc-dept  skip page                                   &
+        tab 1   "DEPARTMENT CLASS TOTALS"                        &
+skip 2  tab 1   "F: FULL TIME"                                   &
+        tab 52  full-t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58  full-t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69  full-p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80  full-total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 93  full-t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99  full-t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110 full-p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121 full-total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2                                                                &
+        tab 1   "P: PART TIME"                                        &
+        tab 52  part-t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58  part-t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69  part-p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80  part-total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 93  part-t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99  part-t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110 part-p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121 part-total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2                                                                &
+        tab 1   "C: CLINICAL SCHOLARS"                                &
+        tab 52    cs-t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58    cs-t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69    cs-p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80    cs-total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 93    cs-t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99    cs-t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110   cs-p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121   cs-total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2                                                                &
+        tab 1   "O: OTHER"                                            &
+        tab 52    ps-t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58    ps-t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69    ps-p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80    ps-total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 93    ps-t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99    ps-t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110   ps-p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121   ps-total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2                                                                &
+        tab 1   "** DEPARTMENT TOTALS **"                        &
+        tab 52  t-p-svc-mtd    subtotal pic "^^^^^"              &
+        tab 58  t-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 69  p-amt-mtd      subtotal pic "^^^,^^^.^^"         &
+        tab 80  total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 93  t-p-svc-ytd    subtotal pic "^^^^^"              &
+        tab 99  t-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 110 p-amt-ytd      subtotal pic "^^^,^^^.^^"         &
+        tab 121 total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2
+
+build $pb_obj/r051caatp
+
+  

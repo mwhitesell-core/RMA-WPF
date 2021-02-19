@@ -1,0 +1,142 @@
+; DOC: R051CBBTP.QZS
+; DOC: DEPARTMENT PRACTICE ANALYSIS
+; DOC: SORT BY CLINIC/CLASS  (SUMMARY REPORT)
+; DOC: RUN FOR: MUMC DIAGNOSTICS
+;
+;PROGRAM PURPOSE : PHYSICIAN REVENUEE ANALYSIS
+;                  R051A/B/C.CB CONVERSTION TO POWERHOUSE R051CBBTP.QZS
+;                  THIS IS THE SECOND OF 3 PROGRAMS APPEND
+;                  R051CBBTP.TXT R051CBCTP.TXT END OF R051CAATP.TXT
+;
+;DATE       BY WHOM   DESCRIPTION
+;92/06/04   YASEMIN   ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set page length 62 width 132
+set rep device disc name r051cbbtp
+set formfee
+
+
+access f050tp-doc-revenue-mstr                           &
+  link docrevtp-doc-nbr                                  &
+    to doc-nbr of f020-doctor-mstr  opt                  &
+  link docrevtp-clinic-nbr                               &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec  opt     &
+  link doc-dept                                          &
+    to dept-nbr of f070-dept-mstr  opt                   &
+  link docrevtp-oma-cd                                   &
+    to fee-oma-cd of f040-oma-fee-mstr  opt
+
+choose docrevtp-key "60@" to "65@"
+
+sort on docrevtp-clinic-nbr on doc-full-part-ind
+
+def x-class cha*18 = "FULL TIME"         if doc-full-part-ind = "F"   &
+                else "PART TIME"         if doc-full-part-ind = "P"   &
+                else "CLINICAL SCHOLARS" if doc-full-part-ind = "C"   &
+                else "OTHER"             if doc-full-part-ind = "S"
+
+def t-amt-mtd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(1)  +  &
+                              docrevtp-out-tech-amt-billed(1)  +  &
+                              docrevtp-in-tech-amt-adjusts(1)  +  &
+                              docrevtp-out-tech-amt-adjusts(1))
+
+def p-amt-mtd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(1) +  &
+                             docrevtp-out-prof-amt-billed(1) +  &
+                             docrevtp-in-prof-amt-adjusts(1) +  &
+                             docrevtp-out-prof-amt-adjusts(1))
+
+def t-p-svc-mtd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(1)  +      &
+                              docrevtp-out-tech-nbr-svc(1)        &
+                           if docrevtp-out-tech-nbr-svc(1) ne 0   &
+                         else docrevtp-in-prof-nbr-svc(1)  +      &
+                              docrevtp-out-prof-nbr-svc(1)
+
+def total-amt-mtd zoned*8 signed = (t-amt-mtd + p-amt-mtd)
+
+def t-amt-ytd zoned*8 signed =   &
+                              (docrevtp-in-tech-amt-billed(2) +  &
+                              docrevtp-out-tech-amt-billed(2) +  &
+                              docrevtp-in-tech-amt-adjusts(2) +  &
+                              docrevtp-out-tech-amt-adjusts(2))
+
+def p-amt-ytd  zoned*8 signed =  &
+                             (docrevtp-in-prof-amt-billed(2) +  &
+                             docrevtp-out-prof-amt-billed(2) +  &
+                             docrevtp-in-prof-amt-adjusts(2) +  &
+                             docrevtp-out-prof-amt-adjusts(2))
+
+def t-p-svc-ytd zoned*5 unsigned =   &
+                              docrevtp-in-tech-nbr-svc(2)  +        &
+                              docrevtp-out-tech-nbr-svc(2)          &
+                           if docrevtp-out-tech-nbr-svc(2) ne 0     &
+                         else docrevtp-in-prof-nbr-svc(2)  +        &
+                              docrevtp-out-prof-nbr-svc(2)
+
+def total-amt-ytd zoned*8 signed = (t-amt-ytd + p-amt-ytd)
+
+page heading                                              	&
+	tab 1   "R051CB"   			          	&
+	tab 7   "/"        			          	&
+	tab 8   docrevtp-clinic-nbr                           &
+	tab 13  "P.E.D"				          	&
+;y2k
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 45  "* DEPARTMENT PRACTICE ANALYSIS SUMMARY *"      &
+	tab 103 "RUN DATE:"                               	&
+;y2k
+	tab 112  sysdate                                  	&
+        tab 124 "PAGE:" tab 130 syspage pic "^^^"      	 	&
+skip 1  tab 55  iconst-clinic-name                        	&
+        tab 103 "CLINIC:"                                       &
+        tab 111  docrevtp-clinic-nbr                          &
+        tab 114  "-"                                            &
+        tab 116  iconst-clinic-nbr                              &
+skip 3  tab 44  "--------------- M . T . D. ---------------"    &
+        tab 89  "--------------- Y . T . D. ---------------"    &
+skip 1  tab 47  "SVC"                                           &
+        tab 58  "TECH"                                          &
+        tab 70  "PROF"                                          &
+        tab 81  "TOTAL"                                         &
+        tab 92  "SVC"                                           &
+        tab 103 "TECH"                                          &
+        tab 115 "PROF"                                          &
+        tab 127 "TOTAL"                                         &
+skip 1  tab 1   "CLINIC CLASS TOTALS"                           &
+skip 2
+
+heading at docrevtp-clinic-nbr  skip page
+
+footing at doc-full-part-ind                                     &
+skip 2  tab 1   doc-full-part-ind                                &
+        tab 2   ":"  tab 4  x-class                              &
+        tab 44  t-p-svc-mtd    subtotal pic "^^,^^^"              &
+        tab 51  t-amt-mtd      subtotal pic "^^^^,^^^.^^"         &
+        tab 63  p-amt-mtd      subtotal pic "^^^^,^^^.^^"         &
+        tab 75  total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 89  t-p-svc-ytd    subtotal pic "^^,^^^"              &
+        tab 96  t-amt-ytd      subtotal pic "^^^^,^^^.^^"         &
+        tab 108 p-amt-ytd      subtotal pic "^^^^,^^^.^^"         &
+        tab 121 total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 1
+
+footing at docrevtp-clinic-nbr                                 &
+skip 2  tab 1   "** CLINIC GRAND TOTALS **"                      &
+        tab 44  t-p-svc-mtd    subtotal pic "^^,^^^"              &
+        tab 51  t-amt-mtd      subtotal pic "^^^^,^^^.^^"         &
+        tab 63  p-amt-mtd      subtotal pic "^^^^,^^^.^^"         &
+        tab 75  total-amt-mtd  subtotal pic "^^^^,^^^.^^"        &
+        tab 89  t-p-svc-ytd    subtotal pic "^^,^^^"              &
+        tab 96  t-amt-ytd      subtotal pic "^^^^,^^^.^^"         &
+        tab 108 p-amt-ytd      subtotal pic "^^^^,^^^.^^"         &
+        tab 121 total-amt-ytd  subtotal pic "^^^^,^^^.^^"        &
+skip 2
+
+build $pb_obj/r051cbbtp
+
+  

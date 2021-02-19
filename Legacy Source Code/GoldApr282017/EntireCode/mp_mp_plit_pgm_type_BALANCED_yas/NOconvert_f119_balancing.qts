@@ -1,0 +1,55 @@
+;doc     : f119_balancing.qts      
+;purpose : use it to print comp codes when monthend does not balance
+; *************************************************************
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd   &
+ link doc-nbr to doc-nbr of f020-doctor-mstr opt &
+ link doc-dept to dept-nbr of f070-dept-mstr opt 
+
+choose doc-nbr, comp-code 'INCEXP', 'PAYPOT' 
+sort on doc-nbr
+
+select if      dept-company = 1          &
+           and rec-type = 'A' 
+
+
+temp incexp     zoned*9 numeric
+item incexp    = incexp + amt-mtd             &
+                    if comp-code =  "INCEXP"  &
+		reset at doc-nbr
+
+temp paypot     zoned*9 numeric
+item paypot    =  paypot + amt-mtd             &
+                    if comp-code =  "PAYPOT"   &
+		reset at doc-nbr
+
+
+def comma cha*1 = "~"
+def num-cr integer unsigned size 2 = 13
+def cr        char*2 = char(num-cr)
+
+subfile balancing portable  keep at doc-nbr include   &
+doc-ohip-nbr 	                                    ,&
+comma                                               ,&
+doc-nbr             of  f119-doctor-ytd             ,&
+comma                                               ,&
+doc-dept                                            ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+doc-inits                                           ,&
+comma                                               ,&
+incexp                                              ,&
+comma                                               ,&
+paypot                                              ,&
+cr
+

@@ -1,0 +1,106 @@
+;doc     : colleen.qts
+;purpose : report totals for cardiology division - procedures ECG and ECHO's
+;          clinic 60's professional fees will be picked up in 22 agent T995
+;who     : Ken McFarlen
+
+
+;Date           Who             Description
+;2006/08/22     Yasemin                    
+;2007/05/03     Yasemin         add neurology docs take out Dr. Roman as per 
+;                               Pat Haslettes email and modify select codes
+;2007/11/27     yas             orig colleen_codes.qts                      
+;2007/12/03     MC		pick clinic 70's with prof fee only with all oma code
+;2007/12/04     MC		include Misc payment type as well  
+
+can clear
+set lock record update
+set process nolimit
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr             &
+        link clmhdr-claim-id[3:3]   &
+        to doc-nbr of f020-doctor-mstr   opt   
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr '7@', key-clm-claim-nbr,  &
+                    key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+
+
+select f002-claims-mstr if                          &
+           clmhdr-date-period-end >=  20070701      &
+      and  clmhdr-date-period-end <=  20071130 	    & 
+      and  (   ( clmhdr-batch-type = 'C')	    &
+	    or ( clmhdr-batch-type = 'P' and clmhdr-adj-cd = 'M')  &
+	   )					    & 
+      and  (    clmhdr-doc-dept = 7                 &
+             or clmhdr-doc-dept = 71                &
+             or clmhdr-doc-dept = 72                &
+             or clmhdr-doc-dept = 73                &
+             or clmhdr-doc-dept = 74                &
+             or clmhdr-doc-dept = 75                &
+           )
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+
+subfile colleen       keep at key-clm-claim-nbr include             &
+clmhdr-claim-id              of f002-claims-mstr,&
+key-clm-batch-nbr            of f002-claims-mstr,& 
+key-clm-claim-nbr            of f002-claims-mstr,& 
+doc-dept                     of f020-doctor-mstr,&
+doc-nbr                      of f020-doctor-mstr,&
+doc-name                     of f020-doctor-mstr,&
+doc-inits                    of f020-doctor-mstr
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *colleen                                                        &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr 
+
+
+sort on doc-nbr
+
+define x-prof-amt zoned*9 signed = clmdtl-fee-ohip - clmdtl-amt-tech-billed 
+
+temp x-clms zoned*9 signed
+item x-clms  = x-clms + x-prof-amt                 &
+                 if  clmdtl-oma-cd <> "AGEP"             &
+              reset at doc-nbr
+
+temp x-agep zoned*9 signed
+item x-agep  = x-agep + x-prof-amt                &
+                 if  clmdtl-oma-cd = "AGEP"              &
+              reset at doc-nbr
+
+temp x-tot  zoned*9 signed
+item x-tot   = x-tot  + x-prof-amt    		 & 
+              reset at doc-nbr
+
+def x-comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile colleen1 portable keep at doc-nbr include      &
+  doc-dept,                     &
+  x-comma,                      &
+  doc-nbr,                      &
+  x-comma,                      &
+  doc-name,                     &
+  x-comma,                      &
+  doc-inits,                    &
+  x-comma,                      &
+  x-clms,                       &
+  x-comma,                      &
+  x-agep,                       &
+  x-comma,                      &
+  x-tot,                        &
+  x-cr
+
+build colleen_codes_dept7_70

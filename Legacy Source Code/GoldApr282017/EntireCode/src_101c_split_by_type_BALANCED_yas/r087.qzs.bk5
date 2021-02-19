@@ -1,0 +1,132 @@
+; program: r087
+; purpose: rma history report for letters send to patients
+;
+;	93/04/19	AGK       SMS 141 (ORIGINAL)
+;       93/04/22        Y.B.      MODIFY REPORT FORMAT
+;	93/05/21	M. CHAN	  - ADD THE MESS CODE CHECK IN THE
+;				    SELECTION CRITERIA (SAME AS R085.QZS)
+;	94/02/22	M. CHAN	  - PDR 594
+;				  - CHECK LAST MAILING > 21 DAYS OLD
+;				    INSTEAD OF 10 DAYS
+;	98/12/10        B.E.	  - changed to access *r085 subfile rather than
+;				    selecting records directly from the 
+;				    rejected-claims file.
+; 99/jan/31 B.E. - y2k
+; 00/jan/21 yas	 - print patient once 
+; 00/jun/29 B.E. - changed to access *u085b rather than 
+; 00/jun/29 B.E. - changed to access *u085b rather than *r085. This ensures
+;                  the claims printed are the same ones printed in the
+;                  letters and have been filtered so that no 'confidential'
+;                  claims are printed
+; 03/dec/15 A.A. - alpha doctor nbr
+; 05/jun/16 M.C. - include days old column, add days old in sort
+; 09/Apr/02 yas. - Add service date column and report service date
+
+cancel clear
+
+set def
+set rep dev disc name r087
+set report nolimit
+set nohead
+set rep page length 60
+set formfeed
+set page width 132
+
+access *u085b							&
+  link ("B",  							&
+;!	nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+;!	nconvert(ascii(claim-nbr,10)[9:2]),  			&
+	(claim-nbr[1:8]),					&
+	nconvert(claim-nbr[9:2]),	  			&
+	"00000", "0")						&
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr   &
+  link clmhdr-pat-ohip-id-or-chart   		           	&
+   viaindex key-pat-mstr					&
+   to f010-pat-mstr
+
+; y2k
+;define d-test-date numeric*6 = 				&
+define d-test-date numeric*8 = 				&
+ 	days(sysdate) - days(pat-date-last-elig-mailing) &
+	if pat-date-last-elig-mailing > 0
+
+; 2005/06/16 - MC
+def d-days-old = days(sysdate) - days(clmhdr-serv-date)
+; 2005/06/16 - End
+
+
+define x-pat-name cha*30 = pack(pat-surname + ", " + pat-given-name)
+
+;sort on pat-surname of f010-pat-mstr on key-pat-mstr
+sort on pat-surname    of f010-pat-mstr & 
+     on pat-given-name of f010-pat-mstr &
+     on clmhdr-pat-ohip-id-or-chart	&
+; 2005/06/16 - MC
+     on d-days-old   
+; 2005/06/16 - end
+
+page heading 				                    &
+	tab 01	'r087'					    &	
+	tab 11   sysdate		                    &
+	tab 50  'Eligibility Letters Printed - Audit Report'&
+	tab 120 'Page:'					    &
+	tab 126  syspage				    &
+skip 3  tab 1   'PATIENT NAME'                              &
+        tab 31  'REASON'                                    &
+        tab 38  'HEALTH #'                                  &
+        tab 49  'VERSION'                                   &
+        tab 57  'BIRTH DATE'                                &
+        tab 70  'CLAIM #'                                   &
+        tab 82  'AG'                                        &
+        tab 85  'LOCATION'                                  &
+        tab 94  'PREVIOUS'                                  &
+; 2005/06/16 - MC
+        tab 107 'NUMBER OF'                                 &
+; 2005/06/16 - end
+        tab 120 'Service'                                   &
+skip 1  tab 32  'CODE'                                      &
+        tab 50  'CODE'                                      &
+        tab 58  'YY/MM/DD'                                  &
+        tab 87  'CODE'                                      &
+        tab 94  'LETTER SEND'                               &
+; 2005/06/16 - MC
+        tab 107 'DAYS OLD '                                 &
+; 2005/06/16 - end
+        tab 120 'Date'                                      &
+skip 1 	tab 1   '------------'                              &
+        tab 31  '------'                                    &
+        tab 38  '----------'                                &
+        tab 49  '-------'                                   &
+        tab 57  '----------'                                &
+        tab 70  '----------'                                &
+        tab 82  '--'                                        &
+        tab 85  '--------'                                  &
+        tab 94  '-----------'                               &
+; 2005/06/16 - MC
+	tab 107 '---------'				    &
+; 2005/06/16 - end
+	tab 120 '---------'				    &
+
+skip 2
+
+;report 					        &
+footing at clmhdr-pat-ohip-id-or-chart          &
+    	tab 1   x-pat-name 			&
+	tab 31  mess-code 			&
+	tab 38  pat-health-nbr			&
+	tab 52  pat-version-cd			&
+; y2k
+	tab 58  pat-birth-date pic "^^^^/^^/^^"   &
+	tab 70  claim-nbr			&
+        tab 82  clmhdr-agent-cd			&
+	tab 87  clmhdr-loc     			&
+	tab 96  pat-date-last-elig-mailing      &
+; 2005/06/16 - MC
+	tab 110 d-days-old  pic '^^^^'			&
+; 2005/06/16 - end
+	tab 120 CLMHDR-SERV-DATE pic "^^^^/^^/^^"       &
+skip 2
+
+build $pb_obj/r087
+  

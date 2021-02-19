@@ -1,0 +1,63 @@
+;doc     : drwells2.qzs
+;purpose : create a report patients with omacode N220 seen between 971101/991130
+;who     : Dr. Wells
+
+;Date           Who             Description
+;2000/11 26     Yasemin         Original
+
+
+set rep nolimit
+
+access f002-claims-mstr                   &
+  link clmhdr-pat-ohip-id-or-chart        &
+  to   key-pat-mstr of f010-pat-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 220397000 to 220397999,	&
+	key-clm-claim-nbr,  key-clm-serv-code, key-clm-adj-nbr '0'
+
+select f002-claims-mstr if                     &
+           clmdtl-sv-date      >= "971101"     &
+      and  clmdtl-sv-date      <= "991130"     &
+      and  clmdtl-oma-cd        =  "N220"      &
+      and  clmdtl-adj-nbr       = 0            ; regular details only
+
+sorted on clmdtl-id
+
+set subfile name drwells2 keep at clmdtl-id
+rep summ key-clm-type                   &
+         key-clm-batch-nbr		&
+         key-clm-claim-nbr		&
+         clmdtl-id                      &
+         clmdtl-oma-cd
+
+build $obj/drwells2
+
+set page length 62
+set page width 132
+set rep device disc name drwells2
+set formfee
+
+access *drwells2                                          &
+  link ('B', key-clm-batch-nbr, key-clm-claim-nbr)        &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr &
+       of f002-claims-mstr opt                            &
+  link clmhdr-pat-ohip-id-or-chart                        &
+  to   key-pat-mstr of f010-pat-mstr opt
+
+def x-pat-name char*30 = pack(pat-surname+", "+pat-given-name)
+
+sort on x-pat-name  &
+     on clmhdr-pat-ohip-id-or-chart
+
+page heading 						  	&
+       tab  1  sysdate                            		&
+       tab 12  "Regional Medical Associates of Hamilton" 	&
+skip 2 tab  1  "Patient Name"					&
+skip 2
+
+footing at clmhdr-pat-ohip-id-or-chart            &
+skip 1 tab  1  x-pat-name  print at x-pat-name    &
+      tab  40 clmhdr-claim-id                     &
+skip 2
+
+build $obj/drwells2a

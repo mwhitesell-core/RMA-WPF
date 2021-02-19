@@ -1,0 +1,214 @@
+; Name   : d084.qks
+; Purpose: Claims Inventory Data Entry
+;
+; MODIFICATION HISTORY
+; YYYY/MMM/DD By whom   Why
+; 2000/02/28  B.A	- Added Billing PED field 
+; 2000/jul/20 B.E.	- changed field current-ep-nbr to iconst-period-end-date
+; 2000/jul/24 B.E.	- added lookup of billing clerk initials on f083 to 
+;			  ensure if user overrides initials they are valid
+; 2000/jul/26 M.C.	- add designer f084-lookup and preupdate procedure
+;			  if record exists with doc-nbr & batch-received-date
+;			  & nbr-claims-batches, display warning
+;			- include the access statement for f084 file
+; 2000/jul/26 B.E.	- added audit fields entry-... and last-mod-...
+; 2000/aug/29 B.E.	- new field claim-source and warning if 
+;			  'Batch Received Date' is > 'Clinic's PED'
+; 00/sep/25 B.E.	- PED made display only
+
+screen $obj/d084
+
+file f084-claims-inventory primary
+;2000/07/26 - MC
+	access via doc-nbr, batch-received-date	&
+		using   doc-nbr, batch-received-date	&
+		request doc-nbr, batch-received-date
+	access viaindex f084-received-inventory	&
+		via     doc-nbr			&
+		using   doc-nbr			&
+		request doc-nbr 
+	access sequential
+;2000/07/26 - MC end
+
+  item entry-time-long  	initial systime
+  item batch-received-date 	initial sysdate 
+  item entry-date       	initial sysdate
+  item entry-user-id    	initial signonuser
+  item last-mod-date    	final sysdate
+  item last-mod-time    	final systime/10000
+  item last-mod-user-id 	final signonuser
+
+temp t-entry-time zoned*4 
+
+file f083-user-mstr reference
+     access via logon-username      &
+            using logonid
+
+;file constants-mstr-rec-1 reference
+;     access via const-rec-nbr             &
+;            using clmhdr-clinic-nbr-1-2 of f084-claims-inventory
+file iconst-mstr-rec reference
+	access via iconst-clinic-nbr-1-2	&
+	     using clmhdr-clinic-nbr-1-2  of f084-claims-inventory
+
+;B.A. 2000/02/28 begin
+file constants-mstr-rec-6 reference
+     access via const-rec-nbr   & 
+            using 6
+;B.A. 2000/02/28 end   
+               
+file f020-doctor-mstr reference
+     access via doc-nbr		&
+           using doc-nbr of f084-claims-inventory
+
+;2000/07/26 - MC
+file f084-claims-inventory alias f084-lookup designer
+	access via doc-nbr, batch-received-date	&
+           using doc-nbr of f084-claims-inventory,  &
+	         batch-received-date of f084-claims-inventory 
+;2000/07/26 - MC end
+
+hilite title inverse
+title "CLAIMS INVENTORY MAINTENANCE" at 1,41
+skip 1
+hilite title off
+
+align(1,4,27)
+field clmhdr-clinic-nbr-1-2 lookup on iconst-mstr-rec	    &
+      label 'Clinic Nbr'  required values 22 to 99
+align(1,4,27) (,31,32) (,35,36)
+field doc-nbr lookup on f020-doctor-mstr   &
+      label 'Doctor Nbr/Dept' values 1 to 999 required
+field doc-dept of f020-doctor-mstr display &
+      label '/'
+field doc-name of f020-doctor-mstr display  &
+      label ":"
+
+skip 1
+align(1,4,27)
+align(1,4,27)
+field batch-received-date         &
+      label 'Batch Received Date'  
+
+skip 1
+;B.A. 2000/02/28 begin
+field iconst-date-period-end	&
+      label "Clinic's  PED"     &
+      display
+
+;B.A. 2000/02/28 begin
+
+align(,4,27)
+field t-entry-time display pic "^^:^^" &
+      label 'Entry Time'
+skip 1
+      
+align( 1,4,27)
+field claim-source
+
+field nbr-claims-batches required   & 
+      label 'Nbr Claims' required
+
+field nbr-claims-queried       &
+      label 'Nbr Claims Returned'
+field nbr-claims-Unprocessed       &
+      label 'Nbr Claims Unprocessed'
+;field flag-unprocessed-batch    &
+;      label 'Unprocessed Batch ?'
+
+skip 1
+field billing-clerk-initials of f084-claims-inventory lookup on f083-user-mstr &
+      label 'Entry Clerk ID'  
+
+skip 1
+title "Entry     Last Mod" at , 55
+align (,44,50) (,,65)
+  field entry-date         label "Date:" display
+  field last-mod-date      		 display
+  field entry-time-long    label "Time:" display 
+  field last-mod-time   		 display
+  field entry-user-id      label "User:" display
+  field last-mod-user-id 		 display
+
+
+procedure postfind
+begin
+  let t-entry-time = entry-time-long/10000
+  display t-entry-time
+end  
+
+procedure process clmhdr-clinic-nbr-1-2
+begin
+   if newrecord of f084-claims-inventory 	 &
+	and not correctmode
+   then
+     begin
+       let billing-clerk-initials of f084-claims-inventory =   & 
+           billing-clerk-initials of f083-user-mstr 
+       display batch-received-date
+       ;   B.A. 2000/02/28 begin
+       ;   let current-ep-nbr of f084-claims-inventory =     & 
+       ;       current-ep-nbr of constants-mstr-rec-6
+       ;   display current-ep-nbr
+       let iconst-date-period-end of f084-claims-inventory =     & 
+           iconst-date-period-end of iconst-mstr-rec
+       display iconst-date-period-end of f084-claims-inventory
+       ;B.A. 2000/02/28 end
+       let t-entry-time = entry-time-long/10000
+       display t-entry-time
+       display billing-clerk-initials of f084-claims-inventory 
+;      (default claim's source and predisplay)
+       let claim-source = "R"
+       display claim-source
+     end
+end
+
+procedure edit batch-received-date
+begin
+  if   batch-received-date    of f084-claims-inventory		&
+     > iconst-date-period-end of f084-claims-inventory	
+  then warning "The 'date received' is GREATER than clinic's PED - Please verify!"
+  if   batch-received-date    of f084-claims-inventory		&
+     > iconst-date-period-end of f084-claims-inventory	
+  then error   "The 'date received' is GREATER than today's date"
+end 
+
+procedure edit nbr-claims-queried
+begin
+  if nbr-claims-batches of f084-claims-inventory		&
+      <   nbr-claims-queried     of f084-claims-inventory	&
+       +  nbr-claims-unprocessed of f084-claims-inventory
+  then warning "Number of 'returns+unprocessed' cannot be greater than number of claims"
+end 
+
+procedure edit nbr-claims-unprocessed
+begin
+  if nbr-claims-batches of f084-claims-inventory		&
+      <   nbr-claims-queried     of f084-claims-inventory	&
+       +  nbr-claims-unprocessed of f084-claims-inventory
+  then warning "Number of 'returns+unprocessed' cannot be greater than number of claims"
+end 
+
+;2000/07/26 - MC
+procedure preupdate
+begin
+  While retrieving f084-lookup
+    begin
+	if nbr-claims-batches of f084-claims-inventory =	&
+	   nbr-claims-batches of f084-lookup
+	then begin
+	  warn=  "*Warning* Your transaction was accepted, "		&
+	       + "however a transaction with the same doctor/"		&
+	       + "date-received/#-claims exists under clinic "  	&
+	       + ascii(clmhdr-clinic-nbr-1-2 of f084-claims-inventory,2) &
+	       + " and was entered by billing clerk '"			 &
+	       + truncate(entry-user-id)				 &
+	       + "'. Please verify!"
+	  break
+	end
+    end
+end
+;2000/07/26 - MC end
+
+build
+

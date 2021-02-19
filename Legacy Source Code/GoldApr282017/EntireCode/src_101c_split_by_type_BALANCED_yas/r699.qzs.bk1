@@ -1,0 +1,81 @@
+
+; program: r699.qzs
+; purpose: take an incoming 'claims history subfile' and reformat the claim
+;	   details into the regular 'ohip submission file' format so that
+;	   progrma (new)u701.cbl can process it.
+;	   - the program is part of a processs that allows previously entered
+;	     claims to be 're-priced'
+
+; 2001/sep/26 MC/YB	- original
+
+cancel clear
+set report  nolimit   
+
+
+;access *claims_subfile
+access claims_history_subfile
+
+
+;def clmdtl-consec-dates-r char*9 = ascii(clmdtl-consec-dates,9)	&
+;		if clmdtl-consec-dates > 0
+;
+;def add-1 zoned*2 unsigned = nconvert(clmdtl-consec-dates-r[1:1]) &
+;if clmdtl-consec-dates-r[1:1] <> ' ' and clmdtl-consec-dates > 0
+;def add-2 zoned*2 unsigned = nconvert(clmdtl-consec-dates-r[4:1]) &
+;if clmdtl-consec-dates-r[4:1] <> ' ' and clmdtl-consec-dates > 0
+;def add-3 zoned*2 unsigned = nconvert(clmdtl-consec-dates-r[7:1]) &
+;if clmdtl-consec-dates-r[7:1] <> ' ' and clmdtl-consec-dates > 0
+;def x-nbr-serv zoned*2 unsigned = clmdtl-nbr-serv + add-1 + add-2 + add-3
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)              &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                        if    clmdtl-consec-dates-r[2:2] <> "OP"   &
+                          and clmdtl-consec-dates-r[2:2] <> "MR"   &
+                          and clmdtl-consec-dates-r[2:2] <> "BI"
+def x-nbr-serv zoned*2 unsigned					& 
+	=  clmdtl-nbr-serv 					&
+	 + x-sv-nbr2						&
+	 + x-sv-nbr3						&
+	 + x-sv-nbr4						
+
+def clmhdr-1-man-rev-ind char*1                                 &
+        = "Y" if clmdtl-consec-dates-r[2:2] = "MR"              &
+     else " "
+def item-1-override-price char*1                                &
+        = "Y" if clmdtl-consec-dates-r[2:2] = "OP"              &
+     else " "
+def item-1-bilateral char*1                                     &
+        = "Y" if clmdtl-consec-dates-r[2:2] = "BI"              &
+     else " "
+
+set subfile name r699 keep 
+rep summ  clmdtl-id  		&
+	x-nbr-serv		&
+	clmdtl-sv-date		&
+	clmdtl-fee-ohip		&
+	clmhdr-doc-dept		&
+	clmhdr-agent-cd		&
+	clmhdr-loc		&
+;	clmdtl-diag-cd		&
+	clmhdr-diag-cd		&
+	clmhdr-doc-spec-cd	&
+	clmhdr-i-o-pat-ind	&
+	clmhdr-date-admit	&
+	clmhdr-refer-doc-nbr	&
+	clmhdr-doc-nbr-ohip	&
+	clmhdr-1-man-rev-ind	&
+	item-1-override-price	&
+	item-1-bilateral
+
+build $obj/r699
+
+

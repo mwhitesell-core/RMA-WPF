@@ -1,0 +1,314 @@
+; DOC: R051CAB3A_HSC.QZS
+; DOC: PHYSICIAN REVENUE ANALYSIS
+; DOC: SORT BY CLINIC/DEPT/CLASS/DOC #/OMA CODE (DETAIL REPORT)
+; DOC: RUN FOR: CLINIC 22/99
+;
+;PROGRAM PURPOSE : PHYSICIAN REVENUEE ANALYSIS
+;                  R051A/B/C.CB CONVERSTION TO POWERHOUSE
+;                  THIS IS THE 2ND PASS (R051CAB.TXT)
+;
+;
+;DATE       BY WHOM   DESCRIPTION
+;95/10/11   YASEMIN   ORIGINAL
+;
+;
+can clear
+set rep nolimit
+set ver error
+set page length 60 width 132
+set rep device disc name r051cc
+set formfee
+
+
+access *r051a						&
+  link docrev-doc-nbr					&
+    to tmprev-doc-nbr of tmp-doc-revenue 		&
+  link docrev-clinic-1-2, docrev-dept of r051a		&
+    to tmprev-clinic, tmprev-dept of tmp-doc-revenue	&
+		alias a-doc-rev 			&
+  link docrev-doc-nbr                                   &
+    to doc-nbr of f020-doctor-mstr  opt                 &
+  link (nconvert(docrev-clinic-1-2))                    &
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec  opt    &
+  link docrev-dept                                      &
+    to dept-nbr of f070-dept-mstr  opt                  &
+  link (docrev-oma-cd[1:4])                             &
+    to fee-oma-cd of f040-oma-fee-mstr  opt
+
+define  d-foot-doc-nbr num = docrev-doc-nbr 
+
+sort on docrev-clinic-1-2  &
+     on docrev-dept        &
+     on doc-full-part-ind  &
+     on d-foot-doc-nbr	&
+     on docrev-doc-nbr     &
+     on docrev-oma-cd
+
+sort on docrev-clinic-1-2  &
+     on docrev-dept        &
+     on doc-full-part-ind  &
+     on doc-name           &
+     on doc-inits          &
+     on d-foot-doc-nbr	   &
+     on docrev-doc-nbr     &
+     on docrev-oma-cd
+
+def x-name cha*30 =pack(doc-name +" "+ doc-inits)
+
+def x-class cha*18 = "FULL TIME"         if doc-full-part-ind = "F"   &
+                else "PART TIME"         if doc-full-part-ind = "P" 
+
+def x-amt-mtd zoned*8 signed = docrev-mtd-in-rec + docrev-mtd-out-rec &
+	if rec-flag = 'OMA'
+
+def x-svc-mtd zoned*3 signed = docrev-mtd-in-svc + docrev-mtd-out-svc &
+        if rec-flag = 'OMA'
+
+def x-avg-mtd zoned*8 signed = x-amt-mtd / x-svc-mtd
+
+def x-avg-mtd-doc-total zoned*8 unsigned =	&
+	tmprev-doc-amt-mtd / tmprev-doc-svc-mtd 
+
+def x-per-mtd zoned*8 signed =                   &
+    round((x-amt-mtd / tmprev-doc-amt-mtd) * 10000,0,near)  &
+        if x-amt-mtd ne 0 else 0
+
+def x-amt-ytd zoned*8 signed = docrev-ytd-in-rec + docrev-ytd-out-rec &
+        if rec-flag = 'OMA'
+
+def x-svc-ytd zoned*5 signed = docrev-ytd-in-svc + docrev-ytd-out-svc &
+        if rec-flag = 'OMA'
+
+def x-avg-ytd zoned*8 signed = x-amt-ytd / x-svc-ytd
+
+def x-avg-ytd-doc-total zoned*8 unsigned = 	&
+	tmprev-doc-amt-ytd / tmprev-doc-svc-ytd 
+
+def x-per-ytd zoned*8 signed =                   &
+    round((x-amt-ytd / tmprev-doc-amt-ytd) * 10000,0,near)  &
+        if x-amt-ytd ne 0 else 0
+
+;*** FOLLOWING FOR DOCTOR'S PERCENTAGE OF CLASS TOTAL ***
+
+def x-class-per-mtd zoned*8 unsigned = 		&
+    round((tmprev-doc-amt-mtd / tmprev-class-amt-mtd) * 10000,0,near) &
+         if tmprev-doc-amt-mtd ne 0 else 0 
+
+def x-class-per-ytd zoned*8 unsigned =          &
+    round((tmprev-doc-amt-ytd / tmprev-class-amt-ytd) * 10000,0,near) &
+         if tmprev-doc-amt-ytd ne 0 else 0
+
+;*** FOLLOWING FOR DEPARTMENT CLASS TOTALS ***
+
+;**FULL TIME CALCULATION**
+
+def x-full-amt-mtd zoned*8 signed = docrev-mtd-in-rec + docrev-mtd-out-rec &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'F'
+
+def x-full-svc-mtd zoned*3 signed = docrev-mtd-in-svc + docrev-mtd-out-svc &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'F'
+
+def x-full-avg-mtd zoned*8 signed = (x-full-amt-mtd / x-full-svc-mtd)
+
+def x-full-per-mtd zoned*8 signed =                    &
+  round((x-full-amt-mtd / tmprev-dept-amt-mtd of a-doc-rev) * 10000,0,near)  &
+      if doc-full-part-ind = "F" and x-full-amt-mtd ne 0 else 0
+
+def x-full-amt-ytd zoned*8 signed = docrev-ytd-in-rec + docrev-ytd-out-rec &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'F'
+
+def x-full-svc-ytd zoned*5 signed =  docrev-ytd-in-svc + docrev-ytd-out-svc &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'F'
+
+def x-full-avg-ytd zoned*8 signed = (x-full-amt-ytd / x-full-svc-ytd)
+
+def x-full-per-ytd zoned*8 signed = 			&
+ round((x-full-amt-ytd / tmprev-dept-amt-ytd of a-doc-rev) * 10000,0,near)   &
+     if doc-full-part-ind = "F" and x-full-amt-ytd ne 0 else 0
+
+;**PART TIME CALCULATION**
+
+def x-part-amt-mtd zoned*8 signed = docrev-mtd-in-rec + docrev-mtd-out-rec &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'P'
+
+def x-part-svc-mtd zoned*3 signed = docrev-mtd-in-svc + docrev-mtd-out-svc &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'P'
+
+def x-part-avg-mtd zoned*8 signed = (x-part-amt-mtd / x-part-svc-mtd)
+
+def x-part-per-mtd zoned*8 signed =                    &
+  round((x-part-amt-mtd / tmprev-dept-amt-mtd OF a-doc-rev) * 10000,0,near)  &
+      if doc-full-part-ind = "P" and x-part-amt-mtd ne 0 else 0
+
+def x-part-amt-ytd zoned*8 signed = docrev-ytd-in-rec + docrev-ytd-out-rec &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'P'
+
+def x-part-svc-ytd zoned*3 signed = docrev-ytd-in-svc + docrev-ytd-out-svc &
+        if rec-flag = 'FPI' and doc-full-part-ind = 'P'
+
+def x-part-avg-ytd zoned*8 signed = (x-part-amt-ytd / x-part-svc-ytd)
+
+;** NOTE must reference alias for tmp-doc-revenue tmprev* fields here
+
+def x-part-per-ytd zoned*8 signed =                    &
+  round((x-part-amt-ytd / tmprev-dept-amt-ytd OF a-doc-rev) * 10000,0,near)  &
+      if doc-full-part-ind = "P" and x-part-amt-ytd ne 0 else 0
+
+def x-full-part-avg-mtd zoned*8 unsigned = &
+    tmprev-dept-amt-mtd of a-doc-rev / tmprev-dept-svc-mtd of a-doc-rev
+
+def x-full-part-avg-ytd zoned*8 unsigned = &
+    tmprev-dept-amt-ytd of a-doc-rev / tmprev-dept-svc-ytd of a-doc-rev
+
+def x-full-part-per-mtd zoned*8 unsigned = x-full-per-mtd + x-part-per-mtd
+def x-full-part-per-ytd zoned*8 unsigned = x-full-per-ytd + x-part-per-ytd
+
+page heading                                              	&
+	tab 1   "R051CC"    		          	        &
+	tab 8   "/"          	          	                &
+	tab 9   docrev-clinic-1-2                           	&
+	tab 13  "P.E.D"				          	&
+	tab 20  iconst-date-period-end pic "^^^^/^^/^^"     	&
+	tab 50  "* PHYSICIAN REVENUE ANALYSIS *"          	&
+        tab 90  "RUN DATE:"                                     &
+        tab 100 sysdate       					&	
+        tab 118  "PAGE"                                         &
+        tab 127  syspage pic "^^^" 				&
+skip 1	tab 57   "CHEDOKE C.C. UNIT"				&
+skip 2
+
+heading at docrev-doc-nbr 					&
+	tab 50  "DEPT"                                          &
+        tab 55  "#"  tab 56 doc-dept fill "0"                   &
+        tab 59  "-"  tab 61 dept-name                           &
+skip 1  tab 50  "CLASS"                                         &
+        tab 57  doc-full-part-ind                               &
+        tab 59  "-"  tab 61 x-class                             &
+skip 2  tab 1   "DOCTOR"                                        &
+        tab 8   doc-nbr fill "0"                                &
+        tab 14  x-name                                          &
+skip 1  tab 56  "----------- M . T . D . -----------"           &
+        tab 94  "-------------- Y . T. D . ------------"        &
+skip 1  tab 56  "SVC"                                           &
+        tab 63  "$ AMT"                                         &
+        tab 74  "$ AVG"                                         &
+        tab 83  "PERCENT"                                       &
+        tab 96  "SVC"                                           &
+        tab 104 "$ AMT"                                         &
+        tab 116 "$ AVG"                                         &
+        tab 125 "PERCENT"                                       &
+skip 1  tab 1   "OHIP"                                          &
+        tab 7   "------------OHIP CODE DESCRIPTION------------" & 
+        tab 84  "OF DOC"                                        &
+        tab 126 "OF DOC"                                        &
+skip 1
+
+footing at docrev-oma-cd                                        &
+skip 1  tab 1   docrev-oma-cd                                   &
+	tab 7   fee-desc					&
+        tab 56  x-svc-mtd      pic "^^^"                        &
+        tab 61  x-amt-mtd      PIC "^^,^^^.^^ " trail "-"       &
+        tab 72  x-avg-mtd      PIC "^^,^^^.^^ " trail "-"       &
+        tab 83  x-per-mtd      PIC "^^^.^^%"  			& 
+        tab 94  x-svc-ytd      PIC "^^^^^"                      &
+        tab 102 x-amt-ytd      PIC "^^,^^^.^^ " trail "-"       &
+        tab 114 x-avg-ytd      PIC "^^,^^^.^^ " trail "-"       &
+        tab 125 x-per-ytd      PIC "^^^.^^%" 			&
+skip 1
+
+footing at docrev-doc-nbr                                       &
+skip 2  tab 1   "DOCTOR"                                        &
+        tab 9   doc-nbr  fill "0"                               &
+        tab 15  "TOTALS"                                        &
+        tab 56  x-svc-mtd      SUB PIC "^^^"                    &
+        tab 61  x-amt-mtd      SUB PIC "^^,^^^.^^ " trail "-"   &
+        tab 72  x-avg-mtd-doc-total PIC "^^,^^^.^^ " trail "-"  &
+        tab 83  x-per-mtd      SUB PIC "^^^.^^%"  		&
+        tab 94  x-svc-ytd      SUB PIC "^^^^^"                  &
+        tab 102 x-amt-ytd      SUB PIC "^^,^^^.^^ " trail "-"   &
+        tab 114 x-avg-ytd-doc-total PIC "^^,^^^.^^ " trail "-"  &
+        tab 125 x-per-ytd      SUB PIC "^^^.^^%" 		&
+skip page 
+
+footing at d-foot-doc-nbr 					&
+	tab 50  "DEPT"                                          &
+        tab 55  "#"  tab 56 doc-dept fill "0"                   &
+        tab 59  "-"  tab 61 dept-name                           &
+skip 1  tab 50  "CLASS"                                         &
+        tab 57  doc-full-part-ind                               &
+        tab 59  "-"  tab 61 x-class                             &
+skip 2  tab 1   "DOCTOR"                                        &
+        tab 8   doc-nbr fill "0"                                &
+        tab 14  x-name 						&
+skip 1  tab 56  "----------- M . T . D . -----------"           &
+        tab 94  "-------------- Y . T. D . ------------"        &
+skip 1  tab 56  "SVC"                                           &
+        tab 63  "$ AMT"                                         &
+        tab 74  "$ AVG"                                         &
+        tab 83  "PERCENT"                                       &
+        tab 96  "SVC"                                           &
+        tab 104 "$ AMT"                                         &
+        tab 116 "$ AVG"                                         &
+        tab 125 "PERCENT"                                       &
+skip 1  tab 83  "OF CLASS"                                      &
+        tab 125 "OF CLASS"					&
+skip 2  tab 1   "DOCTOR"                                        &
+        tab 9   doc-nbr  fill "0"                               &
+        tab 15  "TOTALS"                                        &
+        tab 56  x-svc-mtd      SUB PIC "^^^"                    &
+        tab 61  x-amt-mtd      SUB PIC "^^,^^^.^^ " trail "-"   &
+        tab 72  x-avg-mtd-doc-total PIC "^^,^^^.^^ " trail "-"  &
+        tab 83  x-class-per-mtd PIC "^^^.^^%"          		&
+        tab 94  x-svc-ytd      SUB PIC "^^^^^"                  &
+        tab 102 x-amt-ytd      SUB PIC "^^,^^^.^^ " trail "-"   &
+        tab 114 x-avg-ytd-doc-total PIC "^^,^^^.^^ " trail "-"  &
+        tab 125 x-class-per-ytd     PIC "^^^.^^%"          	&
+skip page
+
+footing at docrev-dept  skip page                                	&
+        tab 1   "DEPARTMENT CLASS TOTALS"                        	&
+skip 1  tab 56  "----------- M . T . D . -----------"           &
+        tab 94  "-------------- Y . T. D . ------------"        &
+skip 1  tab 56  "SVC"                                           &
+        tab 63  "$ AMT"                                         &
+        tab 74  "$ AVG"                                         &
+        tab 83  "PERCENT"                                       &
+        tab 96  "SVC"                                           &
+        tab 104 "$ AMT"                                         &
+        tab 116 "$ AVG"                                         &
+        tab 125 "PERCENT"                                       &
+skip 1  tab 83  "OF DEPT"                                        	&
+        tab 125 "OF DEPT"                                        	&
+skip 2  tab 1   "F: FULL TIME"                                   	&
+        tab 56  x-full-svc-mtd sub pic "^^^"                     	&
+        tab 61  x-full-amt-mtd sub pic "^^^,^^^.^^ " trail "-"   	&
+        tab 72  x-full-avg-mtd sub pic "^^^,^^^.^^ " trail "-"   	&
+        tab 83  x-full-per-mtd sub pic "^^^.^^%"			&
+        tab 94  x-full-svc-ytd sub pic "^^^^^"                   	&
+        tab 102 x-full-amt-ytd sub pic "^^^,^^^.^^ " trail "-"   	&
+        tab 114 x-full-avg-ytd sub pic "^^^,^^^.^^ " trail "-"   	&
+        tab 125 x-full-per-ytd sub pic "^^^.^^%"			&
+skip 2                                                           	&
+        tab 1   "P: PART TIME"                                   	&
+        tab 56  x-part-svc-mtd sub pic "^^^"                            &
+        tab 61  x-part-amt-mtd sub pic "^^^,^^^.^^ " trail "-"          &
+        tab 72  x-part-avg-mtd sub pic "^^^,^^^.^^ " trail "-"          &
+        tab 83  x-part-per-mtd sub pic "^^^.^^%"                        &
+        tab 94  x-part-svc-ytd sub pic "^^^^^"                          &
+        tab 102 x-part-amt-ytd sub pic "^^^,^^^.^^ " trail "-"          &
+        tab 114 x-part-avg-ytd sub pic "^^^,^^^.^^ " trail "-"          &
+        tab 125 x-part-per-ytd sub pic "^^^.^^%"                        &
+skip 2                                                           	&
+        tab 1   "** DEPARTMENT TOTALS **"                        	&
+        tab 56  x-svc-mtd      sub pic "^^^"                        	&
+        tab 61  x-amt-mtd      sub pic "^^^,^^^.^^ " trail "-"       	&
+        tab 72  x-full-part-avg-mtd pic "^^^,^^^.^^ " trail "-"     &
+        tab 83  x-full-part-per-mtd sub pic "^^^.^^%" 			& 
+        tab 94  x-svc-ytd      sub pic "^^^^^"                       	&
+        tab 102 x-amt-ytd      sub pic "^^^,^^^.^^ " trail "-"       	&
+        tab 114 x-full-part-avg-ytd pic "^^^,^^^.^^ " trail "-"         &
+        tab 125 x-full-part-per-ytd sub pic "^^^.^^%" 			& 
+skip 2
+
+build $obj/r051cab3b_hsc
+

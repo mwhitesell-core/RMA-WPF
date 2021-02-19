@@ -1,0 +1,142 @@
+;#> PROGRAM-ID.   utl0201.qzs
+;
+;	((C)) Dyad Infosys LTD 
+;
+;    PROGRAM PURPOSE :
+;	- generate 2 reports     requested by Brad
+;the purpose of the 1st report is to list the PAYMENTS for doctors by dept, sorted by highest payment.
+;the purpose of the 2nd report is to list the PAYMENTS for doctors by dept, sorted by highest different in payment from LAST MONTH.
+;-----------------------------------------------------------------------------------
+;report1 will access the utl0201_f119_all.ps
+;and link to comp code table and only select transactions if comp-code-type field is 'P'ayment
+ 
+;it will only select those from the .ps with EP_nbr matching current EP_NBR
+ 
+;sort on dept, docnbr, amt DESC
+ 
+;rep dept page heading, and on line doc nbr, doc name, mtd  ytd
+
+;-------------------------------------------------------------------------------------
+cancel clear
+set rep nolimit
+
+access *utl0201_f119				&
+       link doc-nbr                             &
+       to   doc-nbr of f020-doctor-mstr opt     &
+       link comp-code                          	&
+       to   comp-code of f190-comp-codes opt
+
+; select if comp-type is Payment
+select if    comp-type of f190-comp-codes = "P"	&
+; As per Helena, for now, select dept 42 only
+	and  doc-dept = 42
+
+; note: to determine previous month, must subtract 2 instead of 1 because current-ep-nbr would not be completed
+; until actual payroll has run
+; according to Yasemin, 101c always has 13 ep nbr, solo has 12 ep nbr, MP has minimum 12 ep nbr and
+; sometime can be 13 ep nbr
+def prev-ep-nbr char*6                                                                                  &
+        =     ascii(nconvert(x-ped) - 2) if x-ped[5:2]  > '02'                                          &
+        else  ascii(nconvert(x-ped[1:4]) - 1) + '13' if x-ped[5:2] = '02' and environment =  '101C'     &
+        else  ascii(nconvert(x-ped[1:4]) - 1) + '12' if x-ped[5:2] = '02' and environment <> '101C'     &
+; not sure what to do at the beginning of the year (yyyy01)
+        else  ascii(nconvert(x-ped[1:4]) - 1) + '13' if x-ped[5:2] = '01' and environment =  '101C'     &
+        else  ascii(nconvert(x-ped[1:4]) - 1) + '12' if x-ped[5:2] = '01' and environment <> '101C'    
+
+set subfile name utl0201 keep
+rep summ doc-dept		&
+	 doc-nbr		&
+	 doc-name		&
+	 x-ped			&
+	 prev-ep-nbr		&
+	 comp-code		&
+	 amt-mtd		&
+	 amt-ytd
+
+build $obj/utl0201_1
+
+set rep dev disc name utl0201_a
+set rep page width 132 length 60
+set formfeed
+
+access *utl0201
+
+sort on  doc-dept on amt-mtd d on doc-nbr
+
+page heading					&
+	tab 1 'utl0201_A'			&
+	tab 40 'Highest MTD Payment Amount by Dept'  &
+	tab 80 'Run date: '			&
+	tab 90 sysdate				&
+	tab 105 'Page: '			&
+	tab 110 syspage				&
+skip 1  tab 55 'For : '				&
+        tab 62 x-ped				&	
+skip 2	tab 10 'Dept : '			&
+	tab 18 doc-dept				&
+skip 2  keep column heading
+ 
+report  doc-nbr			&
+	doc-name		&
+	comp-code		&
+	amt-mtd			&
+	amt-ytd  
+
+footing at doc-dept			&
+skip page
+
+build $obj/utl0201_2
+
+;-------------------------------------------------------------------------------------
+;report2 is the same as report 1 except it will also:
+;and link to ep-NBR -1 in f119-doctor-ytd- history(?) to get the 'last months value' for that transactions based upon 
+;matching doc-nbr, comp-code and ep_nbr being 1 smaller (realize this won't work on 1st EP of year but we can address later)
+ 
+; calc amt-diff as mtd of transaction in .ps file - mtd of matching last months transaction found in f119-ytd-history
+ 
+
+;sort on dept, docnbr,  DESC on amt-diff
+ 
+;rep dept page heading, and on line doc nbr, doc name, amt-diff, mtd, ytd;
+;
+
+set rep dev disc name utl0201_b
+set rep page width 132 length 60
+set formfeed
+
+
+access *utl0201     					&
+       link (doc-nbr, ncon(prev-ep-nbr))		&
+	to  doc-nbr, ep-nbr of f119-doctor-ytd-history opt	
+
+select if comp-code of utl0201 = comp-code of f119-doctor-ytd-history
+
+def amt-diff zoned*7 numeric = amt-mtd of utl0201 - amt-mtd of f119-doctor-ytd-history
+
+sort on  doc-dept on amt-diff  d on doc-nbr
+
+page heading					&
+	tab 1 'utl0201_B'			&
+	tab 40 'Highest different MTD in Payment'	&
+	tab 80 'Run date: '			&
+	tab 90 sysdate				&
+	tab 105 'Page: '			&
+	tab 110 syspage				&
+skip 1  tab 40 'Amount from LAST MONTH  by Dept'  	&
+skip 1  tab 50 'For : '				&
+        tab 62 x-ped				&	
+skip 2	tab 10 'Dept : '			&
+	tab 18 doc-dept				&
+skip 2  keep column heading
+ 
+report  doc-nbr			&
+	doc-name		&
+	comp-code		&
+        amt-diff pic '^^^,^^^.^^ ' trail '-' &
+	amt-mtd			&
+	amt-ytd  
+
+footing at doc-dept			&
+skip page
+
+build $obj/utl0201_3

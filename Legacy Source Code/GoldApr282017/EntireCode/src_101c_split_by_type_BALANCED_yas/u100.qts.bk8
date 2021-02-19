@@ -1,0 +1,62 @@
+
+;#> PROGRAM         U100.QTS  
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Verify there is a primary doctor assigned either for a single or multliple doctor
+;	      that belong to the same doc ohip nbr  
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 2008/jun/18 M.C.      - original  
+; 2009/may/19 MC1	- set doc-count to include the doctor is active in criteria
+
+cancel clear
+run u100
+
+set default
+set process nolimit
+set lock record update
+
+
+;-------------------------------------------------------------------------------
+;
+;
+request u100_search_primary_doctor    		&
+		on edit        errors report	&
+                on calculation errors report
+
+access f020-doctor-mstr				&
+	link doc-nbr 				&
+	  to  doc-nbr of f020-doctor-extra 
+
+choose doc-ohip-nbr
+
+sorted on doc-ohip-nbr
+
+; select active doctors only
+;sel if 		doc-date-fac-term = 0		&
+sel if 		                      	&
+          (    (doc-dept = 4)			&
+	    or (    (    doc-dept = 14           &
+		      or doc-dept = 15		&
+		    )				&
+ 	        and doc-afp-paym-group = 'H111' &
+	       )				&
+	    or (     doc-dept = 31		&
+		and doc-afp-paym-group = 'H132' &
+	       )				&
+	  )	
+
+temp doc-count 
+; 2009/may/19 - MC1
+;item doc-count = doc-count + 1 if doc-flag-primary = 'Y'  reset at doc-ohip-nbr
+item doc-count = doc-count + 1 if doc-flag-primary = 'Y' &
+		             and  doc-date-fac-term = 0	 &
+		 reset at doc-ohip-nbr
+; 2009/may/19 - end
+
+subfile u100_prim_doc keep at doc-ohip-nbr include	&
+	doc-ohip-nbr, doc-count         
+
+build $pb_obj/u100

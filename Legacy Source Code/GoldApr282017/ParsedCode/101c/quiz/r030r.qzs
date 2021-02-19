@@ -1,0 +1,106 @@
+;#> PROGRAM-ID.     R030R.QZS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : PRINT THE UNDEFINED DOCTOR'S TOTAL AMOUNT PREMIUM PAID FROM THE RAT
+
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;   2013/Sep/11 M.C.         - ORIGINAL (cloned from r030m.qzs)
+
+can clear
+set default
+set report nolim
+set rep dev disc name ru030r
+set page length 60 width 132
+set formfeed
+set noclose
+
+access *r031a_active_doctor			&
+	link doc-nbr                   		&
+	 to  doc-nbr of f020-doctor-mstr optional
+
+select if not record f020-doctor-mstr exists
+
+def x-doc-name char*30 = pack(doc-name + ', ' + doc-inits)
+
+sorted on x-clinic on doc-ohip-nbr on doc-nbr 
+
+page heading							&
+  tab   1 "RU030R1"						&
+  tab  42 "UNDEFINED  DOCTORS' TOTAL AMOUNT PREMIUMS PAID"      &
+  tab  95 sysdate						&
+  tab 120 "PAGE"						&
+  tab 126 syspage						&
+skip 2								&
+  tab   1 "CLINIC  DOC   DOCTOR    DOC   DOCTOR  NAME"         	&
+  tab  61 "  AMT PAID   TERMINATION"				&
+skip 1								&
+  tab   1 " NBR    DEPT  OHIP NBR  NBR  "  			& 
+  tab  61 "                DATE    "				&
+skip 2
+
+
+report  							&
+    tab  3 x-clinic           					&
+    tab 10 doc-dept 						&
+    tab 15 doc-ohip-nbr of r031a_active_doctor			&
+    tab 25 doc-nbr            					&
+    tab 31 x-doc-name                                 		&
+    tab 61 x-total-paid-amt pic '^^^,^^^.^^'			&
+    tab 74 doc-date-fac-term					&
+skip 2
+
+
+final footing							&
+  skip  3							&
+  tab   1 "*TOTAL*"  						&	
+  tab  59 x-total-paid-amt  subt pic '^,^^^,^^^.^^'		&
+skip 2
+
+
+build $pb_obj/r030r1
+
+access *r031a_pay_batches  			&
+	link ("B", batctrl-batch-nbr)  		&
+	 to  key-clm-type, key-clm-batch-nbr of f002-claims-mstr
+
+select if clmdtl-oma-cd = '0000' 		&
+     and  clmhdr-claim-id[3:3] = '   '
+
+set subfile name r030r_undefined_doc keep
+
+rep summary batctrl-batch-nbr key-clm-claim-nbr clmhdr-claim-id &
+	clmhdr-manual-and-tape-payments
+
+build $pb_obj/r030r2
+
+access *r030r_undefined_doc
+
+page heading							&
+  tab   1 "RU030R2" 						&
+  tab  42 "UNDEFINED  DOCTORS' Payment batch Claim "            &
+  tab  95 sysdate						&
+  tab 120 "PAGE"						&
+  tab 126 syspage						&
+skip 2								&
+  tab   3 "BATCH     CLAIM   CLAIM HDR ID           AMOUNT"     &
+skip 1								&
+  tab   3 " NBR       NBR                            PAID"	&
+skip 2
+
+report  							&
+    tab  3 batctrl-batch-nbr  					&
+    tab 14 key-clm-claim-nbr  					&
+    tab 20 clmhdr-claim-id					&
+    tab 40 clmhdr-manual-and-tape-payments pic '^^^,^^^.^^ ' trail '-' &
+skip 2
+
+
+final footing							&
+  skip  3							&
+  tab   1 "*TOTAL*"  						&	
+  tab  40 clmhdr-manual-and-tape-payments pic '^^^,^^^.^^ ' trail '-'	&
+skip 2
+
+build $pb_obj/r030r3

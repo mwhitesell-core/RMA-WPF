@@ -1,0 +1,89 @@
+;#> PROGRAM-ID.     U030B_1.QTS
+;
+; ((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : This program update total amount paid for the doctor
+;                      to f075-afp-doc-mstr                        
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     04/Jul/08 M.C.         - ORIGINAL
+; 2007/feb/22 b.e. - access group's process flag and handle the REPORT ONLY
+;			and the EARNINGS SUBSYTEM groups differently since
+;			REPORT ONLY doctors don't have RMA nbrs and must
+;			be processed using their OHIP nbr
+; 2007/07/19 - MC  - modify access statment 
+ 
+can clear
+set default
+set process nolimit
+; 2007/07/19 - MC
+;set lock file update 
+set lock record update 
+; 2007/07/19 - end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update-aft-doc-mstr-earnings-groups	&
+	on calculation errors report on edit errors report
+                ; Update f075-afp-doc-mstr   
+
+
+access *u030_paid_amt                                           &
+; 2007/07/19 - MC - add link to iconst-mstr-rec for group nbr
+        link nconvert(x-group-nbr) 				&
+	to iconst-clinic-nbr-1-2 of iconst-mstr-rec		&
+;	link rat-145-account-nbr[1:3] 				&
+;	to   doc-nbr of f075-afp-doc-mstr			&
+	link rat-145-account-nbr[1:3], iconst-clinic-nbr  	&
+	to   doc-nbr, doc-afp-paym-group  of f075-afp-doc-mstr	&
+; 2007/07/19 - end
+        link doc-afp-paym-group    of f075-afp-doc-mstr        	&
+        to   doc-afp-paym-group  of f074-afp-group-mstr
+
+;process EARNINGS SUBSYTEM group doctors
+select if afp-group-process-flag of f074-afp-group-mstr = "E"    
+
+; 2007/07/19 - MC
+;sort on doc-nbr
+sort on doc-nbr on doc-afp-paym-group of f075-afp-doc-mstr
+; 2007/07/19 - end
+
+temp total-amt-paid zoned*8 signed
+item total-amt-paid = total-amt-paid + x-tot-amt-paid		&
+; 2007/07/19 - MC
+;		reset at doc-nbr
+		reset at doc-afp-paym-group
+; 2007/07/19 - end
+
+; 2007/07/19 - MC
+;output f075-afp-doc-mstr update at doc-nbr     on errors report 
+output f075-afp-doc-mstr update at doc-afp-paym-group on errors report 
+; 2007/07/19 - end
+    item  ra-payment-amt    final ra-payment-amt + total-amt-paid
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;request update-aft-doc-mstr-report-only-groups 		&
+;	on calculation errors report on edit errors report
+;
+;access *u030_paid_amt                                           &
+;        link rat-145-account-nbr[1:3]                           &
+;        to   doc-nbr of f075-afp-doc-mstr                       &
+;        link doc-afp-paym-group    of f075-afp-doc-mstr         &
+;        to   afp-governance-group  of f074-afp-group-mstr
+;;process REPORT ONLY group doctors
+;select if afp-group-process-flag of f074-afp-group-mstr = "R"
+;
+;sort on doc-ohip-nbr
+;
+;temp total-amt-paid zoned*8 signed
+;item total-amt-paid = total-amt-paid + x-tot-amt-paid		&
+;		reset at doc-ohip-nbr
+;
+;output f075-afp-doc-mstr add    at doc-ohip-nbr     on errors report 
+;	item  ra-payment-amt    final ra-payment-amt + total-amt-paid
+;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+build $pb_obj/u030b_1

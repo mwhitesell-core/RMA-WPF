@@ -1,0 +1,65 @@
+; Program: r085a 
+; Purpose: create subfile of selected patients for
+;	   all programs related to sending letters to
+;	   patients for wrong health card info
+; 98/dec/10 B.E.	- created from access/selection logic in r085/86/87/u085
+; 1999/May/16 S.B.	- Y2K checked. Already done.
+; 2000/may/29 B.E.	- removed checking of confidential field and moved to 
+;			  r085b program.  This was required since the write
+;			  to the rejected-claims file may be from a confidential
+;			  claim, however the patient may have other non-confid.
+;			  claims for which they may be contacted.  By moving the
+;			  checking of this field to the r085b program the
+;			  individual claims can be tested to see if they can
+;			  appear in the letter. Note that if ALL claims are
+;			  confidential, this program will write a driver
+;			  record to the subfile however r085b will not build
+;			  a record complex with ANY claims and therefore
+;			  no letter will be generated.
+; 2000/jun/28 B.E.	- changed name of subfile from r085 to r085a to meet
+;			  programming standards
+; 2003/dec/15		- alpha doctor nbr
+;
+
+cancel clear
+
+set rep nolimit
+set subfile name r085a keep
+
+access rejected-claims 		                		&
+  link ("B",  							&
+;!	nconvert(ascii(claim-nbr,10)[1:2] + "0" + ascii(claim-nbr,10)[3:6]), &
+	(claim-nbr[1:8]),				        &
+;!	nconvert(ascii(claim-nbr,10)[9:2]),  			&
+	nconvert(claim-nbr[9:2]), 	 			&
+	"00000", "0")						&
+  to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,      &
+      key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr   &
+  link clmhdr-pat-ohip-id-or-chart   		           	&
+       viaindex key-pat-mstr					&
+    to f010-pat-mstr                                             &
+  link doc-nbr  		                                &
+    to doc-nbr of f020-doctor-mstr 	opt
+
+define d-test-date numeric*8 = 				&
+ 	days(sysdate) - days(pat-date-last-elig-mailing) &
+	if pat-date-last-elig-mailing > 0
+
+select if    (   pat-date-last-elig-mailing = 0		&
+;y2k	      or pat-date-last-elig-mailing = 160100	& 
+	      or pat-date-last-elig-mailing = 19160100	& 
+	      or (    d-test-date > 35			&
+                  and pat-no-of-letter-sent < 2		&
+	         )					&
+	     )						&
+	 and pat-mess-code <> " "
+
+
+rep summary 				&
+	claim-nbr			&
+	doc-nbr				&
+	clmhdr-pat-ohip-id-or-chart	&
+	clmhdr-loc			&
+	mess-code
+
+build $pb_obj/r085a

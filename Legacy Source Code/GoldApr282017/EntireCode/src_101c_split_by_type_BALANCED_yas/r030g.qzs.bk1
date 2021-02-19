@@ -1,0 +1,88 @@
+; DOC: R030G.QZS
+; DOC: LIST OF CLAIMS WITH "H"OLD STATUS
+; DOC: TO CHECK AND MAKE SURE CLAIMS ARE NOT STALE DATED.
+; DOC: RUN FOR: THEGLA
+; NAME   : R030G.QZS
+; PURPOSE: LIST OF ALL CLAIMS WHITH "H"OLD STATUS SET SINCE A
+;          SPECIFIED DATE. SORTED BY 3 CHARACTERS IN THE REFERENCE
+;          FIELD AND THEN BY CLAIM NUMBER.
+;
+;  MODIFICATION HISTORY:
+;
+;  YY/MMM/DD     BY WHOM        WHY
+;  91/MAY/14     YASEMIN        ORIGINAL
+;  93/MAY/25     YASEMIN        EXCLUDE IF PAT-MESS-CODE NE " "
+;  95/MAY/29     YASEMIN        EXCLUDE CLINIC 81
+;
+can clear
+
+set report nolimit
+
+access f002-claims-mstr                                         &
+  link clmhdr-pat-ohip-id-or-chart viaindex key-pat-mstr        &
+    to f010-pat-mstr
+
+choose key-clm-type "B"
+
+def date-from date = parm prompt "ENTER FROM DATE (YYYYMMDD): "
+def date-to   date = parm prompt "ENTER  TO  DATE (YYYYMMDD): "
+
+def clm-ref char*3 = clmhdr-reference [1:3]
+def clm-id char*10 = clmhdr-claim-id [1:2] + clmhdr-claim-id [4:8]
+
+def x-balance num*7 =       &
+    clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+sel f002-claims-mstr if clmhdr-oma-suff-adj = "000000"   &
+  and clmhdr-batch-type = "C"                            &
+  and clmhdr-tape-submit-ind = "H"
+
+sel if clmhdr-submit-date ge  date-from            &
+   and clmhdr-submit-date le  date-to              &
+   and x-balance > 0                               &
+   and pat-mess-code = " "
+
+sort on clm-ref on clm-id
+
+set subfile name r030g1 keep
+rep summary clm-ref clm-id key-clm-batch-nbr key-clm-claim-nbr x-balance
+build $pb_obj/r030g1
+
+can clear
+set default
+set report nolimit
+set report device disc name r030g
+set page length 60 width 132
+set formfeed
+
+access *r030g1                                          &
+     link ("B",key-clm-batch-nbr, key-clm-claim-nbr) to &
+     key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr &
+     of f002-claims-mstr
+
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+select if (clmhdr-adj-oma-cd of f002-claims-mstr <> "0000" &
+           and clmhdr-adj-oma-cd of f002-claims-mstr <> "ZZZZ") &
+       and x-clinic ne "81"
+
+sorted on clm-ref on clm-id
+
+page heading             &
+;y2k
+  tab 1   sysdate        &
+  tab 50 "HOLD CLAIMS"   &
+skip 2
+
+heading at clm-ref 					&
+	clm-ref    skip 2
+
+;y2k
+rep clm-id print at clm-id clmdtl-sv-date pic "^^^^/^^/^^"
+
+footing at clm-ref skip page
+
+
+build $pb_obj/r030g2
+
+  

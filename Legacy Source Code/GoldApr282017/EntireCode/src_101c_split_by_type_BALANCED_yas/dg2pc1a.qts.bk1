@@ -1,0 +1,370 @@
+;#> PROGRAM-ID.     DG2PC1.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    R.M.A. VERSION
+;
+;    PROGRAM PURPOSE : EXTRACT DATA FROM DOCTOR MSTR / CHEQUE REG
+;		       INTO INDIVIDUAL DEPARTMENTAL SUBFILES
+;			- FIRST SET OF SUBFILES (SEE DG2PC1B.QTS
+;			  FOR REMAINDER OF SUBFILES)
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     92/MAR/02 B.E.         - ORIGINAL
+;     92/DEC/22 B.E.         - VIRT. MEM. PROBLEM - REMOVE DEPT 6
+;     94/FEB/11 M.C.	     - ADD PAY-SUB-CODE IN SUBFILE
+;     94/OCT/21 B.E.         - VIRT. MEM. PROBLEM - REMOVE DEPT 5
+;     95/OCT/25 M.C.	     - ACCESS STMT HAS EXPANDED TO 28 FILES,
+;			       ONLY ONE SUBFILE TO BE CREATED. DG2PC1B
+;			       WILL SPLIT OUT SUBFILES BY DEPT
+;     95/OCT/25 M.C.         - INCLUDE CEIEXP, GTYPEA, GUARANTEE-FLAG
+;
+;     95/NOV/02 YAS.         - REMOVE FROM ACCESS AND CALC-EARN
+;                              MICV/MICM/MISJ/MISP/MOHR INSTEAD
+;                              ADD MANTRA/MANTRR
+;     95/NOV/06 YAS.         - COMMENT GTYPEA-DOL-YTD & GTYPEA-CNT-YTD
+;			       AND REPLACE BY GTYPEA-DOL-MTH &
+;			       & GTYPEA-CNT-MTH
+;			     - CHANGE THE FORMULA FOR MISC-DOL-YTD &
+;			       MISC-CNT-YTD, USE (TOTINC - BILL) INSTEAD
+;			       OF GTYPEA
+;			     - ADD F119-BILL TO ACCESS STATEMENT
+;     95/NOV/22 YAS.         - ADD F119-SPEINC TO ACCESS STAEMENT
+;			       AND ADD SPEINC TO EARN-DOL-YTD
+;     95/DEC/18 YAS.         - ADD PAYRED, TRRMAN, TRAMAN, REDPAY,MAN009
+;	                       TAKE OUT MAN001/002/003/004
+;     96/JAN/19 YAS.         - ADD SPEING TO ACCESS AND EARN-DOL-YTD
+;     96/FEB/16 YAS.         - ADD MAN002
+;     96/MAR/18 YAS.         - ADD TRAMNN, TAKE OUT EARREF/EFTCAN/SPEING
+;   1999/May/19 S.B.	     - Y2K checked.
+;
+;     CAN ONLY ADD TWO MORE COMP-CODE TO LINK (YAS)
+
+can clear
+set default
+set stacksize 10000
+set verify errors
+set process nolimit
+set lock record update
+
+;-------------------------------------------------------------------------------
+request download_doc_1a on edit        errors report &
+                        on calculation errors report
+
+;GLOBAL TEMP W-CURRENT-EP-NBR        NUMERIC
+;GLOBAL TEMP W-CURRENT-EP-NBR-MINUS1 NUMERIC
+
+;-------------------------------------------------------------------------------
+; PAY CODE 0/1/2/3/4
+;
+;
+;REQUEST DG2PC_BUILD_REC                 &
+;               ON EDIT        ERRORS REPORT    &
+;               ON CALCULATION ERRORS REPORT
+
+access constants-mstr-rec-6                             &
+        link current-ep-nbr                             &
+        viaindex f112-ep-doc-nbr                        &
+        to   ep-nbr of f112-pycdceilings                &
+        link doc-nbr of f112-pycdceilings                             &
+        to   doc-nbr of f020-doctor-mstr                              &
+        link doc-nbr of f112-pycdceilings,                            &
+             "TOTINC"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                       alias f119-totinc          optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "INCEXP"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                       alias f119-incexp          optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "CEIEXP"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                       alias f119-ceiexp          optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "PAYPOT"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                       alias f119-paypot          optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "ADVOUT"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-advout         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MANPAY"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-manpay         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MANPY"                                                  &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-manpy          optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "ADJINC"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-adjinc         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MAN005"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-man005         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MAN006"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-man006         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MAN007"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-man007         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MAN008"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-man008         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MAN009"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-man009         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "CANCEL"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-cancel         optional            &
+        link doc-nbr of f112-pycdceilings,                            &
+             "GTYPEA"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-gtypea        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MANTRA"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-mantra        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MANTRR"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-mantrr        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "BILL"                                                   &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-bill          optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "SPEINC"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-speinc        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "PAYRED"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-payred        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "TRRMAN"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-trrman        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "TRAMAN"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-traman        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "REDPAY"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-redpay        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "MAN002"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-man002        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "TRAMNN"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-tramnn        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "OVRAGE"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-ovrage        optional             &
+        link doc-nbr of f112-pycdceilings,                            &
+             "SPEING"                                                 &
+        to   doc-nbr,                                                 &
+             comp-code    of f119-doctor-ytd                          &
+                        alias f119-speing        optional
+
+choose const-rec-nbr 6
+
+define calc-earn-dol-1 zoned*8 signed                           &
+    = (  amt-ytd of f119-paypot                                 &
+       - amt-mtd of f119-advout                                 &
+      )                                                         &
+                if (    record f119-paypot   exists             &
+                    and record f119-advout   exists             &
+                   )                                            &
+ else      amt-ytd of f119-paypot                               &
+                if      record f119-paypot   exists             &
+ else (0 - amt-ytd of f119-advout)                              &
+                if      record f119-advout   exists             &
+ else 0
+
+define calc-earn-dol   zoned*8 signed                           &
+    =   calc-earn-dol-1                                         &
+      + amt-ytd of f119-manpay                                  &
+      + amt-ytd of f119-manpy                                   &
+      + amt-ytd of f119-man002                                  &
+      + amt-ytd of f119-man005                                  &
+      + amt-ytd of f119-man006                                  &
+      + amt-ytd of f119-man007                                  &
+      + amt-ytd of f119-man008                                  &
+      + amt-ytd of f119-man009                                  &
+      + amt-ytd of f119-cancel                                  &
+      + amt-ytd of f119-mantra                                  &
+      + amt-ytd of f119-mantrr                                  &
+      + amt-ytd of f119-speinc                                  &
+      + amt-ytd of f119-payred                                  &
+      + amt-ytd of f119-trrman                                  &
+      + amt-ytd of f119-traman                                  &
+      + amt-ytd of f119-redpay                                  &
+      + amt-ytd of f119-tramnn                                  &
+      + amt-ytd of f119-ovrage                                  &
+      + amt-ytd of f119-speing
+
+def bill-g-dol-ytd  zoned*6 signed = amt-ytd of f119-totinc / 100
+def bill-g-cnt-ytd char*2                                       &
+    = ascii(mod(absolute(amt-ytd of f119-totinc),100),2)        &
+                if record f119-totinc   exists                  &
+ else "00"
+
+; (REMOVE CEIEXP FROM 'INCOME MINUS EXPENSE' BY ADDING BACK INTO CALC)
+; (95/01/20 CEIEXP MOVED TO SEPARATE COLUMN - REMOVED FROM THIS CALC)
+def bill-n-dol-ytd  zoned*6 signed =   (  amt-ytd of f119-incexp    &
+;;;;;;;                                 + AMT-YTD OF F119-CEIEXP    &
+                                       )                            &
+                                     / 100
+def bill-n-cnt-ytd char*2                                       &
+    = ascii(mod(absolute(amt-ytd of f119-incexp ),100),2)       &
+                if record f119-incexp   exists                  &
+ else "00"
+
+def earn-dol-ytd zoned*6 signed    = calc-earn-dol / 100
+def earn-cnt-ytd char*2                                         &
+    = ascii(mod(absolute(calc-earn-dol),100),2)
+
+;YAS - MODIFY MISC TO SHOW MISCELLANEOUS NOT GTYPEA
+;MC  - MISCELLANEOUS IS CALCULATED FROM TOTINC - BILL
+
+;DEF MISC-DOL-YTD ZONED*6 SIGNED    = AMT-MTD OF F119-GTYPEA / 100
+;DEF MISC-CNT-YTD CHAR*2                                         &
+;    = ASCII(MOD(ABSOLUTE(AMT-MTD OF F119-GTYPEA),100),2)       &
+;               IF RECORD F119-GTYPEA  EXISTS                   &
+;ELSE "00"
+
+def amt-ytd-misc zoned*8 signed = amt-ytd of f119-totinc	&
+				- amt-ytd of f119-bill
+
+def misc-dol-ytd zoned*6 signed = amt-ytd-misc / 100
+
+def misc-cnt-ytd char*2 					&
+ =     ascii(mod(absolute(amt-ytd-misc),100),2)                 &
+	if record f119-totinc exists or record f119-bill exists &
+ else "00"
+
+def ceiexp-dol-ytd zoned*6 signed                               &
+      =   amt-ytd of f119-ceiexp                                &
+        / 100                     if record f119-ceiexp exists  &
+  else  0
+def ceiexp-cnt-ytd char*2                                       &
+    = ascii(mod(absolute(amt-ytd of f119-ceiexp),100),2)        &
+                                  if record f119-ceiexp  exists &
+else "00"
+;YAS - LINDA WANT IT TO SEE MTD GTYPEA IN THIS COLUMN WICH IS SAME AS
+;      MISC-DOL-YTD
+;DEF GTYPEA-DOL-YTD ZONED*5 SIGNED                               &
+;     =   AMT-YTD OF F119-GTYPEA                                &
+;       / 100                     IF RECORD F119-GTYPEA EXISTS  &
+; ELSE  0
+;DEF GTYPEA-CNT-YTD CHAR*2                                       &
+;   = ASCII(MOD(ABSOLUTE(AMT-YTD OF F119-GTYPEA),100),2)        &
+;                                 IF RECORD F119-GTYPEA  EXISTS &
+;ELSE "00"
+
+; MONTHLY VALUES ARE NOT USED WITHIN LOTUS SPREAD SHEET SUBSYSTEM
+; BUT THE IMPORT FILE HAS COLUMNS ASSIGNED. THEREFORE THE FIELDS ARE
+; DEFINED HERE BUT SET TO ZERO
+def bill-g-dol-mth zoned*5 signed = 0
+def bill-g-cnt-mth char*2 = "00"
+def bill-n-dol-mth zoned*5 signed = 0
+def bill-n-cnt-mth char*2 = "00"
+def earn-dol-mth zoned*5 signed = 0
+def earn-cnt-mth char*2 = "00"
+def misc-dol-mth zoned*5 signed = 0
+def misc-cnt-mth char*2 = "00"
+; THESE NEW FIELDS BEING ADDED TO LOTUS SUBSYSTEM ARE *NOT* DEFINED
+; SINCE THE MONTHLY VALUES ARE STILL NOT USED WITHIN LOTUS AND
+; THUS WEREN'T DEFINED. THE YTD VALUES ARE CALCULATED ABOVE.
+;DEF CEIEXP-CNT-MTH CHAR*2 = "00"
+;DEF CEIEXP-DOL-MTH CHAR*2 = "00"
+;DEF GTYPEA-DOL-MTH ZONED*5 SIGNED = 0
+;DEF GTYPEA-CNT-MTH CHAR*2 = "00"
+
+def gtypea-dol-mth zoned*6 signed    = amt-mtd of f119-gtypea / 100
+def gtypea-cnt-mth char*2                                         &
+     = ascii(mod(absolute(amt-mtd of f119-gtypea),100),2)	  &
+	if record f119-gtypea exists				  &
+else "00"
+
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+def x-period    char*1 = '.'
+
+def x-seqno   cha*3 = '000'
+
+def x-guarantee-flag char*1 = "G"                       &
+    if   doc-yrly-ceiling-guar-perc > 0                 &
+      or doc-yrly-ceil-guar         > 0
+
+@if      rma
+  def x-dept    cha*2 = ascii(doc-dept   of f020-doctor-mstr,2)
+@elseif  hsc
+  def x-dept    cha*4 = ascii(doc-dept-2 of f020-doctor-mstr,4)
+@else
+** error ** conditional compile required for this program
+@endif
+def x-st      cha*1 = " "
+def x-doc-nbr cha*3 = ascii(doc-nbr of f020-doctor-mstr,3)
+def x-class   cha*2 = doc-full-part-ind of f020-doctor-mstr
+
+
+
+subfile dg2pc1   keep                               include  	&
+x-seqno, x-dept, x-st, x-doc-nbr,   				 &
+doc-name of f020-doctor-mstr, doc-inits of f020-doctor-mstr,     &
+x-class, doc-ep-pay-code of f020-doctor-mstr,                       &
+doc-ep-pay-sub-code of f020-doctor-mstr,			&
+bill-g-dol-mth, x-period,bill-g-cnt-mth,			 &
+bill-g-dol-ytd, x-period,bill-g-cnt-ytd,                       &
+bill-n-dol-mth, x-period,bill-n-cnt-mth,                       &
+bill-n-dol-ytd, x-period,bill-n-cnt-ytd,                       &
+earn-dol-mth,   x-period,earn-cnt-mth,                         &
+earn-dol-ytd,   x-period,earn-cnt-ytd,                         &
+misc-dol-mth,   x-period,misc-cnt-mth,                         &
+misc-dol-ytd,   x-period,misc-cnt-ytd, 				 &
+ceiexp-dol-ytd, x-period  ,ceiexp-cnt-ytd,			 &
+gtypea-dol-mth, x-period  ,gtypea-cnt-mth,			 &
+x-guarantee-flag, x-cr
+
+build $pb_obj/dg2pc1a
+  

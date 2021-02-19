@@ -1,0 +1,175 @@
+; DOC: R138_CSV.QZS
+; DOC: DEFICIT REPORT
+; DOC: SORT BY COMPANY/DEPT
+; DOC: RUN FOR: Ross  
+;
+;PROGRAM PURPOSE : DEFICIT REPORT FOR PAYROLL
+;
+;DATE           WHO       DESCRIPTION
+;2015/Aug/11	MC	  ORIGINAL - this program will be run in $cmd/teb3; thus ep nbr has changed (+1)  
+;2016/Mar/16    MC1       this has cloned into new program r138_csv.qts as the first pass, and now this will be
+;			  the second pass, change program accordingly to show defict and advout amount from the subfile
+;			  r138_csv_doc.sf which is created from r138_csv.qts and as well include error flag '***'
+;			  if deficit amount <> advout amount
+;2016/Sep/13    MC2       change the column headings for DEFICIT and ADVOUT as Yasemin suggested 
+
+can clear
+set rep nolimit
+set rep device disc name r138_csv
+set page length 0  width 132
+set nohead
+
+
+; MC1
+;access constants-mstr-rec-6			&
+;	link  current-ep-nbr            	&
+;	 to   ep-nbr  of f110-compensation	&
+;	link  doc-nbr				&
+;	 to   doc-nbr of f020-doctor-mstr opt  	&
+;	link  doc-dept				&
+;	 to   dept-nbr of f070-dept-mstr opt
+access *r138_csv_doc
+
+;choose const-rec-nbr 6
+
+;sel if comp-code = 'DEFIC'
+; MC1 - end
+
+sort on dept-company on doc-dept on doc-nbr
+
+
+def x-delimiter char*1 = "~"
+
+def x-period char*1 = "."
+
+; MC1
+;def x-amt-mtd-sign char*1 = "-"           	if amt-net < 0       &
+def x-amt-deficit-sign char*1 = "-"           		if deficit-amt < 0       &
+                else " "
+;def x-amt-mtd-dollars = abs(amt-net) / 100 	if amt-net <> 0      &
+def x-amt-deficit-dollars = abs(deficit-amt) / 100 	if deficit-amt <> 0      &
+                else  0
+;def x-amt-mtd-cents   = mod(abs(amt-net),100)   if amt-net <> 0      &
+def x-amt-deficit-cents   = mod(abs(deficit-amt),100)   if deficit-amt <> 0      &
+                else  0
+; MC1 - end
+
+; MC1
+def x-amt-advout-sign char*1 = "-"           		if advout-amt < 0       &
+                else " "
+def x-amt-advout-dollars = abs(advout-amt) / 100 	if advout-amt <> 0      &
+                else  0
+def x-amt-advout-cents   = mod(abs(advout-amt),100)     if advout-amt <> 0      &
+                else  0
+; MC1 - end
+
+
+def x-company	   char*1  = ascii(dept-company) 
+
+def x-dept         char*4  = '"' + ascii(doc-dept,2) + '"'
+
+def x-doc-nbr      char*5  = '"' + doc-nbr     + '"'
+
+def x-ep-nbr       char*6  = ascii(ep-nbr)       
+
+def x-pay-code     char*2  = doc-ep-pay-code + doc-ep-pay-sub-code
+
+; MC1
+;def x-amt-mtd-alpha char*10 =  pack(trunc(lj(x-amt-mtd-sign +       		&
+;                                              ascii(x-amt-mtd-dollars) +     	&
+;                                              x-period +                        &
+;                                              ascii(x-amt-mtd-cents,2))))
+
+def x-deficit-amt-alpha char*10 =  pack(trunc(lj(x-amt-deficit-sign +       	&
+                                              ascii(x-amt-deficit-dollars) +    &
+                                              x-period +                        &
+                                              ascii(x-amt-deficit-cents,2))))
+
+def x-advout-amt-alpha char*10 =  pack(trunc(lj(x-amt-advout-sign +       	&
+                                              ascii(x-amt-advout-dollars) +     &
+                                              x-period +                        &
+                                              ascii(x-amt-advout-cents,2))))
+
+def x-error-flag char*3 = '***' 			&
+	if deficit-amt <> advout-amt
+
+def x-head char*132 =						&
+                'COMPANY'                                       &
+	     +  x-delimiter					&
+             +  'DEPT'                               		&
+	     +  x-delimiter					&
+             +  'DOC#'                               		&
+	     +  x-delimiter					&
+             +  'DOC NAME'                           		&
+	     +  x-delimiter					&
+; MC2
+;            +  'DEFICIT AMT'                                   &
+             +  'F110-DEFICIT'                                   &
+	     +  x-delimiter					&
+;            +  'ADVOUT AMT'                                    &
+             +  'F119-ADVOUT'                                   &
+; MC2 - end
+	     +  x-delimiter					&
+	     +  'EP NBR'  					&
+	     +  x-delimiter					&
+             +  'PAY CODE' 					&
+	     +  x-delimiter					&
+             +  'ERROR FLAG' 
+	
+; MC1 - end
+
+
+def x-line char*132 =                                   &
+        lj(pack(                                        &
+                x-company       +                       &
+                x-delimiter  +                          &
+                x-dept          +                       &
+                x-delimiter  +                          &
+                x-doc-nbr       +                       &
+                x-delimiter  +                          &
+                doc-name        +                       &
+                x-delimiter  +                          &
+; MC1
+;               x-amt-mtd-alpha    +                    &
+                x-deficit-amt-alpha    +                &
+                x-delimiter  +                          &
+                x-advout-amt-alpha    +                &
+; MC1 - end
+                x-delimiter  +                          &
+                x-ep-nbr       +                        &
+                x-delimiter  +                          &
+; MC1
+;               x-pay-code                              &
+                x-pay-code   +                          &
+                x-delimiter  +                          &
+                x-error-flag                            &
+; MC1 - end
+                ) )
+
+
+initial heading							&
+; MC1
+;        tab  1  'COMPANY'                                       &
+;	tab  8  x-delimiter					&
+;        tab  9  'DEPT'                               		&
+;	tab 13  x-delimiter					&
+;        tab 14  'DOC#'                               		&
+;	tab 18  x-delimiter					&
+;        tab 19  'DOC NAME'                           		&
+;	tab 27  x-delimiter					&
+;        tab 28  'DEFICIT AMT'                                   &
+;	tab 39  x-delimiter					&
+;	tab 40  'EP NBR'  					&
+;	tab 46  x-delimiter					&
+;        tab 47  'PAY CODE' 
+	tab 01 x-head
+; MC1 - end
+
+
+report tab 01 x-line
+ 
+;------------------------------
+  
+
+build $pb_obj/r138_csv   
+

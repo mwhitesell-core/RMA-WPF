@@ -1,0 +1,145 @@
+; DOC: R070ATP.QZS
+; DOC: ACCOUNTS RECEIVABLE
+; DOC: SORT BY
+; DOC: RUN FOR: MUMC DIAGNOSTICS
+;
+;PROGRAM PURPOSE : ACCOUNTS RECEIVABLE (DETAIL REPORT)
+;                  THIS IS THE FIRST OF A SERIES OF PROGRAMS TO CREATE
+;		   THE R070ATP.TXT REPORT (R070BTP.TXT  AND R070CTP.TXT
+;		   ARE CONCATENATED TO R070ATP.TXT FOR FINAL REPORT).
+;
+
+;DATE       BY WHOM   DESCRIPTION
+;92/06/22   YASEMIN   ORIGINAL
+;
+;03/dec/17  A.A.      alpha doctor nbr
+;2010/02/04 yas       - add new clinic 66
+;2014/03/27 MC1	      - calculate balance due based on clmhdr-tot-claim-ar-ohip for all agents;
+;			to be consistent with r070a.cbl
+
+can clear
+set default
+set rep nolimit
+
+ access f002-claims-mstr        	                &
+   link clmhdr-pat-ohip-id-or-chart                     &
+     to key-pat-mstr of f010-pat-mstr   opt             &
+;!   link (floor(key-clm-batch-nbr / 10000000))           &
+   link (nconvert(key-clm-batch-nbr[1:2]))           &
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec   opt
+
+;!choose key-clm-type "B", key-clm-batch-nbr 600000000 to 659999999
+choose key-clm-type "B", key-clm-batch-nbr '60000000' to '66ZZZ999'
+
+; NOTE: PAYMENTS STORED AS NEGATIVE NUMBER, THEREFORE ADD TO FIND DIFFERENCE
+def x-balance-due zoned*7 signed 				&
+     =  clmhdr-tot-claim-ar-ohip				&
+; MC1
+;      + clmhdr-manual-and-tape-payments  if clmhdr-agent-cd = 0	&
+      + clmhdr-manual-and-tape-payments 
+;  else  clmhdr-tot-claim-ar-oma         			&
+;      + clmhdr-manual-and-tape-payments
+; MC1 - end
+
+select f002-claims-mstr				  &
+   if     clmhdr-oma-suff-adj = "000000"          &
+      and clmhdr-batch-type = "C"		  &
+      and x-balance-due  ne  0
+
+def x-pat-id-info char*12					&
+;y2k
+      = pat-ohip-mmyy  if    record f010-pat-mstr exists 	&
+			 and pat-health-nbr =  0		&
+   else ascii(pat-health-nbr,10) if    record f010-pat-mstr exists &
+				   and pat-health-nbr ne 0     &
+   else pat-chart-nbr
+
+;FIX #4 - REMOVE DECIMALS AND COMPARE AGAINST < 85 AND > 85
+def x-sort-record-status num*1 = 9 if    x-balance-due > -86    &
+                                     and x-balance-due <  86    &
+                          else   0
+
+;FIX#1 - FLOOR NOT NEED ON SUBTRACTION, AND ALSO DON"T USE
+;STRING EXTRACTION [5:2] FOR NUMERIC PED FIELD - USE FLOOR / 10000
+;y2k
+def x-age-yy num*4 = (iconst-date-period-end-yy   &
+;y2k
+                        -  (floor(clmhdr-date-period-end / 10000)))
+
+;FIX #2 - DONT USE FLOOR IN 1ST LINE, NOT PICKING OUT PED MTH CORRECLY IN 2ND LINE
+;y2k
+def x-age-mm num*2 = (iconst-date-period-end-mm   &
+;y2k
+                        - mod(floor(clmhdr-date-period-end / 100),100))
+
+;y2k
+def x-mth-old num*3 = (x-age-yy * 12) + x-age-mm
+
+def x-age-category num*1 = 0 if x-mth-old < 1     &
+                    else   1 if x-mth-old < 2     &
+                    else   2 if x-mth-old < 3     &
+                    else   3 if x-mth-old < 4     &
+                    else   4
+
+def x-day-old cha*3 = "CUR" if x-mth-old < 1     &
+               else   "30"  if x-mth-old < 2     &
+               else   "60"  if x-mth-old < 3     &
+               else   "90"  if x-mth-old < 4     &
+               else   "120"
+
+def x-sub-nbr num*1 = nconvert(clmhdr-sub-nbr)  &
+                   if clmhdr-agent-cd = 6       &
+                 else 0
+
+;!def x-clm-id cha*10 = clmhdr-claim-id[1:2] + clmhdr-claim-id[4:8]
+def x-clm-id cha*10 = clmhdr-claim-id[1:10]
+
+def x-prof-bill zoned*7 signed = clmhdr-tot-claim-ar-ohip  &
+                                 - clmhdr-amt-tech-billed
+
+def x-prof-paid zoned*7 signed = (clmhdr-manual-and-tape-payments  &
+                                 + clmhdr-amt-tech-paid) * -1
+
+def x-prof-due zoned*7  signed = x-prof-bill - x-prof-paid
+
+def x-tech-due zoned*6 signed = clmhdr-amt-tech-billed   &
+                                - clmhdr-amt-tech-paid
+
+sorted on x-clm-id
+
+set subfile name  r070atp  keep at x-clm-id
+
+report summary	           	    &
+    x-sort-record-status            &
+    clmhdr-agent-cd                 &
+    x-age-category                  &
+    x-clm-id                        &
+    clmhdr-doc-dept                 &
+    iconst-clinic-nbr-1-2           &
+    iconst-clinic-nbr               &
+    iconst-clinic-name              &
+;y2k
+    iconst-date-period-end          &
+    clmhdr-pat-acronym              &
+    x-pat-id-info                   &
+    clmhdr-amt-tech-billed          &
+    clmhdr-amt-tech-paid            &
+    x-balance-due                   &
+;y2k
+    clmhdr-date-period-end          &
+    x-day-old                       &
+    clmhdr-orig-batch-nbr           &
+    clmhdr-reference                &
+    x-pat-id-info                   &
+    x-sub-nbr                       &
+    x-tech-due                      &
+    x-prof-bill                     &
+    x-prof-paid                     &
+    x-prof-due                      &
+    key-clm-batch-nbr               &
+    key-clm-claim-nbr
+
+build $pb_obj/r070atp
+
+
+  

@@ -1,0 +1,30 @@
+cancel clear
+set process nolimit
+set lock record update
+
+request ext_f110_totexp
+access f110-compensation
+choose doc-nbr, ep-nbr, process-seq, comp-code 'TOTEXP'
+sorted on doc-nbr
+
+temp totexp-gross zoned*10 numeric
+item totexp-gross  = totexp-gross  + amt-gross        reset at doc-nbr
+temp totexp-net zoned*10 numeric
+item totexp-net  = totexp-net  + amt-net        reset at doc-nbr
+subfile f110_totexp keep at doc-nbr include &
+	doc-nbr, comp-code, totexp-net , totexp-gross
+
+request verify_f119
+access *f110_totexp		&
+	link doc-nbr,		&
+	     comp-code,		&
+	     'A'		&
+	 to doc-nbr,		&
+	    comp-code,		&
+	    rec-type of f119-doctor-ytd opt
+
+subfile f119_totexp_not_exist keep if not record f119-doctor-ytd exists 	&
+	include f110_totexp
+
+subfile f119_totexp_exist keep if record f119-doctor-ytd exists		&
+	include f110_totexp, amt-ytd

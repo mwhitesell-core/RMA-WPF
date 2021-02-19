@@ -1,0 +1,42 @@
+; PM14.QZS
+; CREATE TEMPORARY FILE OF TIMESHEET SUMMARIES BY EMP-NUM
+; 870902  B. MONTY    LINK TO RUN-DATE TO GET DATE SELECTION FOR
+;                     PROCESSING
+; 890920  M. CHAN     CHANGE THE PROGRAM TO CHOOSE FOR A SINGLE
+;		      PWO RUN INSTEAD OF SELECT
+set default
+set report limit 2000
+access ftimesht &
+;      LINK TO RECORD 0 OF RUN-DATE   &
+       link client to client of fclients   &
+       and  (characters(tsht-emp) + characters(pwo-num of ftimesht)) &
+ 	    to emppwo-key of femppwos &
+       and  tsht-emp of ftimesht to emp-num of femployees
+;DEFINE TEMP-PWO ZONED*5 UNSIGNED = PARM &
+;      PROMPT "Select PWO # without period (Enter New Line to select ALL): "
+choose pwo-num parm                     &
+       prompt "Choose PWO # without period (Enter New Line to select ALL): "
+
+define temp-yymm zoned*4 unsigned = parm &
+                        prompt "ENTER YYMM FOR INVOICING: "
+;DEF TEMP-YYMM ZONED*4 UNSIGNED = DATE-YYMM
+;SELECT IF (TSHT-YYMM = TEMP-YYMM AND PWO-NUM NE 0 AND TEMP-PWO EQ 0)    &
+;      OR (TSHT-YYMM = TEMP-YYMM AND PWO-NUM NE 0 AND TEMP-PWO = PWO-NUM)
+select ftimesht if tsht-yymm = temp-yymm
+
+define temp-bbill numeric*8                 &
+       = tot if billable = ' '  &
+       else 0
+define temp-nbill numeric*8                 &
+       = tot if billable = '*'  &
+       else 0
+def x-bill-rate = bill-rate if daily-rate = 0 else daily-rate
+def x-bill-type char*1 = "H" if daily-rate = 0 else "D"
+sort on client of ftimesht on pwo-num of ftimesht on tsht-emp of ftimesht
+report summary client pwo-num emp-num of femployees &
+;      TEMP-BBILL SUBTOTAL TEMP-NBILL SUBTOTAL BILL-RATE TEMP-YYMM
+   temp-bbill subtotal temp-nbill subtotal x-bill-rate temp-yymm  &
+   x-bill-type
+set subfile at tsht-emp name tempinvoicesb keep
+build $pb_obj/pm14
+  

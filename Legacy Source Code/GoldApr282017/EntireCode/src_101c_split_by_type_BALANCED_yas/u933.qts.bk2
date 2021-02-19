@@ -1,0 +1,276 @@
+; Program: u933.qts
+; Purpose: create payroll transactions for ICU doctors
+
+; 94/JUN/22	M.C.	- ORIGINAL (SMS 145)
+;			- ICU/APP FOR CLINIC 81 AGENT 8
+; 98/Sep/22     B.E.    - added "set lock file update" statement
+; 00/nov/06	B.E.	- total billings reduced by 95%S
+; 00/feb/06 	B.E.	- added logic to obtain current adjustment/payments
+;			  for doctors
+;
+
+can clear
+set process nolimit
+set lock file update
+
+run summ_claims
+
+request one
+
+access icu-app-file
+
+sort on doc-nbr 			&
+     on clmhdr-pat-ohip-id-or-chart	&
+     on clmdtl-sv-date
+
+temp x-nbr-claims
+item x-nbr-claims = x-nbr-claims + 1 at clmdtl-sv-date reset at doc-nbr
+
+temp x-nbr-svcs
+item x-nbr-svcs = x-nbr-svcs + clmdtl-nbr-serv reset at doc-nbr
+
+temp x-tot-fees-billed
+item x-tot-fees-billed = x-tot-fees-billed + clmdtl-fee-ohip reset at doc-nbr
+
+temp x-tot-adjustments
+item x-tot-adjustments = 0
+
+subfile u933_claim_adjust_totals   keep at doc-nbr      include         &
+        doc-nbr, 							&
+	x-nbr-claims, 							&
+	x-nbr-svcs,             					&
+        x-tot-fees-billed,                                              &
+        x-tot-adjustments
+
+;------------------------------------------------------------
+request u933_2_get_current_adjustments 
+;------------------------------------------------------------
+; Purpose: pickup adjustments that affect ICU payroll calculations and
+;          bring them into f110 as ICUADJ MINUS "R"evenue calculation
+;
+
+access f001-batch-control-file  &
+  link "B" , batctrl-batch-nbr                                &
+  to   key-clm-type, key-clm-batch-nbr of f002-claims-mstr      &
+  link (floor(batctrl-batch-nbr / 10000000))                    &
+  to   iconst-clinic-nbr-1-2 of  iconst-mstr-rec  opt           &
+  link (nconvert(clmhdr-claim-id[4:3]))                         &
+  to   doc-nbr of f020-doctor-mstr  opt
+
+use $use/icu_depts.def nol
+
+choose batctrl-batch-nbr 810000000 to 819999999 ; clinic 81 claims only
+
+; (current PED adjustments only)
+select f001-batch-control-file                                  &
+        if    (   (     batctrl-batch-type = "A"                &
+                   and (   batctrl-adj-cd = "B"                 &
+                        or batctrl-adj-cd = "R"                 &
+                       )                                        &
+                  )                                             &
+               or (     batctrl-batch-type = "P"                &
+                    and batctrl-adj-cd     = "M"                &
+                  )                                             &
+             )
+
+select if batctrl-date-period-end  = ascii(iconst-date-period-end,8) 
+
+select f002-claims-mstr                                              &
+   if    clmhdr-oma-suff-adj = "000000"  &; PICK HEADER REC"S ONLY
+     and clmhdr-doc-dept = icu-dept-1   ; clinic 81 ICU doctors only
+
+def doc-nbr zoned*3 unsigned = nconvert(clmhdr-claim-id[4:3])
+
+sorted on doc-nbr
+
+temp x-nbr-claims
+item x-nbr-claims = 0
+temp x-nbr-svcs
+item x-nbr-svcs = 0
+temp x-tot-fees-billed
+item x-tot-fees-billed = 0
+temp x-tot-adjustments
+item x-tot-adjustments = clmhdr-tot-claim-ar-ohip 
+
+subfile u933_claim_adjust_totals   keep at doc-nbr      include         &
+        doc-nbr, 							&
+	x-nbr-claims, 							&
+	x-nbr-svcs,             					&
+        x-tot-fees-billed,                                              &
+        x-tot-adjustments
+
+request u933_3_merge_doctors_claim_adj_records
+
+access *u933_claim_adjust_totals
+
+sort on doc-nbr
+
+temp tot-nbr-claims
+item tot-nbr-claims = x-nbr-claims + x-nbr-claims
+temp tot-nbr-svcs
+item tot-nbr-svcs = tot-nbr-svcs + x-nbr-svcs
+
+temp tot-fees-billed
+item tot-fees-billed = tot-fees-billed + x-tot-fees-billed
+temp tot-adjustments
+item tot-adjustments = tot-adjustments + x-tot-fees-billed
+
+subfile u993_totals keep at doc-nbr include 				&
+  doc-nbr,								&
+  x-nbr-claims, 							&
+  x-nbr-svcs,             						&
+  tot-fees-billed,							&
+  tot-adjustments
+
+request u933_4_caculate_comp_codes
+
+set process nolimit
+
+access *u993_totals						&
+   link doc-nbr							&
+     to doc-nbr of f020-doctor-mstr opt 			&
+   link 81							&
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+def x-clawback-percent = parm prompt  "CLAWBACK % (99.99): "
+def x-charge-per-claim = parm prompt "RMA CHARGE PER CLAIM: "
+ 
+def x-net-fees 		= (  tot-fees-billed 			&
+			   - tot-adjustments			&
+			  )
+def x-less-clawback 	= (  x-net-fees  			&
+   			   * x-clawback-percent			&
+			  )					&
+		         / 100
+
+def x-tot-billing 	= x-net-fees - x-less-clawback
+def x-tot-billing-at-95%= x-tot-billing * .95
+def x-amt-holdback-icu	= x-tot-billing - x-tot-billing-at-95%
+def x-rma-icu-charge 	= x-nbr-claims * x-charge-per-claim * 100
+def x-gst 		= x-rma-icu-charge  * .07
+def x-tot-exp 		= x-rma-icu-charge + x-gst
+def x-net 		= x-tot-billing-at-95% - x-tot-exp
+
+
+temp x-comp-code char*6
+temp x-factor
+temp x-units
+temp x-amt-mtd
+temp x-amt-ytd
+
+item x-comp-code= "NBRCLM"
+item x-factor	= x-charge-per-claim * 10000
+item x-units	= x-nbr-claims
+item x-amt-mtd	= x-nbr-claims * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= x-nbr-claims * 100
+subfile u933a2  keep include					&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "NBRSVC"
+item x-factor	= 0
+item x-units	= x-nbr-svcs
+item x-amt-mtd	= x-nbr-svcs * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= x-nbr-svcs * 100
+
+
+subfile u933a2  keep alias  u933a2-nbrsvc  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILLIC"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= tot-fees-billed
+item x-amt-ytd	= tot-fees-billed
+
+subfile u933a2  keep alias  u933a2-billic  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "CLAWBK"
+item x-factor	= x-clawback-percent * 10000
+item x-units	= 0
+item x-amt-mtd	= x-less-clawback
+item x-amt-ytd	= x-less-clawback
+subfile u933a2  keep alias  u933a2-clawbk  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTBIL"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing
+item x-amt-ytd	= x-tot-billing
+subfile u933a2  keep alias  u933a2-totbil  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "HOLDIC"
+item x-factor	= 5000	; 5%  
+item x-units	= 0
+item x-amt-mtd	= x-less-clawback
+item x-amt-ytd	= x-less-clawback
+
+subfile u933a2  keep alias  u933a2-holdic  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILL95"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing-at-95%
+item x-amt-ytd	= x-tot-billing-at-95%
+
+subfile u933a2  keep alias  u933a2-bill95  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ICUCHR"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-rma-icu-charge
+item x-amt-ytd	= x-rma-icu-charge
+
+subfile u933a2  keep alias  u933a2-rmachr  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ICUGST"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-gst
+item x-amt-ytd	= x-gst
+
+subfile u933a2  keep alias  u933a2-icugst  include		&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTEXP"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-exp
+item x-amt-ytd	= x-tot-exp
+
+subfile u933a2  keep alias  u933a2-totexp include			&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "PAYEFT"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-net
+item x-amt-ytd	= x-net
+
+subfile u933a2  keep alias  u933a2-payeft include			&
+	doc-nbr of u993_totals,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+subfile u933a1     keep include                         &
+        doc-nbr of u993_totals,                             &
+        doc-name, doc-dept, x-nbr-claims,        &
+        x-nbr-svcs, tot-fees-billed, x-less-clawback, x-tot-billing,    &
+        x-tot-billing-at-95%, x-rma-icu-charge, x-gst, x-tot-exp,  &
+        x-net, iconst-date-period-end
+
+build $obj/u933

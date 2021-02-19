@@ -1,0 +1,143 @@
+;
+;       ((C)) Dyad Infosys LTD  
+;
+;    PURPOSE: Print the STATEMENT OF EARNINGS for the physician
+;             PHASE II - READ SUBFILE AND CREATE ACTUAL STATEMENT
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+; 
+; 15/jun/01 be1   - cloned from r124b_rma.qzs
+
+; LEGEND for FORMAT OF OUTPUT
+; H 00,~mmmdd~ where mmm = Dept manager ID (Z + 2 digit dept nbr)  and dd = dept nbr
+; H 01,REGIONAL MEDICAL ASSOCIATES	 	 
+; H 02,YTD Statement of Earnings by Month (2015/05) - Regular?? Payments	 	 
+; H 10,Dr. L WRIGHT    01-06A		
+; H 11,Family Medicine		
+; SK01			
+; H 21,July,August,September, .........
+; TI01,ACTUAL REVENUE		
+; D 01	     Miscellaneous Revenue                             	0	0
+; SK01	     FF 1		
+; TO01	     Total                                             	0	0
+; SK01			
+;.
+;.
+; H 00, ...
+
+cancel clear
+set default
+set report nolimit
+set report dev disc name r124b_csv
+set page width 240 length 0
+set nohead
+set noformfeed
+
+access *r124a_xls                                               &
+	link doc-dept to dept-nbr of f070-dept-mstr opt		&
+	link dept-company to company-nbr of f123-company-mstr opt  
+
+define x-new-parm char*3 = "DEP"
+
+sort  on doc-dept                                               &
+      on doc-nbr                                                &
+      on comp-code-group                                        &
+      on process-seq             
+
+define x-comp-code-group-desc char*100                          &
+     =  "KEEP this LINE"      if comp-code = "PAYEFT"		&
+  else  "ACTUAL REVENUE"                       			&
+			      if comp-code-group of r124a_xls = "A" 	&
+  else  "EXPENSES"                                          		&
+			      if comp-code-group of r124a_xls = "C" 	&
+  else  "CLINIC CEILING PAYMENT"            				&
+			      if comp-code-group of r124a_xls = "F" 	&
+  else  "DEDUCTIONS"                                         		&
+			      if comp-code-group of r124a_xls = "G" 	&
+  else  "CURRENT STATUS"		                              	&
+                              if comp-code-group of r124a_xls = "J" 	&
+  else "DELETEthisLINE"       if x-line-text-xls[1:5] = "Total"		&
+  else "              "       if comp-code-group of r124a_xls = "B" &
+                              or comp-code-group of r124a_xls = "D" &
+                              or comp-code-group of r124a_xls = "E" &
+                              or comp-code-group of r124a_xls = "H" &
+                              or comp-code-group of r124a_xls = "I" &
+                              or comp-code-group of r124a_xls = "K" &
+                              or comp-code-group of r124a_xls = "L" &
+                              or comp-code-group of r124a_xls = "M" &
+                              or comp-code-group of r124a_xls = "N" &
+  else "?"
+
+def x-doc-dept char*5 =                                 &
+        doc-nbr           				&
+      + ascii(doc-dept,2)[1:2] 				&
+        			if x-new-parm = 'DOC'   &
+  else  'Z' + ascii(doc-dept,2)  			&
+      + ascii(doc-dept,2)[1:2] 				
+
+def x-flag char*5 				&
+	= "TI01," if x-comp-code-group-desc <> ""	
+
+;SLxx- skip lines xx
+define x-line-flag char*5                       		&
+     = x-flag if x-flag <> ""					&
+  else  "    ,"   	                             	 	&
+                   if    comp-code-group = "B"          & ;TOTINC
+                      or comp-code-group = "D"          & ;TOTEXP
+                      or comp-code-group = "H"          & ;TOTDED
+  else  "D 01,"    if    comp-code-group = "E"          & ;INCEXP
+                      or comp-code-group = "I"          & ;PAYEFT
+                      or comp-code-group = "K"          & ;INCTAR
+                      or comp-code-group = "L"          & ;STATUS
+  else  "SK02,"     if   comp-code-group = "M"          & ;MESSAGES
+                      or comp-code-group = "N"          & ;TOTxxx'S
+  else  "D 01," 
+
+def x-title-1 char*90                     &
+    =  "YTD Statement of Earnings by Month (" + ascii(current-ep-nbr)[1:4] + "/" + ascii(current-ep-nbr)[5:2] + ") - Payments"
+
+def yr-current char*4 = ascii(first-ep-nbr-of-cal-yr)[1:4]
+def yr-next    char*4 = asci(last-ep-nbr-of-cal-yr)[1:4] 
+
+heading at doc-nbr                                              &
+   tab  01 "H 00,"						&
+   tab  06 x-doc-dept						&
+  skip 1							&
+   tab  01 "H 01," 					 	&
+   tab  06 company-name 					&
+skip 1                                                          &
+   tab  01 "H 02," 						&
+   tab  06 x-title-1                                            &
+ skip 1                                                         &
+   tab  01 "H 10,"                                              &
+   tab  06 x-doc-id-info                                        &
+ skip 1                                                         &
+   tab  01 "H 11,"                                              &
+   tab  06 x-dept-name                                          &
+ skip 1                                                         &
+   tab  01 "H 20,"                       	 		&
+   tab  10 ","							&
+   tab  12 yr-current                   	 		&
+   tab  20 ",,,,,,"						&
+   tab  26 yr-next						&
+ skip 1                                                         &
+   tab  01 "H 21,"                       	 		&
+   tab  06 ",July,August,Sept,October,November,December,January,February,March,April,May,June,June YE,Current YTD" 	&
+ skip 1
+
+heading at comp-code-group                                      &
+  tab  01 x-line-flag                                           &
+  tab  06 x-comp-code-group-desc	
+
+report                                                          &
+  tab  01 "Dx01," 						&
+  tab  06 x-line-text-xls                                       
+
+footing at doc-nbr                                              &
+	"END"
+
+final footing "LAST LINE REPORT"
+
+build $pb_obj/r124b_xls
+  

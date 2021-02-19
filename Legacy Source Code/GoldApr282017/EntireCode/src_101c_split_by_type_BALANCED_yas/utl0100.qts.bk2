@@ -1,0 +1,47 @@
+; program: utl0100.qts
+; purpose: search f119-doctor-ytd for duplicate entries.
+;	   This is the 1st pass of process. If  duplicates are found, then
+;	   the doctor number and code are placed into subfile which is
+;	   is used to create report in 2nd pass.
+
+cancel clear
+
+run f119_duplicate_checking
+
+set default
+set process nolimit
+set lock file update
+
+request f119_check_for_duplicates
+
+access f119-doctor-ytd
+select if rec-type  = "A"	; ignore anything but transactions
+
+temp last-comp-code char*3
+temp last-doc-nbr zoned*e
+temp last-amt-mtd numeric 
+temp last-amt-ytd numeric 
+
+def dup-found-flag char*1 						&
+	= "Y" if    last-comp-code = comp-code of f119-doctor-ytd	&
+	        and last-doc-nbr   = doc-nbr   of f119-doctor-ytd	&
+     else "N" 
+
+item last-comp-code 	= comp-code	of f119-doctor-ytd
+item last-doc-nbr	= doc-nbr	of f119-doctor-ytd
+ 
+
+subfile f119_duplicates keep   				&
+        if  dup-found-flag = "Y"			&
+include                 	                    	&
+        doc-nbr  	of f119-doctor-ytd,		&
+        comp-code	of f119-doctor-ytd,		&
+	last-amt-mtd,					&
+	amt-mtd		of f119-doctor-ytd,		&
+	last-amt-ytd,					&
+	amt-ytd		of f119-doctor-ytd
+
+item last-amt-mtd	= amt-mtd 	of f119-doctor-ytd
+item last-amt-ytd	= amt-ytd 	of f119-doctor-ytd
+
+build $obj/utl0100

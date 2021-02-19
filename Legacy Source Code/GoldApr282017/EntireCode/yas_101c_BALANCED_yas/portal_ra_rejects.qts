@@ -1,0 +1,90 @@
+can clear
+set verify errors
+set default
+set process nolimit
+set lock file update
+
+request one				&
+        on edit        errors report    &
+        on calculation errors report
+
+access f088-rat-rejected-claims-hist-dtl                                 &
+	link (clmhdr-batch-nbr+ascii(clmhdr-claim-nbr,2)),	         &
+	     ped 				                         &
+	 to  rat-rejected-claim, ped		                         &
+	     of f088-rat-rejected-claims-hist-hdr                        &
+        link clmhdr-doc-nbr                                              &
+        to doc-nbr of f020-doctor-mstr   opt                             &
+	link 'B', clmhdr-batch-nbr, clmhdr-claim-nbr,                    &
+	       '00000', '0'			                         &
+	 to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr,         &
+             key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr opt  &
+	link clmhdr-pat-ohip-id-or-chart 	                         &
+	 to  key-pat-mstr of f010-pat-mstr opt
+
+choose clmhdr-batch-nbr '22W89@', '23W89@'
+
+select f088-rat-rejected-claims-hist-hdr if charge-status = 'Y'
+
+select f088-rat-rejected-claims-hist-dtl      &
+         if     ped  >= 20140701              &
+         and    ped  <= 20150630              
+
+
+def x-code cha*5 = clmhdr-adj-oma-cd + clmhdr-adj-oma-suff
+
+subfile f088_ra keep include	&
+  doc-nbr,                      &
+  doc-dept,                     &
+  doc-name,                     &
+  doc-inits,                    &
+  pat-surname,                  &
+  pat-given-name,               &
+  pat-health-nbr,               &
+  pat-version-cd,               &
+  clmhdr-manual-and-tape-payments, &
+  x-code,                       &
+  clmdtl-sv-date of f088-rat-rejected-claims-hist-dtl,               &
+  part-dtl-amt-bill,            &
+  part-dtl-amt-paid,            &
+  ohip-err-code of f088-rat-rejected-claims-hist-dtl,                &
+  clmhdr-batch-nbr of f088-rat-rejected-claims-hist-dtl,             &
+  clmhdr-claim-nbr of f088-rat-rejected-claims-hist-dtl,             &
+  ped of f088-rat-rejected-claims-hist-dtl
+
+
+request two				&
+        on edit        errors report    &
+        on calculation errors report
+
+access *f088_ra			&
+        link x-code to FEE-OMA-CD of f040-oma-fee-mstr opt
+
+
+def comma char*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+def x-claim cha*10 = (clmhdr-batch-nbr+ascii(clmhdr-claim-nbr,2))
+
+subfile f088_ra_1 portable keep include	&
+  x-claim,	                &
+  comma,			&
+  doc-dept,                     &
+  comma,			&
+  doc-nbr,                      &
+  comma,			&
+  doc-name,                     &
+  comma,			&
+  clmdtl-sv-date of f088_ra,	&
+  comma,			&
+  pat-health-nbr,              &
+  comma,			&
+  pat-version-cd,              &
+  comma,			&
+  ohip-err-code,                &
+  x-cr
+
+
+build $pb_obj/f088_ra_rejects  
+

@@ -1,0 +1,405 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   1
+*                      r051b.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - RESEQ
+* Accepted - SEQCHK
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+identification division.
+program-id. r051b.
+author. dyad computer systems inc.
+installation. rma.
+date-written. yy/mm/dd.
+date-compiled. 18-May-06 15:41.
+security.
+*
+*    files      : work file
+*               : sorted work file
+*               : parameter file
+*
+*    program purpose : this is the second in a series of 3 programs
+*                      it will sort the docrev work file produced
+*                      by r051a.  if this is the first run then the
+*                      parameter status will be set to 0 and this will
+*                      sort by dept, doc nbr, and oma code for r051ca.
+*                      if this is the second run (after r041ca) then
+*                      the parameter status will be set to 2 and this
+*                      will sort by dept, and oma code for r051cb.
+*                      when this program is complete the paramter
+*                      status will be either 1 or 3 depending on
+*                      whether this is the first or second run of
+*                      this program.
+*
+*         rev.  may/87 (s.b.) - coversion from aos to aos/vs.
+*                               change field size for
+*                               status clause to 2 and
+*                               feedback clause to 4.
+*   revised march/89 : - sms 115 s.f.
+*                      - make sure file status is pic xx ,feedback is
+*                        pic x(4) and infos status is pic x(11).
+*
+*
+*   revised feb/98 j. chau  : - s149 unix conversion
+*                             - changed write to rewrite for parm file
+*
+*  1999/jan/31 B.E.             - y2k
+*
+environment division.
+input-output section.
+file-control.
+*
+*   place your file select statements here
+*
+*
+    select r051-work-file
+        assign to "r051wf"
+        organization is sequential.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   2
+*                      r051b.cbl
+*
+
+    select r051-sort-work-file
+        assign to work-file-out-name
+        organization is sequential.
+*
+    select r051-sort-work
+        assign to 'r051_sort_work'
+        organization is sequential.
+*
+    copy "r051_parm_file.slr".
+    select      parameter-file
+                assign to "r051_parm_file"
+                organization is relative
+                access       is dynamic
+                relative key is parm-rec-nbr.
+*               infos status is status-parm-file.
+data division.
+file section.
+
+fd  r051-work-file
+    record contains 49 characters.
+
+01  work-in-rec                                 pic x(49).
+
+fd  r051-sort-work-file
+    record contains 49 characters.
+
+01  work-out-rec                                pic x(49).
+
+    copy 'r051_docrev_work_mstr.sd'.
+sd  r051-sort-work
+        block contains 49 characters.
+
+01  work-sort-rec.
+
+  03  wf-sort-key.
+    05  wf-dept                                 pic 99.
+    05  wf-class-code                           pic x.
+*!    05  wf-doc-nbr                            pic 9(3).
+    05  wf-doc-nbr                              pic x(3).
+    05  wf-oma-cd.
+        10  wf-oma-code-ltr                     pic x.
+        10  filler                              pic x(4).
+  03  wf-data.
+    05  wf-month-to-date.
+        10  wf-mtd-svcs                         pic s9(8).
+        10  wf-mtd-amt                          pic s9(9)v99.
+    05  wf-year-to-date.
+        10  wf-ytd-svcs                         pic s9(8).
+        10  wf-ytd-amt                          pic s9(9)v99.
+
+
+    copy "r051_parm_file.fd".
+ fd     parameter-file
+* y2k   record contains 34 characters.
+        record contains 36 characters.
+
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   3
+*                      r051b.cbl (/alpha/rmabill/rmabill101c/use/r051)
+01  parm-file-rec.
+
+    05  parm-status                             pic 9.
+*          ( status     0       after parm file created
+*                       1       after sort by doc
+*                       2       after r051ca printed
+*                       3       after sort by dept )
+    05  parm-program-nbr                        pic x(5).
+    05  parm-clinic-nbr                         pic xx.
+    05  parm-clinic-name                        pic x(20).
+    05  parm-ped.
+* y2k   10  parm-ped-yy                         pic 99.
+        10  parm-ped-yy                         pic 9999.
+        10  parm-ped-mm                         pic 99.
+        10  parm-ped-dd                         pic 99.
+working-storage section.
+
+77  err-ind                                     pic 99  value zero.
+77  print-file-name                             pic x(5)
+        value "r051".
+77  option                                      pic x.
+77  parm-rec-nbr                                pic 9.
+
+77  work-file-in-name                           pic x(6)   value
+                "r051wf".
+77  work-file-out-name                          pic x(19)   value
+                "r051_sort_work_mstr".
+*  eof indicators
+*
+*
+*  status file indicators
+*
+*mf 77  common-status-file                      pic x(11).
+*mf 77  status-sort-file                        pic x(11).
+*mf 77  status-parm-file                        pic x(11) value zero.
+
+77  common-status-file                          pic x(2).
+77  status-sort-file                            pic x(2).
+77  status-parm-file                            pic x(2) value zero.
+
+*   counters for records read/written for all input/output files
+
+01  counters.
+    05  ctr-work-file-writes                    pic 9(7).
+    05  ctr-work-file-reads                     pic 9(7).
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(60)   value
+                        "INVALID REPLY".
+        10  filler                              pic x(60)   value
+                        "INVALID READ ON PARAMETER FILE".
+        10  filler                              pic x(60)   value
+                        "INVALID WRITE TO PARAMETER FILE".
+        10  filler                              pic x(60)   value
+                        "INVALID PARAMETER STATUS".
+        10  filler                              pic x(60)   value
+                        "*** CAN BE RE-USED ***".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   4
+*                      r051b.cbl                                     )
+        10  filler                              pic x(60)   value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)   value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)   value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)    value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)    value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)     value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)       value
+                        "*** CAN BE RE-USED ***".
+        10  filler                              pic x(60)       value
+                        "*** CAN BE RE-USED ***".
+
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(60)
+                        occurs 13 times.
+
+01  err-msg-comment                             pic x(60).
+
+01  e1-error-line.
+
+    05  e1-error-word                           pic x(13)    value
+                        "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   5
+*                      r051b.cbl (/alpha/rmabill/rmabill101c/use/sysd)
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+procedure division.
+
+main-line section.
+mainline.
+
+    perform aa0-initialization          thru aa0-99-exit.
+    perform ab0-processing              thru ab0-99-exit.
+    perform az0-end-of-job              thru az0-99-exit.
+*
+    stop run.
+aa0-initialization.
+
+    accept sys-date                     from date.
+    perform y2k-default-sysdate         thru y2k-default-sysdate-exit.
+
+    open i-o    parameter-file.
+
+*   display program-in-progress.
+
+    move 1                              to parm-rec-nbr.
+
+    read parameter-file
+        invalid key
+            move 2                      to err-ind
+            perform za0-common-error    thru za0-99-exit
+            go to az0-10-abend.
+
+aa0-99-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   6
+*                      r051b.cbl                                     )
+az0-end-of-job.
+
+*   display blank-screen.
+    accept sys-time                     from time.
+*   display scr-closing-screen.
+
+    move "r051b"                        to parm-program-nbr.
+    add 1                               to parm-status.
+
+    rewrite parm-file-rec
+        invalid key
+            move 3                      to      err-ind
+            perform za0-common-error    thru    za0-99-exit.
+
+az0-10-abend.
+
+    close       parameter-file.
+
+*   call program "MENU".
+
+    stop run.
+
+az0-99-exit.
+    exit.
+ab0-processing.
+
+    if parm-status = zero
+    then
+*       expunge r051-sort-work
+*mf             r051-sort-work-file
+*mf     sort r051-sort-work             "COBSORT" save
+        sort r051-sort-work
+                on ascending key        wf-sort-key
+                using r051-work-file
+                giving r051-sort-work-file
+    else
+        if parm-status = 2
+        then
+*           expunge     r051-sort-work
+*mf                     r051-sort-work-file
+************************************************************************
+*       ( the doctor nbr is not required for program r051c in the      *
+*         second run however this will force all required total records*
+*         to be bunched together, followed by all doctor total records:*
+*                                                                      *
+*                       clinic total                                   *
+*                       dept   total                                   *
+*                       class  total                                   *
+*                       doctor total                                   *
+*                            .                                         *
+*                            .                                         *
+*                            .                                         *
+************************************************************************
+*mf         sort r051-sort-work         "COBSORT" save
+            sort r051-sort-work
+                    on ascending key    wf-dept,
+                                        wf-class-code
+                                        wf-oma-cd
+* Micro Focus COBOL for UNIX         V4.0 revision 005 18-May-06 15:41 Page   7
+*                      r051b.cbl                                     )
+                                        wf-doc-nbr
+                    using r051-work-file
+                    giving r051-sort-work-file
+        else
+            move 4                      to err-ind
+            perform za0-common-error    thru za0-99-exit
+            go to az0-10-abend.
+*       endif
+*   endif
+
+ab0-99-exit.
+    exit.
+za0-common-error.
+
+    move err-msg (err-ind)              to      err-msg-comment.
+*   display err-msg-line.
+    display err-msg-comment.
+*   display confirm.
+*   stop " ".
+*   display blank-line-24.
+
+za0-99-exit.
+    exit.
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        2536     Code:        1056

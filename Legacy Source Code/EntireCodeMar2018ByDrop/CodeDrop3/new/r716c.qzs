@@ -1,0 +1,76 @@
+; Program: r716c1.qzs
+; Purpose: To create a flat file of modified description records to upload
+;	   back to the web
+;	   - this pgm reads the subfile of concatenated desriptions
+;	     and creates a text file readable by the web pgms
+;     - note a 2nd pass creates an error file if any of the comments
+;	were lost (due to limit of writing out 264 max characters
+;	if the full 255 bytes of text were used the last 5 characters
+;	would be lost - it's assumed that this won't happend often, if ever)
+;
+; Modification History
+; YY/MMM/DD  who  Why
+; 00/oct/05  B.E. - original
+; 
+
+can clear
+set rep nolimit
+set nohead
+set noformfeed
+set page width 264 length 0
+set rep dev disc name r716c1
+
+access *u716c2
+	     
+sorted on clmhdr-doc-ohip-nbr	&
+       on clmhdr-accounting-nbr
+
+def x-clmhdr-doc-ohip-nbr zoned unsigned size 6 = clmhdr-doc-ohip-nbr
+
+def x-desc char*250 =  x-text[1:250]
+report                                                      &
+tab  1 x-CLMHDR-DOC-OHIP-NBR       pic "^^^^^^" fill "0"    &
+tab  7 CLMHDR-ACCOUNTING-NBR                                &       
+tab 15 x-desc
+
+;?tab tot_ohip_addons
+
+build $pb_obj/r716c1
+
+
+can clear
+set rep nolimit
+set nohead
+set noformfeed
+set page width 264 length 0
+set rep dev disc name r716c2
+
+access *u716c2
+	     
+sorted on clmhdr-doc-ohip-nbr	&
+       on clmhdr-accounting-nbr
+
+def x-desc char*5 =  x-text[251:255]
+select if x-desc <> " "
+
+def x-clmhdr-doc-ohip-nbr zoned unsigned size 6 = clmhdr-doc-ohip-nbr
+
+
+page heading                                                    &
+  tab 01 "r716c2"						&
+  tab 15  "Truncated 'Description' text"                  	&
+  tab 50  "Run Date:"                                     	&
+  tab 60   sysdate                                       	&
+  tab 72  "Page:" tab 77 syspage pic "^^^"               	&
+ skip 3								&
+  tab 01 "Doctor's Ohip #"					&
+  tab 23 "Accounting Nbr"					&
+  tab 45 "Truncated Text"					&
+ skip 2
+
+report                                                      &
+tab 05 x-CLMHDR-DOC-OHIP-NBR       pic "^^^^^^"             &
+tab 26 CLMHDR-ACCOUNTING-NBR                                &       
+tab 48 x-desc
+
+build $pb_obj/r716c2

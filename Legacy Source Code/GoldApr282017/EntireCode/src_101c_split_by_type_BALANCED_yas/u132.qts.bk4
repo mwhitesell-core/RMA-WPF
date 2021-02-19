@@ -1,0 +1,84 @@
+;#> PROGRAM-ID.     u132.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Uploads transactions from a 'text' file into the default
+;	      compensation file (f113) so that transactions will be triggered
+;	      during the current EP payroll run 
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO     DESCRIPTION
+; 2004/sep/20	b.e.	- original
+;
+
+cancel clear
+run u132
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        numeric
+global temp w-current-ep-nbr-minus1 numeric
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u132_const_mstr_get_ep_nbr              &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6
+choose const-rec-nbr 6
+
+item w-current-ep-nbr        final  current-ep-nbr
+item w-current-ep-nbr-minus1 final  current-ep-nbr - 1
+;
+
+
+;-------------------------------------------------------------------------------
+;
+request u132_process                           &
+                on edit        errors report    &
+                on calculation errors report
+
+access u132dat							&
+	link comp-code 						&
+	  to comp-code of f190-comp-codes     opt		&
+	link doc-nbr,						&
+	     w-current-ep-nbr,					&
+	     comp-code						&
+	  to doc-nbr,						&
+	     ep-nbr-from,					&
+	     comp-code	 of f113-default-comp opt	
+
+use $use/def_compensation_status.def
+
+subfile u132_audit keep include 			&
+  w-current-ep-nbr,					&
+  doc-nbr of u132dat,					&
+  comp-code of u132dat,					&
+  amt-net of u132dat
+  
+
+output f113-default-comp add alias f113-add                   &
+    if     not record f113-default-comp  exists               &
+	and 1=2 
+        item doc-nbr		final  doc-nbr 		of u132dat
+        item ep-nbr-from	final  w-current-ep-nbr
+        item ep-nbr-to		final  w-current-ep-nbr
+        item ep-nbr-entry	final  w-current-ep-nbr
+        item comp-code		final  comp-code 	of u132dat
+        item factor		final  10000
+        item factor-override	final  " "
+        item comp-units		final  0
+        item amt-gross		final  amt-net		of u132dat
+        item amt-net		final  amt-net		of u132dat
+        item last-mod-date    final  sysdate
+        item last-mod-time    final  systime / 10000
+        item last-mod-user-id final  "u132    Gen'd"
+
+;output f113-default-comp	update alias f113-update       &
+;    if     record f113-default-comp exists			&
+;	and 1=1
+;        item last-mod-user-id final  "u132    Gen'd"
+
+build $pb_obj/u132

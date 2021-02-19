@@ -1,0 +1,150 @@
+;#> PROGRAM-ID.     U190_YEAREND_1.qts
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Year end roll over for EARNING SUBSYSTEM.
+;		It is assumed that any transactions 'active' for
+;		the last EP-NBR of the fiscal year, are to be
+;		continued into the next fiscal year.
+;		This program takes all COMP Code transactions in
+;		F113 and if the "EP-NBR-TO" is the last
+;		EP-NBR of the fiscal year (usually 12 or 13) then
+;		this transaction is "rolled" into the new year
+;		changing the YEAR to next year and the EP-NBR-TO
+;		to NEW YEAR + 01. Example, 9503 thru 9512 becomes
+;		9601 thru 9612. The valid EP Numbers are in F191.
+;
+;
+;	Note: This program must be run while the Constant's Master
+;	      EP number is the last EP of the current fiscal year
+;	      and before moving to the NEXT year's first EP
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     92/JAN/01  ____   B.E.     - original
+;   1999/May/13 	S.B.	 - Y2K checked.
+
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+; !!!! THIS PGMS STILL HAVE PLUS/MINS 0/1 DIFFERENT BETWEEN CEILING/EXPESE
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+cancel clear
+run u190
+
+set default
+set process nolimit
+
+global temp w-current-ep-nbr        zoned unsigned
+global temp w-current-ep-nbr-minus1 zoned unsigned
+global temp w-current-ep-nbr-plus1  zoned unsigned
+global temp w-next-yr-first-ep-nbr  zoned unsigned
+global temp w-next-yr-last-ep-nbr   zoned unsigned
+global temp w-next-yr               zoned unsigned
+global temp w-ep-fiscal-nbr         zoned unsigned
+global temp w-ep-nbr-to             zoned unsigned
+global temp w-ep-nbr-to-yy          zoned unsigned
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u190_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+item w-current-ep-nbr        = current-ep-nbr   of constants-mstr-rec-6
+item w-current-ep-nbr-minus1 = current-ep-nbr   of constants-mstr-rec-6&
+                               - 1
+item w-current-ep-nbr-plus1  = current-ep-nbr   of constants-mstr-rec-6&
+                               + 1
+
+; using current EP get first EP of NEXT YR
+item w-next-yr              					&
+  =  floor(    (  current-ep-nbr   of constants-mstr-rec-6	&
+                + 100						&
+	       )						&
+             / 100						&
+	  )							
+item w-next-yr-first-ep-nbr 					&
+   =  (  w-next-yr						&
+       * 100							&
+      )								&
+    + 01	
+
+
+item w-ep-fiscal-nbr = ep-fiscal-nbr            of f191-earnings-period
+; DETERMINE THE 'PROCESS-SEQ' AND 'TRANSACTION TYPE'
+; FOR THE TRANSACTIONS BEING CREATED IN THIS RUN
+
+
+;-------------------------------------------------------------------------------
+; Roll over DEFAULT COMPENSATION
+;
+request u190_default_compensation               &
+                on edit        errors report    &
+                on calculation errors report
+
+
+access f113-default-comp					      &
+	link comp-code of f113-default-comp			      &
+	to   comp-code of f190-comp-codes			      &
+	link doc-nbr     of f113-default-comp,			      &
+	     w-current-ep-nbr,					      &
+	     comp-code   of f113-default-comp 			      &
+	to   doc-nbr,						      &
+	     ep-nbr-from,					      &
+	     comp-code   of f113-default-comp alias f113-next-yr opt
+
+select if    ep-nbr-to of f113-default-comp = w-current-ep-nbr	      &
+          or ep-nbr-to of f113-default-comp = w-current-ep-nbr-minus1
+
+item w-ep-nbr-to-yy  =  floor(  ep-nbr-to of f113-default-comp        &
+			      / 100				      &
+			     )					
+; EP-FROM = last year's values with updated YY portion
+item w-ep-nbr-to =   (  w-next-yr      	                	      &
+		      * 100					      &
+		     )						      &
+		   + (  ep-nbr-to  				      &
+		      - (  w-ep-nbr-to-yy			      &
+			 * 100				      	      &
+			)					      &
+		     )
+
+subfile u190_yearend_1 keep include           			      &
+	                       doc-nbr	       of f113-default-comp,  &
+			       ep-nbr-from     of f113-default-comp,  &
+			       ep-nbr-to       of f113-default-comp,  &
+	                       w-next-yr-first-ep-nbr,                &
+	                       w-ep-nbr-to,                           &
+	                       comp-code       of f113-default-comp,  &
+	                       factor          of f113-default-comp,  &
+	                       factor-override of f113-default-comp,  &
+	                       comp-units      of f113-default-comp,  &
+	                       amt-gross       of f113-default-comp,  &
+	                       amt-net         of f113-default-comp
+
+
+ output f113-default-comp add alias f113-add    		&
+   if  not  record f113-next-yr     exists
+ 	item doc-nbr         = doc-nbr	       of f113-default-comp
+ 	item ep-nbr-from     = w-next-yr-first-ep-nbr
+ 	item ep-nbr-to       = w-ep-nbr-to
+ 	item ep-nbr-entry    = w-current-ep-nbr
+ 	item comp-code       = comp-code       of f113-default-comp
+ 	item factor          = factor          of f113-default-comp
+ 	item factor-override = factor-override of f113-default-comp
+ 	item comp-units      = comp-units      of f113-default-comp
+ 	item amt-gross       = amt-gross       of f113-default-comp
+ 	item amt-net         = amt-net         of f113-default-comp
+ 	item last-mod-date    = sysdate
+ 	item last-mod-time    = systime / 10000
+ 	item last-mod-user-id = "Comp.YrEndRoll"
+
+build $pb_obj/u190_yearend_1
+  

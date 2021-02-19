@@ -1,0 +1,104 @@
+;Program : r140v_3.qzs
+; purpose:  Report any doctors who: - weren't processed in r140_b.txt report 
+;				or    weren't given all the money as specified inthe 
+;				      governance transaction file
+; 2005/03/10	MC		- include group nbr on the report
+; 2005/03/14	MC		- sort on group nbr , heading and footing at group nbr
+; 2005/03/17 	MC		- Yas requested to sort by group by doc name
+; 2007/07/10   b.e.		- don't report as error a doctor with no 
+;				  payment if the afp group is 'r'eport only
+
+cancel clear
+set report nolimit
+set rep dev disc name r140v
+set page width 132
+set page width 200
+set rep nohead
+
+access tmp-governance-payments-file 				&
+        link doc-afp-paym-group                                 &
+        to   doc-afp-paym-group  of f074-afp-group-mstr opt 
+
+def x-difference 				&
+	=   afp-payment-amt			&
+	  - afp-payment-amt-payroll-a		&
+	  - afp-payment-amt-payroll-b 
+12345 elliott H232 5$ 0
+12345 elliott H101   0 5
+
+sortrt on ohip-nbr
+def = subtotal 0- subtotal b at doctonbr 5 = 5
+
+; (report if doctor not processed in r140b report OR if
+;  full incoming payment amount as had not been
+;  paid out UNLESS doctor's afp group is "R"eport only in which case
+;  there shouldn't be any payment)
+select if   (     reported_in_r140b_report <> "Y"	&
+	     or x-difference <>  0			&
+	    )						&
+	and afp-group-process-flag <> "R"
+
+;2005/03/14 - MC
+;sort on doc-afp-paym-group on doc-ohip-nbr
+sort on doc-afp-paym-group on afp-solo-name on doc-ohip-nbr
+sort on doc-afp-paym-group on afp-solo-name on doc-ohip-nbr
+
+heading at doc-afp-paym-group			&
+skip 2						&
+  tab 01 "Group Nbr:"			  	&		
+  tab 15 doc-afp-paym-group			&
+skip 2
+
+footing at doc-afp-paym-group			&
+skip 2					 	&	
+  tab 01 "Total:"               		&
+  tab 11 afp-payment-amt	subt		&
+  tab 36 afp-payment-amt-payroll-a	subt	&
+  tab 52 afp-payment-amt-payroll-b  	subt	&
+  tab 68 x-difference    	pic "^^^,^^^,^^^.^^"	&
+skip page
+; 2005/03/14 - end
+
+page heading					&
+  tab 01 "r140v"				&
+  tab 25 "Goverance Payments Balancing Report"	&
+  tab 70 "Page"					&
+  tab 75 syspage				&
+ skip 2						&
+  tab 21 "Total"				&
+  tab 46 "Total"		 		&	
+  tab 62 "Total"		 		&		
+  tab 83 "Governance"				&
+ skip 1						&
+  tab 02 "Doctor"				&
+  tab 16 "Governance"				&
+  tab 39 "'22' Payroll"		 		&	
+  tab 55 "'mp' Payroll"		 		&	
+  tab 72 "Difference"				&
+  tab 89 "File"					&
+ skip 1	 					&
+  tab 04 "Nbr"					&
+  tab 18 "Payments"				&
+  tab 43 "Payments"		 		&	
+  tab 59 "Payments"		 		&		
+  tab 76 "Amount"				&
+  tab 88 "Name"					&
+ skip 2
+
+rep 							&
+  tab 01 doc-ohip-nbr					&
+  tab 11 afp-payment-amt				&
+  tab 36 afp-payment-amt-payroll-a			&
+  tab 52 afp-payment-amt-payroll-b  		 	&
+  tab 68 x-difference    	pic "^^^,^^^,^^^.^^"	&
+  tab 83 afp-solo-name					&
+  tab 200 reported_in_r140b_report
+
+final footing  								&
+  tab 01 "GRAND TOTAL"							&
+  tab 11 afp-payment-amt 		subt pic "^^^,^^^,^^^.^^ "	&
+  tab 36 afp-payment-amt-payroll-a	subt pic "^^^,^^^,^^^.^^ "	&
+  tab 52 afp-payment-amt-payroll-b	subt pic "^^^,^^^,^^^.^^ " 	&
+  tab 68 x-difference    		subt pic "^^^,^^^,^^^.^^ "	
+
+build $obj/r140v_3

@@ -1,0 +1,500 @@
+;#> PROGRAM-ID.     D112A.QKS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: Query/modifications to Physician PAYCODES / REVENUES
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     96/JAN/19  ____   M.C.     - original (CLONE FROM D112.QKS)
+;   1999/Jan/20		S.B.	 - Fixed size and alignments for Y2K.
+;   1999/Apr/20		S.B.	 - Altered t-yy-ep, t-yy-retro, and
+;				   t-yy-fiscal to use century. 
+;   1999/Jun/07 	S.B.     - Altered the call to scrtitle.use and
+;                         	   stdhilite.use to be called from $use
+;                         	   instead of src.
+;                       	 - Removed the call to secfile.use because
+;                       	   it was not doing anything.
+
+can clear
+set default
+
+screen $pb_obj/d112a    on line 7 for 17 message on line 24                    &
+	activities find, change         			       &
+        receiving w-doc-nbr,                                           &
+                  constants-mstr-rec-6, f020-doctor-mstr
+
+
+temp w-doc-nbr
+;Y2K changes.
+;temp t-yy-ep char*2
+;temp t-yy-fiscal char*2
+;temp t-yy-retro char*2
+temp t-yy-ep char*4
+temp t-yy-fiscal char*4
+temp t-yy-retro char*4
+temp t-adjustment
+temp t-counter-recs-f112
+temp t-last-revenue-req
+temp t-last-revenue-tar
+temp h-doc-yrly-reqrev
+temp h-doc-yrly-tarrev
+temp h-retro-to-ep-nbr-req
+temp h-retro-to-ep-nbr-tar
+temp h-current-occurence
+temp h-current-ep
+temp h-revenue-type char*3
+temp t-doc-yrly-revenue-comp1
+temp t-doc-yrly-revenue-comp2
+temp t-doc-yrly-revenue-err
+temp t-doc-yrly-reqrev-computed
+temp t-doc-yrly-tarrev-computed
+temp t-yearly-revenue
+temp t-revenue-computed
+temp t-retro-to-flag char*1
+temp t-last-ep-nbr
+
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows a User to query/modify Earnings Period      " &
+"       transactions that specify a doctor's PAY CODE, PAY SUB CODE,   " &
+"       REQUIRED and TARGET REVENUE.                                   " &
+"       Entry of and modification to any transaction can be performed  " &
+"       only for CURRENT or FUTURE Earning Periods.                    " &
+"       Also allows RETROACTIVE changes to REQUIRE & TARGET revenue.  " &
+"                                                                      "
+
+;use $pb_src/secfile.use   nol nod
+
+temp t-silent-revenue
+
+file  f112-pycdceilings primary  occurs 13
+        access viaindex pycdceilings using w-doc-nbr
+
+file f020-doctor-mstr     master
+file constants-mstr-rec-6 designer
+
+file f191-earnings-period reference
+     access viaindex ep-nbr using ep-nbr of f112-pycdceilings
+
+file f020-doctor-extra    designer
+
+define x-screen-name char*55 = "PAY CODES, REQUIRE/TARGET REVENUE"
+;use $pb_src/scrtitle.use  nol nod
+use $use/scrtitle.use  nol nod
+
+;use $pb_src/stdhilite.use nol nod
+use $use/stdhilite.use nol nod
+
+skip to 2
+skip
+title &
+;Y2K changes.
+"   E/P    BILLING   PAY     ---REVENUES----   RETRO     ---REVENUES----   RETRO" &
+        at ,1
+skip
+title &
+;Y2K changes.
+"   Nbr      PED     CODE    REQUIRE/ORIGINL    TO       TARGET /ORIGINL    TO  " &
+         at ,1
+skip
+
+cluster occurs with f112-pycdceilings
+;Y2K changes.
+align (1,,4) (,,11) (,,22)(,,23) (,,29) (,,37) (,,47) (,,57) (,,65) (,,74)
+
+field ep-nbr            of f112-pycdceilings display
+field iconst-date-period-end of f191-earnings-period display
+field doc-pay-code      of f112-pycdceilings display
+field doc-pay-sub-code  of f112-pycdceilings display
+field doc-yrly-reqrev   of f112-pycdceilings
+field doc-yrly-reqrev-adjusted of f112-pycdceilings display
+field retro-to-ep-nbr-req      of f112-pycdceilings		&
+                        lookup on f191-earnings-period          &
+                        message "*E* Invalide Earnings Period."
+field doc-yrly-tarrev   of f112-pycdceilings
+field doc-yrly-tarrev-adjusted   of f112-pycdceilings    display
+field retro-to-ep-nbr-tar of f112-pycdceilings            	&
+                        lookup on f191-earnings-period  	&
+                        message "*E* Invalid Earnings Period."
+field t-silent-revenue silent
+cluster
+
+procedure internal calc-final-computed-revenue
+begin
+   let t-doc-yrly-revenue-comp1 =                               &
+       t-revenue-computed                                       &
+     + (round(t-yearly-revenue / 12                             &
+          )                                                     &
+        * (  12                                                 &
+            - t-counter-recs-f112                               &
+            + t-adjustment                                      &
+          )                                                     &
+       )
+
+;  (If extending this EP's REVENUE until the end of the year
+;   gives a Computed Annual REVENUE with "unit" dollars round up/down
+;   to nearest ten)
+
+   let t-doc-yrly-revenue-comp2 = mod(t-doc-yrly-revenue-comp1,100)
+   if t-doc-yrly-revenue-comp2 >= 50
+   then
+     let t-doc-yrly-revenue-err =  1
+   else
+     let t-doc-yrly-revenue-err =  0
+;  (Extract the Dollar value only for the computed REVENUE)
+   let t-revenue-computed = (floor(t-doc-yrly-revenue-comp1 / 100)  + t-doc-yrly-revenue-err) * 100
+
+end
+
+
+procedure internal build-computed-revenue
+begin
+   let t-doc-yrly-revenue-comp1                                 &
+       = t-revenue-computed + round(t-yearly-revenue / 12)
+
+;  (if the "pennies" portion of the COMPUTED ANNUAL REVENUE is more than
+;   50 cents THEN assume it falls just short of even dollar amount - add
+;   penny to EP REVENUE - otherwise assume it falls just over the dollar
+;   amount and no compensation is required)
+
+   let t-doc-yrly-revenue-comp2 = mod(t-doc-yrly-revenue-comp1,100)
+   if t-doc-yrly-revenue-comp2 >= 50
+   then
+     let t-doc-yrly-revenue-err =  1
+   else
+     let t-doc-yrly-revenue-err =  0
+   let t-revenue-computed                                    &
+                   = (t-doc-yrly-revenue-comp1               &
+                    + t-doc-yrly-revenue-err)
+
+end
+
+procedure internal finish-comp-revenue-to-yearend
+begin
+;  (Finish calculation of Computed REQUIRE REVENUE thru to end of Fiscal Period)
+;  (take dollar value and change to dollars and cents)
+   if   t-retro-to-flag = "R"  &
+     or t-retro-to-flag = "B"
+   then
+   begin
+      let t-yearly-revenue   = t-last-revenue-req
+      let t-revenue-computed = t-doc-yrly-reqrev-computed
+      let h-revenue-type = "REQ"
+      do calc-final-computed-revenue
+      let doc-yrly-require-revenue  of f020-doctor-extra =       &
+		t-revenue-computed
+   end
+;  (Finish calculation of Computed TARGET REVENUE thru to end of Fiscal Period)
+   if   t-retro-to-flag = "T"  &
+     or t-retro-to-flag = "B"
+   then
+   begin
+      let t-yearly-revenue   = t-last-revenue-tar
+      let t-revenue-computed = t-doc-yrly-tarrev-computed
+      let h-revenue-type = "TAR"
+      do calc-final-computed-revenue
+      let doc-yrly-target-revenue  of f020-doctor-extra =       &
+		t-revenue-computed
+   end
+end
+
+
+procedure internal retro-revenue
+begin
+
+;  (reset Computed REVENUEs which will be re-calculated by this routine)
+   if   t-retro-to-flag = "R" &
+     or t-retro-to-flag = "B"
+   then let doc-yrly-require-revenue  of f020-doctor-extra = 0
+   if   t-retro-to-flag = "T" &
+     or t-retro-to-flag = "B"
+   then let doc-yrly-target-revenue  of f020-doctor-extra = 0
+
+   let t-doc-yrly-reqrev-computed = 0
+   let t-doc-yrly-tarrev-computed = 0
+
+   for f112-pycdceilings
+   begin
+;     (Save the month of the current EP nbr)
+      if ep-nbr of f112-pycdceilings <> 0
+      then let t-counter-recs-f112 = mod(ep-nbr of f112-pycdceilings,100)
+;     (If this occurence of F112 falls within RETRO-TO range, then adjust REVENUEs)
+      if   (ep-nbr     >= h-retro-to-ep-nbr-req or ep-nbr >= h-retro-to-ep-nbr-tar) &
+        and occurrence <  h-current-occurence     &
+        and t-counter-recs-f112 <= 12             ; (allow only 12 REVENUE calcs)
+      then
+      begin
+         if   t-retro-to-flag = "R"  &
+           or t-retro-to-flag = "B"
+         then
+         begin
+            let doc-yrly-reqrev-adjusted = doc-yrly-reqrev
+            let doc-yrly-reqrev          = h-doc-yrly-reqrev
+            display  doc-yrly-reqrev
+            display  doc-yrly-reqrev-adjusted
+         end
+         if   t-retro-to-flag = "T"  &
+           or t-retro-to-flag = "B"
+         then
+         begin
+            let     doc-yrly-tarrev-adjusted = doc-yrly-tarrev
+            let     doc-yrly-tarrev          = h-doc-yrly-tarrev
+            display doc-yrly-tarrev
+            display doc-yrly-tarrev-adjusted
+         end
+      end
+;     (re-calculate both Computed REVENUEs using new REVENUEs. The calculation
+;      runs from the first EP of year to the "current EP - 1". The current EP
+;      is not included in YTD calcuation since the Earnings Run (U114) will
+;      calculate this EP's REVENUE and add to YTD amount).
+;     (Also calculate computed annual REVENUE for this EP in F112)
+;     (FIRST - calculate new Computed ANNUAL REQUIRE REVENUEs including
+;              this EP)
+      if    (   t-retro-to-flag = "R"                             &
+             or t-retro-to-flag = "B"                             &
+            )                                                     &
+        and (ep-nbr < current-ep-nbr of constants-mstr-rec-6      &
+            )							  &
+        and (ep-nbr of f112-pycdceilings <> 0)
+      then
+      begin
+         let t-revenue-computed = t-doc-yrly-reqrev-computed
+         let t-yearly-revenue   = doc-yrly-reqrev * 100
+         let h-revenue-type = "REQ"
+         do build-computed-revenue
+         let t-doc-yrly-reqrev-computed = t-revenue-computed
+	 let t-adjustment = 0
+   	 do calc-final-computed-revenue
+         let doc-yrly-reqrev-computed of f112-pycdceilings	&
+		= t-revenue-computed
+      end
+;     (2ND - calculate new Computed ANNUAL TARGET REVENUEs including
+;      this EP.  As with REVENUE calculation, the current EP is not
+;      counted in YTD calculation)
+      if    (   t-retro-to-flag = "T"                             &
+             or t-retro-to-flag = "B"                             &
+            )                                                     &
+        and (ep-nbr < current-ep-nbr of constants-mstr-rec-6      &
+            )                                 			  &
+        and (ep-nbr of f112-pycdceilings <> 0)
+      then
+      begin
+         let t-revenue-computed = t-doc-yrly-tarrev-computed
+         let t-yearly-revenue   = doc-yrly-tarrev * 100
+         let h-revenue-type = "TAR"
+         do build-computed-revenue
+         let t-doc-yrly-tarrev-computed = t-revenue-computed
+	 let t-adjustment = 0
+   	 do calc-final-computed-revenue
+	 let doc-yrly-tarrev-computed of f112-pycdceilings =   &
+			t-revenue-computed
+      end
+
+;     (before processing the occurrence containing the CURRENT EP data
+;      the re-calculated YTD REVENUES(Require/Target) have been made.
+;      Update these into the Doctor Master record)
+      if ep-nbr = current-ep-nbr
+      then
+      begin
+;        (update Doctor Extra mstr with newly calculated YTD COMPUTED REVENUE(Require/Target)
+;         that covers period from start of year to CURRENT EP - 1)
+;	 (Also calculate the current Annual REVENUEs(Require/Target)
+;	  for the current EP in F112)
+
+         if   t-retro-to-flag = "R"  &
+           or t-retro-to-flag = "B"
+         then begin
+              let doc-ytdreq of f020-doctor-extra                      &
+                                = t-doc-yrly-reqrev-computed
+	      let h-revenue-type = "REQ"
+	      let t-adjustment = 0
+	      let t-revenue-computed = t-doc-yrly-reqrev-computed
+	      let t-yearly-revenue = doc-yrly-reqrev * 100
+	      do calc-final-computed-revenue
+	      let doc-yrly-reqrev-computed of f112-pycdceilings = &
+				t-revenue-computed
+	      let t-revenue-computed = t-doc-yrly-reqrev-computed
+	 end
+
+         if   t-retro-to-flag = "T"  &
+           or t-retro-to-flag = "B"
+         then begin
+              let doc-ytdtar of f020-doctor-extra                     &
+                                = t-doc-yrly-tarrev-computed
+	      let h-revenue-type = "TAR"
+	      let t-adjustment = 0
+	      let t-revenue-computed = t-doc-yrly-tarrev-computed
+	      let t-yearly-revenue = doc-yrly-tarrev * 100
+	      do calc-final-computed-revenue
+	      let doc-yrly-tarrev-computed of f112-pycdceilings = &
+				t-revenue-computed
+	      let t-revenue-computed = t-doc-yrly-tarrev-computed
+
+	 end
+      end
+;     (save month & values from this occurrence in case it's the last
+;      one of FOR statement - the last values are used to extrapolate
+;     to the end of the year to obtain final computed annual REVENUEs)
+      if ep-nbr of f112-pycdceilings <> 0
+      then begin
+         let t-counter-recs-f112 = mod(ep-nbr of f112-pycdceilings,100)
+         let t-last-revenue-req = doc-yrly-reqrev * 100
+         let t-last-revenue-tar = doc-yrly-tarrev * 100
+      end
+   end ;FOR F112
+;  (using the values from the LAST F112 record for the year, extrapolate
+;   to end of year to finish calculation of computed REVENUEs)
+;  (add 1 more EP to calc to account for current EP)
+    let t-adjustment = 1
+    do finish-comp-revenue-to-yearend
+end
+
+
+procedure internal calc-true-revenue
+begin
+
+    let t-doc-yrly-reqrev-computed = 0
+    let t-doc-yrly-tarrev-computed = 0
+    let t-last-ep-nbr = 1
+    let t-last-revenue-req = 0
+    let t-last-revenue-tar = 0
+
+    for f112-pycdceilings
+    begin
+	let t-counter-recs-f112 = mod(ep-nbr of f112-pycdceilings,100)
+    	if 0 < (t-counter-recs-f112 - t-last-ep-nbr)
+	then begin
+	    let t-doc-yrly-reqrev-computed = t-doc-yrly-reqrev-computed &
+		+ ((t-last-revenue-req  / 12) * (t-counter-recs-f112 -  &
+		    t-last-ep-nbr))
+	    let t-doc-yrly-tarrev-computed = t-doc-yrly-tarrev-computed &
+		+ ((t-last-revenue-tar / 12) * (t-counter-recs-f112 -  &
+		    t-last-ep-nbr))
+	end
+;    (save the last Require/Target Revenue)
+        let t-last-revenue-req = doc-yrly-reqrev of f112-pycdceilings * 100
+        let t-last-revenue-tar = doc-yrly-tarrev of f112-pycdceilings * 100
+	let t-last-ep-nbr  = t-counter-recs-f112
+    end
+
+;   (using the values from the LAST F112 record for the year, extropolate
+;    to end of year to finish calculation of computed rquire/target revenue)
+
+    let t-doc-yrly-reqrev-computed = t-doc-yrly-reqrev-computed  &
+	+ round((12 - t-last-ep-nbr + 1) * (t-last-revenue-req / 12))
+    let doc-yrly-require-revenue  of f020-doctor-extra  &
+	= t-doc-yrly-reqrev-computed
+    let t-doc-yrly-tarrev-computed = t-doc-yrly-tarrev-computed  &
+	+ round((12 - t-last-ep-nbr + 1) * (t-last-revenue-tar / 12))
+    let doc-yrly-target-revenue  of f020-doctor-extra 	&
+	= t-doc-yrly-tarrev-computed
+
+end
+
+procedure postfind
+begin
+   get f020-doctor-extra via doc-nbr using doc-nbr of f020-doctor-mstr opt
+   let t-retro-to-flag = ' '
+end
+
+procedure edit    doc-yrly-reqrev
+begin
+; IF EP-NBR OF F112-PYCDCEILINGS < CURRENT-EP-NBR
+; THEN ERROR   "*E* You cannot change data before the CURRENT Earnings Period."
+  if       oldvalue(doc-yrly-reqrev) <> doc-yrly-reqrev	&
+      or   (newrecord and doc-yrly-reqrev = 0)
+  then
+  begin
+    let t-retro-to-flag = "R"
+    let     doc-yrly-reqrev-adjusted of f112-pycdceilings = oldvalue(doc-yrly-reqrev)
+    display doc-yrly-reqrev-adjusted of f112-pycdceilings
+  end
+end
+
+procedure edit    doc-yrly-tarrev
+begin
+; IF EP-NBR OF F112-PYCDCEILINGS < CURRENT-EP-NBR
+; THEN ERROR   "*E* You cannot change data before the CURRENT Earnings Period."
+  if 	   oldvalue(doc-yrly-tarrev) <> doc-yrly-tarrev	&
+      or   (newrecord and doc-yrly-tarrev = 0)
+  then
+  begin
+    if t-retro-to-flag = " "
+    then let t-retro-to-flag = "T"
+    else let t-retro-to-flag = "B"
+    let     doc-yrly-tarrev-adjusted of f112-pycdceilings = oldvalue(doc-yrly-tarrev)
+    display doc-yrly-tarrev-adjusted of f112-pycdceilings
+  end
+end
+
+procedure edit retro-to-ep-nbr-req
+begin
+
+;   (Retro normally from 'CURRENT EP')
+   if retro-to-ep-nbr-req > current-ep-nbr
+   then error   "*E* Can't be Retroactive to FUTURE E/P."
+   if retro-to-ep-nbr-req < current-ep-nbr
+   then warning "*W* Must be Retroactive from CURRENT EP."
+
+;Y2K changes.
+;   let t-yy-retro = ascii(retro-to-ep-nbr-req,4)[1:2]
+;   let t-yy-fiscal= ascii(current-ep-nbr,4)[1:2]
+   let t-yy-retro = ascii(retro-to-ep-nbr-req,6)[1:4]
+   let t-yy-fiscal= ascii(current-ep-nbr,6)[1:4]
+   if t-yy-retro <> t-yy-fiscal
+   then error "*E* Must be Retroactive within CURRENT YEAR."
+
+end
+
+procedure edit retro-to-ep-nbr-tar
+begin
+
+;   (Retro normally from 'CURRENT EP')
+   if retro-to-ep-nbr-tar > current-ep-nbr
+   then error   "*E* Can't be Retroactive to FUTURE E/P."
+   if retro-to-ep-nbr-tar < current-ep-nbr
+   then warning "*W* Must be Retroactive from CURRENT EP."
+
+;Y2K changes.
+;   let t-yy-retro = ascii(retro-to-ep-nbr-tar,4)[1:2]
+;   let t-yy-fiscal= ascii(current-ep-nbr,4)[1:2]
+   let t-yy-retro = ascii(retro-to-ep-nbr-tar,6)[1:4]
+   let t-yy-fiscal= ascii(current-ep-nbr,6)[1:4]
+   if t-yy-retro <> t-yy-fiscal
+   then error "*E* Must be Retroactive within CURRENT YEAR."
+
+end
+
+
+procedure process t-silent-revenue
+begin
+;  (Capture what REVENUE IS BEING ADJUSTED TO)
+    if ep-nbr of f112-pycdceilings <> 0
+    then begin
+       let h-doc-yrly-reqrev  = doc-yrly-reqrev of f112-pycdceilings
+       let h-doc-yrly-tarrev  = doc-yrly-tarrev of f112-pycdceilings
+       let h-current-ep        = ep-nbr           of f112-pycdceilings
+       let h-current-occurence = occurrence
+       if retro-to-ep-nbr-req of f112-pycdceilings <> 0
+       then let h-retro-to-ep-nbr-req = retro-to-ep-nbr-req of f112-pycdceilings
+       else let h-retro-to-ep-nbr-req = ep-nbr of f112-pycdceilings
+       if retro-to-ep-nbr-tar of f112-pycdceilings <> 0
+       then let h-retro-to-ep-nbr-tar = retro-to-ep-nbr-tar of f112-pycdceilings
+       else let h-retro-to-ep-nbr-tar = ep-nbr of f112-pycdceilings
+;  (re-calculate COMPUTED REQUIRE/TARGAET REVENUES)
+       do retro-revenue
+       do calc-true-revenue
+    end
+end
+
+procedure preupdate
+begin
+   let doc-nbr of f020-doctor-extra = doc-nbr of f020-doctor-mstr
+   put f020-doctor-extra
+end
+
+build
+
+  

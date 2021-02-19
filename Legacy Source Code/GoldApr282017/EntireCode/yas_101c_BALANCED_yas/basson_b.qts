@@ -1,0 +1,89 @@
+; DOC: BASSON_B.QTS
+;
+;PROGRAM PURPOSE : ACCESS DETAIL CLAIMS RECORDS
+;
+;DATE       BY WHOM      DESCRIPTION
+;95/06/07   YASEMIN      ORIGINAL
+;
+can clear
+
+request     bassonb_1 on calculation errors report	&
+		    on edit        errors report
+
+set process nolimit
+
+access *basson_a       	                                       &
+  link "B", key-clm-batch-nbr, key-clm-claim-nbr               &
+  to   key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr      &
+                                         of f002-claims-mstr
+
+select f002-claims-mstr						    &
+              if  (    clmdtl-oma-cd <> '0000'			    &
+          	  and clmdtl-oma-cd <> 'ZZZZ'			    &
+		  and clmdtl-oma-cd <> 'PAID'			    &
+		  and clmdtl-oma-cd <> 'MISC'			    &
+                  and clmdtl-orig-batch-nbr = key-clm-batch-nbr)
+            	 ;AND (CLMDTL-SV-DATE >= "930101"		    &
+                 ;  AND CLMDTL-SV-DATE <= "930430"))
+
+def x-code   cha*5 = clmdtl-id[12:5]
+
+define x-sv-date1 char*6 = clmdtl-sv-date
+define x-sv-date2 char*6 = clmdtl-sv-date[1:4] + ascii(clmdtl-sv-day(1),2)
+define x-sv-date3 char*6 = clmdtl-sv-date[1:4] + ascii(clmdtl-sv-day(2),2)
+define x-sv-date4 char*6 = clmdtl-sv-date[1:4] + ascii(clmdtl-sv-day(3),2)
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)               &
+                     if    clmdtl-consecutive-sv-days(1) ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1) ne 'BI'
+
+
+subfile basson_b keep if clmdtl-nbr-serv > 0 include		&
+	x-doc-nbr           of basson_a,   			&
+	x-doc-name          of basson_a,   			&
+	clmhdr-pat-acronym  of basson_a,         	        &
+        clmhdr-claim-id     of basson_a,        		&
+	x-sv-date1,    						&
+	x-sv-nbr1,       					&
+	x-code
+subfile basson_b alias a2 keep if clmdtl-sv-nbr(1) > 0 include	&
+	x-doc-nbr           of basson_a,   			&
+	x-doc-name          of basson_a,   			&
+	clmhdr-pat-acronym  of basson_a,       		&
+        clmhdr-claim-id     of basson_a,        		&
+	x-sv-date2,       					&
+	x-sv-nbr2,   						&
+	x-code
+subfile basson_b alias a3 keep if clmdtl-sv-nbr(2) > 0 include	&
+	x-doc-nbr           of basson_a,   			&
+	x-doc-name          of basson_a,   			&
+	clmhdr-pat-acronym  of basson_a,        		&
+        clmhdr-claim-id     of basson_a,              	        &
+	x-sv-date3,       					&
+	x-sv-nbr3,   						&
+	x-code
+subfile basson_b alias a4 keep if clmdtl-sv-nbr(3) > 0 include	&
+	x-doc-nbr           of basson_a,   			&
+	x-doc-name          of basson_a,   			&
+	clmhdr-pat-acronym  of basson_a,        		&
+        clmhdr-claim-id     of basson_a,        		&
+	x-sv-date4,       					&
+	x-sv-nbr4,   						&
+	x-code
+
+build $pb_obj/basson_b
+
+  

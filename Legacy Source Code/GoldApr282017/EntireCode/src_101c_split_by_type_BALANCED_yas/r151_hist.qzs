@@ -1,0 +1,109 @@
+;
+; PURPOSE:	QUARTERLY TAX DEDUCTION REPORT
+;
+; 94/08/29	M. CHAN		- ORIGINAL
+; 99/12/21	B.E.		- y2k
+; 00/03/02      Yas		- create a subfile r151 for excell
+; 16/08/30	MC1		- comment out significance 3 on doc-nbr
+;				- use choose instead of select
+
+cancel clear
+set report nolimit
+set report device disc name r151
+set rep page length 60 width 132
+set formfeed
+
+
+access f110-compensation-history				&
+  link comp-code to comp-code of f190-comp-codes		&
+  link doc-nbr   to doc-nbr of f020-doctor-mstr optional	&
+  link (22)       to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+; MC1
+;def from-ep-nbr zoned*6  unsigned = parm prompt "FROM EP NBR (YYYYMM): "
+;def to-ep-nbr   zoned*6  unsigned = parm prompt " TO  EP NBR (YYYYMM): "
+
+choose ep-nbr parm range prompt "FROM EP NBR (YYYYMM): " 	&
+		       toprompt " TO  EP NBR (YYYYMM): " 1 time 
+; MC1 - end
+
+sel f110-compensation-history if amt-net <> 0
+
+sel f190-comp-codes if amt-taxable <> 0
+
+; MC1 sel if ep-nbr ge from-ep-nbr and ep-nbr le to-ep-nbr
+
+sort on doc-clinic-nbr on doc-nbr
+
+def w-doctor-name char*25 =					&
+	truncate(doc-name) + ", " + 				&
+	doc-init1 + "." + doc-init2 + "." + doc-init3 + "."	&
+if doc-init1 <> " " and doc-init2 <> " " and doc-init3 <> " " 	&
+  else  truncate(doc-name) + ", " +				&
+	doc-init1 + "." + doc-init2 + "."			&
+if doc-init1 <> " " and doc-init2 <> " "                      	&
+  else  truncate(doc-name) + ", " +				&
+	doc-init1 + "."                  			&
+if doc-init1 <> " "
+
+page heading							&
+	tab  1  "R151    P.E.D."				&
+	tab 16  iconst-date-period-end				&
+	tab 30 "QUARTERLY TAX INSTALLMENT REPORT"		&
+	tab 65 "RUN DATE"					&
+	tab 75 sysdate						&
+	tab 90 "PAGE"						&
+	tab 99 syspage pic "^^^"				&
+skip 2  tab  1 "CLINIC"						&
+	tab 11 "DEPARTMENT"					&
+	tab 25 "DOCTOR"						&
+	tab 35 "NAME"						&
+	tab 64 "SIN"						&
+	tab 75 "TAX INSTALLMENT"				&
+skip 2
+
+footing at doc-nbr						&
+	tab  3  doc-clinic-nbr print at doc-clinic-nbr		&
+	tab 15  doc-dept significance 2				&
+; MC1 	tab 26  doc-nbr  significance 3				&
+ 	tab 26  doc-nbr     					&
+; MC1 -end			
+	tab 35  w-doctor-name					&
+ 	tab 60  doc-sin-nbr pic "^^^ ^^^ ^^^"			&
+	tab 78  amt-net of f110-compensation-history subt pic "^^^,^^^.^^ " trail "-"
+
+footing at doc-clinic-nbr					&
+skip 2  tab 35  "CLINIC TOTAL **********"			&
+; MC1	tab 78 amt-net of f110-compensation-history subt pic "^^^,^^^.^^ " trail "-" &
+	tab 75 amt-net of f110-compensation-history subt pic "^^,^^^,^^^.^^ " trail "-" &
+skip page
+
+final footing            					&
+skip 2  tab 35  "GRAND  TOTAL **********"			&
+; MC1	tab 78 amt-net of f110-compensation-history subt pic "^^^,^^^.^^ " trail "-"
+	tab 75 amt-net of f110-compensation-history subt pic "^^,^^^,^^^.^^ " trail "-" 
+
+; create a comma delimited text file for Mary to upload to excell
+def x-comma cha*1 = ","
+
+set subfile name r151 keep at doc-nbr
+report summary                                                &
+doc-clinic-nbr                                                &
+x-comma							      &
+doc-dept significance 2					      &	
+x-comma							      &
+; MC1 doc-nbr  significance 3					      &		
+doc-nbr                 				      &		
+; MC1 - end
+x-comma							      &	
+doc-name   						      &	
+x-comma							      &
+doc-inits   						      &	
+x-comma							      &
+doc-sin-nbr pic "^^^ ^^^ ^^^"				      &	
+x-comma                                                       &
+amt-net of f110-compensation-history subt pic "^^^,^^^.^^ " trail "-" 
+
+build $pb_obj/r151hist 
+
+

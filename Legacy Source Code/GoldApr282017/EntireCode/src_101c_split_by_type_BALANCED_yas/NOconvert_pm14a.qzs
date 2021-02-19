@@ -1,0 +1,51 @@
+; Name   : PM14A.QZS
+; Purpose: FIRST PASS FOR GENERATING INVOICES
+; 	   CREATE TEMPORARY FILE OF TIMESHEET SUMMARIES BY EMP-NUM
+;          SUBTOTAL THE EXTENDED AMOUNT FOR GST CALCULATION
+;
+;
+; MODIFICATION HISTORY
+; YY/MMM/DD  	By whom        	Why
+; ??/???/??  	?.?           	-
+; 92/02/28	M. CHAN		- SAF 1005
+;				- ADD CAN CLEAR
+
+can clear
+set default
+set report nolimit
+
+access ftimesht link pwo-num to pwo-num of fpwos optional &
+      link (characters(tsht-emp) + characters(pwo-num of ftimesht)) &
+      to emppwo-key of femppwos optional
+
+choose pwo-num parm                     &
+   prompt "Choose PWO # without period (Enter New Line to select ALL): "
+
+define temp-yymm zoned*4 unsigned = parm &
+                        prompt "ENTER YYMM FOR INVOICING: "
+
+select ftimesht if tsht-yymm = temp-yymm
+
+define temp-bbill numeric*8                 &
+       = tot if billable = ' '  &
+       else 0
+
+define temp-nbill numeric*8                 &
+       = tot if billable = '*'  &
+       else 0
+
+def x-bill-rate = bill-rate if daily-rate = 0 else daily-rate
+def x-bill-type char*1 = "H" if daily-rate = 0 else "D"
+def temp-pwo-bbill num*8 = temp-bbill * x-bill-rate/100 &
+                           if x-bill-type = "H" &
+                   else    temp-bbill/hrs-per-day * x-bill-rate/100 &
+                           if x-bill-type = "D" else 0
+
+sort on client of ftimesht on pwo-num of ftimesht
+
+set subfile name tempinvoicesa keep at pwo-num
+
+report summary client pwo-num temp-yymm temp-pwo-bbill subtotal
+
+build $pb_obj/pm14a
+  

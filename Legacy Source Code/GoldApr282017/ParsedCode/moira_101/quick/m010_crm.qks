@@ -1,0 +1,163 @@
+; 2013/may/02	MC	m010_crm.qks
+;			- allow user to create notes for different action
+;			- this program can be called from m010.qks from designer 'note'
+;			  or d003.cbl from option 'B'
+
+cancel clear
+
+screen $obj/m010_crm receiving w-pat-ikey, w-batch-nbr, w-claim-nbr, w-call-pgm
+
+description of screen                                                    &
+"                                                                      " &
+"       This screen allows user to create notes for different action   " &
+"       or event.                                                      " &
+"       This screen is called either from m010.qks from designer 'note'" &
+"       or is called from d003.cbl from option 'B'.                    " &
+"                                                                      " &
+"       'Date' will be set to the system run date automatically.       " &
+"       If notes are entered from patient screen, then claim nbr       " &
+"       will be blank.  If notes are entered from claim query screen,  " &
+"       then claim nbr should be the same as the claim nbr from d003.  " &
+"                                                                      " &
+"       The seq nbr will assign   automatically by the sequence you    " &
+"       enter the notes starting 1,2,3 ,etc as number of lines for     " &
+"       each action in 'E'nter or 'A'ppend mode.                       " &
+"                                                                      "
+
+
+temp w-pat-ikey      char*15
+temp w-batch-nbr     char*8
+temp w-claim-nbr     zoned*2 unsigned
+temp w-call-pgm      char*4
+
+temp w-pat-name      char*25
+
+temp dtl-seq-nbr zoned*8 initial 0
+temp w-time zoned*6         
+
+file f010-pat-mstr designer   
+  access viaindex key-pat-mstr using w-pat-ikey
+
+file f010-crm occurs 15
+  access  via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr	&
+	using w-pat-ikey, w-batch-nbr, w-claim-nbr 
+
+  item key-pat-mstr     initial w-pat-ikey  
+  item clmhdr-batch-nbr initial w-batch-nbr
+  item clmhdr-claim-nbr initial w-claim-nbr
+  item ghost-date-descending initial (20991231 - sysdate)
+  item date-assigned    initial sysdate 
+  item time-assigned    initial (1000000 - (systime / 100))
+
+
+skip  1
+align (,4,14) (,35,47)
+field w-pat-ikey display label 'Pat ID: '
+field w-pat-name display label 'Pat Name: ' 
+
+;title "   DATE       Action  Seq#     Description"  at 5,1
+title "   Date        Claim Nbr  Action  Seq#  Description"  at 5,1
+skip  1
+;align (1,,4) (,,18) (,,24) (,,30)
+align (1,,4) (,,16) (,,24)  (,,29) (,,36) (,,41)
+cluster occurs with f010-crm at 6,1
+
+field date-assigned of f010-crm required nochange display
+field clmhdr-batch-nbr of f010-crm required nochange display
+field clmhdr-claim-nbr of f010-crm required nochange display fill '0' bwz
+field action-code of f010-crm id same required nochange auto	&
+	help 'Enter ?? for detail description'
+field key-dtl-seq-nbr of f010-crm id same nochange lookup &
+		noton f010-crm via 	key-pat-mstr , 				&
+					clmhdr-batch-nbr, 			&
+					clmhdr-claim-nbr, 			&
+					ghost-date-descending,			&
+					date-assigned,    			&
+					time-assigned,    			&
+    					key-dtl-seq-nbr 			&
+		using 	key-pat-mstr of f010-crm , 				&
+			clmhdr-batch-nbr of f010-crm , 			 	&
+			clmhdr-claim-nbr of f010-crm , 			 	&
+			ghost-date-descending of f010-crm,			&
+			date-assigned of f010-crm , 			 	&
+			time-assigned of f010-crm , 			 	&
+			key-dtl-seq-nbr of f010-crm predisplay
+field followup-action of f010-crm id same  size 40				&
+	help 'Enter the notes/description up to 40 characters per line'
+
+
+procedure append
+begin
+     display date-assigned of f010-crm
+     display clmhdr-batch-nbr of f010-crm
+     display clmhdr-claim-nbr of f010-crm
+
+     accept action-code of f010-crm
+
+     let dtl-seq-nbr = dtl-seq-nbr + 1
+     let key-dtl-seq-nbr of f010-crm = dtl-seq-nbr
+
+     display key-dtl-seq-nbr of f010-crm
+     accept followup-action of f010-crm
+end
+
+procedure entry
+begin
+     for f010-crm
+       begin
+         perform append
+         end
+end
+
+procedure internal get_name   
+begin
+  get f010-pat-mstr     
+  let w-pat-name = pack(lj(trun(pat-given-name))) + ' ' + pack(lj(trun(pat-surname)))
+  display w-pat-name 
+  display w-pat-ikey
+end
+
+procedure find
+begin
+     if w-call-pgm = 'M010'
+     then begin
+       for missing f010-crm
+       begin
+         get f010-crm viaindex f010-crm-key   via key-pat-mstr using w-pat-ikey
+         end
+       end
+
+     if w-call-pgm = 'D003'
+     then begin
+       for missing f010-crm
+       begin
+         get f010-crm viaindex f010-crm-key    via key-pat-mstr, clmhdr-batch-nbr, clmhdr-claim-nbr &
+                                                using w-pat-ikey, w-batch-nbr, w-claim-nbr
+         end
+       end
+end
+
+procedure postfind
+begin
+   do get_name
+end
+
+procedure preentry
+begin
+  do get_name
+end
+
+procedure preupdate
+begin
+  let w-time = systime / 100
+  for f010-crm
+      begin
+	if newrecord
+        then begin
+	   let time-assigned = (1000000 - w-time) 
+	   let ghost-date-descending = (20991231 - sysdate)
+	   end
+        end
+end
+
+build detail list

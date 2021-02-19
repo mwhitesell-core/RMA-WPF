@@ -1,0 +1,380 @@
+;#> PROGRAM-ID.    u080.qts
+;
+;       ((C)) Dyad Technologies
+;
+; PROGRAM PURPOSE : TO RELOAD F010-pat-mstr
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO     DESCRIPTION
+;
+; 2007/04/18	M.C.    make correction for PE, it should be 8 digits instead of 9
+; 2011/03/09    MC1  	make correction for PE, MB, NL and add NU 
+; 2013/04/08    MC2  	change 'set lock file update' to 'set lock record update'
+;			refine the edit check on all chart nbrs (5)
+;
+cancel clear
+set process nolimit
+;MC2
+;set lock file update
+set lock record update
+
+;------------------------------------------------
+request load_u099_retain_patients on calculation errors report &
+				  on edit errors report
+
+access *u099-retain-patients
+
+define d-name char*4 = pat-surname[1:3] + pat-given-name[1:1]
+
+;2002/04/17 -MC
+def ikey char*12 = key-pat-mstr[4:12]
+;2002/04/17 - end
+
+define d-invalid-on-ohip char*2 = "E1"                   &
+   if pat-ohip-mmyy <> ' '                                      &
+  and pat-ohip-mmyy <> ikey                                     &
+;2002/07/02 - MC
+  and not matchpattern (pat-ohip-mmyy[1:3], "^^^")              &
+;2002/07/02 - end
+  and ((pat-prov-cd = 'AB'                                      &
+  and not matchpattern (pat-ohip-mmyy[1:10], "######### "))     &
+   or (pat-prov-cd = 'BC'                                       &
+  and not matchpattern (pat-ohip-mmyy[1:11], "########## "))    &
+   or (pat-prov-cd = 'MB'                                       &
+; 2011/03/09 - MC1
+;  and not matchpattern (pat-ohip-mmyy[1:7], "###### "))         &
+  and not matchpattern (pat-ohip-mmyy[1:10], "######### "))         &
+; 2011/03/09 - end
+; 2011/03/09 - MC1
+;   or (pat-prov-cd = 'NF'                                       &
+   or (pat-prov-cd = 'NL'                                       &
+; 2011/03/09 - end
+  and not matchpattern (pat-ohip-mmyy[1:13], "############ "))  &
+   or (pat-prov-cd = 'NB'                                       &
+  and not matchpattern (pat-ohip-mmyy[1:10], "######### "))     &
+   or (pat-prov-cd = 'NT'                                       &
+  and not matchpattern (pat-ohip-mmyy[1:9], "^####### "))       &
+   or (pat-prov-cd = 'NS'                                       &
+  and not matchpattern (pat-ohip-mmyy[1:11], "########## "))    &
+   or (pat-prov-cd = 'PE'                                          &
+; 2007/04/18 - MC
+;  and not matchpattern (pat-ohip-mmyy[1:9], "######## "))         &
+; 2011/03/09 - MC1
+;  and not matchpattern (pat-ohip-mmyy[1:8], "######## "))         &
+  and not matchpattern (pat-ohip-mmyy[1:9], "######## "))         &
+; 2011/03/09 - end
+; 2007/04/18 - end
+   or (pat-prov-cd = 'PQ'                                       &
+  and not matchpattern (pat-ohip-mmyy[1:4], d-name))            &
+   or (pat-prov-cd = 'SK'                                          &
+  and not matchpattern (pat-ohip-mmyy[1:10], "######### "))       &
+; 2011/03/09 - MC1 - include NU
+   or (pat-prov-cd = 'NU'                                          &
+  and not matchpattern (pat-ohip-mmyy[1:10], "######### "))       &
+; 2011/03/09 - end
+   or (pat-prov-cd = 'YT'                                          &
+  and not matchpattern (pat-ohip-mmyy[1:10], "######### ")))
+
+def t-birth-date char*6 = ascii(pat-birth-date,8)[3:6]
+
+define d-invalid-pat-direct char*2 = "E2"               &
+   if (matchpattern (pat-direct-id[1:3], "^^^") )       &
+  and (pat-direct-id[1:3] <> pat-acronym[1:3] or                &
+      pat-direct-id[4:6] <> t-birth-date)               &
+  and pat-direct-id <> ' '                              &
+  and pat-direct-id <> ikey
+
+define d-invalid-blanks char*2 = "E3" &
+   if pat-ohip-mmyy = ' '               &
+  and pat-chart-nbr  = ' '              &
+; 2013/04/08 - MC2
+  and pat-chart-nbr-2  = ' '              &
+  and pat-chart-nbr-3  = ' '              &
+  and pat-chart-nbr-4  = ' '              &
+  and pat-chart-nbr-5  = ' '              &
+; 2013/04/08 - end
+  and pat-health-nbr = 0
+
+define d-pat-acronym char*9 = pat-surname[1:6] + pat-given-name[1:3]
+define d-invalid-pat-acronym char*2 = "E4"              &
+;2002/07/02 - MC
+;   if not matchpattern (pat-acronym, d-pat-acronym)     &
+   if pat-acronym <> d-pat-acronym     			&
+;2002/07/02 - end 
+  and pat-acronym <> ' '
+
+;2013/04/08 - MC2
+;define d-invalid-pat-chart  char*2 = "E5"               &
+;   if (    not matchpattern (pat-chart-nbr[1:1], "M")       &
+;       and not matchpattern (pat-chart-nbr[1:1], "H")       &
+;       and not matchpattern (pat-chart-nbr[1:1], "K")       &
+;       and not matchpattern (pat-chart-nbr[1:3], "0")       &
+;       and not matchpattern (pat-chart-nbr[1:1], "J")       &
+;  and pat-chart-nbr <> ikey                             &
+;  and pat-chart-nbr <> ' ')
+
+define d-invalid-pat-chart  char*2 = "E5"               &
+   if (    not matchpattern (pat-chart-nbr[1:1], "M")   &
+       and not matchpattern (pat-chart-nbr[1:1], "W")   &
+  and pat-chart-nbr <> ikey[3:10]                       &
+  and pat-chart-nbr <> ' ')
+
+define d-invalid-pat-chart-2  char*2 = "E6"               &
+   if (    not matchpattern (pat-chart-nbr-2[1:1], "K")   &
+  and pat-chart-nbr-2 <> ikey[3:10]                       &
+  and pat-chart-nbr-2 <> ' ')
+
+define d-invalid-pat-chart-3  char*2 = "E7"                   &
+   if (    not matchpattern (pat-chart-nbr-3[1:4], "H002")    &
+       and not matchpattern (pat-chart-nbr-3[1:4], "H003")    &
+  and pat-chart-nbr-3 <> ikey[3:10]                           &
+  and pat-chart-nbr-3 <> ' ')
+
+define d-invalid-pat-chart-4  char*2 = "E8"               	 &
+   if (    not matchpattern (pat-chart-nbr-4[1:4], "0001")       &
+       and not matchpattern (pat-chart-nbr-4[1:4], "0005")       &
+       and not matchpattern (pat-chart-nbr-4[1:1], "D")          &
+       and not matchpattern (pat-chart-nbr-4[1:1], "E")          &
+       and not matchpattern (pat-chart-nbr-4[1:1], "F")          &
+  and pat-chart-nbr-4 <> ikey[3:10]                       	 &
+  and pat-chart-nbr-4 <> ' ')
+
+define d-invalid-pat-chart-5  char*2 = "E9"               &
+   if (    not matchpattern (pat-chart-nbr-5[1:1], "J")   &
+  and pat-chart-nbr-5 <> ikey[2:11]                       &
+  and pat-chart-nbr-5 <> ' ')
+
+define d-filler int unsig size 3 = 0
+
+temp t-count num
+   item t-count = t-count + 1
+
+subfile u080-invalid-records keep if d-invalid-on-ohip = "E1"  on errors report&
+        include t-count                         , &
+                d-invalid-on-ohip alias  d-invalid-rec                   , &
+                pat-acronym                     , &
+                pat-ohip-mmyy                   , &
+                pat-chart-nbr                  , &
+                pat-chart-nbr-2                 , &
+                pat-chart-nbr-3                 , &
+                pat-chart-nbr-4                 , &
+                pat-chart-nbr-5                 , &
+                pat-surname                     , &
+                pat-given-name                  , &
+                pat-init                        , &
+                pat-location-field              , &
+                d-filler                        , &
+                pat-last-doc-nbr-seen           , &
+                pat-birth-date                  , &
+                pat-date-last-maint             , &
+                pat-date-last-visit             , &
+                pat-date-last-admit             , &
+                pat-phone-nbr    		, &	
+                pat-prov-cd 
+
+subfile u080-invalid-records alias invalid-pat-direct             &
+         append if d-invalid-pat-direct = "E2"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-direct                            , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+subfile u080-invalid-records alias invalid-blanks                 &
+         append if d-invalid-blanks = "E3"                        &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-blanks                     		, &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+subfile u080-invalid-records alias invalid-pat-acronym            &
+        append if d-invalid-pat-acronym = "E4"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-acronym                           , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+subfile u080-invalid-records alias invalid-pat-chart             &
+         append if d-invalid-pat-chart = "E5"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-chart                            , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+subfile u080-invalid-records alias invalid-pat-chart-2             &
+         append if d-invalid-pat-chart-2 = "E6"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-chart-2                           , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+
+subfile u080-invalid-records alias invalid-pat-chart-3             &
+         append if d-invalid-pat-chart-3 = "E7"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-chart-3                           , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+
+subfile u080-invalid-records alias invalid-pat-chart-4             &
+         append if d-invalid-pat-chart-4 = "E8"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-chart-4                           , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+
+subfile u080-invalid-records alias invalid-pat-chart-5             &
+         append if d-invalid-pat-chart-5 = "E9"                    &
+        on errors report                                          &
+        include t-count                                         , &
+                d-invalid-pat-chart-5                           , &
+                pat-acronym of u099-retain-patients             , &
+                pat-ohip-mmyy of u099-retain-patients           , &
+                pat-chart-nbr of u099-retain-patients           , &
+                pat-chart-nbr-2 of u099-retain-patients         , &
+                pat-chart-nbr-3 of u099-retain-patients         , &
+                pat-chart-nbr-4 of u099-retain-patients         , &
+                pat-chart-nbr-5 of u099-retain-patients         , &
+                pat-surname of u099-retain-patients             , &
+                pat-given-name of u099-retain-patients          , &
+                pat-init of u099-retain-patients                , &
+                pat-location-field of u099-retain-patients      , &
+                d-filler                                        , &
+                pat-last-doc-nbr-seen of u099-retain-patients   , &
+                pat-birth-date of u099-retain-patients          , &
+                pat-date-last-maint of u099-retain-patients     , &
+                pat-date-last-visit of u099-retain-patients     , &
+                pat-date-last-admit of u099-retain-patients     , &
+                pat-phone-nbr of u099-retain-patients		, &
+                pat-prov-cd of u099-retain-patients
+
+
+
+

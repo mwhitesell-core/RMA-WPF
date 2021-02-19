@@ -1,0 +1,305 @@
+; DOC: R011_CSV.QZS
+; DOC: PHYSICIAN REVENUE ANALYSIS BY CLINIC  with delimiter and column heading (requested by Brad)
+; DOC: RUN FOR: ROSS  
+;
+;PROGRAM PURPOSE : REVENUE ANALYSIS BY CLINIC  
+;
+;DATE       	WHO     DESCRIPTION
+;2015/Jun/11 	MC      - original  
+;
+can clear
+set rep nolimit
+
+access f050-doc-revenue-mstr-history                    &
+	link docrev-dept				&
+	 to  dept-nbr of f070-dept-mstr opt 
+
+choose ep-yr parm prompt 'Enter Ep Yr (yyyy): ' 1 time, iconst-date-period-end parm prompt 'Enter PED (yyyymm01): '  1 time
+
+sorted on docrev-clinic-1-2 on docrev-dept
+
+def x-svc-mtd-in  zoned*4 signed = docrev-mtd-in-svc    &
+                                   if docrev-location ne "MISC"
+
+def x-svc-mtd-out zoned*4 signed = docrev-mtd-out-svc   &
+                                   if docrev-location ne "MISC"
+
+def x-amt-mtd-in  zoned*8 signed = docrev-mtd-in-rec    &
+                                   if docrev-location ne "MISC"
+
+def x-amt-mtd-out zoned*8 signed = docrev-mtd-out-rec   &
+                                   if docrev-location ne "MISC"
+
+def x-misc-svc-mtd zoned*4 signed =(docrev-mtd-in-svc + docrev-mtd-out-svc) &
+                              if docrev-location = "MISC"
+
+def x-misc-amt-mtd zoned*8 signed =(docrev-mtd-in-rec + docrev-mtd-out-rec) &
+                              if docrev-location = "MISC"
+
+def x-svc-ytd-in  zoned*5 signed = docrev-ytd-in-svc    &
+                                   if docrev-location ne "MISC"
+
+def x-svc-ytd-out zoned*5 signed = docrev-ytd-out-svc   &
+                                   if docrev-location ne "MISC"
+
+def x-amt-ytd-in  zoned*10 signed = docrev-ytd-in-rec    &
+                                   if docrev-location ne "MISC"
+
+def x-amt-ytd-out zoned*10 signed = docrev-ytd-out-rec   &
+                                   if docrev-location ne "MISC"
+
+def x-misc-svc-ytd zoned*5 signed =  &
+    (docrev-ytd-in-svc + docrev-ytd-out-svc) if docrev-location = "MISC"
+
+def x-misc-amt-ytd zoned*10 signed =   &
+    (docrev-ytd-in-rec + docrev-ytd-out-rec) if docrev-location = "MISC"
+
+def x-svc-total-mtd zoned*4 signed= (x-svc-mtd-in + x-svc-mtd-out + x-misc-svc-mtd)
+
+def x-svc-total-ytd zoned*5 signed= (x-svc-ytd-in + x-svc-ytd-out + x-misc-svc-ytd)
+
+def x-amt-total-mtd zoned*8 signed= (x-amt-mtd-in + x-amt-mtd-out + x-misc-amt-mtd)
+
+def x-amt-total-ytd zoned*10 signed= (x-amt-ytd-in + x-amt-ytd-out + x-misc-amt-ytd)
+
+set subfile name r011a_csv keep at docrev-dept     		 
+
+rep summary										    &
+                docrev-clinic-1-2                                 			    &
+		docrev-dept								    & 
+		dept-company 								    &
+                x-svc-mtd-in    subtotal reset at docrev-dept                               &
+                x-amt-mtd-in    subtotal reset at docrev-dept                               &
+                x-svc-mtd-out   subtotal reset at docrev-dept                               &
+                x-amt-mtd-out   subtotal reset at docrev-dept                               &
+                x-misc-svc-mtd  subtotal reset at docrev-dept                               &
+                x-misc-amt-mtd  subtotal reset at docrev-dept                               &
+                x-svc-total-mtd subtotal reset at docrev-dept                               &
+                x-amt-total-mtd subtotal reset at docrev-dept                               &
+                x-svc-ytd-in    subtotal reset at docrev-dept                               &
+                x-amt-ytd-in    subtotal reset at docrev-dept                               &
+                x-svc-ytd-out   subtotal reset at docrev-dept                               &
+                x-amt-ytd-out   subtotal reset at docrev-dept                               &
+                x-misc-svc-ytd  subtotal reset at docrev-dept                               &
+                x-misc-amt-ytd  subtotal reset at docrev-dept                               &
+                x-svc-total-ytd subtotal reset at docrev-dept                               &    
+                x-amt-total-ytd subtotal reset at docrev-dept                               
+
+build $obj/r011a_csv
+
+access *r011a_csv
+
+set rep device disc name r011_csv
+set page length 0 width 264
+set nohead
+set noformfeed
+
+;----------------------------------------
+def x-delimiter char*1 = "~"
+
+def x-num-lf integer unsigned size 2 = 10
+def x-lf        char*1 = char(x-num-lf)
+;----------------------------------------
+
+def x-period char*1 = "."
+
+def x-amt-mtd-in-sign char*1 = "-"   		   if x-amt-mtd-in < 0  	&
+                else " "
+def x-amt-mtd-in-dollars = abs(x-amt-mtd-in) / 100 if x-amt-mtd-in <> 0       	&
+                else  0
+def x-amt-mtd-in-cents   = mod(abs(x-amt-mtd-in),100)  if x-amt-mtd-in <> 0    	&
+                else  0
+
+def x-amt-mtd-out-sign char*1 = "-"   		     if x-amt-mtd-out < 0  	&
+                else " "
+def x-amt-mtd-out-dollars = abs(x-amt-mtd-out) / 100 if x-amt-mtd-out <> 0      &
+                else  0
+def x-amt-mtd-out-cents   = mod(abs(x-amt-mtd-out),100)  if x-amt-mtd-out <> 0    	&
+                else  0
+
+def x-misc-amt-mtd-sign char*1 = "-"   		       if x-misc-amt-mtd < 0  	&
+                else " "
+def x-misc-amt-mtd-dollars = abs(x-misc-amt-mtd) / 100 if x-misc-amt-mtd <> 0   &
+                else  0
+def x-misc-amt-mtd-cents   = mod(abs(x-misc-amt-mtd),100)  if x-misc-amt-mtd <> 0  	&
+                else  0
+
+def x-amt-total-mtd-sign char*1 = "-"   		 if x-amt-total-mtd < 0    &
+                else " "
+def x-amt-total-mtd-dollars = abs(x-amt-total-mtd) / 100 if x-amt-total-mtd <> 0   &
+                else  0
+def x-amt-total-mtd-cents   = mod(abs(x-amt-total-mtd),100)  if x-amt-total-mtd <> 0   &
+                else  0
+
+def x-amt-ytd-in-sign char*1 = "-"   		   if x-amt-ytd-in < 0  	&
+                else " "
+def x-amt-ytd-in-dollars = abs(x-amt-ytd-in) / 100 if x-amt-ytd-in <> 0       	&
+                else  0
+def x-amt-ytd-in-cents   = mod(abs(x-amt-ytd-in),100)  if x-amt-ytd-in <> 0    	&
+                else  0
+
+def x-amt-ytd-out-sign char*1 = "-"   		     if x-amt-ytd-out < 0  	&
+                else " "
+def x-amt-ytd-out-dollars = abs(x-amt-ytd-out) / 100 if x-amt-ytd-out <> 0      &
+                else  0
+def x-amt-ytd-out-cents   = mod(abs(x-amt-ytd-out),100)  if x-amt-ytd-out <> 0    	&
+                else  0
+
+def x-misc-amt-ytd-sign char*1 = "-"   		       if x-misc-amt-ytd < 0  	&
+                else " "
+def x-misc-amt-ytd-dollars = abs(x-misc-amt-ytd) / 100 if x-misc-amt-ytd <> 0   &
+                else  0
+def x-misc-amt-ytd-cents   = mod(abs(x-misc-amt-ytd),100)  if x-misc-amt-ytd <> 0  	&
+                else  0
+
+def x-amt-total-ytd-sign char*1 = "-"   		 if x-amt-total-ytd < 0    &
+                else " "
+def x-amt-total-ytd-dollars = abs(x-amt-total-ytd) / 100 if x-amt-total-ytd <> 0   &
+                else  0
+def x-amt-total-ytd-cents   = mod(abs(x-amt-total-ytd),100)  if x-amt-total-ytd <> 0   &
+                else  0
+
+;----------------
+
+def x-clinic       char*4  = '"' +  docrev-clinic-1-2  + '"'
+def x-dept	   char*4  = '"' + ascii(docrev-dept,2) + '"'
+def x-company	   char*1  = ascii(dept-company) 
+ 
+def x-svc-mtd-in-alpha char*5  =  pack(ascii(x-svc-mtd-in))
+def x-amt-mtd-in-alpha char*11 =  pack(trunc(lj(x-amt-mtd-in-sign +       	&
+                                              ascii(x-amt-mtd-in-dollars) +     &
+                                              x-period +                        &
+                                              ascii(x-amt-mtd-in-cents,2))))
+
+def x-svc-mtd-out-alpha char*5  =  pack(ascii(x-svc-mtd-out))
+def x-amt-mtd-out-alpha char*11 =  pack(trunc(lj(x-amt-mtd-out-sign +       	  &
+                                              ascii(x-amt-mtd-out-dollars) +      &
+                                              x-period +                          &
+                                              ascii(x-amt-mtd-out-cents,2))))
+
+def x-misc-svc-mtd-alpha char*5  =  pack(ascii(x-misc-svc-mtd))
+def x-misc-amt-mtd-alpha char*11 =  pack(trunc(lj(x-misc-amt-mtd-sign +       	   &
+                                              ascii(x-misc-amt-mtd-dollars) +      &
+                                              x-period +                           &
+                                              ascii(x-misc-amt-mtd-cents,2))))
+
+def x-svc-total-mtd-alpha char*5  =  pack(ascii(x-svc-total-mtd))
+def x-amt-total-mtd-alpha char*11 =  pack(trunc(lj(x-amt-total-mtd-sign +           &
+                                              ascii(x-amt-total-mtd-dollars) +      &
+                                              x-period +                            &
+                                              ascii(x-amt-total-mtd-cents,2))))
+
+def x-svc-ytd-in-alpha char*6  =  pack(ascii(x-svc-ytd-in))
+def x-amt-ytd-in-alpha char*13 =  pack(trunc(lj(x-amt-ytd-in-sign +       	&
+                                              ascii(x-amt-ytd-in-dollars) +     &
+                                              x-period +                        &
+                                              ascii(x-amt-ytd-in-cents,2))))
+
+def x-svc-ytd-out-alpha char*6  =  pack(ascii(x-svc-ytd-out))
+def x-amt-ytd-out-alpha char*13 =  pack(trunc(lj(x-amt-ytd-out-sign +             &
+                                              ascii(x-amt-ytd-out-dollars) +      &
+                                              x-period +                          &
+                                              ascii(x-amt-ytd-out-cents,2))))
+
+def x-misc-svc-ytd-alpha char*6  =  pack(ascii(x-misc-svc-ytd))
+def x-misc-amt-ytd-alpha char*13 =  pack(trunc(lj(x-misc-amt-ytd-sign +       	  &
+                                              ascii(x-misc-amt-ytd-dollars) +     &
+                                              x-period +                          &
+                                              ascii(x-misc-amt-ytd-cents,2))))
+
+def x-svc-total-ytd-alpha char*6  =  pack(ascii(x-svc-total-ytd))
+def x-amt-total-ytd-alpha char*13 =  pack(trunc(lj(x-amt-total-ytd-sign +         &
+                                              ascii(x-amt-total-ytd-dollars) +    &
+                                              x-period +                          &
+                                              ascii(x-amt-total-ytd-cents,2))))
+
+def x-line char*220 =					&
+        lj(pack(  				 	&
+                x-clinic        +                       &
+		x-delimiter  +					 &
+                x-dept          +                       &
+		x-delimiter  +					 &
+                x-company       +                       &
+		x-delimiter  +					 &
+                x-svc-mtd-in-alpha    +                         &
+		x-delimiter  +					 &
+                x-amt-mtd-in-alpha    +                         &
+		x-delimiter  +					 &
+                x-svc-mtd-out-alpha   +                         &
+		x-delimiter  +					 &
+                x-amt-mtd-out-alpha   +                         &
+		x-delimiter  +					 &
+                x-misc-svc-mtd-alpha  +                         &
+		x-delimiter  +					 &
+                x-misc-amt-mtd-alpha  +                         &
+		x-delimiter  +					 &
+                x-svc-total-mtd-alpha +                         &
+		x-delimiter  +					 &
+                x-amt-total-mtd-alpha +                         &
+		x-delimiter  +					 &
+                x-svc-ytd-in-alpha    +                         &
+		x-delimiter  +					 &
+                x-amt-ytd-in-alpha    +                         &
+		x-delimiter  +					 &
+                x-svc-ytd-out-alpha   +                         &
+		x-delimiter  +					 &
+                x-amt-ytd-out-alpha   +                         &
+		x-delimiter  +					 &
+                x-misc-svc-ytd-alpha  +                         &
+		x-delimiter  +					 &
+                x-misc-amt-ytd-alpha  +                         &
+		x-delimiter  +					 &
+                x-svc-total-ytd-alpha +                         &    
+		x-delimiter  +					 &
+                x-amt-total-ytd-alpha   +                       &
+		x-lf         					&
+		) )
+
+
+
+
+initial heading                         &
+  tab  01 'Clinic'                    &
+  tab  07 x-delimiter                         &
+  tab  08 'Dept'                      &
+  tab  12 x-delimiter                         &
+  tab  13 'Company'                   &
+  tab  20 x-delimiter                         &
+  tab  21 'In-Pat Svc'            &
+  tab  31 x-delimiter                         &
+  tab  32 'In-Pat Amt'            &
+  tab  42 x-delimiter                         &
+  tab  43 'Out-Pat Svc'           &
+  tab  54 x-delimiter                         &
+  tab  55 'Out-Pat Amt'           &
+  tab  66 x-delimiter                         &
+  tab  67 'Misc Svc'              &
+  tab  75 x-delimiter                         &
+  tab  76 'Misc Amt'              &
+  tab  84 x-delimiter                         &
+  tab  85 'Tot Svc'             &
+  tab  92 x-delimiter                         &
+  tab  93 'Tot Amt'             &
+  tab 100 x-delimiter                         &
+  tab 101 'In-Pat Svc'            &
+  tab 111 x-delimiter                         &
+  tab 112 'In-Pat Amt'            &
+  tab 122 x-delimiter                         &
+  tab 123 'Out-Pat Svc'           &
+  tab 134 x-delimiter                         &
+  tab 135 'Out-Pat Amt'           &
+  tab 146 x-delimiter                         &
+  tab 147 'Misc Svc'              &
+  tab 155 x-delimiter                         &
+  tab 156 'Misc Amt'              &
+  tab 164 x-delimiter                         &
+  tab 165 'Tot Svc'             &
+  tab 172 x-delimiter                         &
+  tab 173 'Tot Amt'            		      &
+  tab 180 x-lf
+
+report tab 01 x-line
+
+build $pb_obj/r011b_csv
+
+ 

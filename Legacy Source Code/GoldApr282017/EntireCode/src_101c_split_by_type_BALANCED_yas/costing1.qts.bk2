@@ -1,0 +1,249 @@
+; Program: costing1.qts
+; Purpose: - creates files for costing the KEYING Charges
+;
+
+;99/06/02 M. Chan	- Yasemin to increase the size of nbr-svc,
+;			  nbr-dtl, nbr-clm  from 4 to 6
+;99/06/08 M. Chan	- Yasemin to apply tech-ind <> 'Y' for clinic
+;			  60 to 65 claims only  , add a new column man reject
+;			- add request seven to extract man reject from manual
+;			  rejected claims history file
+;99/07/20  B.E. 	- added qualification of clinic nbr in request 4
+;00/01/07  B.E.		- added copy books to remove hard coding of 
+;			  "miscellenous" billing codes 
+; 2003/dec/11 A.A.	- alpha doctor nbr
+;
+cancel clear
+
+run costing1
+
+set default
+set lock file update
+
+
+;-------------------------------------------------------------------------------
+; obtain current costing "constants" and pass to subsequent requests
+;
+use $use/get_const_rec_7_values_globals.qts
+use $use/get_const_rec_7_values.qts
+
+
+set process nolimit
+
+
+; Purpose: This request counts # claims and # services
+request costing1_1     &
+	on calculation errors report	&
+	on edit errors report
+
+
+access f002-claims-mstr         					&
+;!        link (nconvert(clmhdr-claim-id[4:3]))   			&
+        link clmhdr-claim-id[3:3]   			&
+        to doc-nbr of f020-doctor-mstr 	        			&
+        link clmdtl-oma-cd to fee-oma-cd of f040-oma-fee-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr, key-clm-claim-nbr,	&
+	key-clm-serv-code, key-clm-adj-nbr '0'
+
+; (select non-clinic 60 claim detail recs ignoring 'misc' records and also
+;  ignoring any any clinic 60 records whose keying costs are reclaimed
+;  from the hospital)
+use $use/select_f002_for_costing_keying_charges.use
+
+; (select doctor who  was 'active' anytime within the costing
+;  analysis period - ie. start of fiscal year to current costing
+;  analysis ped's yymm)
+use $use/select_f020_active_for_costing_analysis_period.use
+
+;select if   (    fee-tech-ind <> 'Y' 		&
+;             and clmdtl-id[1:2] >= '60'	&
+;	      and clmdtl-id[1:2] <= '65'	&
+;	     ) 					&
+;         or clmdtl-id[1:2] < '60' 		&
+;         or clmdtl-id[1:2] > '65'
+
+;def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+define x-sv-nbr2  zoned*2 unsigned = clmdtl-sv-nbr(1)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '  '    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '00'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne '0 '    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne ' 0'    &
+                   else 0 
+
+define x-sv-nbr3  zoned*2 unsigned = clmdtl-sv-nbr(2)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '  '    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '0 '    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne ' 0'    &
+                       and clmdtl-consecutive-sv-days(2)[2:2] ne '00'    &
+                   else 0 
+
+define x-sv-nbr4  zoned*2 unsigned = clmdtl-sv-nbr(3)                    &
+                     if    clmdtl-consecutive-sv-days(1)[2:2] ne 'OP'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'MR'    &
+                       and clmdtl-consecutive-sv-days(1)[2:2] ne 'BI'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '  '    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '0 '    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne ' 0'    &
+                       and clmdtl-consecutive-sv-days(3)[2:2] ne '00'    &
+                   else 0 
+
+def x-claims char*16 = clmdtl-id[1:16]
+
+sorted on x-claims
+
+temp x-nbr-svcs zoned*4 unsigned
+item x-nbr-svcs = x-nbr-svcs       + x-sv-nbr1 &
+                                   + x-sv-nbr2 & 
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4 &
+	reset at x-claims
+
+subfile costing1 keep at x-claims 	&
+include         &
+doc-nbr        ,&
+doc-name	,&
+doc-inits	,&
+doc-dept	,&
+doc-clinic-nbr	,&
+x-claims        ,&
+clmdtl-id       ,&
+x-nbr-svcs 
+
+
+
+; Purpose: This request counts the number of detail lines in the claims
+;		and the number of details less than $3.00
+request costing1_2a     &
+        on calculation errors report    &
+        on edit errors report
+; modification history
+;99/06/07   B.E.         - added keep at claim nbr instead of doc nbr
+
+set process nolimit
+
+access *costing1
+
+def x-claim-nbr-only char*11 = x-claims[1:11]
+
+sort on doc-nbr   &
+     on x-claim-nbr-only
+
+temp c-nbr-svc zoned*6 unsigned
+;item nbr-svc = nbr-svc + x-nbr-svcs  reset at doc-nbr
+item c-nbr-svc = c-nbr-svc + x-nbr-svcs  reset at x-claim-nbr-only
+
+temp c-nbr-clm zoned*6 unsigned
+;item nbr-clm = nbr-clm + 1 at x-claim-nbr-only reset at doc-nbr
+item c-nbr-clm = c-nbr-clm + 1 at x-claim-nbr-only reset at x-claim-nbr-only
+
+temp c-nbr-dtl zoned*6 unsigned
+;item nbr-dtl = nbr-dtl + 1                     reset at doc-nbr
+item c-nbr-dtl = c-nbr-dtl + 1                  reset at x-claim-nbr-only
+
+temp dtl-amt zoned*6 unsigned
+item dtl-amt = 1000
+
+temp c-nbr-dtl-less-than-min-amt zoned*6 unsigned
+item c-nbr-dtl-less-than-min-amt = c-nbr-dtl-less-than-min-amt + 1      &
+                if dtl-amt < 300                reset at x-claim-nbr-only
+
+def nbr-reject zoned*4 unsigned = 0
+
+def amt-ytd      zoned*8 signed = 0
+def misc-amt-ytd zoned*8 signed = 0
+def mohr-amt-ytd zoned*8 signed = 0
+def total-amt-ytd zoned*8 signed = 0
+def man-reject   zoned*6 unsigned = 0
+
+;subfile costing2  keep append at doc-nbr                 &
+ subfile costing1b keep        at x-claim-nbr-only        &
+include                                     &
+         x-claim-nbr-only,                  &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+         doc-clinic-nbr,                    &
+         c-nbr-svc,                         &
+         c-nbr-clm,                         &
+         c-nbr-dtl,                         &
+         c-nbr-dtl-less-than-min-amt,     &
+         nbr-reject,                      &
+         amt-ytd,                         &
+         misc-amt-ytd,                    &
+         mohr-amt-ytd,                    &
+         total-amt-ytd,                   &
+         man-reject
+
+
+;request purpose : This pgm used for 'what if' type analysis of costing
+;                  by allowing the programmer to change the calculation
+;                  of 'nbr detail recs'.
+;                  - code tests if 'clinic 6x' and nbr details > 3 then
+;                    only count 3 as max details.
+;                  - this logic can be changed to test impact on costing model
+request costing1_2b     &
+        on calculation errors report    &
+        on edit errors report
+
+access *costing1b
+
+sort on doc-nbr   &
+     on x-claim-nbr-only
+
+temp nbr-svc zoned*6 unsigned
+item nbr-svc = nbr-svc + c-nbr-svc  reset at doc-nbr
+
+temp nbr-clm zoned*6 unsigned
+item nbr-clm = nbr-clm + 1 at x-claim-nbr-only reset at doc-nbr
+
+; (don't count more than 3 details for any claim if claim is for clinic 60-65)
+def x-clinic char*2 = x-claim-nbr-only[1:2]
+temp nbr-dtl zoned*6 unsigned
+item nbr-dtl                                            &
+; ********************** changeable logic ********************
+;     = nbr-dtl                    + 2                           &
+;                if     (c-nbr-dtl > 2)                          &
+;                   and (x-clinic >='60' and x-clinic <='65')    &
+      =  nbr-dtl + c-nbr-dtl if 1=1				 &
+   else  nbr-dtl + c-nbr-dtl                                     &
+; ************************************************************
+                                reset at doc-nbr
+
+def nbr-reject zoned*4 unsigned = 0
+
+def amt-ytd      zoned*8 signed = 0
+def misc-amt-ytd zoned*8 signed = 0
+def mohr-amt-ytd zoned*8 signed = 0
+def total-amt-ytd zoned*8 signed = 0
+def man-reject   zoned*6 unsigned = 0
+
+;subfile costing2 keep append at doc-nbr  &
+ subfile costing2 keep        at doc-nbr  &
+include                                     &
+         doc-nbr,                           &
+         doc-name,                          &
+         doc-inits,                         &
+         doc-dept,                          &
+         doc-clinic-nbr,                    &
+         nbr-svc,                         &
+         nbr-clm,                         &
+         nbr-dtl,                         &
+         nbr-reject,                      &
+         amt-ytd,                         &
+         misc-amt-ytd,                    &
+         mohr-amt-ytd,                    &
+         total-amt-ytd,                   &
+         man-reject
+
+build $obj/costing1

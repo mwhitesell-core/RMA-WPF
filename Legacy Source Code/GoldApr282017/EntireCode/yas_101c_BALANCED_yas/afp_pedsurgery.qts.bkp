@@ -1,0 +1,886 @@
+;doc     : afp_pedsurgery
+;purpose : create report for AFP ped surgery docs                       
+;	   by doctor by month by agent (0and4)seperate HCP and RMA for 0/4, 
+;          2, 6 and 9 include "B" adjustments and misc payments
+;who     : send to Dr. Cameron, Walton , Fitzgerald, Hollenburg
+
+;
+; *************************************************************
+
+;Date		Who		Description
+;3003/10/10	Yasemin	        original
+;2003/01/13	Yasemin	        modify it jan - dec 2003
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr                   &
+  link clmhdr-pat-ohip-id-or-chart        &
+    to key-pat-mstr of f010-pat-mstr opt  &
+  link (nconvert(clmhdr-claim-id[4:3]))   &
+    to doc-nbr of f020-doctor-mstr opt
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr 910317000 to 910317999  &
+                                              910909000 to 910909999  &
+                                              910340000 to 910340999  &
+                                              910626000 to 910626999  &
+                                              910501000 to 910501999  &
+                                              940317000 to 940317999  &
+                                              940909000 to 940909999  &
+                                              940340000 to 940340999  &
+                                              940626000 to 940626999  &
+                                              940501000 to 940501999  &
+                                              960501000 to 960501999  &
+                                              220317000 to 220317999  &
+                                              220909000 to 220909999  &
+                                              220340000 to 220340999  &
+                                              220626000 to 220626999  &
+                                              220501000 to 220501999  &
+ ,key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if  clmhdr-agent-cd <> 1                              &
+            and (   (clmhdr-batch-type  = 'C')                                &
+                 or (clmhdr-batch-type  = 'P' and clmhdr-adj-cd = 'M') 	      &
+                 or (clmhdr-batch-type  = 'A' and clmhdr-adj-cd = 'B')        &
+                )
+
+def x-payment cha*3 = "HCP" if pat-prov-cd = "ON"    &
+                 else "RMB"
+
+def x-clinic cha*2 = clmhdr-claim-id[1:2]
+
+subfile pedsurgery     keep include              &
+key-clm-batch-nbr            of f002-claims-mstr,&
+key-clm-claim-nbr            of f002-claims-mstr,&
+clmhdr-agent-cd		     of f002-claims-mstr,&
+clmhdr-batch-type	     of f002-claims-mstr,&
+clmhdr-payroll               of f002-claims-mstr,&
+doc-name                     of f020-doctor-mstr,&
+x-clinic                                        ,&
+x-payment                                        
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *pedsurgery                                                       &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr                                            
+
+select f002-claims-mstr if                                              &
+            clmdtl-sv-date     >= '20030101'                            &
+       and  clmdtl-sv-date     <= '20031231'                            &
+       and  clmdtl-oma-cd      <> "0000"             &; ignore claim header recs
+       and  clmdtl-oma-cd      <> "ZZZZ"             &; ignore description recs
+       and  clmdtl-oma-cd      <> "PAID"             &; no payments
+       and  (       (   clmdtl-adj-nbr     = 0                          &   
+                    and clmhdr-batch-type of pedsurgery   = 'C'         &
+                    )                                                   &
+              or    (   clmdtl-adj-nbr     = 1                          &
+                     and clmhdr-batch-type of pedsurgery   = 'C'        &
+;                     and clmhdr-batch-type of pedsurgery   = 'A'        &
+                    )                                                   &
+            )
+
+	    
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+
+def x-yyyymm cha*6 = clmdtl-sv-date[1:6]        
+
+def x-code cha*4 = "Y" if clmdtl-oma-cd = "MICM"    &
+                       or clmdtl-oma-cd = "MISJ"    &
+                       or clmdtl-oma-cd = "MISC"    &
+                       or clmdtl-oma-cd = "MICV"    &
+                       or clmdtl-oma-cd = "MISP"    &
+                       or clmdtl-oma-cd = "MICB"    &
+                       or clmdtl-oma-cd = "MIBR"    &
+                       or clmdtl-oma-cd = "MINH"    &
+                       or clmdtl-oma-cd = "MHSC"    &
+                       or clmdtl-oma-cd = "NHSC"    &
+                       or clmdtl-oma-cd = "MOHR"    &
+     else "N"
+
+sort on x-doc-nbr    
+
+
+temp x-jan-2003-0h num*7
+item x-jan-2003-0h  = x-jan-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200301"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jan-2003-0r num*7
+item x-jan-2003-0r  = x-jan-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200301"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-jan-2003-2  num*7
+item x-jan-2003-2   = x-jan-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200301"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jan-2003-6  num*7
+item x-jan-2003-6   = x-jan-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200301"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jan-2003-9  num*7
+item x-jan-2003-9   = x-jan-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200301"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jan-2003-p  num*7
+item x-jan-2003-p   = x-jan-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200301"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-feb-2003-0h num*7
+item x-feb-2003-0h  = x-feb-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-feb-2003-0r num*7
+item x-feb-2003-0r  = x-feb-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-feb-2003-2  num*7
+item x-feb-2003-2   = x-feb-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-feb-2003-6  num*7
+item x-feb-2003-6   = x-feb-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-feb-2003-9  num*7
+item x-feb-2003-9   = x-feb-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-feb-2003-p  num*7
+item x-feb-2003-p   = x-feb-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200302"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-mar-2003-0h num*7
+item x-mar-2003-0h  = x-mar-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200303"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-mar-2003-0r num*7
+item x-mar-2003-0r  = x-mar-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200303"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-mar-2003-2  num*7
+item x-mar-2003-2   = x-mar-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200303"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-mar-2003-6  num*7
+item x-mar-2003-6   = x-mar-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200303"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-mar-2003-9  num*7
+item x-mar-2003-9   = x-mar-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200303"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-mar-2003-p  num*7
+item x-mar-2003-p   = x-mar-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200303"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+
+temp x-apr-2003-0h num*7
+item x-apr-2003-0h  = x-apr-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200304"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-apr-2003-0r num*7
+item x-apr-2003-0r  = x-apr-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200304"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-apr-2003-2  num*7
+item x-apr-2003-2   = x-apr-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200304"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-apr-2003-6  num*7
+item x-apr-2003-6   = x-apr-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200304"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-apr-2003-9  num*7
+item x-apr-2003-9   = x-apr-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200304"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-apr-2003-p  num*7
+item x-apr-2003-p   = x-apr-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200304"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-may-2003-0h num*7
+item x-may-2003-0h  = x-may-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200305"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-may-2003-0r num*7
+item x-may-2003-0r  = x-may-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200305"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-may-2003-2  num*7
+item x-may-2003-2   = x-may-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200305"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-may-2003-6  num*7
+item x-may-2003-6   = x-may-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200305"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-may-2003-9  num*7
+item x-may-2003-9   = x-may-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200305"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-may-2003-p  num*7
+item x-may-2003-p   = x-may-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200305"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jun-2003-0h num*7
+item x-jun-2003-0h  = x-jun-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200306"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jun-2003-0r num*7
+item x-jun-2003-0r  = x-jun-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200306"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-jun-2003-2  num*7
+item x-jun-2003-2   = x-jun-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200306"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jun-2003-6  num*7
+item x-jun-2003-6   = x-jun-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200306"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jun-2003-9  num*7
+item x-jun-2003-9   = x-jun-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200306"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jun-2003-p  num*7
+item x-jun-2003-p   = x-jun-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200306"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jul-2003-0h num*7
+item x-jul-2003-0h  = x-jul-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200307"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jul-2003-0r num*7
+item x-jul-2003-0r  = x-jul-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200307"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-jul-2003-2  num*7
+item x-jul-2003-2   = x-jul-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200307"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jul-2003-6  num*7
+item x-jul-2003-6   = x-jul-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200307"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jul-2003-9  num*7
+item x-jul-2003-9   = x-jul-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200307"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-jul-2003-p  num*7
+item x-jul-2003-p   = x-jul-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200307"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-aug-2003-0h num*7
+item x-aug-2003-0h  = x-aug-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200308"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-aug-2003-0r num*7
+item x-aug-2003-0r  = x-aug-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200308"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-aug-2003-2  num*7
+item x-aug-2003-2   = x-aug-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200308"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-aug-2003-6  num*7
+item x-aug-2003-6   = x-aug-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200308"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-aug-2003-9  num*7
+item x-aug-2003-9   = x-aug-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200308"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-aug-2003-p  num*7
+item x-aug-2003-p   = x-aug-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200308"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-sep-2003-0h num*7
+item x-sep-2003-0h  = x-sep-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200309"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-sep-2003-0r num*7
+item x-sep-2003-0r  = x-sep-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200309"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-sep-2003-2  num*7
+item x-sep-2003-2   = x-sep-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200309"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-sep-2003-6  num*7
+item x-sep-2003-6   = x-sep-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200309"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-sep-2003-9  num*7
+item x-sep-2003-9   = x-sep-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200309"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-sep-2003-p  num*7
+item x-sep-2003-p   = x-sep-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200309"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-oct-2003-0h num*7
+item x-oct-2003-0h  = x-oct-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200310"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-oct-2003-0r num*7
+item x-oct-2003-0r  = x-oct-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200310"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-oct-2003-2  num*7
+item x-oct-2003-2   = x-oct-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200310"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-oct-2003-6  num*7
+item x-oct-2003-6   = x-oct-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200310"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-oct-2003-9  num*7
+item x-oct-2003-9   = x-oct-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200310"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-oct-2003-p  num*7
+item x-oct-2003-p   = x-oct-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200310"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-nov-2003-0h num*7
+item x-nov-2003-0h  = x-nov-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200311"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-nov-2003-0r num*7
+item x-nov-2003-0r  = x-nov-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200311"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-nov-2003-2  num*7
+item x-nov-2003-2   = x-nov-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200311"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-nov-2003-6  num*7
+item x-nov-2003-6   = x-nov-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200311"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-nov-2003-9  num*7
+item x-nov-2003-9   = x-nov-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200311"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-nov-2003-p  num*7
+item x-nov-2003-p   = x-nov-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200311"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-dec-2003-0h num*7
+item x-dec-2003-0h  = x-dec-2003-0h + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200312"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-dec-2003-0r num*7
+item x-dec-2003-0r  = x-dec-2003-0r + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200312"   &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-dec-2003-2  num*7
+item x-dec-2003-2   = x-dec-2003-2  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200312"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-dec-2003-6  num*7
+item x-dec-2003-6   = x-dec-2003-6  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200312"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-dec-2003-9  num*7
+item x-dec-2003-9   = x-dec-2003-9  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200312"   &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-dec-2003-p  num*7
+item x-dec-2003-p   = x-dec-2003-p  + clmdtl-fee-ohip/100     &
+                    if (          x-yyyymm   = "200312"   &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-tot-2003-0h num*7
+item x-tot-2003-0h  = x-tot-2003-0h + clmdtl-fee-ohip/100      &
+                    if ((x-yyyymm >= "200301" and x-yyyymm <= "200312") &
+                         and      x-code    = "N"         &
+                         and      x-payment = "HCP"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-tot-2003-0r num*7
+item x-tot-2003-0r  = x-tot-2003-0r + clmdtl-fee-ohip/100     &
+                    if ((x-yyyymm >= "200301" and x-yyyymm <= "200312") &
+                         and      x-code    = "N"         &
+                         and      x-payment = "RMB"       &
+                         and (   clmhdr-agent-cd = 0      &
+                              or clmhdr-agent-cd = 4)     &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+temp x-tot-2003-2  num*7
+item x-tot-2003-2   = x-tot-2003-2  + clmdtl-fee-ohip/100     &
+                    if ((x-yyyymm >= "200301" and x-yyyymm <= "200312") &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 2          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-tot-2003-6  num*7
+item x-tot-2003-6   = x-tot-2003-6  + clmdtl-fee-ohip/100     &
+                    if ((x-yyyymm >= "200301" and x-yyyymm <= "200312") &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 6          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-tot-2003-9  num*7
+item x-tot-2003-9   = x-tot-2003-9  + clmdtl-fee-ohip/100     &
+                    if ((x-yyyymm >= "200301" and x-yyyymm <= "200312") &
+                         and      x-code   = "N"          &
+                         and clmhdr-agent-cd = 9          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+temp x-tot-2003-p  num*7
+item x-tot-2003-p   = x-tot-2003-p  + clmdtl-fee-ohip/100     &
+                    if ((x-yyyymm >= "200301" and x-yyyymm <= "200312") &
+                         and      x-code   = "Y"          &
+                       )                                  &
+                    reset at x-doc-nbr
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile pedsurgerya portable keep at x-doc-nbr include         &
+x-doc-nbr                                           ,&
+comma                                               ,&
+doc-name                                            ,&
+comma                                               ,&
+x-jan-2003-0h                                       ,&
+comma                                               ,&
+x-jan-2003-0r                                       ,&
+comma                                               ,&
+x-jan-2003-6                                        ,&
+comma                                               ,&
+x-feb-2003-0h                                       ,&
+comma                                               ,&
+x-feb-2003-0r                                       ,&
+comma                                               ,&
+x-feb-2003-6                                        ,&
+comma                                               ,&
+x-mar-2003-0h                                       ,&
+comma                                               ,&
+x-mar-2003-0r                                       ,&
+comma                                               ,&
+x-mar-2003-6                                        ,&
+comma                                               ,&
+x-apr-2003-0h                                       ,&
+comma                                               ,&
+x-apr-2003-0r                                       ,&
+comma                                               ,&
+x-apr-2003-6                                        ,&
+comma                                               ,&
+x-may-2003-0h                                       ,&
+comma                                               ,&
+x-may-2003-0r                                       ,&
+comma                                               ,&
+x-may-2003-6                                        ,&
+comma                                               ,&
+x-jun-2003-0h                                       ,&
+comma                                               ,&
+x-jun-2003-0r                                       ,&
+comma                                               ,&
+x-jun-2003-6                                        ,&
+comma                                               ,&
+x-jul-2003-0h                                       ,&
+comma                                               ,&
+x-jul-2003-0r                                       ,&
+comma                                               ,&
+x-jul-2003-6                                        ,&
+comma                                               ,&
+x-aug-2003-0h                                       ,&
+comma                                               ,&
+x-aug-2003-0r                                       ,&
+comma                                               ,&
+x-aug-2003-6                                        ,&
+comma                                               ,&
+x-sep-2003-0h                                       ,&
+comma                                               ,&
+x-sep-2003-0r                                       ,&
+comma                                               ,&
+x-sep-2003-6                                        ,&
+comma                                               ,&
+x-oct-2003-0h                                       ,&
+comma                                               ,&
+x-oct-2003-0r                                       ,&
+comma                                               ,&
+x-oct-2003-6                                        ,&
+comma                                               ,&
+x-nov-2003-0h                                       ,&
+comma                                               ,&
+x-nov-2003-0r                                       ,&
+comma                                               ,&
+x-nov-2003-6                                        ,&
+comma                                               ,&
+x-dec-2003-0h                                       ,&
+comma                                               ,&
+x-dec-2003-0r                                       ,&
+comma                                               ,&
+x-dec-2003-6                                        ,&
+comma                                               ,&
+x-tot-2003-0h                                       ,&
+comma                                               ,&
+x-tot-2003-0r                                       ,&
+comma                                               ,&
+x-tot-2003-6                                        ,&
+comma                                               ,&
+x-tot-2003-2                                        ,&
+comma                                               ,&
+x-tot-2003-9                                        ,&
+comma                                               ,&
+x-tot-2003-p                                        ,&
+x-cr
+
+build $obj/pedsurgery

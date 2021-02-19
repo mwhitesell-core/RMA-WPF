@@ -1,0 +1,109 @@
+; DOC: UTL00013.QZS
+; DOC: LIST OF CLAIMS WITH "S" STATUS AND NO PAYMENT DATE
+; DOC: PROMPT FOR CLAIM SUBMIT DATE
+; DOC: RUN FOR: Melissa
+;
+; PURPOSE: BE ABLE TO ZERO IN ON CLAIMS WITH NO ACTION, RATHER THAN
+;          HAVING TO REVIEW THE ENTIRE ACCOUNTS RECEIVABLE. AVOID
+;          STALE DATES AND MAXIMIZE ON THE COLLECTION OF PAYMENTS.
+
+;  MODIFICATION HISTORY:
+;
+;  YY/MMM/DD     BY WHOM        WHY
+;  92/MAY/26     YASEMIN        ORIGINAL
+;  99/dec/6      YASEMIN        add select if x-clinic = 22
+;                               and x-balance <> 0
+;  03/dec/17     A.A.		alpha doctor nbr
+;  11/Apr/07     yas 		add clinic 32, 33. 42 and 43
+;  13/aug/19     yas 		add clinic 23                 
+;  14/May/23 	 yas		mod clinics  22-25, 31-37 41-46 84 and 96
+
+can clear
+
+set report nolimit
+
+access f002-claims-mstr
+
+choose key-clm-type "B"
+
+def x-date-from date = parm prompt "ENTER DATE FROM (YYYYMMDD) "
+def x-date-to   date = parm prompt "ENTER DATE TO   (YYYYMMDD) "
+
+def clm-ref char*3  = clmhdr-reference[1:3]
+def clm-id char*10  = clmhdr-claim-id[1:10]
+def x-clinic char*2 = clmhdr-claim-id[1:2]
+
+def x-balance num*7 =       &
+    clmhdr-tot-claim-ar-ohip + clmhdr-manual-and-tape-payments
+
+select if (      clmhdr-batch-type = "C"		        &
+           and (clmhdr-agent-cd = 0 or clmhdr-agent-cd = 2)	&
+           and  clmhdr-adj-oma-cd = "0000"			&
+           and (   x-clinic = "22"                              &
+                or x-clinic = "23"                              &
+                or x-clinic = "24"                              &
+                or x-clinic = "25"                              &
+                or x-clinic = "26"                              &
+                or x-clinic = "30"                              &
+                or x-clinic = "31"                              &
+                or x-clinic = "32"                              &
+                or x-clinic = "33"                              &
+                or x-clinic = "34"                              &
+                or x-clinic = "35"                              &
+                or x-clinic = "36"                              &
+                or x-clinic = "37"                              &
+                or x-clinic = "41"                              &
+                or x-clinic = "42"                              &
+                or x-clinic = "43"                              &
+                or x-clinic = "44"                              &
+                or x-clinic = "45"                              &
+                or x-clinic = "46"                              &
+                or x-clinic = "84"                              &
+                or x-clinic = "96"                              &
+               )                                                &
+           and (clmhdr-submit-date ge x-date-from)     	        &
+           and  clmhdr-submit-date le x-date-to  )    		&
+      and      (     clmhdr-date-cash-tape-payment = " "        &
+                 or (    clmhdr-date-cash-tape-payment <> " "   &
+                     and clmhdr-manual-and-tape-payments = 0))	&
+      and (clmhdr-tape-submit-ind = "S" or clmhdr-tape-submit-ind = "Y")
+
+sort on clm-id
+
+set subfile name utl00013a keep
+rep summary clm-ref clm-id key-clm-batch-nbr key-clm-claim-nbr x-balance
+
+build $pb_obj/utl00013a
+
+
+can clear
+set default
+set report nolimit
+set report device disc name utl00013
+set page length 60 width 132
+set formfeed
+
+access *utl00013a                                       &
+     link ("B",key-clm-batch-nbr, key-clm-claim-nbr) to &
+     key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr &
+     of f002-claims-mstr
+
+select if clmhdr-adj-oma-cd of f002-claims-mstr <> "0000" &
+      and clmhdr-adj-oma-cd of f002-claims-mstr <> "ZZZZ" &
+      and x-balance <> 0 
+ 
+sorted on clm-id
+
+page heading        &
+  tab 1  sysdate    &
+  tab 48 "NO OHIP PAYMENT CLAIMS" &
+skip 2
+
+rep clm-id print at clm-id        &
+    clmdtl-sv-date pic "^^^^/^^/^^"   print at clm-id &
+    x-balance pic "^^,^^^.^^" print at clm-id  &
+skip 1
+
+build $pb_obj/utl00013b
+
+  

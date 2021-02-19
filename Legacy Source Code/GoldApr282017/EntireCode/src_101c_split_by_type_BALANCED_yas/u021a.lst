@@ -1,0 +1,1526 @@
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   1
+*                      u021a.cbl
+* Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Accepted - SHOW-DIR
+* Accepted - SOURCEFORMAT"FREE"
+* Accepted - SPZERO
+* Accepted - TIME
+* Accepted - TRUNC
+* Accepted - LIST
+* Accepted - RESEQ
+* End Of Directives File: /usr/opt/mfcobol4.0/cobol.dir
+* Options: int(u021a.int) verbose nolist endp list(u021a.lst)
+identification division.
+program-id. u021a.
+author. dyad infosys Ltd.
+installation. rma.
+date-written. march 2003.
+date-compiled. 05-May-08 12:02.
+security.
+*
+*    FILES      : u031a-   OHIP Submittal Error File
+*               : f090 -   ISAM Constants Master
+*               : u031 -   edt- 1ht file
+*               : u031 -   edt- rmb file
+*
+*    PROGRAM PURPOSE : process error file returned by MOH from an EDT
+*                      submission file
+*
+*
+*    MAR 19/03       m. chan  - clone from u030a.cbl
+*                             - modify this program to only read the
+*                               input file and extract proper record
+*                               layout based on record type into the
+*                               corresponding files (moh records or rma recs)
+*                             - the reporting of these files is performed
+*                               in r031b/c.qzs
+*
+* 2003/mar/31 b.e. - in xb2 routine added move of 5 error codes to output file
+* 2003/may/03 yas  - add new clinics AA5V AA5W AA5X AA5Y 6317
+* 2003/oct/23 b.e. - removed confirmation "Y" before job starts so that this
+*                    program can run in batch
+* 2004/mar/04 yas  - add new clinics 6072 and H055
+* 2004/mar/04 M.C. - instead of hard coding each individual clinic nbr, get the
+*                    clinic from record 1 of constants master
+* 2005/Jan/04 M.C. - check up to 63 clinics instead of 40
+
+environment division.
+input-output section.
+file-control.
+*
+    select edt-hx-error-file
+        assign to "u021a".
+*
+    select edt-1ht-file
+    assign to "u021a_edt_1ht_file.dat".
+*
+    select edt-rmb-file
+    assign to "u021a_edt_rmb_file.dat".
+*
+    copy "f090_constants_mstr.slr".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   2
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/f090)
+select iconst-mstr
+assign to disk "$pb_data/f090_constants_mstr"
+organization is indexed
+access mode  is dynamic
+*mf added lock mode so that files aren't open exclusively
+lock mode is manual
+record key   is iconst-clinic-nbr-1-2
+*       eof-flag     is eof-iconst-mstr
+status is status-cobol-iconst-mstr.
+
+data division.
+file section.
+*
+    copy "u021_edt_submission_error_hx_file.fd".
+* 2003/mar/01 M.C. - original
+* 2003/mar/24 B.E. - added 1 extra byte to record defn to provide for
+*                    'nl' at end of each record after 'ascii' upload
+*                    from PC
+fd  edt-hx-error-file
+*     record contains 79 characters.
+    record contains 80 characters.
+
+01  edt-1-record.
+
+    05  edt-1-trans-cd                          pic xx.
+    05  edt-1-record-type                       pic x.
+    05  edt-1-release-id                        pic x(3).
+    05  edt-1-moh-off-cd                        pic x.
+    05  edt-1-filler-1                          pic x(10).
+    05  edt-1-operator-nbr                      pic x(6).
+    05  edt-1-group-nbr                         pic x(4).
+    05  edt-1-doc-nbr                           pic 9(6).
+    05  edt-1-specialty-cd                      pic xx.
+    05  edt-1-station-nbr                       pic x(3).
+    05  edt-1-process-date.
+        10  edt-1-process-date-yy               pic 9(4).
+        10  edt-1-process-date-mm               pic 99.
+        10  edt-1-process-date-dd               pic 99.
+     05  edt-1-filler-2                         pic x(33).
+
+
+01  edt-h-record.
+
+    05  edt-h-trans-id                          pic xx.
+    05  edt-h-record-type                       pic x.
+    05  edt-h-health-nbr                        pic x(10).
+    05  edt-h-version-cd                        pic xx.
+    05  edt-h-birth-date                        pic x(8).
+    05  edt-h-account-nbr                       pic x(8).
+    05  edt-h-pay-prog                          pic xxx.
+    05  edt-h-payee                             pic x.
+    05  edt-h-doc-nbr                           pic 9(6).
+    05  edt-h-facility-nbr                      pic x(4).
+    05  edt-h-patient-admission-date            pic 9(8).
+    05  edt-h-refer-licence-nbr                 pic x(4).
+    05  edt-h-location-cd                       pic x(4).
+    05  edt-h-filler                            pic x(3).
+    05  edt-h-error-cd-1                        pic x(3).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   3
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/u021)
+    05  edt-h-error-cd-2                        pic x(3).
+    05  edt-h-error-cd-3                        pic x(3).
+    05  edt-h-error-cd-4                        pic x(3).
+    05  edt-h-error-cd-5                        pic x(3).
+
+
+01  edt-r-record.
+
+    05  edt-r-trans-id                          pic xx.
+    05  edt-r-record-type                       pic x.
+    05  edt-r-registration-nbr                  pic x(12).
+    05  edt-r-last-name                         pic x(9).
+    05  edt-r-first-name                        pic x(5).
+    05  edt-r-sex                               pic x.
+    05  edt-r-prov-cd                           pic xx.
+    05  edt-r-filler                            pic x(32).
+    05  edt-r-error-cd-1                        pic x(3).
+    05  edt-r-error-cd-2                        pic x(3).
+    05  edt-r-error-cd-3                        pic x(3).
+    05  edt-r-error-cd-4                        pic x(3).
+    05  edt-r-error-cd-5                        pic x(3).
+
+
+01  edt-t-record.
+    05  edt-t-trans-id                          pic xx.
+    05  edt-t-record-type                       pic x.
+    05  edt-t-service-cd                        pic x(5).
+    05  edt-t-filler-1                          pic xx.
+    05  edt-t-amount-sub                        pic 9(4)v99.
+    05  edt-t-nbr-of-serv                       pic xx.
+    05  edt-t-service-date                      pic x(8).
+    05  edt-t-diag-cd                           pic x(4).
+    05  edt-t-filler-2                          pic x(32).
+    05  edt-t-explan-cd                         pic xx.
+    05  edt-t-error-cd-1                        pic x(3).
+    05  edt-t-error-cd-2                        pic x(3).
+    05  edt-t-error-cd-3                        pic x(3).
+    05  edt-t-error-cd-4                        pic x(3).
+    05  edt-t-error-cd-5                        pic x(3).
+
+01  edt-8-record.
+    05  edt-8-trans-id                          pic xx.
+    05  edt-8-record-type                       pic x.
+    05  edt-8-explan-cd                         pic xx.
+    05  edt-8-explan-desc                       pic x(55).
+    05  edt-8-filler                            pic x(19).
+
+01  edt-9-record.
+    05  edt-9-trans-id                          pic xx.
+    05  edt-9-record-type                       pic x.
+    05  edt-9-hdr-1-count                       pic 9(7).
+    05  edt-9-hdr-2-count                       pic 9(7).
+    05  edt-9-item-count                        pic 9(7).
+    05  edt-9-message-count                     pic 9(7).
+    05  edt-9-filler                            pic x(48).
+
+
+*
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   4
+*                      u021a.cbl                                     )
+    copy "u021_edt_1ht_file.fd".
+* 2003/nov/17 b.e. - added fields:
+*                    - edt-1ht-orig-seq-nbr (allows file to be sorted and still
+*                               keep claim details in sequence)
+*                    - and edt-1ht-orig-file-name (name of edt error file)
+*                  - fields renamed rat-.. to edt-...
+*
+fd  edt-1ht-file
+*    record contains 192 characters.
+    record contains 210 characters.
+
+01  edt-1ht-record.
+* provider header record (hx1) - occurs once per doctor
+    05  edt-1ht-moh-off-cd                      pic x.
+    05  edt-1ht-group-nbr                       pic x(4).
+    05  edt-1ht-doc-nbr                         pic 9(6).
+    05  edt-1ht-specialty-cd                    pic xx.
+    05  edt-1ht-station-nbr                     pic x(3).
+    05  edt-1ht-process-date                    pic 9(8).
+
+* claim header record (hxh) - multiple records occurs once for each claim
+    05  edt-1ht-health-nbr                      pic x(10).
+    05  edt-1ht-version-cd                      pic xx.
+    05  edt-1ht-birth-date                      pic 9(8).
+    05  edt-1ht-account-nbr                     pic x(8).
+    05  edt-1ht-orig-seq-nbr                    pic 9(6).
+    05  edt-1ht-pay-prog                        pic xxx.
+    05  edt-1ht-payee                           pic x.
+    05  edt-1ht-refer-doc-nbr                   pic 9(6).
+    05  edt-1ht-facility-nbr                    pic x(4).
+    05  edt-1ht-admit-date                      pic 9(8).
+    05  edt-1ht-loc-cd                          pic x(4).
+    05  edt-1ht-error-h-cd-1                    pic x(3).
+    05  edt-1ht-error-h-cd-2                    pic x(3).
+    05  edt-1ht-error-h-cd-3                    pic x(3).
+    05  edt-1ht-error-h-cd-4                    pic x(3).
+    05  edt-1ht-error-h-cd-5                    pic x(3).
+
+* claim item record (hxt) - multiple records occurs once for each item in a clai
+    05  edt-1ht-service-cd                      pic x(5).
+    05  edt-1ht-amount-sub                      pic 9(4)v99.
+    05  edt-1ht-nbr-of-serv                     pic 99.
+    05  edt-1ht-service-date                    pic 9(8).
+    05  edt-1ht-diag-cd                         pic x(4).
+    05  edt-1ht-t-explan-cd                     pic xx.
+    05  edt-1ht-error-t-cd-1                    pic x(3).
+    05  edt-1ht-error-t-cd-2                    pic x(3).
+    05  edt-1ht-error-t-cd-3                    pic x(3).
+    05  edt-1ht-error-t-cd-4                    pic x(3).
+    05  edt-1ht-error-t-cd-5                    pic x(3).
+
+* explan code message record (hx8) - optional - occurs 1 to 4 times per claim it
+    05  edt-1ht-8-explan-cd                     pic xx.
+    05  edt-1ht-8-explan-desc                   pic x(55).
+
+    05  edt-1ht-file-name                       pic x(12).
+*
+    copy "u021_edt_rmb_file.fd".
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   5
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/u021)
+* 2003/nov/17 b.e. - added fields:
+*                    - edt-1ht-orig-seq-nbr (allows file to be sorted and still
+*                               keep claim details in sequence)
+*                    - and edt-1ht-orig-file-name (name of edt error file)
+*                  - fields renamed edt-.. to edt-...
+
+fd  edt-rmb-file
+*    record contains 236 characters.
+    record contains 254 characters.
+
+01  edt-rmb-record.
+* provider header record (hx1) - occurs once per doctor
+    05  edt-rmb-moh-off-cd                      pic x.
+    05  edt-rmb-group-nbr                       pic x(4).
+    05  edt-rmb-doc-nbr                         pic 9(6).
+    05  edt-rmb-specialty-cd                    pic xx.
+    05  edt-rmb-station-nbr                     pic x(3).
+    05  edt-rmb-process-date                    pic 9(8).
+
+* claim header record (hxh) - multiple records occurs once for each claim
+    05  edt-rmb-health-nbr                      pic x(10).
+    05  edt-rmb-version-cd                      pic xx.
+    05  edt-rmb-birth-date                      pic 9(8).
+    05  edt-rmb-account-nbr                     pic x(8).
+    05  edt-rmb-orig-seq-nbr                    pic x(6).
+    05  edt-rmb-pay-prog                        pic xxx.
+    05  edt-rmb-payee                           pic x.
+    05  edt-rmb-refer-doc-nbr                   pic 9(6).
+    05  edt-rmb-facility-nbr                    pic x(4).
+    05  edt-rmb-admit-date                      pic 9(8).
+    05  edt-rmb-loc-cd                          pic x(4).
+    05  edt-rmb-error-h-cd-1                    pic x(3).
+    05  edt-rmb-error-h-cd-2                    pic x(3).
+    05  edt-rmb-error-h-cd-3                    pic x(3).
+    05  edt-rmb-error-h-cd-4                    pic x(3).
+    05  edt-rmb-error-h-cd-5                    pic x(3).
+
+* claim header 2 record (hxr) - rmb claims only - occurs once per each rmb clali
+   05  edt-rmb-registration-nbr                 pic x(12).
+   05  edt-rmb-last-name                        pic x(9).
+   05  edt-rmb-first-name                       pic x(5).
+   05  edt-rmb-sex                              pic x.
+   05  edt-rmb-prov-cd                          pic x(2).
+   05  edt-rmb-error-r-cd-1                     pic x(3).
+   05  edt-rmb-error-r-cd-2                     pic x(3).
+   05  edt-rmb-error-r-cd-3                     pic x(3).
+   05  edt-rmb-error-r-cd-4                     pic x(3).
+   05  edt-rmb-error-r-cd-5                     pic x(3).
+
+* claim item record (hxt) - multiple records occurs once for each item in a clai
+    05  edt-rmb-service-cd                      pic x(5).
+    05  edt-rmb-amount-sub                      pic 9(4)v99.
+    05  edt-rmb-nbr-of-serv                     pic 99.
+    05  edt-rmb-service-date                    pic 9(8).
+    05  edt-rmb-diag-cd                         pic x(4).
+    05  edt-rmb-t-explan-cd                     pic xx.
+    05  edt-rmb-error-t-cd-1                    pic x(3).
+    05  edt-rmb-error-t-cd-2                    pic x(3).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   6
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/u021)
+    05  edt-rmb-error-t-cd-3                    pic x(3).
+    05  edt-rmb-error-t-cd-4                    pic x(3).
+    05  edt-rmb-error-t-cd-5                    pic x(3).
+
+* explan code message record (hx8) - optional - occurs 1 to 4 times per claim it
+    05  edt-rmb-8-explan-cd                     pic xx.
+    05  edt-rmb-8-explan-desc                   pic x(55).
+
+    05  edt-rmb-file-name                       pic x(12).
+*
+    copy "f090_constants_mstr.fd".
+* 99/Jan/29     MC      - change iconst-clinic-nbr from numeric to character
+* 03/nov/05 b.e. - alpha doctor nbr
+* 06/nov/08     MC      - include iconst-clinic-pay-batch-nbr
+
+fd  iconst-mstr
+*       index block contains   2 characters
+              block contains 384 characters
+        record      contains 384 characters  .
+*       feedback is feedback-iconst-mstr.
+
+01 iconst-mstr-rec.
+    05  iconst-clinic-nbr-1-2                   pic   99.
+*    05  iconst-clinic-nbr                      pic  9(4).
+    05  iconst-clinic-nbr                       pic  x(4).
+    05  iconst-clinic-name                      pic x(20).
+    05  iconst-clinic-cycle-nbr                 pic   99.
+    05  iconst-date-period-end.
+* y2k   10  iconst-date-period-end-yy           pic   99.
+        10  iconst-date-period-end-yy           pic   9999.
+        10  iconst-date-period-end-mm           pic   99.
+        10  iconst-date-period-end-dd           pic   99.
+    05  iconst-clinic-addr.
+        10  iconst-clinic-addr-l1               pic  x(25).
+        10  iconst-clinic-addr-l2               pic  x(25).
+        10  iconst-clinic-addr-l3               pic  x(25).
+    05  iconst-clinic-addr-r redefines iconst-clinic-addr.
+        10  iconst-clinic-addr                  pic x(25)   occurs  3  times.
+    05  iconst-clinic-card-colour               pic    x.
+    05  iconst-clinic-over-lim1                 pic 99v99.
+    05  iconst-clinic-under-lim2                pic 99v99.
+    05  iconst-clinic-under-lim3                pic 99v99.
+    05  iconst-clinic-over-lim4                 pic 99v99.
+
+*!    05  iconst-clinic-batch-nbr                 pic 9(6).
+    05  iconst-clinic-batch-nbr                 pic x(6).
+
+    05  iconst-reduction-factor                 pic 99v99.
+    05  iconst-overpay-factor                   pic 99v99.
+* 2006/11/08
+*   05  filler                                  pic x(242).
+    05  filler                                  pic x(106).
+    05  iconst-clinic-pay-batch-nbr             pic x(6).
+    05  filler                                  pic x(130).
+* 2006/11/08 - end
+*
+    copy "f090_const_mstr_rec_1.ws".
+* 2005/jan/04   - extend from 40 clinic to the max clinics allowed (63)
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   7
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/f090)
+
+01 constants-mstr-rec-1.
+    05  const-rec-1-rec-nbr                     pic 99.
+    05  const-max-nbr-clinics                   pic 99.
+    05  const-clinic-data.
+* 2005/01/04 - MC
+*       10  const-clinic-data-r occurs  40  times.
+        10  const-clinic-data-r occurs  63  times.
+            15  const-clinic-nbr-1-2            pic 99.
+            15  const-clinic-nbr                pic x(4).
+    05  const-scr-data  redefines  const-clinic-data.
+        10  const-clinic-1-2-nbr-1              pic 99.
+        10  const-clinic-nbr-1                  pic x(4).
+        10  const-clinic-1-2-nbr-2              pic 99.
+        10  const-clinic-nbr-2                  pic x(4).
+        10  const-clinic-1-2-nbr-3              pic 99.
+        10  const-clinic-nbr-3                  pic x(4).
+        10  const-clinic-1-2-nbr-4              pic 99.
+        10  const-clinic-nbr-4                  pic x(4).
+        10  const-clinic-1-2-nbr-5              pic 99.
+        10  const-clinic-nbr-5                  pic x(4).
+        10  const-clinic-1-2-nbr-6              pic 99.
+        10  const-clinic-nbr-6                  pic x(4).
+        10  const-clinic-1-2-nbr-7              pic 99.
+        10  const-clinic-nbr-7                  pic x(4).
+        10  const-clinic-1-2-nbr-8              pic 99.
+        10  const-clinic-nbr-8                  pic x(4).
+        10  const-clinic-1-2-nbr-9              pic 99.
+        10  const-clinic-nbr-9                  pic x(4).
+        10  const-clinic-1-2-nbr-10             pic 99.
+        10  const-clinic-nbr-10                 pic x(4).
+        10  const-clinic-1-2-nbr-11             pic 99.
+        10  const-clinic-nbr-11                 pic x(4).
+        10  const-clinic-1-2-nbr-12             pic 99.
+        10  const-clinic-nbr-12                 pic x(4).
+        10  const-clinic-1-2-nbr-13             pic 99.
+        10  const-clinic-nbr-13                 pic x(4).
+        10  const-clinic-1-2-nbr-14             pic 99.
+        10  const-clinic-nbr-14                 pic x(4).
+        10  const-clinic-1-2-nbr-15             pic 99.
+        10  const-clinic-nbr-15                 pic x(4).
+        10  const-clinic-1-2-nbr-16             pic 99.
+        10  const-clinic-nbr-16                 pic x(4).
+        10  const-clinic-1-2-nbr-17             pic 99.
+        10  const-clinic-nbr-17                 pic x(4).
+        10  const-clinic-1-2-nbr-18             pic 99.
+        10  const-clinic-nbr-18                 pic x(4).
+        10  const-clinic-1-2-nbr-19             pic 99.
+        10  const-clinic-nbr-19                 pic x(4).
+        10  const-clinic-1-2-nbr-20             pic 99.
+        10  const-clinic-nbr-20                 pic x(4).
+        10  const-clinic-1-2-nbr-21             pic 99.
+        10  const-clinic-nbr-21                 pic x(4).
+        10  const-clinic-1-2-nbr-22             pic 99.
+        10  const-clinic-nbr-22                 pic x(4).
+        10  const-clinic-1-2-nbr-23             pic 99.
+        10  const-clinic-nbr-23                 pic x(4).
+        10  const-clinic-1-2-nbr-24             pic 99.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   8
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/f090)
+        10  const-clinic-nbr-24                 pic x(4).
+        10  const-clinic-1-2-nbr-25             pic 99.
+        10  const-clinic-nbr-25                 pic x(4).
+        10  const-clinic-1-2-nbr-26             pic 99.
+        10  const-clinic-nbr-26                 pic x(4).
+        10  const-clinic-1-2-nbr-27             pic 99.
+        10  const-clinic-nbr-27                 pic x(4).
+        10  const-clinic-1-2-nbr-28             pic 99.
+        10  const-clinic-nbr-28                 pic x(4).
+        10  const-clinic-1-2-nbr-29             pic 99.
+        10  const-clinic-nbr-29                 pic x(4).
+        10  const-clinic-1-2-nbr-30             pic 99.
+        10  const-clinic-nbr-30                 pic x(4).
+        10  const-clinic-1-2-nbr-31             pic 99.
+        10  const-clinic-nbr-31                 pic x(4).
+        10  const-clinic-1-2-nbr-32             pic 99.
+        10  const-clinic-nbr-32                 pic x(4).
+        10  const-clinic-1-2-nbr-33             pic 99.
+        10  const-clinic-nbr-33                 pic x(4).
+        10  const-clinic-1-2-nbr-34             pic 99.
+        10  const-clinic-nbr-34                 pic x(4).
+        10  const-clinic-1-2-nbr-35             pic 99.
+        10  const-clinic-nbr-35                 pic x(4).
+        10  const-clinic-1-2-nbr-36             pic 99.
+        10  const-clinic-nbr-36                 pic x(4).
+        10  const-clinic-1-2-nbr-37             pic 99.
+        10  const-clinic-nbr-37                 pic x(4).
+        10  const-clinic-1-2-nbr-38             pic 99.
+        10  const-clinic-nbr-38                 pic x(4).
+        10  const-clinic-1-2-nbr-39             pic 99.
+        10  const-clinic-nbr-39                 pic x(4).
+        10  const-clinic-1-2-nbr-40             pic 99.
+        10  const-clinic-nbr-40                 pic x(4).
+* 2005/01/04 - MC - include clinic 41 to 63
+*    05  filler                                 pic x(140).
+        10  const-clinic-1-2-nbr-41             pic 99.
+        10  const-clinic-nbr-41                 pic x(4).
+        10  const-clinic-1-2-nbr-42             pic 99.
+        10  const-clinic-nbr-42                 pic x(4).
+        10  const-clinic-1-2-nbr-43             pic 99.
+        10  const-clinic-nbr-43                 pic x(4).
+        10  const-clinic-1-2-nbr-44             pic 99.
+        10  const-clinic-nbr-44                 pic x(4).
+        10  const-clinic-1-2-nbr-45             pic 99.
+        10  const-clinic-nbr-45                 pic x(4).
+        10  const-clinic-1-2-nbr-46             pic 99.
+        10  const-clinic-nbr-46                 pic x(4).
+        10  const-clinic-1-2-nbr-47             pic 99.
+        10  const-clinic-nbr-47                 pic x(4).
+        10  const-clinic-1-2-nbr-48             pic 99.
+        10  const-clinic-nbr-48                 pic x(4).
+        10  const-clinic-1-2-nbr-49             pic 99.
+        10  const-clinic-nbr-49                 pic x(4).
+        10  const-clinic-1-2-nbr-50             pic 99.
+        10  const-clinic-nbr-50                 pic x(4).
+        10  const-clinic-1-2-nbr-51             pic 99.
+        10  const-clinic-nbr-51                 pic x(4).
+        10  const-clinic-1-2-nbr-52             pic 99.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page   9
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/f090)
+        10  const-clinic-nbr-52                 pic x(4).
+        10  const-clinic-1-2-nbr-53             pic 99.
+        10  const-clinic-nbr-53                 pic x(4).
+        10  const-clinic-1-2-nbr-54             pic 99.
+        10  const-clinic-nbr-54                 pic x(4).
+        10  const-clinic-1-2-nbr-55             pic 99.
+        10  const-clinic-nbr-55                 pic x(4).
+        10  const-clinic-1-2-nbr-56             pic 99.
+        10  const-clinic-nbr-56                 pic x(4).
+        10  const-clinic-1-2-nbr-57             pic 99.
+        10  const-clinic-nbr-57                 pic x(4).
+        10  const-clinic-1-2-nbr-58             pic 99.
+        10  const-clinic-nbr-58                 pic x(4).
+        10  const-clinic-1-2-nbr-59             pic 99.
+        10  const-clinic-nbr-59                 pic x(4).
+        10  const-clinic-1-2-nbr-60             pic 99.
+        10  const-clinic-nbr-60                 pic x(4).
+        10  const-clinic-1-2-nbr-61             pic 99.
+        10  const-clinic-nbr-61                 pic x(4).
+        10  const-clinic-1-2-nbr-62             pic 99.
+        10  const-clinic-nbr-62                 pic x(4).
+        10  const-clinic-1-2-nbr-63             pic 99.
+        10  const-clinic-nbr-63                 pic x(4).
+
+    05  filler                                  pic x(2).
+* 2005/01/04 - end
+
+
+working-storage section.
+
+77  ws-unique-rec-ctr                            pic 9(6).
+77  ws-orig-file-name                            pic x(12).
+77  err-ind                                      pic 99  value zero.
+77  last-account-nbr                             pic x(8).
+77  ws-sel-month                                 pic 99.
+77  ws-flag-tape-mth                             pic x.
+77  ws-flag-over-mth                             pic x.
+77  ws-scr-day                                   pic 99.
+77  ws-scr-year                                  pic 9(4).
+77  ws-scr-month                                 pic x(9).
+77  ws-doll-amt                                  pic 9(7)v99.
+77  ws-request-clinic-ident                      pic x(4).
+77  ws-reply                                     pic x.
+77  ws-confirm-reply                             pic x.
+
+
+*
+*  STATUS FILE INDICATORS
+*
+77  status-file                                  pic x(11).
+77  status-iconst-mstr                           pic x(11) value zero.
+77  status-cobol-iconst-mstr                     pic x(2) value zero.
+
+77  i                                            pic 99.
+
+01  group-nbr-flag                               pic x.
+    88  group-nbr-found                          value 'Y'.
+    88  group-nbr-not-found                      value 'N'.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  10
+*                      u021a.cbl                                     )
+
+01  edt-eof-flag                                 pic x.
+    88  edt-eof                                  value "Y".
+
+01  hcp-rmb-flag                                 pic x.
+    88  rmb-claims                               value 'Y'.
+    88  hcp-claims                               value 'N'.
+
+01  last-record                                  pic x.
+    88  last-record-is-item                      value 'T'.
+    88  last-record-is-message                   value '8'.
+
+* 2004/03/04 - MC
+*01  ws-edt-1-group-nbr                           pic x(4).
+01  ws-edt-1-group-nbr.
+    05  ws-edt-clinic-nbr                        pic 99.
+    05  filler                                   pic xx.
+
+01  ws-clinic-nbr                                pic 99.
+
+* 2004/03/04 -  end
+
+01  ws-edt-1-moh-off-cd                          pic x.
+01  ws-edt-1-station-nbr                         pic x(3).
+01  ws-edt-1-process-date                        pic 9(8).
+01  ws-edt-1-doc-nbr                             pic 9(6).
+01  ws-edt-1-specialty-cd                        pic x(2).
+
+
+*   COUNTERS FOR RECORDS READ/WRITTEN FOR ALL INPUT/OUTPUT FILES
+
+01  counters.
+    05  ctr-edt-tape-reads                     pic 9(7).
+    05  ctr-edt-rec1-reads                     pic 9(7).
+    05  ctr-edt-rech-reads                     pic 9(7).
+    05  ctr-edt-recr-reads                     pic 9(7).
+    05  ctr-edt-rect-reads                     pic 9(7).
+    05  ctr-edt-rec8-reads                     pic 9(7).
+    05  ctr-edt-rec9-reads                     pic 9(7).
+    05  ctr-hcp-dtl-writes                     pic 9(7).
+    05  ctr-rmb-dtl-writes                     pic 9(7).
+    05  hcp-records                            pic 9(7).
+    05  rmb-records                            pic 9(7).
+
+
+    copy "sysdatetime.ws".
+* 98/dec/01 D.B.        - y2k conversion
+* 99/jan/13 B.E.        - changed sys-y1/y2 to y1 thru y4
+*                       - added 'default-century-...' and century-date variables
+
+01 century-year                                 pic 9(4).
+01 century-date                                 pic 9(8).
+01 default-century-cc                           pic 9(2) value 19.
+01 default-century-cccc                         pic 9(4) value 1900.
+
+01  sys-date.
+* y2k    05  sys-date-long                              pic x(6).
+    05  sys-date-long                           pic x(8).
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  11
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/sysd)
+    05  sys-date-long-r  redefines  sys-date-long.
+* y2k   10  sys-yy                              pic 99.
+        10  sys-yy                              pic 9999.
+        10  sys-yy-alpha  redefines  sys-yy.
+* y2k       15  sys-y1                          pic 9.
+* y2k       15  sys-y2                          pic 9.
+            15  sys-y1                          pic 9.
+            15  sys-y2                          pic 9.
+            15  sys-y3                          pic 9.
+            15  sys-y4                          pic 9.
+        10  sys-mm                              pic 99.
+        10  sys-dd                              pic 99.
+* remove after y2k upgrade of dgux
+01  sys-date-numeric redefines sys-date         pic 9(8).
+01  sys-date-y2kfix  redefines sys-date.
+    05 sys-date-left                            pic x(6).
+    05 filler                                   pic x(2).
+01  sys-date-y2kfixed redefines sys-date.
+    05 sys-date-blank                           pic x(2).
+    05 sys-date-right                           pic x(6).
+01  sys-date-temp                               pic x(8).
+
+01  run-date.
+* y2k    05  run-yy                                     pic 99.
+    05  run-yy                                  pic 9999.
+    05  filler                                  pic x   value "/".
+    05  run-mm                                  pic 99.
+    05  filler                                  pic x   value "/".
+    05  run-dd                                  pic 99.
+
+01  sys-time.
+    05  sys-hrs                                 pic 99.
+    05  sys-min                                 pic 99.
+    05  sys-sec                                 pic 99.
+    05  sys-hdr                                 pic 99.
+
+01  run-time.
+    05  run-hrs                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-min                                 pic 99.
+    05  filler                                  pic x   value ":".
+    05  run-sec                                 pic 99.
+
+    copy "mth_desc_max_days.ws".
+*
+*       (each position contains:
+*               - maximum nbr of days in month
+*               - non-abreviated spelling of month
+*               - nbr of julian days from jan-01 until last day of month
+*       note: table does not take into consideration leap year)
+*
+01  month-descs-and-max-days-mth.
+    05  mth-desc-max-days.
+        10  filler                      pic x(14) value '31  JANUARY031'.
+        10  filler                      pic x(14) value '29 FEBRUARY059'.
+        10  filler                      pic x(14) value '31    MARCH090'.
+        10  filler                      pic x(14) value '30    APRIL120'.
+        10  filler                      pic x(14) value '31      MAY151'.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  12
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/mth_)
+        10  filler                      pic x(14) value '30     JUNE181'.
+        10  filler                      pic x(14) value '31     JULY212'.
+        10  filler                      pic x(14) value '31   AUGUST243'.
+        10  filler                      pic x(14) value '30SEPTEMBER273'.
+        10  filler                      pic x(14) value '31  OCTOBER304'.
+        10  filler                      pic x(14) value '30 NOVEMBER334'.
+        10  filler                      pic x(14) value '31 DECEMBER365'.
+    05  mth-desc-max-days-r   redefines mth-desc-max-days.
+        10  mth-desc-max-days-occur     occurs  12  times.
+            15  max-nbr-days            pic 99.
+            15  mth-desc                pic x(9).
+            15  nbr-julian-days-ytd     pic 9(3).
+
+
+01  error-message-table.
+
+    05  error-messages.
+        10  filler                              pic x(70)   value
+                      "NO RAT TAPE HEADER - RECORD #1 ".
+        10  filler                              pic x(70)   value
+                       "RAT TAPE RECORD #5 DOES NOT BELONG IN SERIES".
+        10  filler                              pic x(70)    value
+                      "INVALID GROUP IDENTIFIER".
+        10  filler                           pic x(70)   value
+                       "RAT TAPE MONTH MUST BE NUMERIC ONLY".
+        10  filler                                pic x(70)   value
+                       "GROUP IDENTIFICATION MUST BE NUMERIC".
+        10  filler                               pic x(70)   value
+                       "INVALID REPLY".
+        10  filler                              pic x(70)   value
+                       "CONSTANT MSTR RECORD 1 DOES NOT EXIST".
+    05  error-messages-r redefines error-messages.
+        10  err-msg                             pic x(70)
+                       occurs  7 times.
+
+01  err-msg-comment                             pic x(70).
+
+01  e1-error-line.
+
+    05  e1-error-word                          pic x(13)    value
+                      "***  ERROR - ".
+    05  e1-error-msg                            pic x(119).
+
+
+screen section.
+
+01  scr-title.
+
+    05  blank screen.
+    05  line 01 col 01 value is "U031A".
+    05  line 01 col 20 value is "RAT ERROR FILE APPLICATION".
+    05  line 01 col 71 pic 9(4) from sys-yy.
+    05  line 01 col 75 value is "/".
+    05  line 01 col 76 pic 99 from sys-mm.
+    05  line 01 col 78 value is "/".
+    05  line 01 col 79 pic 99 from sys-dd.
+    05  line 06 col 20 value is "ENTER CLINIC IDENT".
+    05  scr-clinic-nbr line 06 col 40 pic x(4) using ws-request-clinic-ident aut
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  13
+*                      u021a.cbl                                     )
+
+01  msg-continue.
+
+    05  line 08 col 10 value is "CONTINUE?  (ENTER Y OR N)".
+    05  reply line 08 col 40 pic x using ws-reply auto required.
+
+01  program-in-progress.
+
+    05  line 21 col 20 value "PROGRAM U031A IN PROGRESS".
+
+01  confirm.
+    05  line 23 col 01 value " ".
+
+01  blank-line-24.
+
+    05  line 24 col 01 blank line.
+
+01  blank-screen.
+    05  blank screen.
+
+01  err-msg-line.
+    05  line 24 col 01 value " ERROR -   " bell blink.
+    05  line 24 col 11 pic x(60) from err-msg-comment.
+
+
+01  scr-month-id.
+
+    05  line 10 col 20  value is "ENTER RAT TAPE MONTH".
+    05  line 10 col 41  pic 99    using ws-sel-month   auto.
+
+
+01  scr-search-rec-type-1.
+
+    05  line 12 col 20  value is "NOW SEARCHING FOR RAT ERROR RECORD TYPE 1".
+
+01  scr-date.
+
+    05  line 14 col 20  value is "Process date is".
+    05  line 14 col 36  pic 99    using ws-scr-day           auto.
+    05  line 14 col 39  pic x(9)  using ws-scr-month         auto.
+    05  line 14 col 49  pic 9(4)  using ws-scr-year          auto.
+
+01  scr-accept-mth.
+
+    05                line 17  col 20  value is "ACCEPT THIS TAPE MONTH (Y/N)".
+    05  scr-tape-mth  line 17  col 51  pic x using ws-flag-tape-mth   auto.
+
+01  scr-override-mth.
+
+    05                line 19 col 20 value is "MONTH ENTERED AND MONTH FOUND ON
+    05                    line 20 col 20 value is "DO YOU STILL WANT TO CONTINUE
+    05  scr-over-mth  line 20 col 60 pic x using ws-flag-over-mth   auto.
+
+01  scr-confirm-neg-response.
+
+    05  line 22 col 20 value is "* WARNING * YOU HAVE ENTERED 'N' ! RE-ENTER TO
+    05                      line 23 col 20 value is "DO YOU STILL WANT TO CONTIN
+    05  confirm-reply line 23 col 60 pic x using ws-confirm-reply  auto.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  14
+*                      u021a.cbl                                     )
+
+01  ring-bell.
+    05  line 23 col 01 value " " bell.
+
+
+procedure division.
+
+mainline.
+
+    perform aa0-initialization              thru aa0-99-exit.
+    perform ab0-processing                  thru ab0-99-exit
+       until edt-eof.
+
+    perform az0-end-of-job                  thru az0-99-exit.
+*
+    stop run.
+
+
+aa0-initialization.
+
+    accept sys-date                           from date.
+    perform y2k-default-sysdate               thru y2k-default-sysdate-exit.
+
+    move sys-mm                               to run-mm.
+    move sys-dd                               to run-dd.
+    move sys-yy                               to run-yy.
+
+    accept sys-time                           from time.
+    move sys-hrs                              to run-hrs.
+    move sys-min                              to run-min.
+    move sys-sec                              to run-sec.
+
+    move zeros                                to counters.
+
+    move "N"                                  to edt-eof-flag.
+    move "N"                                  to hcp-rmb-flag.
+    move "N"                                  to group-nbr-flag.
+
+    open input iconst-mstr.
+
+    move 01                                   to iconst-clinic-nbr-1-2.
+
+    read iconst-mstr
+         invalid key
+             move 7 to err-ind
+             perform za0-common-error         thru za0-99-exit
+             perform zb0-abend                thru zb0-99-exit.
+
+*    display scr-title.
+
+aa0-10-accept-clinic.
+
+*     accept scr-clinic-nbr.
+     accept ws-request-clinic-ident.
+
+     perform aa3-verify-group-nbr    thru aa3-99-exit
+        varying i from 1 by 1
+* 2005/01/04 - MC
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  15
+*                      u021a.cbl                                     )
+*       until   group-nbr-found or i > 40.
+        until   group-nbr-found or i > 63.
+* 2005/01/04 - end
+
+     if group-nbr-not-found
+     then
+         move 3                      to err-ind
+         perform za0-common-error    thru za0-99-exit
+         go to aa0-10-accept-clinic.
+*    endif
+
+*    display scr-month-id.
+
+aa0-15-accept-month.
+
+*    accept scr-month-id.
+    accept ws-sel-month.
+
+    if ws-sel-month  is not numeric
+    then
+        move  4                                  to  err-ind
+        perform za0-common-error             thru za0-99-exit
+        move zero                               to  ws-sel-month
+        move zero                               to err-ind
+      go to aa0-15-accept-month.
+*   ENDIF
+
+   accept ws-orig-file-name.
+
+*    display scr-search-rec-type-1.
+
+    open input     edt-hx-error-file.
+
+
+*    open output edt-rmb-file
+    open extend edt-rmb-file
+                edt-1ht-file .
+
+aa0-20-continue-reading.
+
+    perform xa0-read-edt-tape              thru xa0-99-exit
+        until edt-1-record-type = "1"
+         or   edt-eof.
+
+    if not edt-eof
+    then
+        if ws-request-clinic-ident = edt-1-group-nbr
+        then
+            if edt-1-record-type = "1"
+            then
+                add 1                           to ctr-edt-rec1-reads
+                perform aa1-record-1-process    thru    aa1-99-exit
+                perform aa2-certify-month       thru    aa2-99-exit
+            else
+                go to aa0-20-continue-reading
+*           endif
+        else
+            perform xa0-read-edt-tape           thru    xa0-99-exit
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  16
+*                      u021a.cbl                                     )
+            go to aa0-20-continue-reading
+*       endif
+    else
+        move 1                                  to      err-ind
+        perform za0-common-error                thru    za0-99-exit
+        perform zb0-abend                       thru    zb0-99-exit.
+*   endif
+
+    perform xa0-read-edt-tape                   thru    xa0-99-exit.
+
+
+aa0-99-exit.
+    exit.
+
+
+aa1-record-1-process.
+
+
+* 2004/03/04 - MC - comment out the following translation
+*                 - move const-clinic-nbr-1-2 to ws-edt-1-group-nbr instead
+
+*   move edt-1-group-nbr                to ws-edt-1-group-nbr.
+
+*   if edt-1-group-nbr = 'AA32'
+*   then
+*       move '8000'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA03'
+*   then
+*       move '8100'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA21'
+*   then
+*       move '8200'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA25'
+*   then
+*       move '8300'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA2K'
+*   then
+*       move '9500'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = '9595'
+*   then
+*       move '6195'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = '9598'
+*   then
+*       move '6298'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = '9607'
+*   then
+*       move '6307'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = '9619'
+*   then
+*       move '6419'                     to ws-edt-1-group-nbr
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  17
+*                      u021a.cbl                                     )
+*   else
+*   if edt-1-group-nbr = '9632'
+*   then
+*       move '6532'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA5V'
+*   then
+*        move '9100'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA5W'
+*   then
+*        move '9200'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA5X'
+*   then
+*        move '9300'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'AA5Y'
+*   then
+*        move '9400'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = '6317'
+*   then
+*        move '9600'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = '6072'
+*   then
+*        move '8400'                     to ws-edt-1-group-nbr
+*   else
+*   if edt-1-group-nbr = 'H055'
+*   then
+*        move '4300'                     to ws-edt-1-group-nbr.
+*   endif
+
+    move '0000'                          to ws-edt-1-group-nbr.
+    move ws-clinic-nbr                   to ws-edt-clinic-nbr.
+
+* 2004/03/04 - end
+
+    move edt-1-moh-off-cd               to ws-edt-1-moh-off-cd.
+    move edt-1-station-nbr              to ws-edt-1-station-nbr.
+    move edt-1-process-date             to ws-edt-1-process-date.
+    move edt-1-doc-nbr                  to ws-edt-1-doc-nbr.
+    move edt-1-specialty-cd             to ws-edt-1-specialty-cd.
+
+aa1-99-exit.
+    exit.
+
+
+aa2-certify-month.
+
+    move edt-1-process-date-dd               to      ws-scr-day.
+    move edt-1-process-date-yy               to      ws-scr-year.
+    move mth-desc ( edt-1-process-date-mm )  to      ws-scr-month.
+
+*    display scr-date.
+
+*    display scr-accept-mth.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  18
+*                      u021a.cbl                                     )
+*   accept  scr-tape-mth.
+*   (running in batch - the month should be right or shutdown)
+    move "Y"                                    to      ws-flag-tape-mth.
+
+    if ws-sel-month  not = edt-1-process-date-mm
+    then
+        if ws-flag-tape-mth = "Y"
+        then
+
+*       IF SELECTED MONTH AND MONTH FOUND ON TAPE DON'T MATCH AND THE
+*       USER WISHES TO CONTINUE WITH THE PROGRAM A WARNING APPEARS ON
+*       THE SCREEN TELLING THE USER SO. IT ALSO GIVES THE USER THE
+*       OPTION OF CONTINUING WITH THE PROGRAM OR REJECTING IT.
+
+            next sentence
+       else
+            go to  zb1-close-files
+    else
+        if ws-flag-tape-mth = "Y"
+        then
+*            display program-in-progress
+            go to aa2-99-exit
+        else
+            go to  zb1-close-files.
+*       endif
+*   endif
+
+*  (b.e. - running in batch - preset all responses)
+*    display scr-override-mth.
+*    accept  scr-override-mth.
+    move "Y"            to ws-flag-over-mth
+    if ws-flag-over-mth  = "Y"
+    then
+*        display program-in-progress
+        go to aa2-99-exit.
+*   endif
+
+aa2-10-confirm-neg-response.
+
+*    display scr-confirm-neg-response.
+*    accept confirm-reply.
+
+    if ws-confirm-reply =    "Y"
+                          or "N"
+    then
+         next sentence
+    else
+         move  6                         to      err-ind
+         perform za0-common-error        thru    za0-99-exit
+         go to aa2-10-confirm-neg-response.
+*   endif
+
+    if ws-confirm-reply = "Y"
+    then
+        next sentence
+    else
+        go to zb1-close-files.
+*   endif
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  19
+*                      u021a.cbl                                     )
+
+
+aa2-99-exit.
+    exit.
+
+
+aa3-verify-group-nbr.
+
+    if ws-request-clinic-ident = const-clinic-nbr(i)
+    then
+* 2004/03/04 - MC - save clinic-nbr
+        move const-clinic-nbr-1-2(i)    to ws-clinic-nbr
+* 2004/03/04 - end
+        move 'Y'                to group-nbr-flag.
+*   endif
+
+aa3-99-exit.
+    exit.
+
+
+ab0-processing.
+
+    if edt-1-record-type = "1"
+    then
+        if ws-request-clinic-ident not = edt-1-group-nbr
+        then
+             move "Y"                    to edt-eof-flag
+             go to ab0-99-exit.
+*       endif
+*   endif
+
+    perform xa1-create-tape-files thru xa1-99-exit.
+
+
+ab0-10-read-next-rat.
+
+    perform xa0-read-edt-tape             thru xa0-99-exit.
+
+
+ab0-99-exit.
+    exit.
+
+az0-end-of-job.
+
+
+*    display blank-screen.
+    display " ".
+    display "OHIP RATS READ          "       ctr-edt-tape-reads.
+    display "OHIP RATS REC 1 READ    "       ctr-edt-rec1-reads.
+    display "OHIP RATS REC H READ    "       ctr-edt-rech-reads.
+    display "OHIP RATS REC R READ    "       ctr-edt-recr-reads.
+    display "OHIP RATS REC T READ    "       ctr-edt-rect-reads.
+    display "OHIP RATS REC 8 READ    "       ctr-edt-rec8-reads.
+    display "OHIP RATS REC 9 READ    "       ctr-edt-rec9-reads.
+    display "HCP HEADER REC READ     "       hcp-records.
+    display "RMB HEADER REC READ     "       rmb-records.
+    display "HCP DTL REC WRITE       "       ctr-hcp-dtl-writes.
+    display "RMB DTL REC WRITE       "       ctr-rmb-dtl-writes.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  20
+*                      u021a.cbl                                     )
+
+    close iconst-mstr
+          edt-hx-error-file
+          edt-1ht-file
+          edt-rmb-file .
+
+
+    display " ".
+    display "NORMAL END OF JOB - U031A ".
+
+    stop run.
+
+az0-99-exit.
+    exit.
+
+
+xa0-read-edt-tape.
+
+    read edt-hx-error-file
+         at end
+              move "Y" to edt-eof-flag
+              go to xa0-99-exit.
+
+    add 1 to ctr-edt-tape-reads.
+
+xa0-99-exit.
+    exit.
+
+
+xa1-create-tape-files.
+
+    if edt-1-record-type = '1'
+    then
+        add 1                              to ctr-edt-rec1-reads
+        perform aa1-record-1-process
+    else
+    if edt-1-record-type = 'H'
+    then
+        add 1                              to ctr-edt-rech-reads
+        perform xb0-process-rec-h          thru xb0-99-exit
+    else
+    if edt-1-record-type = 'R'
+    then
+        add 1                              to ctr-edt-recr-reads
+        perform xb1-process-rec-r          thru xb1-99-exit
+    else
+        if edt-1-record-type = 'T'
+        then
+             add 1                         to ctr-edt-rect-reads
+             perform xb2-process-rec-t     thru xb2-99-exit
+        else
+             if edt-1-record-type = '8'
+             then
+                   add 1                   to ctr-edt-rec8-reads
+                   perform xb3-process-rec-8  thru xb3-99-exit
+        else
+             if edt-1-record-type = '9'
+             then
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  21
+*                      u021a.cbl                                     )
+                   add 1                   to ctr-edt-rec9-reads
+                   perform xb4-process-rec-9  thru xb4-99-exit.
+*            endif
+*       endif
+*   endif
+
+xa1-99-exit.
+    exit.
+
+
+xb0-process-rec-h.
+
+    if last-record-is-item
+    then
+        if hcp-claims
+        then
+            perform xc1-write-1ht-record        thru xc1-99-exit
+        else
+            perform xc2-write-rmb-record        thru xc2-99-exit.
+*       endif
+*   endif
+
+
+    if edt-h-pay-prog =  'HCP'
+    then
+        move "N"                        to hcp-rmb-flag
+    else
+        move "Y"                        to hcp-rmb-flag.
+*   endif
+
+    add 1                               to ws-unique-rec-ctr.
+
+    if hcp-claims
+    then
+        add 1                           to hcp-records
+        move spaces                     to edt-1ht-record
+        move ws-unique-rec-ctr          to edt-1ht-orig-seq-nbr
+        move ws-orig-file-name          to edt-1ht-file-name
+
+        move ws-edt-1-group-nbr         to edt-1ht-group-nbr
+        move ws-edt-1-moh-off-cd        to edt-1ht-moh-off-cd
+        move ws-edt-1-station-nbr       to edt-1ht-station-nbr
+        move ws-edt-1-process-date      to edt-1ht-process-date
+        move ws-edt-1-doc-nbr           to edt-1ht-doc-nbr
+        move ws-edt-1-specialty-cd      to edt-1ht-specialty-cd
+
+        move edt-h-health-nbr           to edt-1ht-health-nbr
+        move edt-h-version-cd           to edt-1ht-version-cd
+        move edt-h-birth-date           to edt-1ht-birth-date
+        move edt-h-account-nbr          to edt-1ht-account-nbr
+        move edt-h-pay-prog             to edt-1ht-pay-prog
+        move edt-h-payee                to edt-1ht-payee
+        move edt-h-doc-nbr              to edt-1ht-refer-doc-nbr
+        move edt-h-facility-nbr         to edt-1ht-facility-nbr
+        move edt-h-patient-admission-date to edt-1ht-admit-date
+        move edt-h-location-cd          to edt-1ht-loc-cd
+        move edt-h-error-cd-1           to edt-1ht-error-h-cd-1
+        move edt-h-error-cd-2           to edt-1ht-error-h-cd-2
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  22
+*                      u021a.cbl                                     )
+        move edt-h-error-cd-3           to edt-1ht-error-h-cd-3
+        move edt-h-error-cd-4           to edt-1ht-error-h-cd-4
+        move edt-h-error-cd-5           to edt-1ht-error-h-cd-5
+    else
+    if rmb-claims
+    then
+        add 1                           to rmb-records
+        move spaces                     to edt-rmb-record
+        move ws-unique-rec-ctr          to edt-rmb-orig-seq-nbr
+        move ws-orig-file-name          to edt-rmb-file-name
+
+        move ws-edt-1-group-nbr         to edt-rmb-group-nbr
+        move ws-edt-1-moh-off-cd        to edt-rmb-moh-off-cd
+        move ws-edt-1-station-nbr       to edt-rmb-station-nbr
+        move ws-edt-1-process-date      to edt-rmb-process-date
+        move ws-edt-1-doc-nbr           to edt-rmb-doc-nbr
+        move ws-edt-1-specialty-cd      to edt-rmb-specialty-cd
+
+        move edt-h-health-nbr           to edt-rmb-health-nbr
+        move edt-h-version-cd           to edt-rmb-version-cd
+        move edt-h-birth-date           to edt-rmb-birth-date
+        move edt-h-account-nbr          to edt-rmb-account-nbr
+        move edt-h-pay-prog             to edt-rmb-pay-prog
+        move edt-h-payee                to edt-rmb-payee
+        move edt-h-doc-nbr              to edt-rmb-refer-doc-nbr
+        move edt-h-facility-nbr         to edt-rmb-facility-nbr
+        move edt-h-patient-admission-date to edt-rmb-admit-date
+        move edt-h-location-cd          to edt-rmb-loc-cd
+        move edt-h-error-cd-1           to edt-rmb-error-h-cd-1
+        move edt-h-error-cd-2           to edt-rmb-error-h-cd-2
+        move edt-h-error-cd-3           to edt-rmb-error-h-cd-3
+        move edt-h-error-cd-4           to edt-rmb-error-h-cd-4
+        move edt-h-error-cd-5           to edt-rmb-error-h-cd-5.
+*   endif
+
+    move 'H'                            to last-record.
+
+xb0-99-exit.
+    exit.
+
+
+xb1-process-rec-r.
+
+    add 1                               to ws-unique-rec-ctr.
+
+    if rmb-claims
+    then
+        move ws-unique-rec-ctr          to edt-rmb-orig-seq-nbr
+        move ws-orig-file-name          to edt-rmb-file-name.
+        move edt-r-registration-nbr     to edt-rmb-registration-nbr
+        move edt-r-last-name            to edt-rmb-last-name
+        move edt-r-first-name           to edt-rmb-first-name
+        move edt-r-sex                  to edt-rmb-sex
+        move edt-r-prov-cd              to edt-rmb-prov-cd
+        move edt-r-error-cd-1           to edt-rmb-error-r-cd-1
+        move edt-r-error-cd-2           to edt-rmb-error-r-cd-2
+        move edt-r-error-cd-3           to edt-rmb-error-r-cd-3
+        move edt-r-error-cd-4           to edt-rmb-error-r-cd-4
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  23
+*                      u021a.cbl                                     )
+        move edt-r-error-cd-5           to edt-rmb-error-r-cd-5.
+*   endif
+
+xb1-99-exit.
+   exit.
+
+
+
+xb2-process-rec-t.
+
+    if last-record-is-item
+    then
+        if hcp-claims
+        then
+            perform xc1-write-1ht-record        thru xc1-99-exit
+        else
+            perform xc2-write-rmb-record        thru xc2-99-exit.
+*       endif
+*   endif
+
+    add 1                               to ws-unique-rec-ctr.
+
+    if hcp-claims
+    then
+        move ws-unique-rec-ctr          to edt-1ht-orig-seq-nbr
+        move ws-orig-file-name          to edt-1ht-file-name
+        move edt-t-service-cd           to edt-1ht-service-cd
+        move edt-t-amount-sub           to edt-1ht-amount-sub
+        move edt-t-nbr-of-serv          to edt-1ht-nbr-of-serv
+        move edt-t-service-date         to edt-1ht-service-date
+        move edt-t-diag-cd              to edt-1ht-diag-cd
+        move edt-t-explan-cd            to edt-1ht-t-explan-cd
+        move edt-t-error-cd-1           to edt-1ht-error-t-cd-1
+        move edt-t-error-cd-2           to edt-1ht-error-t-cd-2
+        move edt-t-error-cd-3           to edt-1ht-error-t-cd-3
+        move edt-t-error-cd-4           to edt-1ht-error-t-cd-4
+        move edt-t-error-cd-5           to edt-1ht-error-t-cd-5
+        move spaces                     to edt-1ht-8-explan-cd
+                                           edt-1ht-8-explan-desc
+    else
+    if rmb-claims
+    then
+        move ws-unique-rec-ctr          to edt-rmb-orig-seq-nbr
+        move ws-orig-file-name          to edt-rmb-file-name
+        move edt-t-service-cd           to edt-rmb-service-cd
+        move edt-t-amount-sub           to edt-rmb-amount-sub
+        move edt-t-nbr-of-serv          to edt-rmb-nbr-of-serv
+        move edt-t-service-date         to edt-rmb-service-date
+        move edt-t-diag-cd              to edt-rmb-diag-cd
+        move edt-t-explan-cd            to edt-rmb-t-explan-cd
+        move edt-t-error-cd-1           to edt-rmb-error-t-cd-1
+        move edt-t-error-cd-2           to edt-rmb-error-t-cd-2
+        move edt-t-error-cd-3           to edt-rmb-error-t-cd-3
+        move edt-t-error-cd-4           to edt-rmb-error-t-cd-4
+        move edt-t-error-cd-5           to edt-rmb-error-t-cd-5
+        move spaces                     to edt-rmb-8-explan-cd
+                                           edt-rmb-8-explan-desc.
+*   endif
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  24
+*                      u021a.cbl                                     )
+    move 'T'                            to last-record.
+
+xb2-99-exit.
+    exit.
+
+
+
+xb3-process-rec-8.
+
+    add 1                               to ws-unique-rec-ctr.
+
+    if hcp-claims
+    then
+        move ws-unique-rec-ctr          to edt-1ht-orig-seq-nbr
+        move ws-orig-file-name          to edt-1ht-file-name
+        move edt-8-explan-cd            to edt-1ht-8-explan-cd
+        move edt-8-explan-desc          to edt-1ht-8-explan-desc
+        perform xc1-write-1ht-record    thru xc1-99-exit
+    else
+    if rmb-claims
+    then
+        move ws-unique-rec-ctr          to edt-rmb-orig-seq-nbr
+        move ws-orig-file-name          to edt-rmb-file-name
+        move edt-8-explan-cd            to edt-rmb-8-explan-cd
+        move edt-8-explan-desc          to edt-rmb-8-explan-desc
+        perform xc2-write-rmb-record    thru xc2-99-exit.
+*   endif
+
+    move '8'                            to last-record.
+
+xb3-99-exit.
+    exit.
+
+
+xb4-process-rec-9.
+
+    if last-record-is-item
+    then
+        if hcp-claims
+        then
+            perform xc1-write-1ht-record        thru xc1-99-exit
+        else
+            perform xc2-write-rmb-record        thru xc2-99-exit.
+*       endif
+*   endif
+
+
+    move '9'                            to last-record.
+
+xb4-99-exit.
+    exit.
+
+xc1-write-1ht-record.
+
+    write edt-1ht-record.
+    add 1                               to ctr-hcp-dtl-writes.
+
+xc1-99-exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  25
+*                      u021a.cbl                                     )
+    exit.
+
+
+xc2-write-rmb-record.
+
+    write edt-rmb-record.
+    add 1                               to ctr-rmb-dtl-writes.
+
+xc2-99-exit.
+    exit.
+
+
+
+za0-common-error.
+
+    move err-msg (err-ind)           to      e1-error-msg.
+    display confirm.
+    display e1-error-line.
+
+za0-99-exit.
+    exit.
+
+zb0-abend.
+
+    display "U021A ABENDING"
+    display " ".
+
+
+zb1-close-files.
+    close iconst-mstr
+          edt-hx-error-file
+          edt-1ht-file
+          edt-rmb-file.
+
+
+    stop run.
+
+zb0-99-exit.
+    exit.
+
+    copy "y2k_default_century_year.rtn".
+* y2k_default_century_year.rtn
+
+y2k-add-century-to-year.
+
+*y2k (default century in year, if not entered)
+*
+    if century-year > 99
+    then
+*      (use has specified century)
+        next sentence
+    else
+        if century-year = 99
+        then
+            add 1900                to   century-year
+        else
+            add 2000                to   century-year.
+*       endif
+* Micro Focus COBOL for UNIX         V4.0 revision 005 05-May-08 12:02 Page  26
+*                      u021a.cbl (/alpha/rmabill/rmabill101c/use/y2k_)
+*   endif
+
+y2k-99-exit.
+    exit.
+
+
+    copy "y2k_default_sysdate_century.rtn".
+y2k-default-sysdate.
+
+    move sys-date-left                  to sys-date-temp.
+    move sys-date-temp                  to sys-date-right.
+    move zeros                          to sys-date-blank.
+* 1999/dec/30 B.E.
+*   add 19000000                        to sys-date-numeric.
+    add 20000000                        to sys-date-numeric.
+
+y2k-default-sysdate-exit.
+    exit.
+* Micro Focus COBOL for UNIX         V4.0 revision 005 Compiler
+* Copyright (C) 1984-1995 Micro Focus Ltd.     URN 2XUPG/GB0/00000F
+*                                              REF GNB-030056000AA
+*
+* Total Messages:     0
+* Data:        4528     Code:        4042

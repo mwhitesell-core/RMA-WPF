@@ -1,0 +1,86 @@
+;to test the consec dates for history files
+
+
+can clear
+set default
+set process nolimit
+set lock file update
+
+request one on calculation errors report on edit errors report
+
+access claims_history_subfile 
+
+select if clmhdr-doc-nbr-ohip = 123133
+
+def x-doc-nbr cha*3 = clmdtl-id[4:3]
+def x-oma-code cha*5 = clmdtl-id[12:5]
+
+define x-sv-nbr1  zoned*2 unsigned = clmdtl-nbr-serv
+
+;def clmdtl-consec-dates-r char*9 = ascii(clmdtl-consec-dates,9)
+
+def x-sv-nbr2 zoned*2 =                       &
+        nconvert(clmdtl-consec-dates-r[1:1])    &
+        if (clmdtl-consec-dates-r[2:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[2:2] <> 'OP') &
+        and clmdtl-consec-dates-r[1:1] <> '0'
+
+def x-sv-nbr3 zoned*2 =                       &
+        nconvert(clmdtl-consec-dates-r[4:1])    &
+        if (clmdtl-consec-dates-r[5:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[5:2] <> 'OP') &
+        and clmdtl-consec-dates-r[4:1] <> '0'
+
+def x-sv-nbr4 zoned*2=                        &
+        nconvert(clmdtl-consec-dates-r[7:1])    &
+        if (clmdtl-consec-dates-r[8:2] <> 'MR'  &
+        and clmdtl-consec-dates-r[8:2] <> 'OP') &
+        and clmdtl-consec-dates-r[7:1] <> '0'
+
+def x-nbr-svcs zoned*2 unsigned =    x-sv-nbr1 &
+                                   + x-sv-nbr2 &
+                                   + x-sv-nbr3 &
+                                   + x-sv-nbr4
+
+def x-fee = clmdtl-fee-ohip / x-nbr-svcs
+def x-clmdtl-fee-ohip-1 zoned*7 = x-sv-nbr1 * x-fee
+def x-clmdtl-fee-ohip-2 zoned*7 = x-sv-nbr2 * x-fee
+def x-clmdtl-fee-ohip-3 zoned*7 = x-sv-nbr3 * x-fee
+def x-clmdtl-fee-ohip-4 zoned*7 = x-sv-nbr4 * x-fee
+
+
+def x-sv-date-1 char*8 = clmdtl-sv-date
+def x-sv-date-2 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[2:2]
+def x-sv-date-3 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[5:2]
+def x-sv-date-4 char*8 = clmdtl-sv-date[1:6] + clmdtl-consec-dates-r[8:2]
+
+subfile test keep on errors report include    &
+clmdtl-id of claims_history_subfile                    ,&
+x-doc-nbr                                ,&
+x-sv-date-1                              ,&
+x-sv-nbr1                                ,&
+clmhdr-diag-cd of claims_history_subfile                             ,&
+x-oma-code                               ,&
+x-clmdtl-fee-ohip-1
+
+
+subfile test alias test_svc2 append keep on errors report if  x-sv-nbr2 <> 0 include &
+clmdtl-id of claims_history_subfile                                ,&
+x-doc-nbr                                ,&
+x-sv-date-2                              ,&
+x-sv-nbr2                                ,&
+clmhdr-diag-cd of claims_history_subfile                           ,&
+x-oma-code                               ,&
+x-clmdtl-fee-ohip-2
+
+subfile test alias test_svc3 append keep on errors report if  x-sv-nbr3 <> 0 include &
+clmdtl-id of claims_history_subfile                                ,&
+x-doc-nbr                                ,&
+x-sv-date-3                              ,&
+x-sv-nbr3                                ,&
+clmhdr-diag-cd of claims_history_subfile                            ,&
+x-oma-code                               ,&
+x-clmdtl-fee-ohip-3
+
+
+build $obj/tests

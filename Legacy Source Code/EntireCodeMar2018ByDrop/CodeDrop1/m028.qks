@@ -1,0 +1,334 @@
+;#> program-id.     m028.qks
+;    program purpose : entry of a contact's address/phone etc
+;
+;    modification historY
+;        date   who     description
+; 2005/jan/19   b.e.	- original
+; 2005/dec/06   M.C.	- allow user to blank out postal code
+; 2006/apr/10   M.C.	- move email address after the phone numbers because
+;			  field size has extended from x(30) to x(50)
+; 2006/08/08    M.C.    - receiving x-doc-ohip-nbr 
+;                       - add designer procedure 'dupa' & 'dupe' for the other doctor records that
+;                         share the same doc ohip nbr
+; 2006/10/19    M.C.	- add f027-contacts-mstr to check on contacts name to be the same
+;			  in order to allow duplicate on email address or address and phone numbers
+; 2006/10/26    M.C.    - receiving the f027-contacts-mstr in the parameter 
+; 2007/07/10    M.C.    - create audit records for before and after when user changes email address
+
+can clear
+screen $pb_obj/m028 receiving 		&
+	x-doc-nbr, 			&
+; 2006/08/08 - MC
+	x-doc-ohip-nbr,			&
+; 2006/08/08 - end
+	x-contacts-type, 		&
+; 2006/10/26 - MC
+;	x-contacts-name
+ 	x-contacts-name,		&
+	f027-contacts-mstr
+; 2006/10/26 - end
+
+
+; 2006/08/08 - MC
+temp x-doc-ohip-nbr  zoned*6 unsigned
+; 2006/08/08 - end
+
+temp x-doc-nbr char*3
+temp x-contacts-type char*1
+; 2006/10/19 - MC
+;temp x-contacts-name char*40
+temp x-contacts-name char*60
+temp x-dup-contacts-name char*60
+; 2006/10/19 - end
+
+;2006/10/26 - MC
+file f027-contacts-mstr master
+; 2006/10/26 - end
+
+file f028-contacts-info-mstr occurs 2
+  access viaindex  contacts-info-key  using  filler, x-doc-nbr, x-contacts-type
+item filler initial " "
+item doc-nbr initial x-doc-nbr
+item contacts-type initial x-contacts-type
+
+; 2006/08/08 - MC
+file f020-doctor-mstr designer 
+   access viaindex doc-ohip-nbr using x-doc-ohip-nbr
+   
+file f028-contacts-info-mstr alias f028-dup designer 
+   access viaindex contacts-info-key via filler, doc-nbr, contacts-type, &
+		contacts-location using ' ', doc-nbr of f020-doctor-mstr, &
+		x-contacts-type, contacts-location of f028-contacts-info-mstr
+; 2006/08/08 - end
+
+; 2006/10/19 - MC
+file f027-contacts-mstr alias f027-designer designer  open 1
+   access viaindex contacts-key via filler, doc-nbr, contacts-type	&
+	using ' ', doc-nbr of f020-doctor-mstr, x-contacts-type      
+
+; 2006/10/19 - end
+
+; 2007/07/10 - MC
+file f028-audit-file designer
+
+temp x-email-addr char*50 occurs with f028-contacts-info-mstr
+temp x-email-addr-flag char*1 occurs with f028-contacts-info-mstr
+
+; 2007/07/10 - end
+
+title "Info for:"                               at 1,30
+title "Info for:"                               at 1,30
+align (,,40)
+; 2006/10/19 - MC
+;field x-contacts-name  display  predisplay  size 30
+field x-contacts-name  display  predisplay  size 40
+; 2006/10/19 - end
+skip 1
+; 2006/04/10 - MC
+;title "Location  Email                            Address 1/2/3/Postal Code         " at ,2
+title "Location Phone Numbers/Email               Address 1/2/3/Postal Code         " at ,2
+
+skip 1
+; 2006/04/10 - MC
+;align (1,,5) (,,12) (,,14) (,45,50) 
+align (1,,5) (,12,19) (,33,38) (,45,50) 
+; 2006/04/10 - end
+cluster occurs with f028-contacts-info-mstr
+field contacts-location of f028-contacts-info-mstr required nochange 	&
+      lookup noton f028-contacts-info-mstr 			 	&
+	via filler, 							&
+	    doc-nbr,  							&
+	    contacts-type , 						&
+	    contacts-location 						&
+	using filler of f028-contacts-info-mstr, 			&
+	      doc-nbr of f028-contacts-info-mstr,			&
+	      contacts-type  of f028-contacts-info-mstr , 		&
+	      contacts-location of f028-contacts-info-mstr
+
+;2006/04/10 - MC - move from below
+field contacts-phone-nbr  	label "Phone:"
+field contacts-phone-ext 	label "Ext."
+; 2006/04/10 - end
+
+; 2006/04/10 - MC - comment out and move to below
+;field contacts-email-addr
+; 2006/04/10 - end
+
+field contacts-addr-1 		label "L 1:"
+
+; 2006/04/10 - MC - move from below
+;align                   (,45,50) 
+align (,12,19)          (,45,50) 
+field contacts-fax-nbr  	label "Fax  :"
+; 2006/04/10 - end
+
+field contacts-addr-2		label "L 2:"
+
+; 2006/04/10 - MC - comment out and move to above
+;align (,12,19) (,33,38) (,45,50) 
+;field contacts-phone-nbr  	label "Phone:"
+;field contacts-phone-ext 	label "Ext."
+; 2006/04/10 - end
+
+; 2006/04/10 - MC - move from below
+field contacts-pager-nbr 	label "Pager:"
+; 2006/04/10 -end
+
+field contacts-addr-3		label "L 3:"
+
+; 2006/04/10 - MC - comment out and move to above
+;align (,12,19)          (,45,50) 
+;field contacts-fax-nbr  	label "Fax  :"
+; 2006/04/10 - end
+
+; 2006/04/10 - MC - move from below
+field contacts-cell-nbr 	label "Cell :"
+; 2006/04/10 -end
+
+field postal-code		label "PC :"	&
+; 2005/12/06 - MC -change pattern to allow blank
+	pattern "^#^#^#| "
+; 2005/12/06 -end
+
+; 2006/04/10 - MC - comment out and move to above
+;align (,12,19) 
+;field contacts-pager-nbr 	label "Pager:"
+;align (,12,19)  (,45,62)
+;field contacts-cell-nbr 	label "Cell :"
+
+align (,,12) (,63,80)
+field contacts-email-addr
+; 2006/04/10 - end
+
+; 2006/10/26 - MC - comment out as Brad suggested not needed
+;field newsletter-flag label "Send newsletter?"
+; 2006/10/26 - end
+
+skip 2
+
+; 2007/07/10 - MC
+procedure edit contacts-email-addr
+begin
+   if fieldtext <> oldvalue(contacts-email-addr of f028-contacts-info-mstr)  
+   then begin
+	let x-email-addr-flag = 'Y'
+	let x-email-addr = oldvalue(contacts-email-addr of f028-contacts-info-mstr) 
+   end
+end
+
+procedure preupdate
+begin
+   for f028-contacts-info-mstr
+   begin
+	if x-email-addr-flag = 'Y'
+        then begin
+;   create before audit record
+	    let doc-nbr of f028-audit-file = doc-nbr of f028-contacts-info-mstr
+	    let contacts-type of f028-audit-file = contacts-type of f028-contacts-info-mstr
+	    let contacts-location of f028-audit-file = contacts-location of f028-contacts-info-mstr
+	    let last-mod-date of f028-audit-file = sysdate
+            let last-mod-time of f028-audit-file = systime / 10000
+	    let last-mod-user-id of f028-audit-file = logonid + ' - before'
+	    let contacts-email-addr of f028-audit-file = x-email-addr
+	    put f028-audit-file reset
+; create after audit record
+	    let doc-nbr of f028-audit-file = doc-nbr of f028-contacts-info-mstr
+	    let contacts-type of f028-audit-file = contacts-type of f028-contacts-info-mstr
+	    let contacts-location of f028-audit-file = contacts-location of f028-contacts-info-mstr
+	    let last-mod-date of f028-audit-file = sysdate
+            let last-mod-time of f028-audit-file = systime / 10000
+	    let last-mod-user-id of f028-audit-file = logonid + ' - after '
+	    let contacts-email-addr of f028-audit-file = contacts-email-addr of f028-contacts-info-mstr 
+  	    put f028-audit-file
+	    end
+	end
+end 
+
+; 2007/07/10 - end
+
+
+; 2006/10/10 - MC
+procedure internal duplicate_email
+begin
+  get f027-designer  optional
+; if f027 contacts mstr exists and contact name is same, then update f028
+  if accessok
+  then begin
+      let x-dup-contacts-name = upshift(truncate(lj(contacts-surname of f027-designer)) 	&
+				+ ',' +  &
+				truncate(lj(contacts-given-names of f027-designer)))
+      if x-dup-contacts-name  = x-contacts-name   
+      then begin
+	  while retrieving f028-dup
+	  begin
+      		let contacts-email-addr of f028-dup = contacts-email-addr of f028-contacts-info-mstr
+       		put f028-dup
+	  end
+	end
+       end
+;  if f027 contacts mstr not exist, create f027 and f028 records
+  else begin
+      let doc-nbr of f027-designer   = doc-nbr of f020-doctor-mstr
+      let contacts-type of f027-designer = x-contacts-type
+      let contacts-surname of f027-designer  = contacts-surname of f027-contacts-mstr
+      let contacts-given-names of f027-designer = contacts-given-names of f027-contacts-mstr
+      let contacts-inits of f027-designer = contacts-inits of f027-contacts-mstr
+      let contacts-title of f027-designer = contacts-title of f027-contacts-mstr
+      let contacts-sex of f027-designer = contacts-sex of f027-contacts-mstr
+      let billing-entry-flag of f027-designer = billing-entry-flag of f027-contacts-mstr
+      let logon-username of f027-designer = logon-username of f027-contacts-mstr
+      put f027-designer
+      let doc-nbr of f028-dup = doc-nbr of f020-doctor-mstr
+      let contacts-type of f028-dup = x-contacts-type
+      let contacts-location of f028-dup = contacts-location of f028-contacts-info-mstr
+      let contacts-email-addr of f028-dup = contacts-email-addr of f028-contacts-info-mstr
+      put f028-dup
+      end
+end
+
+
+procedure internal duplicate_address
+begin
+  get f027-designer optional
+; if f027 contacts mstr exists and contact name is same, then update f028
+  if accessok
+  then begin
+      let x-dup-contacts-name = upshift(truncate(lj(contacts-surname of f027-designer)) 	&
+				+ ',' +  &
+				truncate(lj(contacts-given-names of f027-designer)))
+      if x-dup-contacts-name  = x-contacts-name   
+      then begin
+  	while retrieving f028-dup
+  	begin
+      	  let contacts-addr-1     of f028-dup = contacts-addr-1     of f028-contacts-info-mstr
+      	  let contacts-addr-2     of f028-dup = contacts-addr-2     of f028-contacts-info-mstr
+      	  let contacts-addr-3     of f028-dup = contacts-addr-3     of f028-contacts-info-mstr
+      	  let postal-code         of f028-dup = postal-code         of f028-contacts-info-mstr
+      	  let contacts-phone-nbr  of f028-dup = contacts-phone-nbr  of f028-contacts-info-mstr
+      	  let contacts-phone-ext  of f028-dup = contacts-phone-ext  of f028-contacts-info-mstr
+      	  let contacts-pager-nbr  of f028-dup = contacts-pager-nbr  of f028-contacts-info-mstr
+      	  let contacts-cell-nbr   of f028-dup = contacts-cell-nbr   of f028-contacts-info-mstr
+      	  let contacts-fax-nbr    of f028-dup = contacts-fax-nbr    of f028-contacts-info-mstr
+       	  put f028-dup
+       	  end
+       end
+    end
+;  if f027 contacts mstr not exist, create f027 and f028 records
+  else begin
+      let doc-nbr of f027-designer   = doc-nbr of f020-doctor-mstr
+      let contacts-type of f027-designer = x-contacts-type
+      let contacts-surname of f027-designer  = contacts-surname of f027-contacts-mstr
+      let contacts-given-names of f027-designer = contacts-given-names of f027-contacts-mstr
+      let contacts-inits of f027-designer = contacts-inits of f027-contacts-mstr
+      let contacts-title of f027-designer = contacts-title of f027-contacts-mstr
+      let contacts-sex of f027-designer = contacts-sex of f027-contacts-mstr
+      let billing-entry-flag of f027-designer = billing-entry-flag of f027-contacts-mstr
+      let logon-username of f027-designer = logon-username of f027-contacts-mstr
+      put f027-designer
+      let doc-nbr of f028-dup = doc-nbr of f020-doctor-mstr
+      let contacts-type of f028-dup = x-contacts-type
+      let contacts-location of f028-dup = contacts-location of f028-contacts-info-mstr
+      let contacts-addr-1     of f028-dup = contacts-addr-1     of f028-contacts-info-mstr
+      let contacts-addr-2     of f028-dup = contacts-addr-2     of f028-contacts-info-mstr
+      let contacts-addr-3     of f028-dup = contacts-addr-3     of f028-contacts-info-mstr
+      let postal-code         of f028-dup = postal-code         of f028-contacts-info-mstr
+      let contacts-phone-nbr  of f028-dup = contacts-phone-nbr  of f028-contacts-info-mstr
+      let contacts-phone-ext  of f028-dup = contacts-phone-ext  of f028-contacts-info-mstr
+      let contacts-pager-nbr  of f028-dup = contacts-pager-nbr  of f028-contacts-info-mstr
+      let contacts-cell-nbr   of f028-dup = contacts-cell-nbr   of f028-contacts-info-mstr
+      let contacts-fax-nbr    of f028-dup = contacts-fax-nbr    of f028-contacts-info-mstr
+      put f028-dup
+      end
+end
+
+; 2006/10/10 - end
+
+; 2006/08/08 - MC
+procedure designer dupe help 'Duplicate email to other doctor records'
+begin
+  while retrieving f020-doctor-mstr
+  begin
+    if doc-nbr of f020-doctor-mstr <> x-doc-nbr	and doc-date-fac-term of f020-doctor-mstr = 0
+    then begin
+	do duplicate_email
+	end
+   end
+end
+; 2006/08/08 - end
+
+
+; 2006/10/10 - MC
+procedure designer dupa help 'Duplicate address  to other doctor records'
+begin
+  while retrieving f020-doctor-mstr
+  begin
+    if doc-nbr of f020-doctor-mstr <> x-doc-nbr  and doc-date-fac-term of f020-doctor-mstr = 0
+    then begin
+	do duplicate_address
+	end
+   end
+end
+; 2006/10/10 - end
+
+
+build detail list

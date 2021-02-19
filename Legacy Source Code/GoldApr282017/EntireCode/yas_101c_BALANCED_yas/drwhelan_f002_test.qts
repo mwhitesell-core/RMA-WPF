@@ -1,0 +1,107 @@
+;doc     :drwhelan_f002.qts
+
+;        He needs the grand total of all claims that contain S434A, S435A or S436A.
+;        Some of these claims will also include E409 or E410.
+;        This should be for the last five years so from January 1, 2011 to current.
+;        He doesn't need any details, just one figure for the total PAID amount.
+
+
+; *************************************************************
+
+;Date           Who             Description
+;2013/03/18                     whelan.qts 
+
+cancel clear
+set default
+set process nolimit
+set lock file update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f002-claims-mstr
+
+choose  key-clm-type 'B' ,  key-clm-batch-nbr "33G30@",                 &
+ key-clm-claim-nbr, key-clm-serv-code '00000', key-clm-adj-nbr '0'
+
+select f002-claims-mstr if  clmhdr-batch-type  = 'C'
+
+subfile whelan     keep include                    &
+clmhdr-claim-id               of f002-claims-mstr,&
+key-clm-batch-nbr             of f002-claims-mstr,&
+key-clm-claim-nbr             of f002-claims-mstr,&
+clmhdr-loc                    of f002-claims-mstr,&
+clmhdr-hosp                   of f002-claims-mstr,&
+clmhdr-tot-claim-ar-ohip,			  &
+clmhdr-manual-and-tape-payments,		  &
+clmhdr-pat-ohip-id-or-chart
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access *whelan                                                          &
+  link 'B', key-clm-batch-nbr, key-clm-claim-nbr                         &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr                &
+          of f002-claims-mstr
+
+select f002-claims-mstr if                   &
+        clmdtl-DATE-PERIOD-END  ='20120822' &
+       and (    clmdtl-oma-cd  =  "S434"     & ; details only
+             or clmdtl-oma-cd  =  "S435"     & ; details only
+             or clmdtl-oma-cd  =  "S436"     & ; details only
+	   )				     &
+       and  clmdtl-oma-suff    =  "A"          ; A suffix only
+
+
+subfile whelan1     keep include           &
+clmdtl-id             of f002-claims-mstr,&
+key-clm-batch-nbr     of f002-claims-mstr,&
+key-clm-claim-nbr     of f002-claims-mstr,&
+clmdtl-fee-ohip                          ,&
+clmdtl-sv-date                           ,&
+clmdtl-oma-cd         of f002-claims-mstr,&
+clmhdr-loc            of whelan           ,&
+clmhdr-hosp           of whelan           ,&
+clmhdr-tot-claim-ar-ohip of whelan	  ,&
+clmhdr-manual-and-tape-payments of whelan ,&
+clmhdr-pat-ohip-id-or-chart of whelan      
+
+
+request three                           &
+        on edit        errors report    &
+        on calculation errors report
+
+
+access *whelan1                                                          
+
+sorted on key-clm-batch-nbr on key-clm-claim-nbr
+
+def x-doc char*3 = clmdtl-id[3:3]
+
+temp dtl-amt zoned*7 signed
+item dtl-amt = dtl-amt + clmdtl-fee-ohip
+
+temp hdr-amt zoned*8 signed
+item hdr-amt = hdr-amt + clmhdr-tot-claim-ar-ohip at key-clm-claim-nbr
+
+temp hdr-amt-paid zoned*8 signed
+item hdr-amt-paid = hdr-amt-paid + clmhdr-manual-and-tape-payments at key-clm-claim-nbr
+
+
+def comma cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+subfile whelan2 portable keep at final include       &
+x-doc                                               ,&
+comma                                               ,&
+dtl-amt        	                                    ,&
+comma                                               ,&
+hdr-amt                                             ,&
+comma                                               ,&
+hdr-amt-paid                                        ,&
+x-cr
+
+build $obj/drwhelanf002

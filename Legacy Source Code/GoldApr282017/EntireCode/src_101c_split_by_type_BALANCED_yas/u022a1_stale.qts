@@ -1,0 +1,133 @@
+;#> PROGRAM-ID.     u022a1_stale.qts
+;
+;       ((C)) Dyad Infosys Ltd    
+;
+;    PROGRAM PURPOSE : TO EXTRACT STALE DATED CLAIMS FOR SPECIAL SUBMISSION
+;		       AFTER APPROVAL BY MOH  
+;
+;  MODIFICATION HISTORY
+;    DATE   	WHO   	DESCRIPTION
+; 2016/Sep/15 	MC	- cloned from u022a1.qts  
+
+can clear
+set default
+set input nolimit
+set process nolimit
+set lock record update
+
+request extract on calculation errors report				&
+		on edit errors report
+
+access f002-outstanding							&
+  link key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, '00000', '0' &
+   to  key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, 		&
+       key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr		&
+  link nco(key-clm-batch-nbr[1:2]), clmhdr-agent-cd    			&
+    to clinic-nbr, agent-cd of contract-dtl                             &
+  link key-clm-batch-nbr of f002-claims-mstr[3:3]		  	&
+    to doc-nbr of f020-doctor-mstr       				&
+  link clmhdr-pat-ohip-id-or-chart       	 			&
+   to  key-pat-mstr of f010-pat-mstr opt				&
+  link nconvert(key-clm-batch-nbr[1:2])  				&
+    to iconst-clinic-nbr-1-2 of iconst-mstr-rec                         &
+  link clmhdr-loc                                                 	&
+    to loc-nbr    of f030-locations-mstr opt
+
+use $use/def_group_nbr.use             nolist nodetail
+
+def x-clinic-nbr-1-2 char*2 = clmhdr-claim-id[1:2]
+
+def balance-due num                            &
+     =  clmhdr-tot-claim-ar-ohip               &
+      + clmhdr-manual-and-tape-payments        &
+       if clmhdr-adj-oma-cd = "0000"           & ; perform calc only for
+  else 0                                         ; claim header recs
+
+
+
+select if   (                                                           &
+                      clmhdr-batch-type = "C"                           &
+                  and clmhdr-adj-oma-cd = "0000"                        &
+                  and moh-flag = "Y"                                    &
+                  and balance-due > 0                                   &
+                  and clmhdr-tape-submit-ind = "T"                      &
+            )								
+
+
+def x-days-since-service = days(sysdate) - days(clmhdr-serv-date)  &
+       if clmhdr-adj-oma-cd = "0000"           	&
+      and clmhdr-serv-date <> 0
+
+
+def w-moh-location-code char*4                          &
+    = "    "                                            &
+           if not record f030-locations-mstr exists     &
+ else loc-service-location-indicator
+
+
+def w-clmhdr-hosp char*4                                        &
+    = "    "                                                    &
+        if   not record f030-locations-mstr exists              &
+ else loc-hospital-code                                         &
+        if   iconst-clinic-card-colour = 'Y'                    &
+ else ascii(loc-hospital-nbr,4)
+
+def d-sysdate date = sysdate
+
+temp x-rec-count
+item x-rec-count = x-rec-count + 1
+
+subfile u022a1_stale  keep include    		   &
+  key-clm-type of f002-claims-mstr,                &
+  key-clm-batch-nbr of f002-claims-mstr,           &
+  key-clm-claim-nbr of f002-claims-mstr,           &
+  clmhdr-batch-type,            &
+  clmhdr-doc-nbr-ohip,          &
+  clmhdr-date-sys,              &
+  clmhdr-claim-id,              &
+  clmhdr-claim-nbr,             &
+  w-clmhdr-hosp,                &
+  clmhdr-date-admit,            &
+  clmhdr-pat-ohip-id-or-chart,  &
+  clmhdr-refer-doc-nbr,         &
+  clmhdr-loc,                   &
+  clmhdr-i-o-pat-ind,           &
+  clmhdr-agent-cd,              &
+  clmhdr-tot-claim-ar-oma,      &
+  clmhdr-tot-claim-ar-ohip,     &
+  clmhdr-status-ohip,           &
+  clmhdr-doc-dept,              &
+  clmhdr-doc-spec-cd,           &
+  clmhdr-sub-nbr,               &
+  clmhdr-manual-review,         &
+  dollar-flag,                  &
+  moh-flag,                     &
+  translated-group-nbr,         &
+  w-moh-location-code,		&
+  contract-code
+
+;2000/05/02 - B.A. added audit subfile to capture criteria for resubmitting
+;		   a claim. In case of dispute as to why a claim was resubmitted
+;		   this file can be dumped out
+
+subfile u022a1_stale_audit keep include                               &
+               clmhdr-tape-submit-ind of f002-claims-mstr,	&
+               key-clm-type of f002-claims-mstr,                &
+               key-clm-batch-nbr of f002-claims-mstr,           &
+               key-clm-claim-nbr of f002-claims-mstr,           &
+               clmhdr-batch-type of f002-claims-mstr,           &
+               clmhdr-adj-oma-cd of f002-claims-mstr,           &
+               moh-flag of contract-dtl,                        &
+               balance-due,                                     &
+               clmhdr-tot-claim-ar-ohip of f002-claims-mstr,    &
+               clmhdr-manual-and-tape-payments of f002-claims-mstr, &
+               clmhdr-status-ohip of f002-claims-mstr,          &
+               clmhdr-date-cash-tape-payment of f002-claims-mstr,   &
+               clmhdr-date-sys  of f002-claims-mstr,            &
+               x-days-since-service,                            &
+               d-sysdate,                                       &
+               clmhdr-submit-date of f002-claims-mstr,		&
+	       x-rec-count,					&
+	       clmhdr-serv-date
+
+build $obj/u022a1_stale

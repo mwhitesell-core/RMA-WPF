@@ -1,0 +1,43 @@
+;
+;   91/01/31 	M. CHAN		- PDR 478
+;				- REVERSE SELECTION CRITERIA
+;
+
+can clear
+
+run u104
+
+request select
+
+access f025-doctor-payments	&
+  link doc-nbr 			       to doc-nbr of f020-doctor-mstr &
+  link (ascii(doc-clinic-nbr,2)+ascii(doc-dept,2)+ascii(doc-nbr,3)) to chq-reg-key of f060-cheque-reg-mstr &
+link (22) to iconst-clinic-nbr-1-2 of iconst-mstr-rec
+
+def w-payment-mm = floor(mod(payment-date,10000) / 100)
+
+;SELECT IF ICONST-DATE-PERIOD-END >= PAYMENT-DATE
+select if payment-date >= iconst-date-period-end
+
+def w-month = w-payment-mm      if w-payment-mm  >= 7	&
+	 else w-payment-mm + 12
+
+def w-tax-amt packed = ( (payment-amt *  payment-tax-%) / 100) + .005
+def w-payment packed = payment-amt - w-tax-amt
+
+subfile u104 include chq-reg-key,	&
+w-month, payment-amt, w-tax-amt, w-payment
+
+request update
+
+access *u104
+sort on chq-reg-key, w-month
+
+output f060-cheque-reg-mstr update at w-month
+  item chq-reg-earnings-this-mth   (w-month) subtotal payment-amt negative
+  item chq-reg-regular-pay-this-mth(w-month) subtotal w-payment   negative
+  item chq-reg-regular-tax-this-mth(w-month) subtotal w-tax-amt   negative
+
+
+build $pb_obj/u104
+  

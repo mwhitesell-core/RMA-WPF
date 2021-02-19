@@ -1,0 +1,180 @@
+; Program: u933.qts
+; Purpose: create payroll transactions for ICU doctors
+
+; 94/JUN/22	M.C.	- ORIGINAL (SMS 145)
+;			- ICU/APP FOR CLINIC 81 AGENT 8
+; 98/Sep/22     B.E.    - added "set lock file update" statement
+; 00/nov/06	B.E.	- total billings reduced by 95%
+;
+
+can clear
+set process nolimit
+set lock file update
+
+run summ_claims
+
+request one
+
+access icu-app-file
+
+sort on doc-nbr on clmhdr-pat-ohip-id-or-chart on clmdtl-sv-date
+
+temp x-nbr-claims
+item x-nbr-claims = x-nbr-claims + 1 at clmdtl-sv-date reset at doc-nbr
+
+temp x-nbr-svcs
+item x-nbr-svcs = x-nbr-svcs + clmdtl-nbr-serv reset at doc-nbr
+
+temp x-tot-fees-billed
+item x-tot-fees-billed = x-tot-fees-billed + clmdtl-fee-ohip reset at doc-nbr
+
+subfile payplan keep at doc-nbr	include		&
+	doc-nbr, clmhdr-doc-dept, x-nbr-claims, x-nbr-svcs, x-tot-fees-billed
+
+;------------------------------------------------------------
+request two
+
+set process nolimit
+
+
+access *payplan 						&
+   link doc-nbr							&
+     to doc-nbr of f020-doctor-mstr opt 			&
+   link 81							&
+     to iconst-clinic-nbr-1-2 of iconst-mstr-rec opt
+
+def x-clawback-percent = parm prompt  "CLAWBACK % (99.99): "
+def x-charge-per-claim = parm prompt "RMA CHARGE PER CLAIM: "
+ 
+def x-less-clawback 	= x-tot-fees-billed * x-clawback-percent / 100
+def x-tot-billing 	= x-tot-fees-billed - x-less-clawback
+def x-tot-billing-at-95%= x-tot-billing * .95
+def x-amt-holdback-icu	= x-tot-billing - x-tot-billing-at-95%
+def x-rma-icu-charge 	= x-nbr-claims * x-charge-per-claim * 100
+def x-gst 		= x-rma-icu-charge  * .07
+def x-tot-exp 		= x-rma-icu-charge + x-gst
+def x-net 		= x-tot-billing-at-95% - x-tot-exp
+
+
+temp x-comp-code char*6
+temp x-factor
+temp x-units
+temp x-amt-mtd
+temp x-amt-ytd
+
+item x-comp-code= "NBRCLM"
+item x-factor	= x-charge-per-claim * 10000
+item x-units	= x-nbr-claims
+item x-amt-mtd	= x-nbr-claims * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= x-nbr-claims * 100
+subfile u933a2  keep include					&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "NBRSVC"
+item x-factor	= 0
+item x-units	= x-nbr-svcs
+item x-amt-mtd	= x-nbr-svcs * 100 ; no decimals allowed so bump up nbr
+item x-amt-ytd	= x-nbr-svcs * 100
+
+
+subfile u933a2  keep alias  u933a2-nbrsvc  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILLIC"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-fees-billed
+item x-amt-ytd	= x-tot-fees-billed
+
+subfile u933a2  keep alias  u933a2-billic  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "CLAWBK"
+item x-factor	= x-clawback-percent * 10000
+item x-units	= 0
+item x-amt-mtd	= x-less-clawback
+item x-amt-ytd	= x-less-clawback
+subfile u933a2  keep alias  u933a2-clawbk  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTBIL"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing
+item x-amt-ytd	= x-tot-billing
+subfile u933a2  keep alias  u933a2-totbil  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "HOLDIC"
+item x-factor	= 5000	; 5%  
+item x-units	= 0
+item x-amt-mtd	= x-less-clawback
+item x-amt-ytd	= x-less-clawback
+
+subfile u933a2  keep alias  u933a2-holdic  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "BILL95"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-billing-at-95%
+item x-amt-ytd	= x-tot-billing-at-95%
+
+subfile u933a2  keep alias  u933a2-bill95  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ICUCHR"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-rma-icu-charge
+item x-amt-ytd	= x-rma-icu-charge
+
+subfile u933a2  keep alias  u933a2-rmachr  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "ICUGST"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-gst
+item x-amt-ytd	= x-gst
+
+subfile u933a2  keep alias  u933a2-icugst  include		&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "TOTEXP"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-tot-exp
+item x-amt-ytd	= x-tot-exp
+
+subfile u933a2  keep alias  u933a2-totexp include			&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+item x-comp-code= "PAYEFT"
+item x-factor	= 0
+item x-units	= 0
+item x-amt-mtd	= x-net
+item x-amt-ytd	= x-net
+
+subfile u933a2  keep alias  u933a2-payeft include			&
+	doc-nbr of payplan,					& 
+	x-comp-code, x-factor, x-units, x-amt-mtd, x-amt-ytd
+
+subfile u933a1     keep include                         &
+        doc-nbr of payplan,                             &
+        doc-name, clmhdr-doc-dept, x-nbr-claims,        &
+        x-nbr-svcs, x-tot-fees-billed, x-less-clawback, x-tot-billing,    &
+        x-tot-billing-at-95%, x-rma-icu-charge, x-gst, x-tot-exp,  &
+        x-net, iconst-date-period-end
+
+build $obj/u933

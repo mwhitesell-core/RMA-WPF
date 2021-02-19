@@ -1,0 +1,176 @@
+;purpose : report f119 data for payment summaries reporting  (t4)
+;purpose : to balance the tax sammaries                                      
+; *************************************************************
+
+;Date		Who	Description
+;2008/01/30     Yas     - original
+;2014/01/14	Yas	- Change dates for Jan to Dec 2013 - 201207 to 201212 and 201301 to 201306
+;2015-01-10	brad1	- conversion to new SQL solution
+;2016-01-14	be2	- update dates for 2015 yearend
+;			- add extra delimiter
+;2017-01-10	be3	- update dates for 201612 yearend
+
+cancel clear
+set default
+set process nolimit
+set lock record update
+
+request one                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history                        	&
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     	&
+  link doc-dept to dept-nbr of f070-dept-mstr opt
+
+select if   (      comp-code = "AFPCON"                   &
+               or  comp-code = "TITHD1"                   &
+               or  comp-code = "TITHD2"                   &
+               or  comp-code = "TITHD3"                   &
+               or  comp-code = "DEPMED"                   &
+               or  comp-code = "PAYEFT"                   &
+            )                                             &
+;be2
+;        and (     (ep-nbr >= 201307 and ep-nbr <= 201312) &
+;               or (ep-nbr >= 201401 and ep-nbr <= 201406) &
+;be3     and (     (ep-nbr >= 201407 and ep-nbr <= 201412) &
+;               or (ep-nbr >= 201501 and ep-nbr <= 201506) &
+         and (     (ep-nbr >= 201507 and ep-nbr <= 201512) &
+                or (ep-nbr >= 201601 and ep-nbr <= 201606) &
+             )                                             & 
+       and doc-dept = 31
+
+sort on doc-nbr  of f119-doctor-ytd-history
+
+def environment  char*4 = "SOLO"
+
+;be2
+;def x-ped char*6 = "201412"
+;be3
+;def x-ped char*6 = "201512"
+def x-ped char*6 = "201612"
+
+def x-delim cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+;just doctor identification info
+
+subfile r150_pay_sum_doc_SOLO portable keep at doc-nbr include  		&
+	doc-nbr of f119-doctor-ytd-history, x-delim, dept-company, x-delim, 	&
+	doc-dept, x-delim,  doc-name, x-delim, doc-inits, x-delim, doc-sin-nbr, &
+	x-cr
+go
+
+request two                             &
+        on edit        errors report    &
+        on calculation errors report
+
+access f119-doctor-ytd-history                        	&
+  link doc-nbr to doc-nbr of f020-doctor-mstr opt     	&
+  link doc-dept to dept-nbr of f070-dept-mstr opt
+
+select if   (      comp-code = "AFPCON"                   &
+               or  comp-code = "TITHD1"                   &
+               or  comp-code = "TITHD2"                   &
+               or  comp-code = "TITHD3"                   &
+               or  comp-code = "DEPMED"                   &
+               or  comp-code = "PAYEFT"                   &
+            )                                             &
+;be2
+;        and (     (ep-nbr >= 201307 and ep-nbr <= 201312) &
+;               or (ep-nbr >= 201401 and ep-nbr <= 201406) &
+;be3      and (     (ep-nbr >= 201407 and ep-nbr <= 201412) &
+;               or (ep-nbr >= 201501 and ep-nbr <= 201506) &
+         and (     (ep-nbr >= 201507 and ep-nbr <= 201512) &
+                or (ep-nbr >= 201601 and ep-nbr <= 201606) &
+             )                                             & 
+       and doc-dept = 31
+
+sort on doc-nbr  of f119-doctor-ytd-history
+
+def environment  char*4 = "SOLO"
+;be2
+;def x-ped char*6 = "201412"
+;be3def x-ped char*6 = "201512"
+def x-ped char*6 = "201612"
+
+def x-delim cha*1 = "~"
+def x-num-cr integer unsigned size 2 = 13
+def x-cr        char*2 = char(x-num-cr)
+
+temp x-afpcon       num*7
+item x-afpcon       = x-afpcon + amt-mtd/100                    &
+                    if comp-code = "AFPCON"                     &
+                    reset at doc-nbr  
+
+temp x-tithd1       num*7
+item x-tithd1       = x-tithd1 + amt-mtd/100                    &
+                    if comp-code = "TITHD1"                     &
+                    reset at doc-nbr 
+
+temp x-tithd2       num*7
+item x-tithd2       = x-tithd2 + amt-mtd/100                    &
+                    if comp-code = "TITHD2"                     &
+                    reset at doc-nbr 
+
+temp x-tithd3       num*7
+item x-tithd3       = x-tithd3 + amt-mtd/100                    &
+                    if comp-code = "TITHD3"                     &
+                    reset at doc-nbr
+
+temp x-depmed       num*7
+item x-depmed       = x-depmed + amt-mtd/100                    &
+                    if comp-code = "DEPMED"                     &
+                    reset at doc-nbr 
+
+temp x-payeft       num*7
+item x-payeft       = x-payeft + amt-mtd/100                    &
+                    if comp-code = "PAYEFT"                     &
+                    reset at doc-nbr
+
+temp x-comp-code    char*6
+temp x-amt	    num*7
+
+; payment details
+
+item x-comp-code = "AFPCON"
+item x-amt	 = x-afpcon
+subfile r150_pay_sum_dtl_SOLO portable keep at doc-nbr include  				&
+	doc-nbr of f119-doctor-ytd-history , x-delim, environment, x-delim, x-ped, x-delim, 	&
+	x-comp-code, x-amt,    									&
+	x-cr
+
+item x-comp-code = "TITHD1"
+item x-amt	 = x-tithd1
+subfile r150_pay_sum_dtl_SOLO portable keep at doc-nbr alias f150-tithd1 include  		&
+	doc-nbr of f119-doctor-ytd-history , x-delim, environment, x-delim, x-ped, x-delim, 	&
+	x-comp-code, x-amt,  x-cr
+
+item x-comp-code = "TITHD2"
+item x-amt	 = x-tithd2
+subfile r150_pay_sum_dtl_SOLO portable keep at doc-nbr alias f150-tithd2 include  	 	&	
+	doc-nbr of f119-doctor-ytd-history , x-delim, environment, x-delim, x-ped, x-delim, 	&
+	x-comp-code, x-amt,  x-cr
+
+item x-comp-code = "TITHD3"
+item x-amt	 = x-tithd3
+subfile r150_pay_sum_dtl_SOLO portable keep at doc-nbr alias f150-tithd3 include  		&
+	doc-nbr of f119-doctor-ytd-history , x-delim, environment, x-delim, x-ped, x-delim, 	&
+	x-comp-code, x-amt,  x-cr
+
+item x-comp-code = "DEPMED"
+item x-amt	 = x-depmed
+subfile r150_pay_sum_dtl_SOLO portable keep at doc-nbr alias f150-depmed include 		&
+	doc-nbr of f119-doctor-ytd-history , x-delim, environment, x-delim, x-ped, x-delim, 	&
+	x-comp-code, x-amt,  x-cr
+
+item x-comp-code = "PAYEFT"
+item x-amt       = x-payeft
+subfile r150_pay_sum_dtl_SOLO portable keep at doc-nbr alias f150-payeft include  		&
+	doc-nbr of f119-doctor-ytd-history , x-delim, environment, x-delim, x-ped, x-delim, 	&
+;be1
+;	x-comp-code, x-amt,  x-cr
+	x-comp-code, x-delim, x-amt,  x-cr
+
+go

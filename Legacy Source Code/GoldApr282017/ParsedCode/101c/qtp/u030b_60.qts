@@ -1,0 +1,89 @@
+;#> PROGRAM-ID.     U030B_60.QTS
+;
+;	((C)) Dyad Technologies
+;
+;    PROGRAM PURPOSE : THIRD  PASS OF U030 - ONLY FOR CLINIC 60
+;		       THIS IS THE MAIN PROGRAM OF THE ORIGINAL
+;		       U030.CB
+;
+;    MODIFICATION HISTORY
+;        DATE   WHO          DESCRIPTION
+;     91/FEB/20 M.C.         - ORIGINAL (SMS 138)
+;     91/OCT/08 M.C.	     - PDR 520 - TAKE OUT SECOND REQUEST
+;			     - IT IS INCLUDED IN U030B.QTS
+;
+;     92/JUL/20 M.C.	     - SMS 139 - INCLUDE CLINIC 61 TO 65
+;
+;     96/OCT/09 M.C.	     - USE 'CLMHDR-AGENT-CD' INSTEAD OF '0'
+;			       TO LINK F051TP-DOC-CASH-MSTR
+;     97/DEC/03	M.C.	     - PDR 663 - SUBSTITUTE RAT-145-GROUP-NBR
+;				         TO X-GROUP-NBR
+;     03/Jan/06 M.C.	     - alpha doc nbr
+;     07/May/09 M.C.	     - include clinic 71 to 75
+;   2010/feb/10 MC1	     - include clinic 66 
+;   2014/Mar/06 MC2	     - add set lock record update
+
+can clear
+set default
+set process nolimit
+;MC2
+set lock record update
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+request update_amt_paid on calculation errors report on edit errors report
+                        ; Update the tech amount paid to claim header.
+			; Update the technical and professional break
+ 			; down in Doctor Cash TP files
+
+access *u030_paid_amt     					&
+; 2004/01/06 - MC
+;!  link 'B',nconvert(x-group-nbr + '0' + rat-145-account-nbr[1:6]), &
+  link 'B', (x-group-nbr +  rat-145-account-nbr[1:6]), &
+; 2004/01/06 - end
+	nconvert(rat-145-account-nbr[7:2]) , '00000',  '0'  	&
+   to key-clm-type, key-clm-batch-nbr, key-clm-claim-nbr, 	&
+      key-clm-serv-code, key-clm-adj-nbr of f002-claims-mstr
+
+
+define x-tech-paid int*7 signed =				&
+      (clmhdr-amt-tech-billed * x-tot-amt-paid) / clmhdr-tot-claim-ar-ohip
+
+define x-prof-paid int*7 signed =				&
+	x-tot-amt-paid - x-tech-paid
+
+
+output f002-claims-mstr update on errors report
+   item clmhdr-amt-tech-paid		final x-tech-paid
+
+
+output f051tp-doc-cash-mstr add update on errors report		&
+	if x-group-nbr = '60'   		      &
+	or x-group-nbr = '61'  		      &
+	or x-group-nbr = '62'  		      &
+	or x-group-nbr = '63'  		      &
+	or x-group-nbr = '64'  		      &
+	or x-group-nbr = '65'  		      &
+; 2010/02/10 - MC1 - include 66
+	or x-group-nbr = '66'  		      &
+; 2010/02/10 - end
+; 2007/05/09 - MC - include clinic 70's'
+	or x-group-nbr = '71'  		      &
+	or x-group-nbr = '72'  		      &
+	or x-group-nbr = '73'  		      &
+	or x-group-nbr = '74'  		      &
+	or x-group-nbr = '75'  		      &
+; 2007/05/09 - end
+	viaindex docashtp-key using				&
+;	X-GROUP-NBR + '0' + CLMHDR-LOC + RAT-145-ACCOUNT-NBR[1:3]
+	x-group-nbr + ascii(clmhdr-agent-cd,1) + clmhdr-loc + rat-145-account-nbr[1:3]
+   item docashtp-tech-out-mtd subtotal x-tech-paid
+   item docashtp-tech-out-ytd subtotal x-tech-paid
+   item docashtp-prof-out-mtd subtotal x-prof-paid
+   item docashtp-prof-out-ytd subtotal x-prof-paid
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+build $pb_obj/u030b_60
+  

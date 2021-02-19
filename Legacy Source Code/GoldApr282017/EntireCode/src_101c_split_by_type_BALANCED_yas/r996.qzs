@@ -1,0 +1,226 @@
+
+;
+; 91/04/22	M. CHAN		- SMS 138
+;				- MODIFY SET REP LIMIT AND ACCESS STMTS
+; 03/dec/16	A.A.		- alpha doctor nbr
+;
+
+
+can clear
+set default
+set report nolimit
+access *detail_claims	&
+; LINK ("B"+CLMDTL-ID[1:11]+"000000") VIAINDEX KEY-CLAIMS-MSTR	&
+;y2k
+;!  link ("B", nconvert(clmdtl-id[1:9]), nconvert(clmdtl-id[10:2]), &
+  link ("B", (clmdtl-id[1:8]), nconvert(clmdtl-id[9:2]), &
+;y2k
+       "00000", "0") to key-clm-type, key-clm-batch-nbr,       	&
+       key-clm-claim-nbr, key-clm-serv-code, key-clm-adj-nbr of &
+;y2k
+	 f002-claims-mstr
+
+select if clmhdr-batch-type = "C"
+
+set subfile name detail_claims_r9961
+report summary clmdtl-id clmdtl-oma-cd clmhdr-doc-dept	&
+	clmhdr-pat-ohip-id-or-chart clmhdr-agent-cd clmdtl-fee-oma &
+;y2k
+	clmdtl-sv-yy clmdtl-sv-mm
+
+build $pb_obj/r996a
+set report limit 1
+go
+set report nolimit
+
+access *detail_claims_r9961	&
+;y2k
+  link clmhdr-pat-ohip-id-or-chart to key-pat-mstr of f010-pat-mstr &
+	optional	
+; LINK (PAT-OHIP-MMYY[1:8]+"       ") TO SUBSCR-ID OF F011-SUBSCR-MSTR &
+;	OPTIONAL	&
+; LINK (PAT-OHIP-NBR-ALPHA+"            ") TO SUBSCR-ID	&
+;	OF F011-SUBSCR-MSTR ALIAS F011-DIR OPTIONAL	&
+; LINK (PAT-OHIP-MMYY[1:9]+"      ") TO SUBSCR-ID	&
+;	OF F011-SUBSCR-MSTR ALIAS F011-OTHER OPTIONAL
+
+def w-subscr char*6 =	&
+;	     SUBSCR-POSTAL-CD OF F011-SUBSCR-MSTR IF RECORD &
+;		F011-SUBSCR-MSTR EXISTS				&
+;	ELSE SUBSCR-POSTAL-CD OF F011-DIR IF RECORD F011-DIR EXISTS &
+;	ELSE SUBSCR-POSTAL-CD OF F011-OTHER IF RECORD F011-OTHER EXISTS &
+;y2k
+	     subscr-postal-cd of f010-pat-mstr if record f010-pat-mstr exists &
+	else "XXXXXX"
+
+def w-subscr-postal-cd char*3 = w-subscr[1:3]
+
+set subfile name detail_claims_r9962
+report summary clmdtl-id clmdtl-oma-cd clmhdr-doc-dept	&
+	w-subscr-postal-cd clmhdr-agent-cd clmdtl-fee-oma	&
+;y2k
+	clmdtl-sv-yy clmdtl-sv-mm
+
+build $pb_obj/r996b
+set report limit 1
+go
+set report nolimit
+
+access *detail_claims_r9962
+
+sort on w-subscr-postal-cd, clmhdr-doc-dept
+
+set subfile name detail_claims_r99621
+report summary clmdtl-id clmdtl-oma-cd clmhdr-doc-dept	&
+	w-subscr-postal-cd clmhdr-agent-cd clmdtl-fee-oma	&
+;y2k
+	clmdtl-sv-yy
+
+build $pb_obj/r996b1
+set report limit 1
+go
+set rep nolimit
+
+access *detail_claims_r99621
+
+sorted on w-subscr-postal-cd, clmhdr-doc-dept
+
+;y2k
+def w-ohip-count = 1 if clmhdr-agent-cd = 0
+;y2k
+def w-ohip-amount = clmdtl-fee-oma if clmhdr-agent-cd = 0
+def w-direct-bill-count = 1 if clmhdr-agent-cd = 6
+def w-direct-bill-amount = clmdtl-fee-oma if clmhdr-agent-cd = 6
+;y2k
+def w-other-count = 1 if clmhdr-agent-cd <> 0	&
+		     and clmhdr-agent-cd <> 6
+;y2k
+def w-other-amount = clmdtl-fee-oma if clmhdr-agent-cd <> 0 &
+                                   and clmhdr-agent-cd <> 6
+
+def w-count = 1
+def w-amount = clmdtl-fee-oma
+
+set subfile at clmhdr-doc-dept name detail_claims_r996 append keep
+report summary	&
+	clmhdr-doc-dept clmdtl-oma-cd w-subscr-postal-cd	&
+	w-ohip-count subtotal w-ohip-amount subtotal	&
+	w-direct-bill-count subtotal w-direct-bill-amount subtotal &
+	w-other-count subtotal w-other-amount subtotal	&
+;y2k
+	w-count subtotal w-amount subtotal clmdtl-sv-yy
+
+build $pb_obj/r996c
+go
+set report nolimit
+
+access *detail_claims_r996
+
+sort on w-subscr-postal-cd, clmhdr-doc-dept
+
+set subfile at clmhdr-doc-dept name detail_claims_r9963
+report summary	&
+	clmhdr-doc-dept clmdtl-oma-cd w-subscr-postal-cd	&
+	w-ohip-count subtotal w-ohip-amount subtotal	&
+	w-direct-bill-count subtotal w-direct-bill-amount subtotal &
+	w-other-count subtotal w-other-amount subtotal	&
+	w-count subtotal w-amount subtotal
+
+build $pb_obj/r996d
+set report limit 1
+go
+set report nolimit
+
+access *detail_claims_r9963	&
+;y2k
+	link clmhdr-doc-dept to dept-nbr of f070-dept-mstr optional
+
+sorted on w-subscr-postal-cd, clmhdr-doc-dept
+
+set default
+set report nolimit
+set page width 132
+set report dev disc name r996
+set page length 63
+
+
+page heading	&
+  tab   1 "RUN DATE:"		&
+;y2k
+  tab  12 sysdate		&
+  tab  53 "REGIONAL MEDICAL ASSOCIATES"	&
+;y2k
+  tab 120 "PAGE"		&
+  tab 126 syspage		&
+skip 2	&
+  tab  57 "SUMMARY OF CLAIMS"	&
+skip 1	&
+  tab  53 "BY POSTAL CODE / DEPARTMENT"	&
+skip 2	&
+  tab  48 "------ OHIP ------"		&
+  tab  69 "--- DIRECT BILL --"		&
+  tab  91 "------ OTHER -----"		&
+  tab 113 "--- ALL AGENTS ---"		&
+skip 1	&
+  tab   1 "POSTAL        "		&
+  tab  48 "-------CLAIM------"		&
+  tab  69 "-------CLAIM------"		&
+  tab  91 "-------CLAIM------"		&
+  tab 113 "-------CLAIM------"		&
+skip 1	&
+  tab   1 "CODE             DEPARTMENT"	&
+  tab  48 "COUNT       AMOUNT"		&
+  tab  69 "COUNT       AMOUNT"		&
+  tab  91 "COUNT       AMOUNT"		&
+  tab 113 "COUNT       AMOUNT"
+
+footing at clmhdr-doc-dept				&
+  tab   3 w-subscr-postal-cd print at w-subscr-postal-cd	&
+  tab  17 clmhdr-doc-dept pic "^^" print at clmhdr-doc-dept	&
+;y2k
+  tab  20 dept-name print at clmhdr-doc-dept		&
+  tab  45 w-ohip-count subtotal pic "^^^,^^^"		&
+  tab  54 w-ohip-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab  67 w-direct-bill-count subtotal pic "^^^,^^^"	&
+  tab  75 w-direct-bill-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab  89 w-other-count subtotal pic "^^^,^^^"		&
+  tab  97 w-other-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab 111 w-count subtotal pic "^^^,^^^"		&
+  tab 119 w-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-"
+
+footing at w-subscr-postal-cd		&
+  tab  45 "------- -------------"	&
+  tab  67 "------- ------------"	&
+  tab  89 "------- ------------"	&
+  tab 111 "------- ------------"	&
+skip 1	&
+  tab   3 w-subscr-postal-cd print at w-subscr-postal-cd	&
+  tab  18 "TOTAL"					&
+  tab  45 w-ohip-count subtotal pic "^^^,^^^"		&
+  tab  54 w-ohip-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab  67 w-direct-bill-count subtotal pic "^^^,^^^"	&
+  tab  75 w-direct-bill-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab  89 w-other-count subtotal pic "^^^,^^^"		&
+  tab  97 w-other-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab 111 w-count subtotal pic "^^^,^^^"		&
+  tab 119 w-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+skip 2
+
+final footing	&
+  tab  45 "------- -------------"	&
+  tab  67 "------- ------------"	&
+  tab  89 "------- ------------"	&
+  tab 111 "------- ------------"	&
+skip 1	&
+  tab   2 "GRAND TOTAL"	&
+  tab  45 w-ohip-count subtotal pic "^^^,^^^"		&
+  tab  54 w-ohip-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab  67 w-direct-bill-count subtotal pic "^^^,^^^"	&
+  tab  75 w-direct-bill-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab  89 w-other-count subtotal pic "^^^,^^^"		&
+  tab  97 w-other-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-" &
+  tab 111 w-count subtotal pic "^^^,^^^"		&
+  tab 119 w-amount subtotal pic "^^^^^,^^^.^^ " trailing sign "-"
+
+build $pb_obj/r996
+  

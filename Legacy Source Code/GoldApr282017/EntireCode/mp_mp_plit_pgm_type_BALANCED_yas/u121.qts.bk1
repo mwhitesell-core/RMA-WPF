@@ -1,0 +1,399 @@
+;#> PROGRAM-ID.     U121.QTS
+;
+;       ((C)) Dyad Technologies
+;
+;    PURPOSE: SUB-PROCESS WITHIN "EARNINGS GENERATION" PROCESS.
+;             - update doctor mstr values that will be printed on Statement
+;               with the appropriate printer control characters
+
+;
+;    MODIFICATION HISTORY
+;        DATE    SAF #  WHO      DESCRIPTION
+;     93/Apr/19  ____   B.E.     - original
+;     93/JUL/06  ____   B.E.     - COMPUTED Ceilings now have cents
+;     93/SEP/15  ____   B.E.     - update F020 with F090/F191 Current
+;				   PED and EFT DATE OF DEPOSIT
+;     95/NOV/17  ----   M.C.     - ADD A NEW REQUEST FOR THE PRT FORMAT
+;				   OF THE NEW ITEM IN F020-DOCTOR-EXTRA
+;   1999/Feb/18         S.B.     - Checked for Y2K.
+;   1999/apr/30		B.E.	 - w-current-ped and w-current-date-eft-deposit
+;				   changed from zoned to zoned*8
+; 2014/May/15 MC1       - include different invoice withdrawl date(last day of the month) for paycode 7
+;                       - include f112 & f191 files in the access to determine the doc-pay-code in
+;                         request u121_run_0
+
+cancel clear
+set default
+run u121
+
+set lock record update
+set process nolimit
+
+; 99/apr/30 B.E. changed definition from zoned to zoned*8
+global temp w-current-ped               zoned*8 unsigned
+global temp w-current-date-eft-deposit  zoned*8 unsigned
+
+;-------------------------------------------------------------------------------
+; OBTAIN THE CURRENT EP NUMBER AND PASS TO SUBSEQUENT REQUESTS
+;
+request u114_const_values_get_ep_nbr            &
+                on edit        errors report    &
+                on calculation errors report
+access constants-mstr-rec-6             &
+        link current-ep-nbr             &
+        to   ep-nbr of f191-earnings-period
+choose const-rec-nbr 6
+
+item w-current-ped              = iconst-date-period-end  of f191-earnings-period
+item w-current-date-eft-deposit = date-eft-deposit        of f191-earnings-period
+;-------------------------------------------------------------------------------
+
+request u121_run_0			&
+        on edit        errors report    &
+        on calculation errors report
+
+;MC1 - set default
+;MC1 - set process nolimit
+
+access f020-doctor-mstr			&
+; MC1
+  link 6                                &
+   to const-rec-nbr of constants-mstr-rec-6 &
+  link current-ep-nbr                   &
+   to   ep-nbr of f191-earnings-period  &
+  link doc-nbr, current-ep-nbr          &
+   to  doc-nbr, ep-nbr of f112-pycdceilings opt
+
+def withdrawn-date date = lastday(ep-date-end)
+; MC1 - end
+
+ def x-period char*1 = "."
+
+;==============================================================================
+def x-ceicea-dollars zoned*8		        &
+      = doc-ceicea / 100;IF DOC-CEICEA <> " " 	&
+;   ELSE 0
+ def x-ceicea-cents	                        &
+      = mod(doc-ceicea,100) ; - X-CEICEA-DOLLARS
+;--------------------------------------
+def x-ceicex-dollars zoned*8                    &
+      = doc-ceicex / 100;IF DOC-CEICEX <> " "	&
+;   ELSE 0
+ def x-ceicex-cents                     &
+      = mod(doc-ceicex,100) ; - X-CEICEX-DOLLARS
+;--------------------------------------
+def x-ytdcea-dollars zoned*8                    &
+      = doc-yrly-ceiling-computed    / 100
+;     = DOC-YRLY-CEILING-COMPUTED ;  / 100
+ def x-ytdcea-cents                     &
+      =      mod(doc-yrly-ceiling-computed,100)
+;     = 0 ;  MOD(DOC-YRLY-CEILING-COMPUTED,100)
+;--------------------------------------
+def x-ytdcex-dollars zoned*8	                &
+      = doc-yrly-expense-computed    / 100       	
+;     = DOC-YRLY-EXPENSE-COMPUTED ;  / 100       	
+ def x-ytdcex-cents                     &
+      =     mod(doc-yrly-expense-computed,100)
+;     = 0 ; MOD(DOC-YRLY-EXPENSE-COMPUTED,100)
+;==============================================================================
+; (REMOVE LEADING ZEROS FROM DOLLAR VALUE AND REPLACE WITH SPACES)
+;DEF X-CEICEA-DOLLARS-A CHAR*6 = (ASCII(X-CEICEA-DOLLARS,8))[1:6]
+def x-ceicea-dollars-a char*6 = ascii(x-ceicea-dollars,6)
+def x-ceicea-dollars-b char*6                                      &
+      =  x-ceicea-dollars-a      if x-ceicea-dollars > 99999  &
+   else  x-ceicea-dollars-a[2:5] if x-ceicea-dollars >  9999  &
+   else  x-ceicea-dollars-a[3:4] if x-ceicea-dollars >   999  &
+   else  x-ceicea-dollars-a[4:3] if x-ceicea-dollars >    99  &
+   else  x-ceicea-dollars-a[5:2] if x-ceicea-dollars >     9  &
+   else  x-ceicea-dollars-a[6:1]
+;--------------------------------------
+;DEF X-CEICEX-DOLLARS-A CHAR*6 = (ASCII(X-CEICEX-DOLLARS,8))[1:6]
+def x-ceicex-dollars-a char*6 = ascii(x-ceicex-dollars,6)
+def x-ceicex-dollars-b char*6                                      &
+      =  x-ceicex-dollars-a      if x-ceicex-dollars > 99999  &
+   else  x-ceicex-dollars-a[2:5] if x-ceicex-dollars >  9999  &
+   else  x-ceicex-dollars-a[3:4] if x-ceicex-dollars >   999  &
+   else  x-ceicex-dollars-a[4:3] if x-ceicex-dollars >    99  &
+   else  x-ceicex-dollars-a[5:2] if x-ceicex-dollars >     9  &
+   else  x-ceicex-dollars-a[6:1]
+;--------------------------------------
+def x-ytdcea-dollars-a char*6 = ascii(x-ytdcea-dollars,6)
+def x-ytdcea-dollars-b char*6                                      &
+      =  x-ytdcea-dollars-a      if x-ytdcea-dollars > 99999  &
+   else  x-ytdcea-dollars-a[2:5] if x-ytdcea-dollars >  9999  &
+   else  x-ytdcea-dollars-a[3:4] if x-ytdcea-dollars >   999  &
+   else  x-ytdcea-dollars-a[4:3] if x-ytdcea-dollars >    99  &
+   else  x-ytdcea-dollars-a[5:2] if x-ytdcea-dollars >     9  &
+   else  x-ytdcea-dollars-a[6:1]
+;--------------------------------------
+def x-ytdcex-dollars-a char*6 = ascii(x-ytdcex-dollars,6)
+def x-ytdcex-dollars-b char*6                                      &
+      =  x-ytdcex-dollars-a      if x-ytdcex-dollars > 99999  &
+   else  x-ytdcex-dollars-a[2:5] if x-ytdcex-dollars >  9999  &
+   else  x-ytdcex-dollars-a[3:4] if x-ytdcex-dollars >   999  &
+   else  x-ytdcex-dollars-a[4:3] if x-ytdcex-dollars >    99  &
+   else  x-ytdcex-dollars-a[5:2] if x-ytdcex-dollars >     9  &
+   else  x-ytdcex-dollars-a[6:1]
+;==============================================================================
+def x-ceicea-dollars-char char*6 = rj(x-ceicea-dollars-b)
+def x-ceicea-prt-dollars char*7                                       &
+    = x-ceicea-dollars-char if x-ceicea-dollars < 1000               &
+ else x-ceicea-dollars-char[1:3] + "," + x-ceicea-dollars-char[4:3]
+def x-ceicea-prt-cents   char*2 = ascii(x-ceicea-cents,2)
+;--------------------------------------
+def x-ceicex-dollars-char char*6 = rj(x-ceicex-dollars-b)
+def x-ceicex-prt-dollars char*7                                       &
+    = x-ceicex-dollars-char if x-ceicex-dollars < 1000               &
+ else x-ceicex-dollars-char[1:3] + "," + x-ceicex-dollars-char[4:3]
+def x-ceicex-prt-cents   char*2 = ascii(x-ceicex-cents,2)
+;--------------------------------------
+def x-ytdcea-dollars-char char*6 = rj(x-ytdcea-dollars-b)
+def x-ytdcea-prt-dollars char*7                                       &
+    = x-ytdcea-dollars-char if x-ytdcea-dollars < 1000               &
+ else x-ytdcea-dollars-char[1:3] + "," + x-ytdcea-dollars-char[4:3]
+def x-ytdcea-prt-cents   char*2 = ascii(x-ytdcea-cents,2)
+;--------------------------------------
+def x-ytdcex-dollars-char char*6 = rj(x-ytdcex-dollars-b)
+def x-ytdcex-prt-dollars char*7                                       &
+    = x-ytdcex-dollars-char if x-ytdcex-dollars < 1000               &
+ else x-ytdcex-dollars-char[1:3] + "," + x-ytdcex-dollars-char[4:3]
+def x-ytdcex-prt-cents   char*2 = ascii(x-ytdcex-cents,2)
+;==============================================================================
+; (DETERMINE HOW MANY NUMBERS TO BE PRINTED, OFFSET BY WIDTH OF 1 NUMBER. IE 21)
+def x-ceicea-ctr1     num*1 =  21 if x-ceicea-dollars < 10     &
+                        else   42 if x-ceicea-dollars < 100    &
+                        else   63 if x-ceicea-dollars < 1000   &
+                        else   84 if x-ceicea-dollars < 10000  &
+                        else  105 if x-ceicea-dollars < 100000 &
+                        else  126
+;--------------------------------------
+def x-ceicex-ctr1     num*1 =  21 if x-ceicex-dollars < 10     &
+                        else   42 if x-ceicex-dollars < 100    &
+                        else   63 if x-ceicex-dollars < 1000   &
+                        else   84 if x-ceicex-dollars < 10000  &
+                        else  105 if x-ceicex-dollars < 100000 &
+                        else  126
+;--------------------------------------
+def x-ytdcea-ctr1     num*1 =  21 if x-ytdcea-dollars < 10     &
+                        else   42 if x-ytdcea-dollars < 100    &
+                        else   63 if x-ytdcea-dollars < 1000   &
+                        else   84 if x-ytdcea-dollars < 10000  &
+                        else  105 if x-ytdcea-dollars < 100000 &
+                        else  126
+;--------------------------------------
+def x-ytdcex-ctr1     num*1 =  21 if x-ytdcex-dollars < 10     &
+                        else   42 if x-ytdcex-dollars < 100    &
+                        else   63 if x-ytdcex-dollars < 1000   &
+                        else   84 if x-ytdcex-dollars < 10000  &
+                        else  105 if x-ytdcex-dollars < 100000 &
+                        else  126
+;==============================================================================
+; (CHECK IF COMMA REQUIRED FOR VALUE)
+def x-ceicea-ctr2 num*1 = x-ceicea-ctr1 if x-ceicea-dollars < 1000   &
+                     else x-ceicea-ctr1 + 14
+def x-ceicex-ctr2 num*1 = x-ceicex-ctr1 if x-ceicex-dollars < 1000   &
+                     else x-ceicex-ctr1 + 14
+def x-ytdcea-ctr2 num*1 = x-ytdcea-ctr1 if x-ytdcea-dollars < 1000   &
+                     else x-ytdcea-ctr1 + 14
+def x-ytdcex-ctr2 num*1 = x-ytdcex-ctr1 if x-ytdcex-dollars < 1000   &
+                     else x-ytdcex-ctr1 + 14
+;==============================================================================
+
+output f020-doctor-mstr alias f020-update  update
+  item ceicea-prt-format =  ascii(x-ceicea-ctr2,3)		&
+			  + truncate(lj(x-ceicea-prt-dollars))  &
+ 			  + x-period				&
+ 			  + x-ceicea-prt-cents
+  item ceicex-prt-format =  ascii(x-ceicex-ctr2,3)		&
+			  + truncate(lj(x-ceicex-prt-dollars))	&
+ 			  + x-period				&
+
+ 			  + x-ceicex-prt-cents
+  item ytdcea-prt-format =  ascii(x-ytdcea-ctr2,3)		&
+			  + truncate(lj(x-ytdcea-prt-dollars)) 	&
+ 			  + x-period				&
+ 			  + x-ytdcea-prt-cents
+  item ytdcex-prt-format =  ascii(x-ytdcex-ctr2,3)		&
+			  + truncate(lj(x-ytdcex-prt-dollars)) 	&
+ 			  + x-period				&
+ 			  + x-ytdcex-prt-cents
+  item doc-ep-ped          = w-current-ped
+; MC1
+; item doc-ep-date-deposit = w-current-date-eft-deposit
+  item doc-ep-date-deposit = w-current-date-eft-deposit if doc-pay-code <> '7' &
+                        else withdrawn-date if doc-pay-code = '7'
+; MC1 - end
+
+
+subfile debugu121 keep include       &
+  doc-nbr of f020-doctor-mstr                                     , &
+;      CEICEA-PRT-FORMAT OF F020-UPDATE, DOC-CEICEA OF F020-UPDATE, &
+;      CEICEX-PRT-FORMAT OF F020-UPDATE, DOC-CEICEX OF F020-UPDATE, &
+       ytdcea-prt-format of f020-update, doc-ytdcea of f020-update, &
+;      YTDCEX-PRT-FORMAT OF F020-UPDATE, DOC-YTDCEX OF F020-UPDATE, &
+    x-ytdcea-dollars-a, &
+    x-ytdcea-dollars-b, &
+    x-ytdcea-dollars
+
+;-------------------------------------------------------------------------------
+
+request u121_run_1			&
+        on edit        errors report    &
+        on calculation errors report
+
+access f020-doctor-extra
+
+ def x-period char*1 = "."
+
+;==============================================================================
+def x-ceireq-dollars zoned*8		        &
+      = doc-ceireq / 100
+
+ def x-ceireq-cents	                        &
+      = mod(doc-ceireq,100)
+;--------------------------------------
+def x-ceitar-dollars zoned*8                    &
+      = doc-ceitar / 100
+
+ def x-ceitar-cents                     	&
+      = mod(doc-ceitar,100)
+;--------------------------------------
+def x-ytdreq-dollars zoned*8                    &
+      = doc-yrly-require-revenue    / 100
+
+ def x-ytdreq-cents                     	&
+      =      mod(doc-yrly-require-revenue,100)
+
+;--------------------------------------
+def x-ytdtar-dollars zoned*8	                &
+      = doc-yrly-target-revenue    / 100       	
+
+ def x-ytdtar-cents                     	&
+      =     mod(doc-yrly-target-revenue,100)
+
+;==============================================================================
+; (REMOVE LEADING ZEROS FROM DOLLAR VALUE AND REPLACE WITH SPACES)
+
+def x-ceireq-dollars-a char*6 = ascii(x-ceireq-dollars,6)
+def x-ceireq-dollars-b char*6                                      &
+      =  x-ceireq-dollars-a      if x-ceireq-dollars > 99999  &
+   else  x-ceireq-dollars-a[2:5] if x-ceireq-dollars >  9999  &
+   else  x-ceireq-dollars-a[3:4] if x-ceireq-dollars >   999  &
+   else  x-ceireq-dollars-a[4:3] if x-ceireq-dollars >    99  &
+   else  x-ceireq-dollars-a[5:2] if x-ceireq-dollars >     9  &
+   else  x-ceireq-dollars-a[6:1]
+;--------------------------------------
+
+def x-ceitar-dollars-a char*6 = ascii(x-ceitar-dollars,6)
+def x-ceitar-dollars-b char*6                                      &
+      =  x-ceitar-dollars-a      if x-ceitar-dollars > 99999  &
+   else  x-ceitar-dollars-a[2:5] if x-ceitar-dollars >  9999  &
+   else  x-ceitar-dollars-a[3:4] if x-ceitar-dollars >   999  &
+   else  x-ceitar-dollars-a[4:3] if x-ceitar-dollars >    99  &
+   else  x-ceitar-dollars-a[5:2] if x-ceitar-dollars >     9  &
+   else  x-ceitar-dollars-a[6:1]
+;--------------------------------------
+def x-ytdreq-dollars-a char*6 = ascii(x-ytdreq-dollars,6)
+def x-ytdreq-dollars-b char*6                                      &
+      =  x-ytdreq-dollars-a      if x-ytdreq-dollars > 99999  &
+   else  x-ytdreq-dollars-a[2:5] if x-ytdreq-dollars >  9999  &
+   else  x-ytdreq-dollars-a[3:4] if x-ytdreq-dollars >   999  &
+   else  x-ytdreq-dollars-a[4:3] if x-ytdreq-dollars >    99  &
+   else  x-ytdreq-dollars-a[5:2] if x-ytdreq-dollars >     9  &
+   else  x-ytdreq-dollars-a[6:1]
+;--------------------------------------
+def x-ytdtar-dollars-a char*6 = ascii(x-ytdtar-dollars,6)
+def x-ytdtar-dollars-b char*6                                      &
+      =  x-ytdtar-dollars-a      if x-ytdtar-dollars > 99999  &
+   else  x-ytdtar-dollars-a[2:5] if x-ytdtar-dollars >  9999  &
+   else  x-ytdtar-dollars-a[3:4] if x-ytdtar-dollars >   999  &
+   else  x-ytdtar-dollars-a[4:3] if x-ytdtar-dollars >    99  &
+   else  x-ytdtar-dollars-a[5:2] if x-ytdtar-dollars >     9  &
+   else  x-ytdtar-dollars-a[6:1]
+;==============================================================================
+def x-ceireq-dollars-char char*6 = rj(x-ceireq-dollars-b)
+def x-ceireq-prt-dollars char*7                                       &
+    = x-ceireq-dollars-char if x-ceireq-dollars < 1000               &
+ else x-ceireq-dollars-char[1:3] + "," + x-ceireq-dollars-char[4:3]
+def x-ceireq-prt-cents   char*2 = ascii(x-ceireq-cents,2)
+;--------------------------------------
+def x-ceitar-dollars-char char*6 = rj(x-ceitar-dollars-b)
+def x-ceitar-prt-dollars char*7                                       &
+    = x-ceitar-dollars-char if x-ceitar-dollars < 1000               &
+ else x-ceitar-dollars-char[1:3] + "," + x-ceitar-dollars-char[4:3]
+def x-ceitar-prt-cents   char*2 = ascii(x-ceitar-cents,2)
+;--------------------------------------
+def x-ytdreq-dollars-char char*6 = rj(x-ytdreq-dollars-b)
+def x-ytdreq-prt-dollars char*7                                       &
+    = x-ytdreq-dollars-char if x-ytdreq-dollars < 1000               &
+ else x-ytdreq-dollars-char[1:3] + "," + x-ytdreq-dollars-char[4:3]
+def x-ytdreq-prt-cents   char*2 = ascii(x-ytdreq-cents,2)
+;--------------------------------------
+def x-ytdtar-dollars-char char*6 = rj(x-ytdtar-dollars-b)
+def x-ytdtar-prt-dollars char*7                                       &
+    = x-ytdtar-dollars-char if x-ytdtar-dollars < 1000               &
+ else x-ytdtar-dollars-char[1:3] + "," + x-ytdtar-dollars-char[4:3]
+def x-ytdtar-prt-cents   char*2 = ascii(x-ytdtar-cents,2)
+;==============================================================================
+; (DETERMINE HOW MANY NUMBERS TO BE PRINTED, OFFSET BY WIDTH OF 1 NUMBER. IE 21)
+def x-ceireq-ctr1     num*1 =  21 if x-ceireq-dollars < 10     &
+                        else   42 if x-ceireq-dollars < 100    &
+                        else   63 if x-ceireq-dollars < 1000   &
+                        else   84 if x-ceireq-dollars < 10000  &
+                        else  105 if x-ceireq-dollars < 100000 &
+                        else  126
+;--------------------------------------
+def x-ceitar-ctr1     num*1 =  21 if x-ceitar-dollars < 10     &
+                        else   42 if x-ceitar-dollars < 100    &
+                        else   63 if x-ceitar-dollars < 1000   &
+                        else   84 if x-ceitar-dollars < 10000  &
+                        else  105 if x-ceitar-dollars < 100000 &
+                        else  126
+;--------------------------------------
+def x-ytdreq-ctr1     num*1 =  21 if x-ytdreq-dollars < 10     &
+                        else   42 if x-ytdreq-dollars < 100    &
+                        else   63 if x-ytdreq-dollars < 1000   &
+                        else   84 if x-ytdreq-dollars < 10000  &
+                        else  105 if x-ytdreq-dollars < 100000 &
+                        else  126
+;--------------------------------------
+def x-ytdtar-ctr1     num*1 =  21 if x-ytdtar-dollars < 10     &
+                        else   42 if x-ytdtar-dollars < 100    &
+                        else   63 if x-ytdtar-dollars < 1000   &
+                        else   84 if x-ytdtar-dollars < 10000  &
+                        else  105 if x-ytdtar-dollars < 100000 &
+                        else  126
+;==============================================================================
+; (CHECK IF COMMA REQUIRED FOR VALUE)
+def x-ceireq-ctr2 num*1 = x-ceireq-ctr1 if x-ceireq-dollars < 1000   &
+                     else x-ceireq-ctr1 + 14
+def x-ceitar-ctr2 num*1 = x-ceitar-ctr1 if x-ceitar-dollars < 1000   &
+                     else x-ceitar-ctr1 + 14
+def x-ytdreq-ctr2 num*1 = x-ytdreq-ctr1 if x-ytdreq-dollars < 1000   &
+                     else x-ytdreq-ctr1 + 14
+def x-ytdtar-ctr2 num*1 = x-ytdtar-ctr1 if x-ytdtar-dollars < 1000   &
+                     else x-ytdtar-ctr1 + 14
+;==============================================================================
+
+output f020-doctor-extra alias f020-update  update
+  item ceireq-prt-format =  ascii(x-ceireq-ctr2,3)		&
+			  + truncate(lj(x-ceireq-prt-dollars))  &
+ 			  + x-period				&
+ 			  + x-ceireq-prt-cents
+  item ceitar-prt-format =  ascii(x-ceitar-ctr2,3)		&
+			  + truncate(lj(x-ceitar-prt-dollars))	&
+ 			  + x-period				&
+ 			  + x-ceitar-prt-cents
+  item ytdreq-prt-format =  ascii(x-ytdreq-ctr2,3)		&
+			  + truncate(lj(x-ytdreq-prt-dollars)) 	&
+ 			  + x-period				&
+ 			  + x-ytdreq-prt-cents
+  item ytdtar-prt-format =  ascii(x-ytdtar-ctr2,3)		&
+			  + truncate(lj(x-ytdtar-prt-dollars)) 	&
+ 			  + x-period				&
+ 			  + x-ytdtar-prt-cents
+
+
+
+build $pb_obj/u121
+  
