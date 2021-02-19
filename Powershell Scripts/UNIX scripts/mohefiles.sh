@@ -1,0 +1,85 @@
+cd /alpha/rmabill/rmabill101c/production
+pwd
+date
+ftp -in 130.113.61.4 << EOC
+user christensenc Spring2018!
+cd ProductionUpload/production/bin
+hash
+verbose
+binary
+mget EB0706.234
+mget EB0706.284
+mget EB0706.314
+mget EB0706.339
+mget EB0930.234
+mget EB0930.339
+mget EB1837.234
+mget EB1837.339
+mget EB2215.234
+mget EB2215.339
+mget EB2215.378
+mget EB6317.234
+mget EB6317.339
+mget EB6411.234
+mget EB6411.284
+mget EB6411.339
+mget EB9595.234
+mget EB9595.378
+mget EBAA21.234
+mget EBAA21.339
+mget EBAA21.378
+mget EBAA2K.339
+mget EBAA2K.378
+mget EBAA32.339
+mget EBAA3F.234
+mget EBAA3F.263
+mget EBAA3F.339
+mget EBAA5B.234
+mget EBAA5B.263
+mget EBAA5B.284
+mget EBAA5B.314
+mget EBAA5B.339
+mget EBAA5B.359
+mget EBAA5B.378
+mget EBAA5V.339
+mget EBAA5W.234
+mget EBAA5W.339
+mget EBAA5W.359
+mget EBAA5X.234
+mget EBAA5X.339
+mget EBAA5X.378
+mget EBAA5Y.339
+mget EBAA8U.234
+mget EBAA8U.263
+mget EBAA8U.339
+mget EBC022.339
+mget EBH055.234
+mget EBH055.339
+mget EBH061.234
+mget EBH061.314
+mget EBH061.339
+mget EBH103.234
+mget EBH103.263
+mget EBH103.339
+mget EBH103.378
+mget EBH105.234
+mget EBH105.284
+mget EBH105.339
+mget EBH105.378
+mget EBH106.234
+mget EBH106.314
+mget EBH106.339
+mget EBH107.234
+mget EBH107.314
+mget EBH107.339
+mget EBH107.378
+mget EBH108.234
+mget EBH108.339
+mget EBH110.234
+mget EBH110.263
+mget EBH110.284
+mget EBH110.314
+mget EBH110.339
+mget EBH111.339
+quit
+EOC

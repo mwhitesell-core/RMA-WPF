@@ -1,0 +1,34 @@
+#-------------------------------------------------------------------------------
+# File 'backup_disk_other_data_to_tape.ps1'
+# Converted to PowerShell by CORE Migration on 2017-12-06 16:09:57
+# Original file name was 'backup_disk_other_data_to_tape'
+#-------------------------------------------------------------------------------
+
+
+# backup disk other data on tape
+
+echo ""
+Get-Date
+echo ""
+
+Set-Location $Env:root\charly\backup_transfer_area
+
+Get-ChildItem -recurse backup_101_data.cpio | Select -ExpandProperty FullName > backup_disk_other_data_on_tape.ls
+Get-ChildItem -recurse backup_mp_data.cpio | Select -ExpandProperty FullName >> backup_disk_other_data_on_tape.ls
+Get-ChildItem -recurse backup_solo_data.cpio | Select -ExpandProperty FullName >> backup_disk_other_data_on_tape.ls
+
+# CONVERSION ERROR (expected, #14): tape device is involved.
+# cat backup_disk_other_data_on_tape.ls           \                | cpio -ocuvB           \                | dd of=/dev/rmt/1
+# CONVERSION ERROR (expected, #17): tape device is involved.
+# mt -f /dev/rmt/1 rewind
+
+echo ""
+Get-Date
+echo ""
+
+# To restore all files from tape:
+# dd if=/dev/rmt/1 | cpio -icuvB
+# To restore some files from filelist
+# dd if=/dev/rmt/1 | uncompress | cpio -icuvB -E <filename>
+# To verify the tape
+# dd if=/dev/rmt/1 | uncompress | cpio -icvt

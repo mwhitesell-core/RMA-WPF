@@ -1,0 +1,96 @@
+#-------------------------------------------------------------------------------
+# File 'teb3.bk2.ps1'
+# Converted to PowerShell by CORE Migration on 2017-12-06 16:09:57
+# Original file name was 'teb3.bk2'
+#-------------------------------------------------------------------------------
+
+# teb3
+#
+# MODIFICATION HISTORY
+# 04/jan/23  b.e.   -new 
+# 15/Mar/24  MC1    - include the run of utl0201_f119.qtc and utl0201.qzu for 3 enviroments
+#                     note that this program must be run after u090f.qts (after increasing current-ep-nbr + 1)
+# 15/Jun/11  yas    - utl0201_a.txt =  "Highest MTD Payment Amount by Dept"  and 
+#                     utl0201_b.txt =  "Highest different MTD in Payment Amount from LAST MONTH  by Dept"         
+#                     $cmd/utl0020.com  is for the revenue reports
+# 15/Aug/12  MC2    - include the run of r138_csv.qzc, r139_csv.qtc/qzc for 101c only
+#                   - r138_csv.txt = Defict report for Ross
+#                   - r139_csv.txt = INCEXP minus TOTDED not equal PAYEFT for pay code 2
+
+
+
+
+echo "Payroll teb3 - starting - $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"
+
+echo "Running CLINIC:  $env:clinic_nbr"
+
+#------------------------------------------------------------------
+#MC1
+
+# NOTE: clinic 22 - "normal" clinic 22 payroll
+#       clinic 99 - "MP" / Manual Payments payroll
+#       clinic 10 - "solo/solotest" payroll
+#
+
+echo "--- executing utl0201_f119.qtc  ---"
+
+Set-Location $env:application_root\production
+
+Remove-Item utl0201_f119.ps*, utl0201*.txt *> $null
+
+# If 101c, pass 101C 
+if ($env:clinic_nbr -eq "22")
+{
+
+&$env:QTP utl0201_f119 101C
+
+} else {
+
+# If MP, pass MP   
+if ($env:clinic_nbr -eq "99")
+{
+
+&$env:QTP utl0201_f119 MP
+
+} else {
+
+# If solo, pass SOLO 
+if ($env:clinic_nbr -eq "10")
+{
+
+&$env:QTP utl0201_f119 SOLO
+
+}
+}
+}
+
+&$env:QUIZ utl0201
+
+Get-Content utl0201_a.txt | Out-Printer
+Get-Content utl0201_b.txt | Out-Printer
+
+#------------------------------------------------------------------
+##### Revenue Reports
+
+Set-Location $env:application_production
+
+if ($env:clinic_nbr -eq "22")
+{
+
+echo "--- utl0020 ---"
+&$env:cmd\utl0020.com
+
+#MC2
+Remove-Item r138_csv.txt, r139_csv.txt *> $null
+
+#####  Deficit Report
+&$env:QUIZ r138_csv
+
+#####  INCEXP minus TOTDED not equal to PAYEFT for pay code 2
+&$env:QTP r139_csv
+&$env:QUIZ r139_csv
+
+}
+echo "Done!"
+
+echo "Payroll teb3 -   ending - $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"

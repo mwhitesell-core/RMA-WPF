@@ -1,0 +1,10 @@
+﻿New-Item -ItemType Junction -Name aviionprodcpio -Path E:\RMA\alpha\ -Value E:\RMA\beta\hscbill\backup_transfer_area
+New-Item -ItemType Junction -Name home -Path E:\RMA\alpha\ -Value E:\RMA\charly\alpha\home
+New-Item -ItemType Junction -Name hscbill -Path E:\RMA\alpha\ -Value E:\RMA\beta\hscbill
+New-Item -ItemType Junction -Name macros -Path E:\RMA\alpha\ -Value E:\RMA\macros
+New-Item -ItemType Junction -Name rmabill101c -Path E:\RMA\alpha\ -Value E:\RMA\dyad\rmabill\rmabill101c
+New-Item -ItemType Junction -Name rmabill101c -Path E:\RMA\alpha\rmabill\ -Value E:\RMA\dyad\rmabill\rmabill101c
+New-Item -ItemType Junction -Name rmabill101 -Path E:\RMA\alpha\rmabill\ -Value E:\RMA\beta\rmabill\rmabill101
+New-Item -ItemType Junction -Name rmabillmp -Path E:\RMA\alpha\rmabill\ -Value E:\RMA\charly\rmabill\rmabillmp
+New-Item -ItemType Junction -Name rmabillsolo -Path E:\RMA\alpha\rmabill\ -Value E:\RMA\charly\rmabill\rmabillsolo
+New-Item -ItemType Junction -Name rmabillsolotest -Path E:\RMA\alpha\rmabill\ -Value E:\RMA\beta\rmabill\rmabillsolotest

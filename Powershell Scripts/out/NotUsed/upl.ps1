@@ -1,0 +1,1 @@
+﻿Set-Location $env:ROOT\alpha\rmabill\rmabill101c\upload
