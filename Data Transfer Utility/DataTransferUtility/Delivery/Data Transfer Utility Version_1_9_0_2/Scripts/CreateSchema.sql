@@ -1,0 +1,4 @@
+USE [%DatabaseName%]
+
+IF NOT EXISTS(SELECT * FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '%Schema%')
+  EXEC sp_executesql N'CREATE SCHEMA [%Schema%]'

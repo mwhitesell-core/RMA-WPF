@@ -1,0 +1,1 @@
+Initial Catalog=%DatabaseName%;Data Source=%Server%;Integrated Security=SSPI;
