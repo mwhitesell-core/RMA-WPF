@@ -370,7 +370,7 @@ Namespace Core.ReportFramework
             Dim blnTemp As Boolean = False
 
             Try
-                rptLog.WriteToLogFile(vbTab + vbTab + vbTab + vbTab + "Add no report record")
+                'rptLog.WriteToLogFile(vbTab + vbTab + vbTab + vbTab + "Add no report record")
 
                 If htControls.Count >= 0 Then
                     ' Determine table def'n, then create the table.
