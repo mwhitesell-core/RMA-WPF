@@ -149,7 +149,7 @@ namespace DataTransferUtility
                 //If chkStructureOnly is check and there are file selected display message
                 if (chkStructureOnly.Checked == true)
                 {
-                    DialogResult dr = MessageBox.Show("Having the 'Create Data Structure' checkbox checked will only created the database structure and not load any data. If you want to load the data, unchecked the checkbox." + Environment.NewLine + Environment.NewLine + "Do you wish to continue and only create the data structure?", "Warning", MessageBoxButtons.YesNo);
+                    DialogResult dr = MessageBox.Show("Having the 'Create Data Structure' checkbox checked will created the database structure and not load any data. Any current data in the database will be lost." + Environment.NewLine + Environment.NewLine + "Do you wish to continue and only create the data structure?", "Warning", MessageBoxButtons.YesNo);
 
                     if (dr == DialogResult.Yes)
                     {
@@ -162,7 +162,7 @@ namespace DataTransferUtility
                 else if (lstTables.SelectedItems.Count == 0)
                 {
                     //Create the database
-                    CreateDatabaseStructure();
+                    //CreateDatabaseStructure();
 
                     if (cmboLegacyDB.Text == "101C" || cmboLegacyDB.Text == "MP" || cmboLegacyDB.Text == "SOLO")
                     {
@@ -172,9 +172,9 @@ namespace DataTransferUtility
 
                             if (txtSysDebugDate.Text.Trim().Length > 0)
                             {
-                                if (File.Exists("Scripts\\InsertCoreDebugSysDate.sql"))
+                                if (File.Exists(txtScriptsLocation.Text + "InsertCoreDebugSysDate.sql"))
                                 {
-                                    StreamReader sr2 = new StreamReader("Scripts\\InsertCoreDebugSysDate.sql");
+                                    StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "InsertCoreDebugSysDate.sql");
                                     StringBuilder sb2 = new StringBuilder(string.Empty);
 
                                     while (!sr2.EndOfStream)
@@ -195,9 +195,9 @@ namespace DataTransferUtility
 
                             if (txtDatabase.Text.ToUpper().IndexOf("101") > -1)
                             {
-                                if (File.Exists("Scripts\\UpdateF020_Doctor_Extra.sql"))
+                                if (File.Exists(txtScriptsLocation.Text + "UpdateF020_Doctor_Extra.sql"))
                                 {
-                                    StreamReader sr2 = new StreamReader("Scripts\\UpdateF020_Doctor_Extra.sql");
+                                    StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "UpdateF020_Doctor_Extra.sql");
                                     StringBuilder sb2 = new StringBuilder(string.Empty);
 
                                     while (!sr2.EndOfStream)
@@ -215,9 +215,9 @@ namespace DataTransferUtility
                                     }
                                 }
 
-                                if (File.Exists("Scripts\\UpdateF010_Pat_Mstr.sql"))
+                                if (File.Exists(txtScriptsLocation.Text + "UpdateF010_Pat_Mstr.sql"))
                                 {
-                                    StreamReader sr2 = new StreamReader("Scripts\\UpdateF010_Pat_Mstr.sql");
+                                    StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "UpdateF010_Pat_Mstr.sql");
                                     StringBuilder sb2 = new StringBuilder(string.Empty);
 
                                     while (!sr2.EndOfStream)
@@ -289,9 +289,9 @@ namespace DataTransferUtility
 
                             if (txtSysDebugDate.Text.Trim().Length > 0)
                             {
-                                if (File.Exists("Scripts\\InsertCoreDebugSysDate.sql"))
+                                if (File.Exists(txtScriptsLocation + "InsertCoreDebugSysDate.sql"))
                                 {
-                                    StreamReader sr2 = new StreamReader("Scripts\\InsertCoreDebugSysDate.sql");
+                                    StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "InsertCoreDebugSysDate.sql");
                                     StringBuilder sb2 = new StringBuilder(string.Empty);
 
                                     while (!sr2.EndOfStream)
@@ -464,7 +464,7 @@ namespace DataTransferUtility
             {
                 if (cmboLegacyDB.SelectedItem.ToString() == "101C" || cmboLegacyDB.SelectedItem.ToString() == "MP" || cmboLegacyDB.SelectedItem.ToString() == "SOLO")
                 {
-                    if (File.Exists(txtFileName.Text + "\\" + importSchemaFile + ".Core") == true)
+                    if (File.Exists(txtFileName.Text + importSchemaFile + ".Core") == true)
                     {
                         LoadTablesToList();
                     }
@@ -497,7 +497,7 @@ namespace DataTransferUtility
                 {
                     path += "\\Data";
                 }
-                txtFileName.Text = path;
+                txtFileName.Text = path + "\\";
             }
 
             txtLog.Enabled = false;
@@ -531,7 +531,7 @@ namespace DataTransferUtility
             {
                 if (txtFileName.Text.Trim() != string.Empty)
                 {
-                    if (File.Exists(txtFileName.Text + "\\" + importSchemaFile + ".Core") == true)
+                    if (File.Exists(txtFileName.Text + importSchemaFile + ".Core") == true)
                     {
                         LoadTablesToList();
                     }
@@ -872,15 +872,15 @@ namespace DataTransferUtility
 
         private void CreateDatabase()
         {
-            StreamReader sr = new StreamReader("Scripts\\CreateDatabase.sql");
-            StreamReader sr2 = new StreamReader("Scripts\\KillProcesses.sql");
+            StreamReader sr = new StreamReader(txtScriptsLocation.Text + "CreateDatabase.sql");
+            StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "KillProcesses.sql");
             SqlCommand cm = new SqlCommand();
 
             try
             {
-                if (File.Exists("Scripts\\CreateDatabase.sql"))
+                if (File.Exists(txtScriptsLocation.Text + "CreateDatabase.sql"))
                 {
-                    if (File.Exists("Scripts\\KillProcesses.sql"))
+                    if (File.Exists(txtScriptsLocation.Text + "KillProcesses.sql"))
                     {
                         StringBuilder sb = new StringBuilder(string.Empty);
                         string line = string.Empty;
@@ -920,14 +920,14 @@ namespace DataTransferUtility
                     }
                     else
                     {
-                        MessageBox.Show("File \"Scripts\\KillProcesses.sql\" does not exist.");
+                        MessageBox.Show("File " + txtScriptsLocation.Text + "KillProcesses.sql does not exist.");
                         stopProcessing = true;
                         Cursor.Current = Cursors.Default;
                     }
                 }
                 else
                 {
-                    MessageBox.Show("File \"Scripts\\CreateDatabase.sql\" does not exist.");
+                    MessageBox.Show("File " + txtScriptsLocation.Text + "CreateDatabase.sql does not exist.");
                     stopProcessing = true;
                     Cursor.Current = Cursors.Default;
                 }
@@ -1009,7 +1009,7 @@ namespace DataTransferUtility
         private void CreateDatabaseStructure()
         {
             //Create the database
-            CreateDatabase();
+            //CreateDatabase();
 
             if (cmboLegacyDB.Text == "101C" || cmboLegacyDB.Text == "MP" || cmboLegacyDB.Text == "SOLO")
             {
@@ -1022,6 +1022,62 @@ namespace DataTransferUtility
                         CreateSchema("INDEXED");
                         CreateSchema("SEQUENTIAL");
                         CreateSchema("TEMPORARYDATA");
+                        CreateSchema("22");
+                        CreateSchema("23");
+                        CreateSchema("24");
+                        CreateSchema("25");
+                        CreateSchema("26");
+                        CreateSchema("30");
+                        CreateSchema("31");
+                        CreateSchema("32");
+                        CreateSchema("33");
+                        CreateSchema("34");
+                        CreateSchema("35");
+                        CreateSchema("36");
+                        CreateSchema("37");
+                        CreateSchema("40");
+                        CreateSchema("41");
+                        CreateSchema("42");
+                        CreateSchema("43");
+                        CreateSchema("44");
+                        CreateSchema("45");
+                        CreateSchema("46");
+                        CreateSchema("48");
+                        CreateSchema("60");
+                        CreateSchema("61");
+                        CreateSchema("62");
+                        CreateSchema("63");
+                        CreateSchema("64");
+                        CreateSchema("65");
+                        CreateSchema("66");
+                        CreateSchema("68");
+                        CreateSchema("69");
+                        CreateSchema("70");
+                        CreateSchema("71");
+                        CreateSchema("72");
+                        CreateSchema("73");
+                        CreateSchema("74");
+                        CreateSchema("75");
+                        CreateSchema("78");
+                        CreateSchema("79");
+                        CreateSchema("80");
+                        CreateSchema("81");
+                        CreateSchema("82");
+                        CreateSchema("83");
+                        CreateSchema("84");
+                        CreateSchema("85");
+                        CreateSchema("86");
+                        CreateSchema("87");
+                        CreateSchema("88");
+                        CreateSchema("89");
+                        CreateSchema("90");
+                        CreateSchema("91");
+                        CreateSchema("92");
+                        CreateSchema("93");
+                        CreateSchema("94");
+                        CreateSchema("95");
+                        CreateSchema("96");
+                        CreateSchema("98");
                     }
 
                     CreateTables("Direct");
@@ -1098,11 +1154,11 @@ namespace DataTransferUtility
 
         private void CreateSchema(string schemaName)
         {
-            StreamReader sr = new StreamReader("Scripts\\CreateSchema.sql");
+            StreamReader sr = new StreamReader(txtScriptsLocation.Text + "CreateSchema.sql");
 
             try
             {
-                if (File.Exists("Scripts\\CreateSchema.sql"))
+                if (File.Exists(txtScriptsLocation.Text + "CreateSchema.sql"))
                 {
                     StringBuilder sb = new StringBuilder(string.Empty);
                     string line = string.Empty;
@@ -1124,7 +1180,7 @@ namespace DataTransferUtility
                 }
                 else
                 {
-                    MessageBox.Show("File \"Scripts\\CreateSchema.sql\" does not exist.");
+                    MessageBox.Show("File " + txtScriptsLocation.Text + "CreateSchema.sql does not exist.");
                     stopProcessing = true;
                     Cursor.Current = Cursors.Default;
                 }
@@ -1196,11 +1252,11 @@ namespace DataTransferUtility
 
         private void CreateStoredProcedures()
         {
-            StreamReader sr = new StreamReader("Scripts\\CreateStoredProcedures.sql");
+            StreamReader sr = new StreamReader(txtScriptsLocation.Text + "CreateStoredProcedures.sql");
 
             try
             {
-                if (File.Exists("Scripts\\CreateStoredProcedures.sql"))
+                if (File.Exists(txtScriptsLocation.Text + "CreateStoredProcedures.sql"))
                 {
                     StringBuilder sb = new StringBuilder(string.Empty);
                     string line = string.Empty;
@@ -1222,16 +1278,16 @@ namespace DataTransferUtility
                 }
                 else
                 {
-                    MessageBox.Show("File \"Scripts\\CreateStoredProcedures.sql\" does not exist.");
+                    MessageBox.Show("File " + txtScriptsLocation.Text + "CreateStoredProcedures.sql does not exist.");
                     stopProcessing = true;
                     Cursor.Current = Cursors.Default;
                 }
 
                 if (cmboLegacyDB.Text == "101C")
                 {
-                    sr = new StreamReader("Scripts\\Create101CStoredProcedures.sql");
+                    sr = new StreamReader(txtScriptsLocation.Text + "Create101CStoredProcedures.sql");
 
-                    if (File.Exists("Scripts\\Create101CStoredProcedures.sql"))
+                    if (File.Exists(txtScriptsLocation.Text + "Create101CStoredProcedures.sql"))
                     {
                         StringBuilder sb = new StringBuilder(string.Empty);
                         string line = string.Empty;
@@ -1253,7 +1309,7 @@ namespace DataTransferUtility
                     }
                     else
                     {
-                        MessageBox.Show("File \"Scripts\\Create101CStoredProcedures.sql\" does not exist.");
+                        MessageBox.Show("File " + txtScriptsLocation.Text + "Create101CStoredProcedures.sql does not exist.");
                         stopProcessing = true;
                         Cursor.Current = Cursors.Default;
                     }
@@ -1327,8 +1383,8 @@ namespace DataTransferUtility
         private void CreateTables(string schema)
         {
             StringBuilder sb = new StringBuilder(string.Empty);
-            StreamReader sr = new StreamReader("Scripts\\Create" + schema + "Tables.sql");
-            StreamReader sr2 = new StreamReader("Scripts\\InsertSecurityRecords.sql");
+            StreamReader sr = new StreamReader(txtScriptsLocation.Text + "Create" + schema + "Tables.sql");
+            StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "InsertSecurityRecords.sql");
             string table = string.Empty;
             SqlCommand cm = new SqlCommand();
             string sqlTable = string.Empty;
@@ -1338,7 +1394,7 @@ namespace DataTransferUtility
             {
                 if (lstTables.SelectedIndex == -1)
                 {
-                    if (File.Exists("Scripts\\Create" + schema + "Tables.sql"))
+                    if (File.Exists(txtScriptsLocation.Text + "Create" + schema + "Tables.sql"))
                     {
                         sb = new StringBuilder(string.Empty);
                         line = string.Empty;
@@ -1381,7 +1437,7 @@ namespace DataTransferUtility
                     }
                     else
                     {
-                        MessageBox.Show("File \"Scripts\\Create" + schema + "Tables.sql\" does not exist.");
+                        MessageBox.Show("File " + txtScriptsLocation.Text + "Create" + schema + "Tables.sql does not exist.");
                         stopProcessing = true;
                         Cursor.Current = Cursors.Default;
                     }
@@ -1474,18 +1530,15 @@ namespace DataTransferUtility
 
         private void CreateViews()
         {
-            StreamReader sr = new StreamReader("Scripts\\CreateViews.sql");
+            StreamReader sr = new StreamReader(txtScriptsLocation.Text + "CreateViews.sql");
 
             try
             {
-                if (File.Exists("Scripts\\CreateViews.sql"))
+                if (File.Exists(txtScriptsLocation.Text + "CreateViews.sql"))
                 {
                     StringBuilder sb = new StringBuilder(string.Empty);
                     string line = string.Empty;
                     SqlCommand cm = new SqlCommand();
-
-                    if (!txtScriptsLocation.Text.EndsWith("\\"))
-                        txtScriptsLocation.Text += "\\";
 
                     while (!sr.EndOfStream)
                     {
@@ -1504,7 +1557,7 @@ namespace DataTransferUtility
                 }
                 else
                 {
-                    MessageBox.Show("File \"Scripts\\CreateViews.sql\" does not exist.");
+                    MessageBox.Show("File " + txtScriptsLocation.Text + "CreateViews.sql does not exist.");
                     stopProcessing = true;
                     Cursor.Current = Cursors.Default;
                 }
@@ -1833,7 +1886,7 @@ namespace DataTransferUtility
             string columnName2 = string.Empty;
             string database = txtDatabase.Text;
             string docloc = string.Empty;
-            string fullFileName = txtFileName.Text + "\\";
+            string fullFileName = txtFileName.Text;
             string line = string.Empty;
             string oscar_provider_no = string.Empty;
             string parent = "";
@@ -4030,9 +4083,9 @@ namespace DataTransferUtility
                 while (true)
                 {
                     //Check if backup dat file exists
-                    if (File.Exists(txtFileName.Text + "\\" + fileName + fileCounter.ToString() + ".dat"))
+                    if (File.Exists(txtFileName.Text + fileName + fileCounter.ToString() + ".dat"))
                     {
-                        var binFile = new BinaryReader(new FileStream(txtFileName.Text + "\\" + fileName + fileCounter.ToString() + ".dat", FileMode.Open));
+                        var binFile = new BinaryReader(new FileStream(txtFileName.Text + fileName + fileCounter.ToString() + ".dat", FileMode.Open));
 
                         while (true)
                         {
@@ -4273,6 +4326,9 @@ namespace DataTransferUtility
                             break;
                         case "<FileName>":
                             txtFileName.Text = line.Substring(line.IndexOf("=") + 1);
+
+                            if (!txtFileName.Text.EndsWith("\\"))
+                                txtFileName.Text += "\\";
                             break;
                         case "<CheckDelimited>":
                             if (line.Substring(line.IndexOf("=") + 1) == "True")
@@ -4290,6 +4346,9 @@ namespace DataTransferUtility
                             break;
                         case "<ScriptsLocation>":
                             txtScriptsLocation.Text = line.Substring(line.IndexOf("=") + 1);
+
+                            if (!txtScriptsLocation.Text.EndsWith("\\"))
+                                txtScriptsLocation.Text += "\\";
                             break;
                     }
                 }
@@ -4301,7 +4360,7 @@ namespace DataTransferUtility
 
         private void LoadTablesToList()
         {
-            StreamReader sr = new StreamReader(txtFileName.Text + "\\" + importSchemaFile + ".Core", Encoding.Default); ;
+            StreamReader sr = new StreamReader(txtFileName.Text + importSchemaFile + ".Core", Encoding.Default); ;
             StringBuilder sb = new StringBuilder(string.Empty);
             string line = string.Empty;
             int lineCount = 0;
@@ -4385,15 +4444,15 @@ namespace DataTransferUtility
 
         private bool OpenConnection(string DatabaseName)
         {
-            StreamReader sr = new StreamReader("Scripts\\Connection.sql");
-            StreamReader sr2 = new StreamReader("Scripts\\Connection2.sql");
+            StreamReader sr = new StreamReader(txtScriptsLocation.Text + "Connection.sql");
+            StreamReader sr2 = new StreamReader(txtScriptsLocation.Text + "Connection2.sql");
             bool retVal = false;
 
             try
             {
                 if (txtUser.Text.ToUpper() == "SA")
                 {
-                    if (File.Exists("Scripts\\Connection.sql"))
+                    if (File.Exists(txtScriptsLocation.Text + "Connection.sql"))
                     {
                         StringBuilder sb = new StringBuilder(string.Empty);
                         string line = string.Empty;
@@ -4412,14 +4471,14 @@ namespace DataTransferUtility
                     }
                     else
                     {
-                        MessageBox.Show("File \"Scripts\\Connection.sql\" does not exist.");
+                        MessageBox.Show("File " + txtScriptsLocation.Text +"Connection.sql does not exist.");
                         stopProcessing = true;
                         Cursor.Current = Cursors.Default;
                     }
                 }
                 else
                 {
-                    if (File.Exists("Scripts\\Connection2.sql"))
+                    if (File.Exists(txtScriptsLocation.Text + "Connection2.sql"))
                     {
                         StringBuilder sb = new StringBuilder(string.Empty);
                         string line = string.Empty;
@@ -4438,7 +4497,7 @@ namespace DataTransferUtility
                     }
                     else
                     {
-                        MessageBox.Show("File \"Scripts\\Connection.sql\" does not exist.");
+                        MessageBox.Show("File " + txtScriptsLocation.Text + "Connection.sql does not exist.");
                         stopProcessing = true;
                         Cursor.Current = Cursors.Default;
                     }
@@ -4511,7 +4570,7 @@ namespace DataTransferUtility
             int recordLength = 0;
             int totalLength = 0;
 
-            StreamReader sr = new StreamReader(txtFileName.Text + "\\" + importSchemaFile + ".Core", Encoding.Default);
+            StreamReader sr = new StreamReader(txtFileName.Text + importSchemaFile + ".Core", Encoding.Default);
 
             string columnName = string.Empty;
             string databaseName = string.Empty;
