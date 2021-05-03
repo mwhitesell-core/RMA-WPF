@@ -78,7 +78,8 @@ namespace RMA_DATA
 
             strSQL.Append(Choose());
 
-            rdrU997_BAD.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            //rdrU997_BAD.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            rdrU997_BAD.GetDataTable = SqlHelper.ExecuteDataTable(m_cnnQUERY, CommandType.Text, strSQL.ToString());
 
             strSQL = null;
         }

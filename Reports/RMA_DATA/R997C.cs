@@ -43,7 +43,7 @@ namespace RMA_DATA
                 // Create Subfile.
                 SubFile = true;
                 SubFileName = "U997_GOOD_SRT";
-                SubFileType = SubFileType.Keep;
+                SubFileType = SubFileType.KeepSQL;
 
                 Sort = "DOC_DEPT ASC, DOC_NBR ASC, W_RAT_145_LAST_NAME ASC, W_RAT_145_FIRST_NAME ASC, RAT_145_HEALTH_OHIP_NBR ASC, RAT_145_ACCOUNT_NBR ASC";
 
@@ -99,7 +99,8 @@ namespace RMA_DATA
 
             strSQL.Append(Choose());
 
-            rdrU997_SEL_GOOD.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            //rdrU997_SEL_GOOD.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            rdrU997_SEL_GOOD.GetDataTable = SqlHelper.ExecuteDataTable(m_cnnQUERY, CommandType.Text, strSQL.ToString());
 
             strSQL = null;
         }

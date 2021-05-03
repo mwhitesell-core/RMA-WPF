@@ -48,7 +48,7 @@ namespace RMA_DATA
                 // Create Subfile.
                 SubFile = true;
                 SubFileName = "U997_SEL_RMB";
-                SubFileType = SubFileType.Keep;
+                SubFileType = SubFileType.KeepSQL;
 
                 Sort = "";
 
@@ -98,7 +98,8 @@ namespace RMA_DATA
 
             strSQL.Append(Choose());
 
-            rdrU997_RMB_GOOD.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            //rdrU997_RMB_GOOD.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            rdrU997_RMB_GOOD.GetDataTable = SqlHelper.ExecuteDataTable(m_cnnQUERY, CommandType.Text, strSQL.ToString());
 
             strSQL = null;
         }

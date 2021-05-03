@@ -99,7 +99,9 @@ namespace RMA_DATA
             strSQL.Append("PART_HDR_AMT_PAID ");
             strSQL.Append("FROM TEMPORARYDATA.U030_TOT_CLAIMS ");
             strSQL.Append(this.Choose());
-            rdrU030_TOT_CLAIMS.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+
+            //rdrU030_TOT_CLAIMS.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
+            rdrU030_TOT_CLAIMS.GetDataTable = SqlHelper.ExecuteDataTable(m_cnnQUERY, CommandType.Text, strSQL.ToString());
             strSQL = null;
         }
         private void Link_F002_CLAIMS_MSTR()
@@ -164,6 +166,7 @@ namespace RMA_DATA
             strSQL.Append("WHERE ");
             strSQL.Append("PART_DTL_CLINIC_NBR = ").Append(rdrU030_TOT_CLAIMS.GetNumber("PART_HDR_CLINIC_NBR"));
             strSQL.Append(" AND PART_DTL_CLAIM_NBR = ").Append(Common.StringToField(rdrU030_TOT_CLAIMS.GetString("PART_HDR_CLAIM_NBR")));
+
             rdrPART_PAID_DTL.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.m_strFlatFileDictionary, ReportFunctions.TextFiles);
             strSQL = null;
         }
@@ -176,6 +179,7 @@ namespace RMA_DATA
             strSQL.Append("FROM INDEXED.ICONST_MSTR_REC ");
             strSQL.Append("WHERE ");
             strSQL.Append("ICONST_CLINIC_NBR_1_2 = ").Append(rdrPART_PAID_DTL.GetNumber("PART_DTL_CLINIC_NBR"));
+
             rdrICONST_MSTR_REC.GetDataTable = SqlHelper.ExecuteDataTable(m_cnnQUERY, CommandType.Text, strSQL.ToString());
             strSQL = null;
         }

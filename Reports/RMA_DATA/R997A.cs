@@ -51,7 +51,7 @@ namespace RMA_DATA
                 // Create Subfile.
                 SubFile = true;
                 SubFileName = "R997";
-                SubFileType = SubFileType.Keep;
+                SubFileType = SubFileType.KeepSQL;
                 SubFileAT = "";
 
                 Sort = "";
