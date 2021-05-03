@@ -44,7 +44,7 @@ Start-Job -Name "run_cycle_update" -InitializationScript $init -ScriptBlock {
 	  [string]$path,
 	  [string]$1
   )
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" 101c
   cd $path#>
   & $env:cmd\run_ohip_submit_tape ${1} *> ohiptape.ls

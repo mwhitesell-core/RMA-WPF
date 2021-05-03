@@ -71,7 +71,10 @@ Remove-Item r031a_agep.sf*
 
 Set-Location $env:application_production
 
-Get-Content r031b_agep.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r031b_agep.txt | Out-Printer -Name $env:networkprinter
+}
 
 &$env:cmd\r997_clinic_88
 &$env:cmd\r997_clinic_78

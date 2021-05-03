@@ -10,4 +10,7 @@ Remove-Item check_susp_dtl.txt *> $null
 $rcmd= $env:QUIZ + "check_susp_dtl"
 Invoke-Expression $rcmd
 
-Get-Content check_susp_dtl.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content check_susp_dtl.txt | Out-Printer -Name $env:networkprinter
+}

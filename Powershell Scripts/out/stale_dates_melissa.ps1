@@ -14,5 +14,7 @@ Invoke-Expression $rcmd
 #Core - Added to rename report according to quiz file
 Get-Content r022f_2.txt > r022f.txt
 
-
-Get-Content r022f.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r022f.txt | Out-Printer -Name $env:networkprinter
+}

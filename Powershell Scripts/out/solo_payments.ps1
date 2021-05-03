@@ -7,4 +7,8 @@
 #quiz++ $obj\solo_payments
 $rcmd = $env:QUIZ + "solo_payments"
 Invoke-Expression $rcmd
-Get-Content solo_payments.txt| Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content solo_payments.txt | Out-Printer -Name $env:networkprinter
+}

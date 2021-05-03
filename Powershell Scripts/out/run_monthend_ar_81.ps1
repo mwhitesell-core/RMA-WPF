@@ -26,7 +26,10 @@ Invoke-Expression $rcmd
 $rcmd = $env:COBOL + "r004c Y"
 Invoke-Expression $rcmd
 
-Get-Content r004 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r004 | Out-Printer -Name $env:networkprinter
+}
 
 $rcmd = $env:COBOL + "r005 81 Y"
 Invoke-Expression $rcmd
@@ -56,7 +59,10 @@ Invoke-Expression $rcmd
 $rcmd = $env:COBOL + "r051c"
 Invoke-Expression $rcmd
 
-Get-Content r051ca | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r051ca | Out-Printer -Name $env:networkprinter
+}
 
 $rcmd = $env:COBOL + "r051b"
 Invoke-Expression $rcmd

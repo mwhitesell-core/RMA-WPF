@@ -88,7 +88,11 @@ if ((Test-Path r716c2.txt) -and ((Get-Item r716c2.txt ).Length -gt 0 ))
 {
   echo "`a`a`a`a`a`a"
   echo "**ERROR** - some description text was TRUNCATED - review r716c4.txt!!"
-  Get-Content r716c4.txt | Out-Printer
+
+  if ( $env:networkprinter -ne 'null'  )
+  {
+    Get-Content r716c4.txt | Out-Printer -Name $env:networkprinter
+  }
 }
 
 echo ""

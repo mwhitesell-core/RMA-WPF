@@ -140,21 +140,19 @@ Move-Item -Force r051caatp_70.txt r051ca_70
 Move-Item -Force r051cbatp_70.txt r051cb_70
 Move-Item -Force r070ctp_70.txt r070tp_70
 echo ""
-Get-Content utl0006_70.txt | Out-Printer
-Get-Content utl0006a_70.txt | Out-Printer
-Get-Content utl0007_70.txt | Out-Printer
-Get-Content utl0007a_70.txt | Out-Printer
-Get-Content r006tp_70 | Out-Printer
-Get-Content r012tp_70 | Out-Printer
-#lp r004tp_70
-Get-Content r005tp_70 | Out-Printer
-Get-Content r006tp_70 | Out-Printer
-#lp r011_70
-#lp r012tp_70
-#lp r013tp_70
-#lp r015tp_70
-#lp r051ca_70
-#lp r051cb_70
-Get-Content r070tp_70 | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content utl0006_70.txt | Out-Printer -Name $env:networkprinter
+   Get-Content utl0006a_70.txt | Out-Printer -Name $env:networkprinter
+   Get-Content utl0007_70.txt | Out-Printer -Name $env:networkprinter
+   Get-Content utl0007a_70.txt | Out-Printer -Name $env:networkprinter
+   Get-Content r006tp_70 | Out-Printer -Name $env:networkprinter
+   Get-Content r012tp_70 | Out-Printer -Name $env:networkprinter
+   Get-Content r005tp_70 | Out-Printer -Name $env:networkprinter
+   Get-Content r006tp_70 | Out-Printer -Name $env:networkprinter
+   Get-Content r070tp_70 | Out-Printer -Name $env:networkprinter
+}
+
 echo ""
 Get-Date

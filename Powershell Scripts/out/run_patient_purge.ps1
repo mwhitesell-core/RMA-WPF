@@ -50,8 +50,11 @@ Get-Content r099d.txt > ru099.txt
 
 Get-ChildItem ru099.txt
 
-Get-Content ru099.txt | Out-Printer
-Get-Content u099.log | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru099.txt | Out-Printer -Name $env:networkprinter
+   Get-Content u099.log | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "Ending   Time for Patient Purge $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"
@@ -111,7 +114,10 @@ Invoke-Expression $rcmd
 #Core - Added to rename report according to quiz file
 Get-Content r080.txt > ru080.txt
 
-Get-Content u080.log | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content u080.log | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 

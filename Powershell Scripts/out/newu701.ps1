@@ -156,7 +156,11 @@ if ("$1" -eq "")
         Remove-Item r717.txt *> $null
         $rcmd = $env:QUIZ + "r717"
         Invoke-Expression $rcmd
-        Get-Content r717.txt | Out-Printer
+
+        if ( $env:networkprinter -ne 'null'  )
+        {
+           Get-Content r717.txt | Out-Printer -Name $env:networkprinter
+        }
 # MC2 - end
 		
 } else {
@@ -296,7 +300,11 @@ if ((Test-Path submit_disk_susp.in) -or (Test-Path submit_disk_desc.in))
                 Remove-Item r717.txt *> $null
                 $rcmd = $env:QUIZ + "r717"
                 Invoke-Expression $rcmd
-                Get-Content r717.txt | Out-Printer
+
+                if ( $env:networkprinter -ne 'null'  )
+                {
+                   Get-Content r717.txt | Out-Printer -Name $env:networkprinter
+                }
 # MC2 - end
 
                 }

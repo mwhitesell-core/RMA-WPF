@@ -44,4 +44,7 @@ Invoke-Expression $rcmd > check_f020_ohip_sin.log
 $rcmd = $env:QUIZ + "utl0f020_ohip_sin" 
 Invoke-Expression $rcmd >> check_f020_ohip_sin.log
 
-Get-Content utl0f020_ohip_sin.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content utl0f020_ohip_sin.txt | Out-Printer -Name $env:networkprinter
+}

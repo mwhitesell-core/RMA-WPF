@@ -79,7 +79,18 @@ echo ""
 #######cd $application_production
 Remove-Item u030_tape_145_file_bkp.dat *> $null
 Copy-Item u030_tape_145_file.dat u030_tape_145_file_bkp.dat
-Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat -NoNewline
+Remove-Item u030_tape_RMB_file_bkp.dat *> $null
+Copy-Item u030_tape_RMB_file.dat u030_tape_RMB_file_bkp.dat
+
+$filein = "u030_tape_145_file.dat"
+$fileout = "u030_tape_145_file2.dat"
+&$env:cmd\lf $filein $fileout 167
+
+$filein = "U030_TAPE_RMB_FILE.dat"
+$fileout = "U030_TAPE_RMB_FILE2.dat"
+&$env:cmd\lf $filein $fileout 167
+
+Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat
 
 echo ""
 echo ""
@@ -114,6 +125,7 @@ echo ""
 
 echo "Running u030b.qtc ..."
 #qtp auto=$obj/u030b.qtc
+
 $rcmd = $env:QTP + "u030b_part1"
 invoke-expression $rcmd
 $rcmd = $env:QTP + "u030b_part2"
@@ -172,6 +184,8 @@ invoke-expression $rcmd
 
 Remove-Item u030_tape_145_file.dat *> $null
 Copy-Item u030_tape_145_file_bkp.dat u030_tape_145_file.dat
+Remove-Item u030_tape_RMB_file.dat *> $null
+Copy-Item u030_tape_RMB_file_bkp.dat u030_tape_RMB_file.dat
 
 echo ""
 echo "run ra report r997.txt"

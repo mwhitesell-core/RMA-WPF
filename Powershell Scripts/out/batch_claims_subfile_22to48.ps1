@@ -18,7 +18,7 @@ Start-Job -Name "batch_claims_subfile_22to48" -InitializationScript $init -Scrip
 	    [string]$path
         )
 
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" $version
   cd $path#>
   &$env:cmd\claims_subfile_22to48 > batch_claims_subfile_22to48.log

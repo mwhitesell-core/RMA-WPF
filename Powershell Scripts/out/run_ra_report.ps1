@@ -44,7 +44,8 @@ Get-Content r997j.txt >> r997.txt
 Get-Content r997k.txt >> r997.txt
 
 #Get-Content u030_tape_rmb_file.dat >> u030_tape_145_file.dat
-Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat -NoNewline
+#Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat -NoNewline
+Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat
 
 $rcmd = $env:QUIZ + "r997_total"
 invoke-expression $rcmd

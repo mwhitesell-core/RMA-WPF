@@ -87,7 +87,11 @@ Invoke-Expression $rcmd *>> $env:pb_prod\payrollpurge.log
 
 $rcmd = $env:QUIZ + "r113"
 Invoke-Expression $rcmd *>> $env:pb_prod\payrollpurge.log
-Get-Content r113.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r113.txt | Out-Printer -Name $env:networkprinter
+}
 
 
 # 2006/jun/13 - MC - Mary requests to blank out f112

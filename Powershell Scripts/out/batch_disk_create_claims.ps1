@@ -14,7 +14,7 @@ Start-Job -Name "batch_disk_create_claims" -InitializationScript $init -ScriptBl
     [string]$path,
     [string]$vers
        )
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" $vers
   cd $path#>
   &$env:cmd\disk_create_claims > claims.ls

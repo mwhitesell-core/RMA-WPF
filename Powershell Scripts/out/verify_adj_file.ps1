@@ -31,7 +31,12 @@ if ((Test-Path r990.txt) -and ((Get-Item r990.txt ).Length -gt 0 ))
         echo ""
         echo ""
         echo ""
-        Get-Content r990.txt | Out-Printer
+
+        if ( $env:networkprinter -ne 'null'  )
+        {
+           Get-Content r990.txt | Out-Printer -Name $env:networkprinter
+        }
+
         echo ""
         echo ""
         echo "The report is now on the line printer"

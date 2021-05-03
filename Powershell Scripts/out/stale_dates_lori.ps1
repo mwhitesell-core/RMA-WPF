@@ -16,6 +16,9 @@ Invoke-Expression $rcmd
 #Core - Added to rename report according to quiz file
 Get-Content r022g_2.txt > r022g.txt
 
-Get-Content r022g.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r022g.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo "End Time is $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"

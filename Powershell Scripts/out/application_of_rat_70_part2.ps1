@@ -31,19 +31,39 @@ Set-Location $env:application_production\71
 #lp u030_71.ls
 Remove-Item ru030a_71
 Move-Item -Force ru030a.txt ru030a_71
-Get-Content ru030a_71 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030a_71 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030b_71
 Move-Item -Force ru030b.txt ru030b_71
-Get-Content ru030b_71 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030b_71 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030c_71
 Move-Item -Force ru030c.txt ru030c_71
-Get-Content ru030c_71 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030c_71 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030d_71
 Move-Item -Force ru030d.txt ru030d_71
-Get-Content ru030d_71 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030d_71 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030e_71
 Move-Item -Force ru030e.txt ru030e_71
-Get-Content ru030e_71 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030e_71 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030f_71
 Move-Item -Force ru030f.txt ru030f_71
 #lp ru030f_71
@@ -57,19 +77,39 @@ Set-Location $env:application_production\72
 #lp u030_72.ls
 Remove-Item ru030a_72
 Move-Item -Force ru030a.txt ru030a_72
-Get-Content ru030a_72 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030a_72 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030b_72
 Move-Item -Force ru030b.txt ru030b_72
-Get-Content ru030b_72 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030b_72 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030c_72
 Move-Item -Force ru030c.txt ru030c_72
-Get-Content ru030c_72 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030c_72 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030d_72
 Move-Item -Force ru030d.txt ru030d_72
-Get-Content ru030d_72 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030d_72 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030e_72
 Move-Item -Force ru030e.txt ru030e_72
-Get-Content ru030e_72 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030e_72 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030f_72
 Move-Item -Force ru030f.txt ru030f_72
 #lp ru030f_72
@@ -83,19 +123,39 @@ Set-Location $env:application_production\73
 #lp u030_73.ls
 Remove-Item ru030a_73
 Move-Item -Force ru030a.txt ru030a_73
-Get-Content ru030a_73 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030a_73 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030b_73
 Move-Item -Force ru030b.txt ru030b_73
-Get-Content ru030b_73 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030b_73 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030c_73
 Move-Item -Force ru030c.txt ru030c_73
-Get-Content ru030c_73 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030c_73 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030d_73
 Move-Item -Force ru030d.txt ru030d_73
-Get-Content ru030d_73 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030d_73 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030e_73
 Move-Item -Force ru030e.txt ru030e_73
-Get-Content ru030e_73 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030e_73 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030f_73
 Move-Item -Force ru030f.txt ru030f_73
 Remove-Item ru030f_73
@@ -111,19 +171,39 @@ Set-Location $env:application_production\74
 #lp u030_74.ls
 Remove-Item ru030a_74
 Move-Item -Force ru030a.txt ru030a_74
-Get-Content ru030a_74 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030a_74 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030b_74
 Move-Item -Force ru030b.txt ru030b_74
-Get-Content ru030b_74 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030b_74 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030c_74
 Move-Item -Force ru030c.txt ru030c_74
-Get-Content ru030c_74 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030c_74 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030d_74
 Move-Item -Force ru030d.txt ru030d_74
-Get-Content ru030d_74 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030d_74 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030e_74
 Move-Item -Force ru030e.txt ru030e_74
-Get-Content ru030e_74 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030e_74 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030f_74
 Move-Item -Force ru030f.txt ru030f_74
 #lp ru030f_74
@@ -137,19 +217,39 @@ Set-Location $env:application_production\75
 #lp u030_75.ls
 Remove-Item ru030a_75
 Move-Item -Force ru030a.txt ru030a_75
-Get-Content ru030a_75 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030a_75 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030b_75
 Move-Item -Force ru030b.txt ru030b_75
-Get-Content ru030b_75 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030b_75 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030c_75
 Move-Item -Force ru030c.txt ru030c_75
-Get-Content ru030c_75 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030c_75 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030d_75
 Move-Item -Force ru030d.txt ru030d_75
-Get-Content ru030d_75 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030d_75 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030e_75
 Move-Item -Force ru030e.txt ru030e_75
-Get-Content ru030e_75 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030e_75 | Out-Printer -Name $env:networkprinter
+}
+
 Remove-Item ru030f_75
 Move-Item -Force ru030f.txt ru030f_75
 #lp ru030f_75

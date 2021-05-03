@@ -297,7 +297,7 @@ Set-Alias yas  cd118 -Scope Global
 function global:CD119 { cd $env:pb_prod/yasemin;pwd }
 Set-Alias yasemin  cd119 -Scope Global
 Set-Alias pg more -Scope Global
-function global:CD123 ([string]$path) { Get-Content -Path $path | Out-Printer }
+function global:CD123 ([string]$path) { Get-Content -Path $path | Out-Printer -Name $env:networkprinter }
 Set-Alias rmalp cd123 -Scope Global
 function global:CD124 { Get-ChildItem Env: }
 Set-Alias printenv cd124 -Scope Global

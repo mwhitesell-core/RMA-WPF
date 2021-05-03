@@ -45,7 +45,7 @@ Start-Job -Name "run_cycle_update_no_directs" -InitializationScript $init -Scrip
     [string]$path,
     [string]$1
        )
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" 101c#>
   #cd $path
   & $env:cmd\run_ohip_submit_tape_no_directs ${1} *> ohiptape.ls

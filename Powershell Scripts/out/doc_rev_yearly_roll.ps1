@@ -4,8 +4,18 @@
 # Original file name was 'doc_rev_yearly_roll'
 #-------------------------------------------------------------------------------
 
-&$init = [scriptblock]::Create("{ Set-Location `"$(Get-Location)`" }")
-Start-Job -Name "doc_rev_yearly_roll" -InitializationScript $init -ScriptBlock {
-  & $env:QTP purge_f050_f051 *> roll.ls
-  & Get-Content roll.ls | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   &$init = [scriptblock]::Create("{ Set-Location `"$(Get-Location)`" }")
+   Start-Job -Name "doc_rev_yearly_roll" -InitializationScript $init -ScriptBlock {
+     & $env:QTP purge_f050_f051 *> roll.ls
+     & Get-Content roll.ls | Out-Printer -Name $env:networkprinter
+   }
+}
+else
+{
+   &$init = [scriptblock]::Create("{ Set-Location `"$(Get-Location)`" }")
+   Start-Job -Name "doc_rev_yearly_roll" -InitializationScript $init -ScriptBlock {
+     & $env:QTP purge_f050_f051 *> roll.ls
+   }
 }

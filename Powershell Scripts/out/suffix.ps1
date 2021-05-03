@@ -10,4 +10,8 @@ echo ""
 Remove-Item suspend_suffix.txt *> $null
 $rcmd = $env:QUIZ + "suspend_suffix"
 Invoke-Expression $rcmd
-Get-Content suspend_suffix.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content suspend_suffix.txt | Out-Printer -Name $env:networkprinter
+}

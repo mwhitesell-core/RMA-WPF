@@ -116,6 +116,10 @@ Get-Content u100_c.txt
 #Get-Content u100_d.txt | Out-Printer
 #Get-Content u100_e.txt | Out-Printer
 #Get-Content u100_f.txt| Out-Printer
-Get-Content u100.txt| Out-Printer
-Get-Content u100_b.txt| Out-Printer
-Get-Content u100_c.txt| Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content u100.txt | Out-Printer -Name $env:networkprinter
+   Get-Content u100_b.txt | Out-Printer -Name $env:networkprinter
+   Get-Content u100_c.txt | Out-Printer -Name $env:networkprinter
+}

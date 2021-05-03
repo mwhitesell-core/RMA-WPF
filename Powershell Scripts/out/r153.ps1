@@ -35,8 +35,11 @@ invoke-expression $rcmd  > r153b.log  2>&1
 echo ""
 echo ""
 echo "Ensure the below logs are zero length files!"
-Get-Content r153ef| Out-Printer
-Get-Content r153ef| Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r153ef | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 Get-ChildItem r153?.log

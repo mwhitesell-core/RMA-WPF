@@ -49,8 +49,11 @@ invoke-expression $rcmd
 $rcmd = $env:QUIZ + "r030i_3 disc_ru030f3"
 invoke-expression $rcmd
 
-Get-Content ru030f2.txt | Out-Printer
-Get-Content ru030f3.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030f2.txt | Out-Printer -Name $env:networkprinter
+   Get-Content ru030f3.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "end of the run for u030b auto adj for clinic detail"

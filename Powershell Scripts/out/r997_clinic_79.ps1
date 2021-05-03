@@ -15,4 +15,8 @@ Remove-Item r997*_summ.txt
 &$env:QUIZ r997k_summ
 #lp r997f_summ.txt
 #lp r997g_summ.txt
-Get-Content r997k_summ.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r997k_summ.txt | Out-Printer -Name $env:networkprinter
+}

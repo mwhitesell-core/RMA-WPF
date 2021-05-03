@@ -6,4 +6,8 @@
 
 $rcmd = $env:QUIZ + "checkf020a"
 Invoke-Expression $rcmd
-Get-Content checkf020a.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content checkf020a.txt | Out-Printer -Name $env:networkprinter
+}

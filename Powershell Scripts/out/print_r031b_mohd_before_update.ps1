@@ -36,8 +36,11 @@ Get-Content r031_before_update_2.txt >> r031b.txt
 Get-Content r031_before_update_3.txt >> r031b.txt
 
 Move-Item -Force r031b.txt r031b_mohd.txt
-Get-Content r031b_mohd.txt | Out-Printer
 
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r031b_mohd.txt | Out-Printer -Name $env:networkprinter
+}
 
 &$env:cmd\print_r031b_part2_before_update > print_r031b_part2_before_update.log
 

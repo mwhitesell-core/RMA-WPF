@@ -15,7 +15,7 @@ Start-Job -Name "batch_claims_subfile_60_82_83_86" -InitializationScript $init -
         [string]$version
         )
 
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" $version#>
   &$env:cmd\claims_subfile_60_82_83_86 > batch_claims_subfile_60_82_83_86.log
 #} -ArgumentList $vers

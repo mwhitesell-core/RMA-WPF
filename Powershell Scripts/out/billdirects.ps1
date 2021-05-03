@@ -5,4 +5,7 @@
 #-------------------------------------------------------------------------------
 
 &$env:QUIZ billdirects
-Get-Content billdirects.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content billdirects.txt | Out-Printer -Name $env:networkprinter
+}

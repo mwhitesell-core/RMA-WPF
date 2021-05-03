@@ -89,8 +89,11 @@ Get-Content ru030r.txt >> ru030k.txt
 Get-Content ru030r.txt >> ru030m.txt
 
 #lp ru030k.txt
-Get-Content ru030m.txt | Out-Printer
-Get-Content ru030l.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030m.txt | Out-Printer -Name $env:networkprinter
+   Get-Content ru030l.txt | Out-Printer -Name $env:networkprinter
+}
 # lp ru030q.txt  ## Mary does not want it
 
 echo ""

@@ -18,7 +18,7 @@ Start-Job -Name "batch_run_third_monthend_reports" -InitializationScript $init -
 	    [string]$path
         )
 
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" $version
   cd $path#>
   & $env:cmd\run_monthend_stage40 > batch_run_monthend_stage40.log

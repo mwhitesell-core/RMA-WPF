@@ -23,7 +23,11 @@ Move-Item -Force u030_tape_145_file.dat u030_tape_bkp.dat
 Move-Item -Force reason80.dat u030_tape_145_file.dat
 
 &$env:QUIZ reason80
-Get-Content reason80.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content reason80.txt | Out-Printer -Name $env:networkprinter
+}
 
 Remove-Item u030_tape_145_file.dat
 Move-Item -Force u030_tape_bkp.dat u030_tape_145_file.dat

@@ -10,8 +10,11 @@ $rcmd = $env:QTP + "purge_f050_f051"
 Invoke-Expression $rcmd *> roll.ls
 
 Get-ChildItem roll.ls
-Get-Content roll.ls | Out-Printer
 
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content roll.ls | Out-Printer -Name $env:networkprinter
+}
 
 echo "Done!" >> roll.ls
 

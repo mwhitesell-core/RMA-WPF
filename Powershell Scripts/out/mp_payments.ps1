@@ -8,4 +8,7 @@
 $rcmd = $env:QUIZ + "mp_payments DISC_mp_payments.ff"
 invoke-expression $rcmd
 
-Get-Content mp_payments.txt| Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content mp_payments.txt | Out-Printer -Name $env:networkprinter
+}

@@ -14,5 +14,8 @@ $rcmd = $env:QUIZ + "r211 71000000 75ZZZZZZ"
 Invoke-Expression $rcmd
 echo "ENDING.... $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"
 
-Get-Content r211 | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r211 | Out-Printer -Name $env:networkprinter
+}
 #lp status.ls

@@ -20,4 +20,8 @@ echo ""
 Remove-Item r715.txt *> $null
 $rcmd = $env:QUIZ + "r715"
 Invoke-Expression $rcmd
-Get-Content r715.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r715.txt | Out-Printer -Name $env:networkprinter
+}

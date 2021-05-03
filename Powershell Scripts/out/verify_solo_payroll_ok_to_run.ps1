@@ -99,6 +99,8 @@ echo ""
 echo "The following report U100_c.txt should be blank - otherwise DONT run payoll!"
 echo ""
 
-
-Get-Content u100.txt | Out-Printer -EA SilentlyContinue
-Get-Content u100_b.txt | Out-Printer -EA SilentlyContinue
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content u100.txt | Out-Printer -Name $env:networkprinter -EA SilentlyContinue
+   Get-Content u100_b.txt | Out-Printer -Name $env:networkprinter -EA SilentlyContinue
+}

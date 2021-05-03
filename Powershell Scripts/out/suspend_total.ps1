@@ -42,8 +42,12 @@ $rcmd = $env:QUIZ + "web_before_after DISC_web_before_after.rf"
 Invoke-Expression $rcmd
 
 &$env:cmd\resubmits
-Get-Content suspend_total.txt | Out-Printer
-Get-Content check_susp_dtl.txt | Out-Printer
-Get-Content suspend_status.txt | Out-Printer
-Get-Content suspend_suffix.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content suspend_total.txt | Out-Printer -Name $env:networkprinter
+   Get-Content check_susp_dtl.txt | Out-Printer -Name $env:networkprinter
+   Get-Content suspend_status.txt | Out-Printer -Name $env:networkprinter
+   Get-Content suspend_suffix.txt | Out-Printer -Name $env:networkprinter
+}
 ##lp web_before_after.txt

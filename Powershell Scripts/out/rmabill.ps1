@@ -295,6 +295,7 @@ $env:upload_susp='$env:cmd\recreate_clean_suspense # u700 # newu701'
 $env:ftpcheck='$env:cmd\ftpcheck'
 $env:lpc='\macros\lpc'
 $env:lpcs='\macros\lpcs'
+$env:networkprinter=' '
 # COBOL Copy file location Environment variable
 #COBCPY=".:\alpha\rmabill\rmabill"$env:RMABILL_VERS"\use"
 #COBCPY="\alpha\rmabill\rmabill"$env:RMABILL_VERS"\use"

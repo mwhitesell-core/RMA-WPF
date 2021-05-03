@@ -48,8 +48,11 @@ Invoke-Expression $rcmd
 
 Get-ChildItem r801*
 
-Get-Content r801a.txt | Out-Printer *> $null
-Get-Content r801b.txt | Out-Printer *> $null
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r801a.txt | Out-Printer -Name $env:networkprinter
+   Get-Content r801b.txt | Out-Printer -Name $env:networkprinter
+}
 #lp r801c.txt >/dev/null 2>/dev/null 
 
 echo ""

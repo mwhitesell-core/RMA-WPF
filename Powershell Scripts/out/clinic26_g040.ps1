@@ -16,6 +16,9 @@ Invoke-Expression $rcmd
 $rcmd = $env:QUIZ + "g040_code DISC_g040"
 Invoke-Expression $rcmd
 
-Get-Content g040.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content g040.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo "End Time is $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"

@@ -145,20 +145,18 @@ Move-Item -Force r051cbatp.txt r051cb
 Move-Item -Force r070ctp.txt r070tp_60
 echo ""
 #lp r051b_tp_per.txt
-Get-Content utl0006.txt | Out-Printer
-Get-Content utl0006a.txt | Out-Printer
-Get-Content utl0007.txt | Out-Printer
-Get-Content r006tp | Out-Printer
-Get-Content r012tp | Out-Printer
-#lp r004tp
-Get-Content r005tp | Out-Printer
-Get-Content r006tp | Out-Printer
-#lp r011
-#lp r012tp
-#lp r013tp
-#lp r015tp
-#lp r051ca
-#lp r051cb
-Get-Content r070tp_60 | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content utl0006.txt | Out-Printer -Name $env:networkprinter
+   Get-Content utl0006a.txt | Out-Printer -Name $env:networkprinter
+   Get-Content utl0007.txt | Out-Printer -Name $env:networkprinter
+   Get-Content r006tp | Out-Printer -Name $env:networkprinter
+   Get-Content r012tp | Out-Printer -Name $env:networkprinter
+   Get-Content r005tp | Out-Printer -Name $env:networkprinter
+   Get-Content r006tp | Out-Printer -Name $env:networkprinter
+   Get-Content r070tp_60 | Out-Printer -Name $env:networkprinter
+}
+
 echo ""
 Get-Date

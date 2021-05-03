@@ -50,32 +50,27 @@ Remove-Item utl0201_f119.ps*, utl0201*.txt, utl0201.sf*  -EA SilentlyContinue
 # If 101c, pass 101C 
 if ($env:clinic_nbr -eq "22")
 {
-
-$rcmd = $env:QTP + "utl0201_f119 101C" 
-invoke-expression $rcmd 
-
-} else {
-
-# If MP, pass MP   
-if ($env:clinic_nbr -eq "99")
+   $rcmd = $env:QTP + "utl0201_f119 101C" 
+   invoke-expression $rcmd 
+}
+else
 {
-
-$rcmd = $env:QTP + "utl0201_f119 MP" 
-invoke-expression $rcmd 
-
-} else {
-
-# If solo, pass SOLO 
-if ($env:clinic_nbr -eq "10")
-{
-
-$rcmd = $env:QTP + "utl0201_f119 SOLO" 
-invoke-expression $rcmd 
-
+   # If MP, pass MP   
+   if ($env:clinic_nbr -eq "99")
+   {
+      $rcmd = $env:QTP + "utl0201_f119 MP" 
+      invoke-expression $rcmd 
+   }
+   else
+   {
+      # If solo, pass SOLO 
+      if ($env:clinic_nbr -eq "10")
+      {
+         $rcmd = $env:QTP + "utl0201_f119 SOLO" 
+         invoke-expression $rcmd 
+      }
+   }
 }
-}
-}
-
 
 $rcmd = $env:QUIZ + "utl0201_1" 
 invoke-expression $rcmd 
@@ -91,80 +86,77 @@ invoke-expression $rcmd
 #Core - Added to rename report according to quiz file
 Get-Content utl0201_2.txt > utl0201_b.txt
 
-Get-Content utl0201_a.txt| Out-Printer
-Get-Content utl0201_b.txt| Out-Printer
-Get-Content utl0201_a.txt| Out-Printer
-Get-Content utl0201_b.txt| Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content utl0201_a.txt | Out-Printer -Name $env:networkprinter
+   Get-Content utl0201_b.txt | Out-Printer -Name $env:networkprinter
+}
 
 #------------------------------------------------------------------
 if ($env:clinic_nbr -eq "22")
 {
+   Set-Location $env:application_production
 
-Set-Location $env:application_production
+   #MC3 - Inactive Doctors for last 3 ep nbr and have outstanding claims
+   Remove-Item r128*.sf*, r128.txt, r128_csv.txt  -EA SilentlyContinue
+   #Remove-Item $env:pb_data\tmp_counters_alpha* -EA SilentlyContinue
 
-#MC3 - Inactive Doctors for last 3 ep nbr and have outstanding claims
+   <#$pipedInput = @"
+   create file tmp-counters-alpha
+   "@
+   $pipedInput | qutil++#>
 
-Remove-Item r128*.sf*, r128.txt, r128_csv.txt  -EA SilentlyContinue
+   $rcmd = $env:TRUNCATE+ "tmp_counters_alpha"
+   Invoke-Expression $rcmd
 
-#Remove-Item $env:pb_data\tmp_counters_alpha* -EA SilentlyContinue
+   $rcmd = $env:QTP + "r128a"
+   invoke-expression $rcmd
 
-<#$pipedInput = @"
-create file tmp-counters-alpha
-"@
+   $rcmd = $env:QUIZ + "r128b" 
+   invoke-expression $rcmd
 
-$pipedInput | qutil++#>
+   #Core - Added to rename report according to quiz file
+   Get-Content r128b.txt > r128.txt
 
-$rcmd = $env:TRUNCATE+ "tmp_counters_alpha"
-Invoke-Expression $rcmd
+   $rcmd = $env:QUIZ + "r128b_csv DISC_r128_csv.ff" 
+   invoke-expression $rcmd 
 
-$rcmd = $env:QTP + "r128a"
-invoke-expression $rcmd
+   #Core - Added to rename report according to quiz file
+   # gw2018. not needed with .ff option. Get-Content r128b_csv.txt > r128_csv.txt
 
-$rcmd = $env:QUIZ + "r128b" 
-invoke-expression $rcmd
+   if ( $env:networkprinter -ne 'null'  )
+   {
+      Get-Content r128.txt | Out-Printer -Name $env:networkprinter
+   }
 
-#Core - Added to rename report according to quiz file
-Get-Content r128b.txt > r128.txt
+   #MC2
+   #MC4
+   #rm r138_csv.txt r139*.sf* r139_csv.txt 1>/dev/null 2>&1
+   Remove-Item r138*.sf*, r138_csv.txt, r139*.sf*, r139_csv.txt  -EA SilentlyContinue
 
-$rcmd = $env:QUIZ + "r128b_csv DISC_r128_csv.ff" 
-invoke-expression $rcmd 
+   #####  Deficit Report
+   #MC4
+   $rcmd = $env:QTP + "r138_csv"
+   invoke-expression $rcmd
 
-#Core - Added to rename report according to quiz file
-# gw2018. not needed with .ff option. Get-Content r128b_csv.txt > r128_csv.txt
+   $rcmd = $env:QUIZ + "r138_csv DISC_r138_csv.ff" 
+   invoke-expression $rcmd 
 
+   #####  INCEXP minus TOTDED not equal to PAYEFT for pay code 2
+   $rcmd = $env:QTP + "r139_csv"
+   invoke-expression $rcmd
 
-Get-Content r128.txt| Out-Printer
+   $rcmd = $env:QUIZ + "r139_csv DISC_r139_csv.ff" 
+   invoke-expression $rcmd 
 
-#MC2
-#MC4
-#rm r138_csv.txt r139*.sf* r139_csv.txt 1>/dev/null 2>&1
-Remove-Item r138*.sf*, r138_csv.txt, r139*.sf*, r139_csv.txt  -EA SilentlyContinue
+   ##### Revenue Reports
+   echo "--- utl0020 ---"
 
-#####  Deficit Report
-#MC4
-$rcmd = $env:QTP + "r138_csv"
-invoke-expression $rcmd
+   $rcmd = $cmd + "\utl0020.com  >> teb_1.log  2>&1"
+   invoke-expression $rcmd
 
-$rcmd = $env:QUIZ + "r138_csv DISC_r138_csv.ff" 
-invoke-expression $rcmd 
-
-#####  INCEXP minus TOTDED not equal to PAYEFT for pay code 2
-$rcmd = $env:QTP + "r139_csv"
-invoke-expression $rcmd
-
-$rcmd = $env:QUIZ + "r139_csv DISC_r139_csv.ff" 
-invoke-expression $rcmd 
-
-##### Revenue Reports
-
-echo "--- utl0020 ---"
-
-$rcmd = $cmd + "\utl0020.com  >> teb_1.log  2>&1"
-invoke-expression $rcmd
-
-# MC3 - end
-
+   # MC3 - end
 }
-echo "Done!"
 
+echo "Done!"
 echo "Payroll teb3 -   ending -"(Get-Date).ToString('yyyy-MM-dd 0:h:mm:ss')

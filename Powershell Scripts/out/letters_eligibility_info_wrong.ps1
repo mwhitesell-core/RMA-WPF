@@ -17,28 +17,29 @@
 
 echo "Runningletters_eligbility_info_wrong ..."
 
-Set-Location $env:pb_data
-Remove-Item f085_backup_10*
-Move-Item -Force f085_backup_09 f085_backup_10
-Move-Item -Force f085_backup_09.idx f085_backup_10.idx
-Move-Item -Force f085_backup_08 f085_backup_09
-Move-Item -Force f085_backup_08.idx f085_backup_09.idx
-Move-Item -Force f085_backup_07 f085_backup_08
-Move-Item -Force f085_backup_07.idx f085_backup_08.idx
-Move-Item -Force f085_backup_06 f085_backup_07
-Move-Item -Force f085_backup_06.idx f085_backup_07.idx
-Move-Item -Force f085_backup_05 f085_backup_06
-Move-Item -Force f085_backup_05.idx f085_backup_06.idx
-Move-Item -Force f085_backup_04 f085_backup_05
-Move-Item -Force f085_backup_04.idx f085_backup_05.idx
-Move-Item -Force f085_backup_03 f085_backup_04
-Move-Item -Force f085_backup_03.idx f085_backup_04.idx
-Move-Item -Force f085_backup_02 f085_backup_03
-Move-Item -Force f085_backup_02.idx f085_backup_03.idx
-Move-Item -Force f085_backup_01 f085_backup_02
-Move-Item -Force f085_backup_01.idx f085_backup_02.idx
-Copy-Item f085_rejected_claims f085_backup_01
-Copy-Item f085_rejected_claims.idx f085_backup_01.idx
+#Core - Commented out, files are in database
+#Set-Location $env:pb_data
+#Remove-Item f085_backup_10*
+#Move-Item -Force f085_backup_09 f085_backup_10
+#Move-Item -Force f085_backup_09.idx f085_backup_10.idx
+#Move-Item -Force f085_backup_08 f085_backup_09
+#Move-Item -Force f085_backup_08.idx f085_backup_09.idx
+#Move-Item -Force f085_backup_07 f085_backup_08
+#Move-Item -Force f085_backup_07.idx f085_backup_08.idx
+#Move-Item -Force f085_backup_06 f085_backup_07
+#Move-Item -Force f085_backup_06.idx f085_backup_07.idx
+#Move-Item -Force f085_backup_05 f085_backup_06
+#Move-Item -Force f085_backup_05.idx f085_backup_06.idx
+#Move-Item -Force f085_backup_04 f085_backup_05
+#Move-Item -Force f085_backup_04.idx f085_backup_05.idx
+#Move-Item -Force f085_backup_03 f085_backup_04
+#Move-Item -Force f085_backup_03.idx f085_backup_04.idx
+#Move-Item -Force f085_backup_02 f085_backup_03
+#Move-Item -Force f085_backup_02.idx f085_backup_03.idx
+#Move-Item -Force f085_backup_01 f085_backup_02
+#Move-Item -Force f085_backup_01.idx f085_backup_02.idx
+#Copy-Item f085_rejected_claims f085_backup_01
+#Copy-Item f085_rejected_claims.idx f085_backup_01.idx
 
 ##  $cmd/f086patid  - transfer to $cmd/process_elig_corrected_patients
 ##  $cmd/f086a_origpatid - transfer to $cmd/process_elig_corrected_patients
@@ -73,8 +74,10 @@ Invoke-Expression $rcmd
 ##echo "Running u085 ..." 
 ##qtp  auto=$obj/u085.qtc
 
-Get-Content r086.txt | Out-Printer
-Get-Content r087.txt | Out-Printer
-Get-Content r087.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r086.txt | Out-Printer -Name $env:networkprinter
+   Get-Content r087.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo "Doneletters_eligbility_info_wrong"

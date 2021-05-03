@@ -737,3 +737,5 @@ Move-Item -Force ohip_rat_ascii ohip_rat_ascii_96
 echo ""
 echo "To finish this run  hit   `"NEWLINE`"  ..."
 $garbage = Read-Host
+
+Set-Location $env:pb_prod

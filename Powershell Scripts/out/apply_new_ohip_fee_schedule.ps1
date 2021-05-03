@@ -27,8 +27,11 @@ echo "HIT `"NEWLINE`" TO PRINT REPORT ..."
 
 echo ""
 
-Get-Content ru041a | Out-Printer
-Get-Content ru041b | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru041a | Out-Printer -Name $env:networkprinter
+   Get-Content ru041b | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "FINISHED ..."

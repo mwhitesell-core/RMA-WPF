@@ -25,7 +25,7 @@ Remove-Item check_elig_pat.log *> $null
 <#$path = Convert-Path .
 $init = [scriptblock]::Create("{ Set-Location `"$(Get-Location)`" }")
 Start-Job -Name "check_elig_pat" -InitializationScript $init -ScriptBlock {
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" 101c
   cd $path#>
   &$env:cmd\check_elig_corrected_patients *> check_elig_pat.log

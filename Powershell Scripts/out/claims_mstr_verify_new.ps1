@@ -29,6 +29,10 @@ echo ""
 Get-Date
 
 Move-Item -Force r073 r073_after_claims_purge
-Get-Content r073 | Out-Printer
-Get-Content r073_after_claims_purge | Out-Printer
-Get-Content rv073_after | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r073 | Out-Printer -Name $env:networkprinter
+   Get-Content r073_after_claims_purge | Out-Printer -Name $env:networkprinter
+   Get-Content rv073_after | Out-Printer -Name $env:networkprinter
+}

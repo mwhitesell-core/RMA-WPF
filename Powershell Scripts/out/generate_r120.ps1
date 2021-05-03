@@ -59,9 +59,17 @@ echo "building r121"
 Get-Content r121a.txt, r121b.txt, r121c.txt, r121d.txt, r121e.txt, r121f.txt  > r121_${1}.txt
 #cat r121c.txt r121d.txt r121e.txt > r121m.txt
 Get-Content r121c.txt, r121d.txt, r121e.txt, r121f.txt  > r121m.txt
-Get-Content r121m.txt| Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r121m.txt | Out-Printer -Name $env:networkprinter
+}
 
 Move-Item r121b_company.txt r121b_company_${1}.txt
-Get-Content r121b_company_${1}.txt| Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r121b_company_${1}.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo "DONE  generate_r120"

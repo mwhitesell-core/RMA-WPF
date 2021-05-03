@@ -32,7 +32,10 @@ echo "Running r030p.qtc ..."
 #Core - Added to rename report according to quiz file
 Get-Content r030p.txt > ru030p.txt
 
-Get-Content ru030p.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030p.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "end of the run for u030_print_amt_paid"

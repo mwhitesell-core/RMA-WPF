@@ -64,8 +64,11 @@ Move-Item -Force r030r.txt ru030r_mohd.txt
 Move-Item -Force r030k_csv.txt ru030k_mohd_csv.txt
 
 #lp ru030k_mohd.txt
-Get-Content ru030m_mohd.txt | Out-Printer
-Get-Content ru030l_mohd.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030m_mohd.txt | Out-Printer -Name $env:networkprinter
+   Get-Content ru030l_mohd.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "end of the run for MOHD payment PART 2"

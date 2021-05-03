@@ -8,4 +8,7 @@ Remove-Item r717.txt *> $null
 $rcmd = $env:QUIZ + "r717"
 Invoke-Expression $rcmd
 
-Get-Content r717.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r717.txt | Out-Printer -Name $env:networkprinter
+}

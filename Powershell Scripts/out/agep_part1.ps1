@@ -56,7 +56,10 @@ invoke-expression $rcmd
 #Core - Added to rename report according to quiz file
 Get-Content r031c_1.txt, r031c_2.txt | Set-Content r031c.txt
 
-Get-Content r031c.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r031c.txt | Out-Printer -Name $env:networkprinter
+}
 
 # MC1
 $rcmd = $env:QUIZ + "r030n"
@@ -65,7 +68,10 @@ invoke-expression $rcmd
 #Core - Added to rename report according to quiz file
 Get-Content r030n.txt > ru030n.txt
 
-Get-Content ru030n.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content ru030n.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "end of the run for age premium payment PART 1"

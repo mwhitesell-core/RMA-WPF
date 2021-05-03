@@ -9,7 +9,7 @@
 
 <#$init = [scriptblock]::Create("{ Set-Location `"$(Get-Location)`" }")
 Start-Job -Name "batch_claims_subfile_80_91to96" -InitializationScript $init -ScriptBlock {
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" 101c#>
   & $env:cmd\claims_subfile_80_91to96 > batch_claims_subfile_80_91to96.log
 #}

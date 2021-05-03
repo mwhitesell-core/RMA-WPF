@@ -33,7 +33,7 @@ Start-Job -Name "run_rats" -InitializationScript $init -ScriptBlock {
    param(
 	[string]$vers
 	)
-   $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+   $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
 
    &"\\$env:srvname\rma\scripts\rmabill" $vers
 

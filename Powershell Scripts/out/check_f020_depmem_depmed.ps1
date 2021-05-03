@@ -20,7 +20,10 @@ Remove-Item u921a.sf*, r921b.txt  -EA SilentlyContinue
 qtp++ $obj\u921a  > check_f020_depmem_depmed.log
 quiz++ $obj\r921b  >> check_f020_depmem_depmed.log
 
-Get-Content r921b.txt| Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r921b.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo "Setup of 101c environment"
 . $root\macros\setup_rmabill.com 101c
@@ -36,4 +39,7 @@ Remove-Item u921a.sf*, r921b.txt  -EA SilentlyContinue
 qtp++ $obj\u921a  > check_f020_depmem_depmed.log
 quiz++ $obj\r921b  >> check_f020_depmem_depmed.log
 
-Get-Content r921b.txt| Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r921b.txt | Out-Printer -Name $env:networkprinter
+}

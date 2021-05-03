@@ -48,5 +48,9 @@ echo ""
 Get-Date
 
 Move-Item -Force r071 r071_before_claims_purge
-Get-Content r071_before_claims_purge | Out-Printer
-Get-Content rv071_before | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r071_before_claims_purge | Out-Printer -Name $env:networkprinter
+   Get-Content rv071_before | Out-Printer -Name $env:networkprinter
+}

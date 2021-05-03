@@ -54,7 +54,11 @@ Get-Content r031c_1.txt > r031c.txt
 Get-Content r031c_2.txt >> r031c.txt
 
 Move-Item -Force r031c.txt r031c_mohd.txt
-Get-Content r031c_mohd.txt | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r031c_mohd.txt | Out-Printer -Name $env:networkprinter
+}
 
 # MC1
 $rcmd = $env:QUIZ + "r030n"

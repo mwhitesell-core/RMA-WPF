@@ -16,7 +16,7 @@ Start-Job -Name "batch_web_create_claims" -InitializationScript $init -ScriptBlo
     [string]$path,
     [string]$date
        )   
-  $env:srvname = [system.environment]::MachineName + "." + [system.environment]::UserDomainName + ".LOCAL"
+  $env:srvname = $env:srvname + "." + [system.environment]::UserDomainName + ".LOCAL"
   &"\\$env:srvname\rma\scripts\rmabill" 101c
   cd $path#>
   &$env:cmd\web_create_claims  $date > web.ls

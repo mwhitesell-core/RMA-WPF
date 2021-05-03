@@ -1418,36 +1418,18 @@ Move-Item -Force u072-retain-claim-hdr-orig.sfd u072-retain-claim-hdr.sfd
 Move-Item -Force u072-delete-claim-hdr-orig.sf u072-delete-claim-hdr.sf
 Move-Item -Force u072-delete-claim-hdr-orig.sfd u072-delete-claim-hdr.sfd
 
+#Core - commented out, files are now in database
+#Set-Location $env:pb_data
+#Move-Item -Force f002_claims_mstr \\$Env:root\foxtrot\purge\f002_claims_mstr_orig
+#Move-Item -Force f002_claims_mstr.idx \\$Env:root\foxtrot\purge\f002_claims_mstr_orig.idx
+#Move-Item -Force f002_claim_shadow \\$Env:root\foxtrot\purge\f002_claim_shadow_orig
+#Move-Item -Force f002_claim_shadow.idx \\$Env:root\foxtrot\purge\f002_claim_shadow_orig.idx
+#. .\createfiles.com
 
-Set-Location $env:pb_data
+#Core - commented out, files are now in database
+#Move-Item -Force f002_outstanding.dat \\$Env:root\foxtrot\purge\f002_outstanding_orig.dat
+#Move-Item -Force f002_outstanding.idx \\$Env:root\foxtrot\purge\f002_outstanding_orig.idx
 
-Move-Item -Force f002_claims_mstr \\$Env:root\foxtrot\purge\f002_claims_mstr_orig
-Move-Item -Force f002_claims_mstr.idx \\$Env:root\foxtrot\purge\f002_claims_mstr_orig.idx
-Move-Item -Force f002_claim_shadow \\$Env:root\foxtrot\purge\f002_claim_shadow_orig
-Move-Item -Force f002_claim_shadow.idx \\$Env:root\foxtrot\purge\f002_claim_shadow_orig.idx
-
-# MC7
-##rm f002_claims_mstr.dat
-##rm f002_claim_shadow.dat
-
-
-. .\createfiles.com
-
-# MC6
-
-#############################################################################
-
-# MC7
-##mv f002_outstanding.dat        /foxtrot/purge/f002_outstanding.dat
-##mv f002_outstanding.idx        /foxtrot/purge/f002_outstanding.idx
-Move-Item -Force f002_outstanding.dat \\$Env:root\foxtrot\purge\f002_outstanding_orig.dat
-Move-Item -Force f002_outstanding.idx \\$Env:root\foxtrot\purge\f002_outstanding_orig.idx
-
-<#$pipedInput = @"
-create file f002-outstanding
-"@
-
-$pipedInput | qutil++#>
 $rcmd = $env:TRUNCATE+ "f002_outstanding"
 Invoke-Expression $rcmd
 
@@ -1455,17 +1437,15 @@ Invoke-Expression $rcmd
 
 # 2011/feb/22  - save the following two files as well
 
-Copy-Item f002_claims_extra \\$Env:root\foxtrot\purge\f002_claims_extra_orig
-Copy-Item f002_claims_extra.idx \\$Env:root\foxtrot\purge\f002_claims_extra_orig.idx
-Copy-Item f085_rejected_claims \\$Env:root\foxtrot\purge\f085_rejected_claims_orig
-Copy-Item f085_rejected_claims.idx \\$Env:root\foxtrot\purge\f085_rejected_claims_orig.idx
-
-# 2011/Jun/06  - save the following two files as well
-
-Copy-Item f071_client_rma_claim_nbr \\$Env:root\foxtrot\purge\f071_client_rma_claim_nbr_orig
-Copy-Item f071_client_rma_claim_nbr.idx \\$Env:root\foxtrot\purge\f071_client_rma_claim_nbr_orig.idx
-Copy-Item f099_group_claim_mstr.dat \\$Env:root\foxtrot\purge\f099_group_claim_mstr_orig.dat
-Copy-Item f099_group_claim_mstr.idx \\$Env:root\foxtrot\purge\f099_group_claim_mstr_orig.idx
+#Core - commented out, files are now in database
+#Copy-Item f002_claims_extra \\$Env:root\foxtrot\purge\f002_claims_extra_orig
+#Copy-Item f002_claims_extra.idx \\$Env:root\foxtrot\purge\f002_claims_extra_orig.idx
+#Copy-Item f085_rejected_claims \\$Env:root\foxtrot\purge\f085_rejected_claims_orig
+#Copy-Item f085_rejected_claims.idx \\$Env:root\foxtrot\purge\f085_rejected_claims_orig.idx
+#Copy-Item f071_client_rma_claim_nbr \\$Env:root\foxtrot\purge\f071_client_rma_claim_nbr_orig
+#Copy-Item f071_client_rma_claim_nbr.idx \\$Env:root\foxtrot\purge\f071_client_rma_claim_nbr_orig.idx
+#Copy-Item f099_group_claim_mstr.dat \\$Env:root\foxtrot\purge\f099_group_claim_mstr_orig.dat
+#Copy-Item f099_group_claim_mstr.idx \\$Env:root\foxtrot\purge\f099_group_claim_mstr_orig.idx
 
 #############################################################################
 
@@ -1502,9 +1482,13 @@ echo ""
 Get-Date
 
 Move-Item -Force r073 r073_after_claims_purge
-Get-Content r073 | Out-Printer
-Get-Content r073_after_claims_purge | Out-Printer
-Get-Content rv073_after | Out-Printer
+
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r073 | Out-Printer -Name $env:networkprinter
+   Get-Content r073_after_claims_purge | Out-Printer -Name $env:networkprinter
+   Get-Content rv073_after | Out-Printer -Name $env:networkprinter
+}
 
 echo "Ending r073 Time is $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"
 
@@ -1517,20 +1501,13 @@ Invoke-Expression $rcmd
 $rcmd = $env:QUIZ + "unlof085"
 Invoke-Expression $rcmd
 
-Set-Location $pb_data
-
-Remove-Item f002_claims_extra.idx
-Remove-Item f002_claims_extra
-
-# MC7
-##rm f002_claims_extra.dat
-
-Remove-Item f085_rejected_claims.idx
-Remove-Item f085_rejected_claims
-# MC7
-##rm f085_rejected_claims.dat
-
-. .\createfiles.com
+#Core - commented out, files are now in database
+#Set-Location $pb_data
+#Remove-Item f002_claims_extra.idx
+#Remove-Item f002_claims_extra
+#Remove-Item f085_rejected_claims.idx
+#Remove-Item f085_rejected_claims
+#. .\createfiles.com
 
 Set-Location \\$Env:root\charly\purge
 
@@ -1550,17 +1527,13 @@ Invoke-Expression $rcmd
 $rcmd = $env:QUIZ + "unlof099"
 Invoke-Expression $rcmd
 
-Set-Location $env:pb_data
-
-Remove-Item f071_client_rma_claim_nbr.idx
-Remove-Item f071_client_rma_claim_nbr
-# MC7 
-##rm f071_client_rma_claim_nbr.dat
-
-Remove-Item f099_group_claim_mstr.dat
-Remove-Item f099_group_claim_mstr.idx
-
-. .\createfiles.com
+#Core - commented out, files are now in database
+#Set-Location $env:pb_data
+#Remove-Item f071_client_rma_claim_nbr.idx
+#Remove-Item f071_client_rma_claim_nbr
+#Remove-Item f099_group_claim_mstr.dat
+#Remove-Item f099_group_claim_mstr.idx
+#. .\createfiles.com
 
 <#$pipedInput = @"
 create file f099-group-claim-mstr

@@ -16,7 +16,10 @@ echo "running u084a - download of Claims Inventory into data warehouse ..."
 echo "Hit Enter to print report ..."
 $garbage = Read-Host
 
-Get-Content r084.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r084.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo "Done"

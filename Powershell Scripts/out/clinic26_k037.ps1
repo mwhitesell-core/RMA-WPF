@@ -16,6 +16,9 @@ Invoke-Expression $rcmd
 $rcmd = $env:QUIZ + "k037_code DISC_k037"
 Invoke-Expression $rcmd
 
-Get-Content k037.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content k037.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo "End Time is $(Get-Date -uformat '%Y-%m-%d %H:%M:%S')"

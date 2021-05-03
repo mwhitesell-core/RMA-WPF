@@ -36,7 +36,10 @@ Get-Content r031_before_update_1.txt > r031b.txt
 Get-Content r031_before_update_2.txt >> r031b.txt
 Get-Content r031_before_update_3.txt >> r031b.txt
 
-Get-Content r031b.txt | Out-Printer
+if ( $env:networkprinter -ne 'null'  )
+{
+   Get-Content r031b.txt | Out-Printer -Name $env:networkprinter
+}
 
 echo ""
 echo ""
