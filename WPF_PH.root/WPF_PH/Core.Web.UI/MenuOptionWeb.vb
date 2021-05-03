@@ -13539,7 +13539,7 @@ QTPSessionID)
                     End If
                 End If
 
-                If ((SubType = SubFileType.Keep OrElse SubType = SubFileType.Portable) AndAlso Not IsKeepText) AndAlso Not blnDeletedSubFile Then
+                If Not NoSubFileData AndAlso ((SubType = SubFileType.Keep OrElse SubType = SubFileType.Portable) AndAlso Not IsKeepText) AndAlso Not blnDeletedSubFile Then
                     SqlHelper.ExecuteNonQuery(strConnect, CommandType.Text, strInsertRowSQL.ToString.Replace(m_strDelimiter, ","))
                 End If
 
