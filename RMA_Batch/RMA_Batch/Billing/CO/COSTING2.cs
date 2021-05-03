@@ -839,6 +839,12 @@ public class COSTING2_1_2 : COSTING2
         {
             Request("1_2");
 
+            //Write output to log file
+            if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING2.log"))
+            {
+                File.Delete(Directory.GetCurrentDirectory() + "\\COSTING2.log");
+            }
+
             using (SqlConnection conn = new SqlConnection(Common.GetSqlConnectionString()))
             {
                 using (SqlCommand cmd = new SqlCommand("INDEXED.sp_COSTING2", conn))
@@ -853,12 +859,6 @@ public class COSTING2_1_2 : COSTING2
 
                     COSTING2A_COUNT = (Int64)cmd.Parameters["@outCOSTING2A_COUNT"].Value;
                     COSTING2_COUNT = (Int64)cmd.Parameters["@outCOSTING2_COUNT"].Value;
-
-                    //Write output to log file
-                    if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING2.log"))
-                    {
-                        File.Delete(Directory.GetCurrentDirectory() + "\\COSTING2.log");
-                    }
 
                     StreamWriter sw = new StreamWriter(Directory.GetCurrentDirectory() + "\\COSTING2.log", true, System.Text.Encoding.Default);
                     sw.WriteLine("Request COSTING2_1" + Environment.NewLine);

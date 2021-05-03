@@ -723,12 +723,12 @@ public class U030B_PART1_EDIT_RECORDS_1 : U030B_PART1
                             {
 
 
-                                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_GOOD_145_REC, QDesign.NULL(GOOD_REC.Value) == "Y", SubFileType.Keep, fleU030_TAPE_145_FILE, X_GROUP_NBR);
+                                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_GOOD_145_REC, QDesign.NULL(GOOD_REC.Value) == "Y", SubFileType.KeepSQL, fleU030_TAPE_145_FILE, X_GROUP_NBR);
 
 
 
 
-                                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_UNMATCH, QDesign.NULL(GOOD_REC.Value) == "N", SubFileType.Keep, fleU030_TAPE_145_FILE, X_GROUP_NBR, X_TYPE, X_OMA_FOUND, X_TECH_AMT, X_PROF_AMT);
+                                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_UNMATCH, QDesign.NULL(GOOD_REC.Value) == "N", SubFileType.KeepSQL, fleU030_TAPE_145_FILE, X_GROUP_NBR, X_TYPE, X_OMA_FOUND, X_TECH_AMT, X_PROF_AMT);
 
 
 
@@ -1020,7 +1020,7 @@ public class U030B_PART1_SORT_GOOD_RECORDS_2 : U030B_PART1
             while (Sort(fleU030_GOOD_145_REC))
             {
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SORT_145_FILE, SubFileType.Keep, fleU030_GOOD_145_REC);
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SORT_145_FILE, SubFileType.KeepSQL, fleU030_GOOD_145_REC);
 
 
 

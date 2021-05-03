@@ -682,6 +682,12 @@ public class COSTING7_1_2 : COSTING7
         {
             Request("1_2");
 
+            //Write output to log file
+            if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING7.log"))
+            {
+                File.Delete(Directory.GetCurrentDirectory() + "\\COSTING7.log");
+            }
+
             using (SqlConnection conn = new SqlConnection(Common.GetSqlConnectionString()))
             {
                 using (SqlCommand cmd = new SqlCommand("INDEXED.sp_COSTING7", conn))
@@ -694,12 +700,6 @@ public class COSTING7_1_2 : COSTING7
                     cmd.ExecuteNonQuery();
 
                     TMP_COUNTERS_ALPHA_COUNT = (Int64)cmd.Parameters["@outTMP_COUNTERS_ALPHA_COUNT"].Value;
-
-                    //Write output to log file
-                    if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING7.log"))
-                    {
-                        File.Delete(Directory.GetCurrentDirectory() + "\\COSTING7.log");
-                    }
 
                     StreamWriter sw = new StreamWriter(Directory.GetCurrentDirectory() + "\\COSTING7.log", true, System.Text.Encoding.Default);
                     sw.WriteLine("Request COSTING7_1" + Environment.NewLine);

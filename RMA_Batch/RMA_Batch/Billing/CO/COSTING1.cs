@@ -118,30 +118,10 @@ public class COSTING1 : BaseClassControl
     {
         try
         {
-//            COSTING1_GET_REC_7_1 GET_REC_7_1 = new COSTING1_GET_REC_7_1(Name, Level);
-//            GET_REC_7_1.Run();
-//            GET_REC_7_1.Dispose();
-//            GET_REC_7_1 = null;
-
             COSTING1_COSTING_2 COSTING_2 = new COSTING1_COSTING_2(Name, Level);
             COSTING_2.Run();
             COSTING_2.Dispose();
             COSTING_2 = null;
-
-//            COSTING1_1_3 C1_3 = new COSTING1_1_3(Name, Level);
-//            C1_3.Run();
-//            C1_3.Dispose();
-//            C1_3 = null;
-
-//            COSTING1_2A_4 C2A_4 = new COSTING1_2A_4(Name, Level);
-//            C2A_4.Run();
-//            C2A_4.Dispose();
-//            C2A_4 = null;
-
-//            COSTING1_2B_5 C2B_5 = new COSTING1_2B_5(Name, Level);
-//            C2B_5.Run();
-//            C2B_5.Dispose();
-//            C2B_5 = null;
 
             return true;
         }
@@ -163,245 +143,12 @@ public class COSTING1 : BaseClassControl
     #endregion
 }
 
-public class COSTING1_GET_REC_7_1 : COSTING1
-{
-    public COSTING1_GET_REC_7_1(string Name, int Level)
-        : base(Name, Level, true)
-    {
-        this.ScreenType = ScreenTypes.QTP;
-        W_CURRENT_FISCAL_START_YYMMDD = new CoreDecimal("W_CURRENT_FISCAL_START_YYMMDD", 8, this, ResetTypes.ResetAtStartup);
-        W_CURRENT_FISCAL_END_YYMMDD = new CoreDecimal("W_CURRENT_FISCAL_END_YYMMDD", 8, this, ResetTypes.ResetAtStartup);
-        W_CURRENT_COSTING_CUTOFF_YYMMDD = new CoreDecimal("W_CURRENT_COSTING_CUTOFF_YYMMDD", 8, this, ResetTypes.ResetAtStartup);
-        W_CURRENT_COSTING_PED = new CoreDecimal("W_CURRENT_COSTING_PED", 8, this, ResetTypes.ResetAtStartup);
-        W_CURRENT_COSTING_PED_YYMM = new CoreDecimal("W_CURRENT_COSTING_PED_YYMM", 6, this, ResetTypes.ResetAtStartup);
-        W_PREVIOUS_FISCAL_START_YYMMDD = new CoreDecimal("W_PREVIOUS_FISCAL_START_YYMMDD", 8, this, ResetTypes.ResetAtStartup);
-        W_PREVIOUS_FISCAL_END_YYMMDD = new CoreDecimal("W_PREVIOUS_FISCAL_END_YYMMDD", 8, this, ResetTypes.ResetAtStartup);
-        W_EP_YR = new CoreDecimal("W_EP_YR", 2, this, ResetTypes.ResetAtStartup);
-        fleCONSTANTS_MSTR_REC_7 = new SqlFileObject(this, FileTypes.Primary, 0, "INDEXED", "CONSTANTS_MSTR_REC_7", "", false, false, false, 0, "m_trnTRANS_UPDATE");
-    }
-
-    #region "Declarations (Variables, Files and Transactions)(COSTING1_GET_REC_7_1)"
-
-    protected CoreDecimal W_CURRENT_FISCAL_START_YYMMDD;
-    protected CoreDecimal W_CURRENT_FISCAL_END_YYMMDD;
-    protected CoreDecimal W_CURRENT_COSTING_CUTOFF_YYMMDD;
-    protected CoreDecimal W_CURRENT_COSTING_PED;
-    protected CoreDecimal W_CURRENT_COSTING_PED_YYMM;
-    protected CoreDecimal W_PREVIOUS_FISCAL_START_YYMMDD;
-    protected CoreDecimal W_PREVIOUS_FISCAL_END_YYMMDD;
-    protected CoreDecimal W_EP_YR;
-    private SqlFileObject fleCONSTANTS_MSTR_REC_7;
-
-    #endregion
-    
-    #region "Standard Generated Procedures(COSTING1_GET_REC_7_1)"
-
-    #region "Automatic Item Initialization(COSTING1_GET_REC_7_1)"
-
-    //# NOTE: This region is placeholder and is required by the RenaissanceArchitectPreCompilerAddIn.
-    //# Do not delete, modify or move it.
-
-    #endregion
-
-    #region "Transaction Management Procedures(COSTING1_GET_REC_7_1)"
-
-    //# NOTE: This region is placeholder and is required by the RenaissanceArchitectPreCompilerAddIn.
-    //# Do not delete, modify or move it.  Updated: 6/27/2017 3:01:27 PM
-
-    //#-----------------------------------------
-    //# InitializeTransactionObjects Procedure.
-    //#-----------------------------------------
-    protected override void InitializeTransactionObjects()
-    {
-        try
-        {
-            m_cnnTRANS_UPDATE = new SqlConnection(Common.GetSqlConnectionString());
-            m_cnnTRANS_UPDATE.Open();
-            m_trnTRANS_UPDATE = m_cnnTRANS_UPDATE.BeginTransaction();
-            m_cnnQUERY = new SqlConnection(Common.GetSqlConnectionString());
-        }
-
-        catch (CustomApplicationException ex)
-        {
-            throw ex;
-        }
-
-        catch (Exception ex)
-        {
-            ExceptionManager.Publish(ex);
-            throw ex;
-        }
-    }
-
-    //#-----------------------------------------
-    //# CloseTransactionObjects Procedure.
-    //#-----------------------------------------
-    protected override void CloseTransactionObjects()
-    {
-        try
-        {
-            CloseFiles();
-
-            if ((m_trnTRANS_UPDATE != null))
-                m_trnTRANS_UPDATE.Dispose();
-            if ((m_cnnTRANS_UPDATE != null))
-                m_cnnTRANS_UPDATE.Close();
-            if ((m_cnnTRANS_UPDATE != null))
-                m_cnnTRANS_UPDATE.Dispose();
-            if ((m_cnnQUERY != null))
-                m_cnnQUERY.Close();
-            if ((m_cnnQUERY != null))
-                m_cnnQUERY.Dispose();
-        }
-
-        catch (CustomApplicationException ex)
-        {
-            throw ex;
-        }
-
-        catch (Exception ex)
-        {
-            ExceptionManager.Publish(ex);
-            throw ex;
-        }
-    }
-
-    protected override void TRANS_UPDATE(TransactionMethods Method)
-    {
-        if (Method == TransactionMethods.Rollback)
-        {
-            m_trnTRANS_UPDATE.Rollback();
-        }
-        else
-        {
-            m_trnTRANS_UPDATE.Commit();
-        }
-
-        m_trnTRANS_UPDATE = m_cnnTRANS_UPDATE.BeginTransaction();
-        Initialize_TRANS_UPDATE();
-    }
-
-    private void Initialize_TRANS_UPDATE()
-    {
-        fleCONSTANTS_MSTR_REC_7.Transaction = m_trnTRANS_UPDATE;
-    }
-
-    #endregion
-
-    #region "FILE Management Procedures(COSTING1_GET_REC_7_1)"
-
-    //# NOTE: This region is placeholder and is required by the RenaissanceArchitectPreCompilerAddIn.
-    //# Do not delete, modify or move it.  Updated: 6/27/2017 3:01:28 PM
-
-    //#-----------------------------------------
-    //# InitializeFiles Procedure.
-    //#-----------------------------------------
-    protected override void InitializeFiles()
-    {
-        try
-        {
-            Initialize_TRANS_UPDATE();
-        }
-
-        catch (CustomApplicationException ex)
-        {
-            throw ex;
-        }
-
-        catch (Exception ex)
-        {
-            ExceptionManager.Publish(ex);
-            throw ex;
-        }
-    }
-
-    //#-----------------------------------------
-    //# CloseFiles Procedure.
-    //#-----------------------------------------
-    protected override void CloseFiles()
-    {
-        try
-        {
-            fleCONSTANTS_MSTR_REC_7.Dispose();
-        }
-
-        catch (CustomApplicationException ex)
-        {
-            throw ex;
-        }
-
-        catch (Exception ex)
-        {
-            ExceptionManager.Publish(ex);
-            throw ex;
-        }
-    }
-
-    #endregion
-
-    #endregion
-    
-    #region "Local Procedures (DESIGNERS, INTERNAL and INPUT, EDIT, PROCESS and OUTPUT)(COSTING1_GET_REC_7_1)"
-    
-    public void Run()
-    {
-        try
-        {
-            Request("GET_REC_7_1");
-
-            while (fleCONSTANTS_MSTR_REC_7.QTPForMissing())
-            {
-                // --> GET CONSTANTS_MSTR_REC_7 <--
-                fleCONSTANTS_MSTR_REC_7.GetData();
-                // --> End GET CONSTANTS_MSTR_REC_7 <--
-
-                if (Transaction())
-                {
-                    W_CURRENT_FISCAL_START_YYMMDD.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("CURRENT_FISCAL_START_YYMMDD");
-                    W_CURRENT_FISCAL_END_YYMMDD.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("CURRENT_FISCAL_END_YYMMDD");
-                    W_CURRENT_COSTING_CUTOFF_YYMMDD.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("CURRENT_COSTING_CUTOFF_YYMMDD");
-                    W_CURRENT_COSTING_PED.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("CURRENT_COSTING_PED");
-                    W_CURRENT_COSTING_PED_YYMM.Value = (int)fleCONSTANTS_MSTR_REC_7.GetDecimalValue("CURRENT_COSTING_PED") / 100;
-                    W_PREVIOUS_FISCAL_START_YYMMDD.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("PREVIOUS_FISCAL_START_YYMMDD");
-                    W_PREVIOUS_FISCAL_END_YYMMDD.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("PREVIOUS_FISCAL_END_YYMMDD");
-                    W_EP_YR.Value = fleCONSTANTS_MSTR_REC_7.GetDecimalValue("EP_YR");
-                }
-            }
-        }
-
-        catch (CustomApplicationException ex)
-        {
-            WriteError(ex);
-        }
-
-        catch (Exception ex)
-        {
-            WriteError(ex);
-        }
-
-        finally
-        {
-            EndRequest("GET_REC_7_1");
-        }
-    }
-
-    #endregion
-}
-//GET_REC_7_1
-
 public class COSTING1_COSTING_2 : COSTING1
 {
     public COSTING1_COSTING_2(string Name, int Level)
         : base(Name, Level, true)
     {
         this.ScreenType = ScreenTypes.QTP;
-        //fleF002_CLAIMS_MSTR = new SqlFileObject(this, FileTypes.Primary, 0, "INDEXED", "F002_CLAIMS_MSTR_HDR", "", false, false, false, 0, "m_trnTRANS_UPDATE");
-        //fleF020_DOCTOR_MSTR = new SqlFileObject(this, FileTypes.Primary, 0, "INDEXED", "F020_DOCTOR_MSTR", "", false, false, false, 0, "m_trnTRANS_UPDATE");
-        //fleCOSTING = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "COSTING", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
-
-        //fleF002_CLAIMS_MSTR.Choose += fleF002_CLAIMS_MSTR_Choose;
-        //DOC_START_YYMM.GetValue += DOC_START_YYMM_GetValue;
-        //fleF020_DOCTOR_MSTR.SelectIf += fleF020_DOCTOR_MSTR_SelectIf;
     }
 
     #region "Declarations (Variables, Files and Transactions)(COSTING1_COSTING_2)"
@@ -696,6 +443,12 @@ public class COSTING1_COSTING_2 : COSTING1
         {
             Request("COSTING_2");
 
+            //Write output to log file
+            if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING1.log"))
+            {
+                File.Delete(Directory.GetCurrentDirectory() + "\\COSTING1.log");
+            }
+
             using (SqlConnection conn = new SqlConnection(Common.GetSqlConnectionString()))
             {
                 using (SqlCommand cmd = new SqlCommand("INDEXED.sp_COSTING1", conn))
@@ -714,12 +467,6 @@ public class COSTING1_COSTING_2 : COSTING1
                     COSTING1_COUNT = (Int64)cmd.Parameters["@outCOSTING1_COUNT"].Value;
                     COSTING1B_COUNT = (Int64)cmd.Parameters["@outCOSTING1B_COUNT"].Value;
                     COSTING2_COUNT = (Int64)cmd.Parameters["@outCOSTING2_COUNT"].Value;
-
-                    //Write output to log file
-                    if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING1.log"))
-                    {
-                        File.Delete(Directory.GetCurrentDirectory() + "\\COSTING1.log");
-                    }
 
                     StreamWriter sw = new StreamWriter(Directory.GetCurrentDirectory() + "\\COSTING1.log", true, System.Text.Encoding.Default);
                     sw.WriteLine("Request COSTING" + Environment.NewLine);

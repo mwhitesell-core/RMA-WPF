@@ -836,6 +836,12 @@ public class COSTING3_1_2 : COSTING3
         {
             Request("1_2");
 
+            //Write output to log file
+            if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING3.log"))
+            {
+                File.Delete(Directory.GetCurrentDirectory() + "\\COSTING3.log");
+            }
+
             using (SqlConnection conn = new SqlConnection(Common.GetSqlConnectionString()))
             {
                 using (SqlCommand cmd = new SqlCommand("INDEXED.sp_COSTING3", conn))
@@ -850,12 +856,6 @@ public class COSTING3_1_2 : COSTING3
 
                     COSTING3_DEBUG_COUNT = (Int64)cmd.Parameters["@outCOSTING3_DEBUG_COUNT"].Value;
                     DOC_TOTALS_TMP_COUNT = (Int64)cmd.Parameters["@outDOC_TOTALS_TMP_COUNT"].Value;
-
-                    //Write output to log file
-                    if (File.Exists(Directory.GetCurrentDirectory() + "\\COSTING3.log"))
-                    {
-                        File.Delete(Directory.GetCurrentDirectory() + "\\COSTING3.log");
-                    }
 
                     StreamWriter sw = new StreamWriter(Directory.GetCurrentDirectory() + "\\COSTING3.log", true, System.Text.Encoding.Default);
                     sw.WriteLine("Request COSTING3_1" + Environment.NewLine);

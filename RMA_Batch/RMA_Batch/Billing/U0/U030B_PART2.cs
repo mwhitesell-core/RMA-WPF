@@ -1043,7 +1043,7 @@ public class U030B_PART2_EXTRACT_CLAIMS_1 : U030B_PART2
                         if (Transaction())
                         {
 
-                            Sort(fleU030_SORT_145_FILE.GetSortValue("RAT_145_ACCOUNT_NBR"));
+                            Sort(fleU030_SORT_145_FILE.GetSortValue("X_GROUP_NBR"), fleU030_SORT_145_FILE.GetSortValue("RAT_145_ACCOUNT_NBR"), fleU030_SORT_145_FILE.GetSortValue("RAT_145_EXPLAN_CD", SortType.Descending));
 
 
 
@@ -1074,9 +1074,9 @@ public class U030B_PART2_EXTRACT_CLAIMS_1 : U030B_PART2
                     X_EXPLAN_CD.Value = X_EXPLAN_CD.Value;
                 }
                
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_DTL, (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)), SubFileType.Keep, fleU030_SORT_145_FILE);
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_DTL, (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)), SubFileType.KeepSQL, fleU030_SORT_145_FILE);
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_UNMATCH, (!fleF002_CLAIMS_MSTR.Exists() | (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) != 0 & QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) != 2 & QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) != 4)), SubFileType.Keep, SubFileMode.Append, fleU030_SORT_145_FILE, X_TYPE, X_OMA_FOUND, X_TECH_AMT, X_PROF_AMT);
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_UNMATCH, (!fleF002_CLAIMS_MSTR.Exists() | (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) != 0 & QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) != 2 & QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) != 4)), SubFileType.KeepSQL, SubFileMode.Append, fleU030_SORT_145_FILE, X_TYPE, X_OMA_FOUND, X_TECH_AMT, X_PROF_AMT);
 
                 SubTotal(ref fleF002_CLAIMS_MSTR, "CLMHDR_MANUAL_AND_TAPE_PAYMENTS", X_RAT_145_AMT_PAID.Value);
 
@@ -1086,7 +1086,7 @@ public class U030B_PART2_EXTRACT_CLAIMS_1 : U030B_PART2
 
                 fleF002_CLAIMS_EXTRA.OutPut(OutPutType.Add_Update, fleU030_SORT_145_FILE.At("RAT_145_ACCOUNT_NBR"), (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)));
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PAID_AMT, fleU030_SORT_145_FILE.At("RAT_145_ACCOUNT_NBR"), (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)), SubFileType.Keep, fleU030_SORT_145_FILE, "X_GROUP_NBR", "RAT_145_ACCOUNT_NBR", fleF002_CLAIMS_MSTR, "CLMHDR_DOC_DEPT",
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PAID_AMT, fleU030_SORT_145_FILE.At("RAT_145_ACCOUNT_NBR"), (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)), SubFileType.KeepSQL, fleU030_SORT_145_FILE, "X_GROUP_NBR", "RAT_145_ACCOUNT_NBR", fleF002_CLAIMS_MSTR, "CLMHDR_DOC_DEPT",
                 "CLMHDR_LOC", X_TOT_AMT_PAID, X_TOT_AMT_BILL, "CLMHDR_AGENT_CD");
 
              
@@ -1376,9 +1376,9 @@ public class U030B_PART2_SPLIT_CLAIMS_2 : U030B_PART2
 
                     if (Transaction())
                     {
-                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_FULLY_PAID, !flePART_PAID_HDR.Exists(), SubFileType.Keep, fleU030_PAID_AMT);
+                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_FULLY_PAID, !flePART_PAID_HDR.Exists(), SubFileType.KeepSQL, fleU030_PAID_AMT);
 
-                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PARTIALLY_PAID, flePART_PAID_HDR.Exists(), SubFileType.Keep, fleU030_PAID_AMT);
+                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PARTIALLY_PAID, flePART_PAID_HDR.Exists(), SubFileType.KeepSQL, fleU030_PAID_AMT);
                     }
                 }
             }
@@ -2003,7 +2003,7 @@ public class U030B_PART2_EXTRACT_ISAM_DTL_4 : U030B_PART2
                     if (Transaction())
                     {
                         PART_HDR_CLAIM_ID.Value = QDesign.ASCII(flePART_PAID_HDR.GetDecimalValue("PART_HDR_CLINIC_NBR")) + flePART_PAID_HDR.GetStringValue("PART_HDR_CLAIM_NBR");
-                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_EXTRACT_DTL, SubFileType.Keep, PART_HDR_CLAIM_ID, fleU030_DTL, "RAT_145_SERVICE_CD", "RAT_145_EXPLAN_CD", "X_GROUP_NBR", "RAT_145_ACCOUNT_NBR",
+                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_EXTRACT_DTL, SubFileType.KeepSQL, PART_HDR_CLAIM_ID, fleU030_DTL, "RAT_145_SERVICE_CD", "RAT_145_EXPLAN_CD", "X_GROUP_NBR", "RAT_145_ACCOUNT_NBR",
                             "RAT_145_AMOUNT_SUB", "RAT_145_AMT_PAID", "RAT_145_SERVICE_DATE", "RAT_145_NBR_OF_SERV");
 
 
@@ -2081,7 +2081,7 @@ public class U030B_PART2_CREATE_ISAM_DTL_5 : U030B_PART2
             if (!Fixed)
                 flePART_PAID_DTL.set_SetValue("PART_DTL_OMA_CD", true, fleU030_EXTRACT_DTL.GetStringValue("RAT_145_SERVICE_CD"));
             if (!Fixed)
-                flePART_PAID_DTL.set_SetValue("PART_DTL_SERV_DATE", true, fleU030_EXTRACT_DTL.GetNumericDateValue("RAT_145_SERVICE_DATE"));
+                flePART_PAID_DTL.set_SetValue("PART_DTL_SERV_DATE", true, fleU030_EXTRACT_DTL.GetDecimalValue("RAT_145_SERVICE_DATE"));
             if (!Fixed)
                 flePART_PAID_DTL.set_SetValue("PART_DTL_EQUIV_FLAG", true, " ");
 
@@ -2380,7 +2380,7 @@ public class U030B_PART2_CREATE_ISAM_DTL_5 : U030B_PART2
 
                 flePART_PAID_DTL.OutPut(OutPutType.Add, fleU030_EXTRACT_DTL.At("PART_HDR_CLAIM_ID") || fleU030_EXTRACT_DTL.At("RAT_145_SERVICE_CD"), null);
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SORT_HDR, fleU030_EXTRACT_DTL.At("PART_HDR_CLAIM_ID"), SubFileType.Keep, fleU030_EXTRACT_DTL, "PART_HDR_CLAIM_ID", "RAT_145_SERVICE_DATE");
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SORT_HDR, fleU030_EXTRACT_DTL.At("PART_HDR_CLAIM_ID"), SubFileType.KeepSQL, fleU030_EXTRACT_DTL, "PART_HDR_CLAIM_ID", "RAT_145_SERVICE_DATE");
             }
         }
         catch (CustomApplicationException ex)
@@ -2439,7 +2439,7 @@ public class U030B_PART2_UPDATE_PART_HDR_6 : U030B_PART2
 
         try
         {
-            flePART_PAID_HDR.set_SetValue("PART_HDR_SERV_DATE", fleU030_SORT_HDR.GetNumericDateValue("RAT_145_SERVICE_DATE"));
+            flePART_PAID_HDR.set_SetValue("PART_HDR_SERV_DATE", fleU030_SORT_HDR.GetDecimalValue("RAT_145_SERVICE_DATE"));
 
 
         }
@@ -3034,7 +3034,7 @@ public class U030B_PART2_MATCH_CLMDTL_7 : U030B_PART2
                         if (Select_If())
                         {
 
-                            SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NOMATCH_DTL, SubFileType.Keep, flePART_PAID_DTL);
+                            SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NOMATCH_DTL, SubFileType.KeepSQL, flePART_PAID_DTL);
                         
 
                         }
@@ -3392,7 +3392,7 @@ public class U030B_PART2_MATCH_EQUIV_TABLE_8 : U030B_PART2
 
                     }  
 
-                    SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NO_EQUIV, !fleF098_EQUIV_OMA_CODE_MSTR.Exists(), SubFileType.Keep, fleU030_NOMATCH_DTL);
+                    SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NO_EQUIV, !fleF098_EQUIV_OMA_CODE_MSTR.Exists(), SubFileType.KeepSQL, fleU030_NOMATCH_DTL);
                    
 
                 }
@@ -4272,15 +4272,15 @@ public class U030B_PART2_DETERMINE_ADJUSTMENT_9 : U030B_PART2
                                     if (Select_If())
                                     {
                                         PART_HDR_CLAIM_ID.Value = QDesign.ASCII(flePART_PAID_HDR.GetDecimalValue("PART_HDR_CLINIC_NBR")) + flePART_PAID_HDR.GetStringValue("PART_HDR_CLAIM_NBR");
-                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_AUTO_ADJ, QDesign.NULL(X_AUTO_ADJ.Value) == "Y" & QDesign.NULL(X_HOLD_BACK.Value) == "N" & QDesign.NULL(X_OVER_PAY.Value) == "N", SubFileType.Keep, X_BAL_FLAG, X_PART_BAL, PART_HDR_CLAIM_ID, flePART_PAID_HDR);
+                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_AUTO_ADJ, QDesign.NULL(X_AUTO_ADJ.Value) == "Y" & QDesign.NULL(X_HOLD_BACK.Value) == "N" & QDesign.NULL(X_OVER_PAY.Value) == "N", SubFileType.KeepSQL, X_BAL_FLAG, X_PART_BAL, PART_HDR_CLAIM_ID, flePART_PAID_HDR);
                                         
-                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NO_ADJ, (QDesign.NULL(X_AUTO_ADJ.Value) != "Y" & QDesign.NULL(X_HOLD_BACK.Value) == "N" & QDesign.NULL(X_OVER_PAY.Value) == "N"), SubFileType.Keep, X_BAL_FLAG, PART_HDR_CLAIM_ID,  flePART_PAID_HDR);
+                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NO_ADJ, (QDesign.NULL(X_AUTO_ADJ.Value) != "Y" & QDesign.NULL(X_HOLD_BACK.Value) == "N" & QDesign.NULL(X_OVER_PAY.Value) == "N"), SubFileType.KeepSQL, X_BAL_FLAG, PART_HDR_CLAIM_ID,  flePART_PAID_HDR);
 
-                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_HOLDBACK, QDesign.NULL(X_HOLD_BACK.Value) == "Y", SubFileType.Keep, X_BAL_FLAG, PART_HDR_CLAIM_ID,  flePART_PAID_HDR);
+                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_HOLDBACK, QDesign.NULL(X_HOLD_BACK.Value) == "Y", SubFileType.KeepSQL, X_BAL_FLAG, PART_HDR_CLAIM_ID,  flePART_PAID_HDR);
 
-                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_OVERPAY, QDesign.NULL(X_OVER_PAY.Value) == "Y", SubFileType.Keep, X_BAL_FLAG, PART_HDR_CLAIM_ID,  flePART_PAID_HDR);
+                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_OVERPAY, QDesign.NULL(X_OVER_PAY.Value) == "Y", SubFileType.KeepSQL, X_BAL_FLAG, PART_HDR_CLAIM_ID,  flePART_PAID_HDR);
 
-                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_TOT_CLAIMS, SubFileType.Keep, X_AUTO_ADJ, X_BAL_FLAG, X_HOLD_BACK, X_OVER_PAY, X_ADJ_SERV_CODE, X_PART_BAL, PART_HDR_CLAIM_ID, flePART_PAID_HDR);
+                                        SubFile(ref m_trnTRANS_UPDATE, ref fleU030_TOT_CLAIMS, SubFileType.KeepSQL, X_AUTO_ADJ, X_BAL_FLAG, X_HOLD_BACK, X_OVER_PAY, X_ADJ_SERV_CODE, X_PART_BAL, PART_HDR_CLAIM_ID, flePART_PAID_HDR);
 
 
                                     }
@@ -4637,7 +4637,7 @@ public class U030B_PART2_SUMM_CLAIM_SERV_CODE_10 : U030B_PART2
                 CLMDTL_SV_DATE.Value = Convert.ToDecimal(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMDTL_SV_YY").ToString().PadLeft(4, '0') + fleF002_CLAIMS_MSTR.GetDecimalValue("CLMDTL_SV_MM").ToString().PadLeft(2, '0') + fleF002_CLAIMS_MSTR.GetDecimalValue("CLMDTL_SV_DD").ToString().PadLeft(2, '0'));
 
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SUMM_SERV_CODE, fleU030_AUTO_ADJ.At("PART_HDR_CLAIM_ID") || fleF002_CLAIMS_MSTR.At("KEY_CLM_SERV_CODE"), SubFileType.Keep, 
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SUMM_SERV_CODE, fleU030_AUTO_ADJ.At("PART_HDR_CLAIM_ID") || fleF002_CLAIMS_MSTR.At("KEY_CLM_SERV_CODE"), SubFileType.KeepSQL, 
                     X_AMT_BILLED, fleF002_CLAIMS_MSTR, "KEY_CLM_SERV_CODE", fleU030_AUTO_ADJ, fleF002_CLAIMS_MSTR, "CLMDTL_DIAG_CD",
                 CLMDTL_SV_DATE, fleF002_CLAIMS_MSTR, "CLMDTL_LINE_NO", X_AMT_DTL_TECH_BILLED);
               
@@ -5022,10 +5022,10 @@ public class U030B_PART2_MATCH_DTL_11 : U030B_PART2
                     X_TOT_BAL.Value = X_TOT_BAL.Value + X_BAL_DIFF.Value;
                 }
                 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_AUTO_ADJDTL, QDesign.NULL(X_BAL_DIFF.Value) != 0 & flePART_PAID_DTL.Exists(), SubFileType.Keep, X_ADJ_SERV_CODE, fleU030_SUMM_SERV_CODE, "PART_HDR_CLAIM_ID", "CLMDTL_DIAG_CD", "CLMDTL_SV_DATE", "CLMDTL_LINE_NO",
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_AUTO_ADJDTL, QDesign.NULL(X_BAL_DIFF.Value) != 0 & flePART_PAID_DTL.Exists(), SubFileType.KeepSQL, X_ADJ_SERV_CODE, fleU030_SUMM_SERV_CODE, "PART_HDR_CLAIM_ID", "CLMDTL_DIAG_CD", "CLMDTL_SV_DATE", "CLMDTL_LINE_NO",
                  X_BAL_DIFF, flePART_PAID_DTL, "PART_DTL_EXPLAN_CD", fleU030_SUMM_SERV_CODE, "X_AMT_BILLED", "X_AMT_DTL_TECH_BILLED");
               
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NO_ADJCLM_CREATED, fleU030_SUMM_SERV_CODE.At("PART_HDR_CLAIM_ID"), SubFileType.Keep, X_ADJ_SERV_CODE, fleU030_SUMM_SERV_CODE, "PART_HDR_CLAIM_ID", "CLMDTL_DIAG_CD", "CLMDTL_SV_DATE", "CLMDTL_LINE_NO", 
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_NO_ADJCLM_CREATED, fleU030_SUMM_SERV_CODE.At("PART_HDR_CLAIM_ID"), SubFileType.KeepSQL, X_ADJ_SERV_CODE, fleU030_SUMM_SERV_CODE, "PART_HDR_CLAIM_ID", "CLMDTL_DIAG_CD", "CLMDTL_SV_DATE", "CLMDTL_LINE_NO", 
                 flePART_PAID_DTL, "PART_DTL_EXPLAN_CD", fleU030_SUMM_SERV_CODE, "X_PART_BAL", X_TOT_BAL, X_SEL_DTL);
                
                 Reset(ref X_SEL_DTL, fleU030_SUMM_SERV_CODE.At("PART_HDR_CLAIM_ID"));
@@ -5480,7 +5480,7 @@ public class U030B_PART2_GEN_HOLDBACK_OVERPAY_DTL_12 : U030B_PART2
                           
                             CLMDTL_SV_DATE.Value = Convert.ToDecimal(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMDTL_SV_YY").ToString().PadLeft(4, '0') + fleF002_CLAIMS_MSTR.GetDecimalValue("CLMDTL_SV_MM").ToString().PadLeft(2, '0') + fleF002_CLAIMS_MSTR.GetDecimalValue("CLMDTL_SV_DD").ToString().PadLeft(2, '0'));
 
-                            SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PAID_DIFF, SubFileType.Keep, fleU030_TOT_CLAIMS, "X_ADJ_SERV_CODE", "PART_HDR_CLAIM_ID", "PART_HDR_CLINIC_NBR", "PART_HDR_CLAIM_NBR", fleF002_CLAIMS_MSTR, "CLMDTL_DIAG_CD", CLMDTL_SV_DATE, fleF002_CLAIMS_MSTR, "CLMDTL_LINE_NO", X_BAL_DIFF,
+                            SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PAID_DIFF, SubFileType.KeepSQL, fleU030_TOT_CLAIMS, "X_ADJ_SERV_CODE", "PART_HDR_CLAIM_ID", "PART_HDR_CLINIC_NBR", "PART_HDR_CLAIM_NBR", fleF002_CLAIMS_MSTR, "CLMDTL_DIAG_CD", CLMDTL_SV_DATE, fleF002_CLAIMS_MSTR, "CLMDTL_LINE_NO", X_BAL_DIFF,
                             X_DTL_BAL_DIFF, flePART_PAID_DTL, "PART_DTL_EXPLAN_CD", X_AMT_BILLED, X_AMT_DTL_TECH_BILLED);
                           
 
@@ -5768,7 +5768,7 @@ public class U030B_PART2_SORT_BY_DIFF_BAL_13 : U030B_PART2
             while (Sort(fleU030_PAID_DIFF))
             {
                 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_AUTO_ADJDTL, fleU030_PAID_DIFF.At("PART_HDR_CLAIM_ID"), SubFileType.Keep, fleU030_PAID_DIFF, "X_ADJ_SERV_CODE", "PART_HDR_CLAIM_ID", "CLMDTL_DIAG_CD", "CLMDTL_SV_DATE", "CLMDTL_LINE_NO", "X_BAL_DIFF",
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_AUTO_ADJDTL, fleU030_PAID_DIFF.At("PART_HDR_CLAIM_ID"), SubFileType.KeepSQL, fleU030_PAID_DIFF, "X_ADJ_SERV_CODE", "PART_HDR_CLAIM_ID", "CLMDTL_DIAG_CD", "CLMDTL_SV_DATE", "CLMDTL_LINE_NO", "X_BAL_DIFF",
                 "PART_DTL_EXPLAN_CD", "X_AMT_BILLED", "X_AMT_DTL_TECH_BILLED");
              
 
@@ -6072,7 +6072,7 @@ public class U030B_PART2_CALC_BATCH_NBR_14 : U030B_PART2
 
                 SubFile(ref m_trnTRANS_UPDATE, ref fleU030_SRT_ADJ, SubFileType.Keep, X_COUNT, X_BATCH_COUNT, fleU030_AUTO_ADJDTL);
                
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_UPDATE_CLMHDR, fleU030_AUTO_ADJDTL.At("PART_HDR_CLAIM_ID"), SubFileType.Keep, fleU030_AUTO_ADJDTL, "PART_HDR_CLAIM_ID", X_CLAIM_BAL, "PART_DTL_EXPLAN_CD", X_HDR_AMT_BILLED, X_HDR_AMT_TECH_BILLED);
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_UPDATE_CLMHDR, fleU030_AUTO_ADJDTL.At("PART_HDR_CLAIM_ID"), SubFileType.KeepSQL, fleU030_AUTO_ADJDTL, "PART_HDR_CLAIM_ID", X_CLAIM_BAL, "PART_DTL_EXPLAN_CD", X_HDR_AMT_BILLED, X_HDR_AMT_TECH_BILLED);
               
 
                 Reset(ref X_CLAIM_BAL, fleU030_AUTO_ADJDTL.At("PART_HDR_CLAIM_ID"));
@@ -6763,7 +6763,7 @@ public class U030B_PART2_CREATE_B_ADJUSTMENT_15 : U030B_PART2
            
           
             if (!Fixed)
-                fleF002_ADJ_DTL.set_SetValue("CLMDTL_DATE_PERIOD_END", true, QDesign.ASCII(fleF002_ADJ_HDR.GetNumericDateValue("CLMHDR_DATE_PERIOD_END"), 8));
+                fleF002_ADJ_DTL.set_SetValue("CLMDTL_DATE_PERIOD_END", true, QDesign.ASCII(fleF002_ADJ_HDR.GetDecimalValue("CLMHDR_DATE_PERIOD_END"), 8));
             if (!Fixed)
                 fleF002_ADJ_DTL.set_SetValue("CLMDTL_CYCLE_NBR", true, fleF002_ADJ_HDR.GetDecimalValue("CLMHDR_CYCLE_NBR"));
             if (!Fixed)
@@ -7107,7 +7107,7 @@ public class U030B_PART2_CREATE_B_ADJUSTMENT_15 : U030B_PART2
                     X_BATCH_NBR.Value = fleICONST_MSTR_REC.GetDecimalValue("ICONST_CLINIC_BATCH_NBR");
                 }
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030BRADADJ, SubFileType.Keep, X_CLINIC_BATCH_NBR, X_CLAIM_NBR, fleF002_CLMHDR, "CLMHDR_TOT_CLAIM_AR_OMA", X_TOT_CLAIM_AR_OMA, "CLMHDR_TOT_CLAIM_AR_OHIP", X_OHIP_BAL,
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030BRADADJ, SubFileType.KeepSQL, X_CLINIC_BATCH_NBR, X_CLAIM_NBR, fleF002_CLMHDR, "CLMHDR_TOT_CLAIM_AR_OMA", X_TOT_CLAIM_AR_OMA, "CLMHDR_TOT_CLAIM_AR_OHIP", X_OHIP_BAL,
                 "CLMHDR_AMT_TECH_BILLED", X_AMT_TECH_BILLED, fleU030_SRT_ADJ);
              
                 SubTotal(ref fleF001_BATCH_CONTROL_FILE, "BATCTRL_AMT_ACT", X_OHIP_BAL.Value);
@@ -7132,7 +7132,7 @@ public class U030B_PART2_CREATE_B_ADJUSTMENT_15 : U030B_PART2
                 fleF002_ADJ_HDR.GetData(m_strWhere.ToString());
 
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_DTL_KEY, SubFileType.Keep, fleF002_ADJ_HDR, "KEY_CLM_TYPE", "KEY_CLM_BATCH_NBR", "KEY_CLM_CLAIM_NBR", "KEY_CLM_SERV_CODE", "KEY_CLM_ADJ_NBR");
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_DTL_KEY, SubFileType.KeepSQL, fleF002_ADJ_HDR, "KEY_CLM_TYPE", "KEY_CLM_BATCH_NBR", "KEY_CLM_CLAIM_NBR", "KEY_CLM_SERV_CODE", "KEY_CLM_ADJ_NBR");
 
                 if (fleU030_SRT_ADJ.At("X_BATCH_COUNT"))
                 {
@@ -7143,7 +7143,7 @@ public class U030B_PART2_CREATE_B_ADJUSTMENT_15 : U030B_PART2
                     m_strWhere.Append(Common.StringToField(X_CLINIC_BATCH_NBR.Value));
                     fleF001_BATCH_CONTROL_FILE.GetData(m_strWhere.ToString());
 
-                    SubFile(ref m_trnTRANS_UPDATE, ref fleU030_ADJ_BATCHES, fleU030_SRT_ADJ.At("X_BATCH_COUNT"), SubFileType.Keep, fleF001_BATCH_CONTROL_FILE, "BATCTRL_BATCH_NBR");
+                    SubFile(ref m_trnTRANS_UPDATE, ref fleU030_ADJ_BATCHES, fleU030_SRT_ADJ.At("X_BATCH_COUNT"), SubFileType.KeepSQL, fleF001_BATCH_CONTROL_FILE, "BATCTRL_BATCH_NBR");
 
                     X_BATCH_NBR.Value = fleICONST_MSTR_REC.GetDecimalValue("ICONST_CLINIC_BATCH_NBR") + fleU030_SRT_ADJ.GetDecimalValue("X_BATCH_COUNT");
                 }
