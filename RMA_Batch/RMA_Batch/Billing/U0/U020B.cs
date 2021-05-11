@@ -38,13 +38,15 @@ public class U020B : BaseClassControl
     {
         this.ScreenType = ScreenTypes.QTP;
 
-
+        USESTALE = new CoreCharacter("USESTALE", 1, this, ResetTypes.ResetAtStartup, Prompt(1).ToString().ToUpper());
     }
 
     public U020B(string Name, int Level, bool Request)
         : base(Name, Level, Request)
     {
         this.ScreenType = ScreenTypes.QTP;
+
+        USESTALE = new CoreCharacter("USESTALE", 1, this, ResetTypes.ResetAtStartup, Prompt(1).ToString().ToUpper());
 
 
     }
@@ -74,6 +76,8 @@ public class U020B : BaseClassControl
 
 
     #region "Renaissance Architect Migration Services Default Regions"
+
+    protected CoreCharacter USESTALE;
 
     #region "Declarations (Variables, Files and Transactions)"
 
@@ -2749,20 +2753,23 @@ public class U020B_CREATE_TAPE_3 : U020B
 
                 SubFile(ref m_trnTRANS_UPDATE, ref fleU020_TAPE_T, fleU020B.At("CONTRACT_CODE") || fleU020B.At("TRANSLATED_GROUP_NBR") || fleU020B.At("BATCTRL_BATCH_NBR"), SubFileType.Keep, W_TRAILER_REC);
 
-                while (fleF099_GROUP_CLAIM_MSTR.QTPForMissing())
+                if (USESTALE.Value != "Y")
                 {
-                    // --> GET F099_GROUP_CLAIM_MSTR <--
-                    m_strWhere = new StringBuilder(" WHERE ");
-                    m_strWhere.Append(" ").Append(fleF099_GROUP_CLAIM_MSTR.ElementOwner("ACCOUNTING_NBR")).Append(" = ");
-                    m_strWhere.Append(Common.StringToField(X_ACCOUNTING_NBR.Value));
+                    while (fleF099_GROUP_CLAIM_MSTR.QTPForMissing())
+                    {
+                        // --> GET F099_GROUP_CLAIM_MSTR <--
+                        m_strWhere = new StringBuilder(" WHERE ");
+                        m_strWhere.Append(" ").Append(fleF099_GROUP_CLAIM_MSTR.ElementOwner("ACCOUNTING_NBR")).Append(" = ");
+                        m_strWhere.Append(Common.StringToField(X_ACCOUNTING_NBR.Value));
 
-                    m_strOrderBy = new StringBuilder(" ORDER BY ");
-                    m_strOrderBy.Append(fleF099_GROUP_CLAIM_MSTR.ElementOwner("ACCOUNTING_NBR"));
+                        m_strOrderBy = new StringBuilder(" ORDER BY ");
+                        m_strOrderBy.Append(fleF099_GROUP_CLAIM_MSTR.ElementOwner("ACCOUNTING_NBR"));
 
-                    fleF099_GROUP_CLAIM_MSTR.GetData(m_strWhere.ToString(), m_strOrderBy.ToString());
-                    // --> End GET F099_GROUP_CLAIM_MSTR <--
+                        fleF099_GROUP_CLAIM_MSTR.GetData(m_strWhere.ToString(), m_strOrderBy.ToString());
+                        // --> End GET F099_GROUP_CLAIM_MSTR <--
 
-                    fleF099_GROUP_CLAIM_MSTR.OutPut(OutPutType.Add_Update, null, QDesign.NULL(W_COUNT.Value) == 1 & QDesign.NULL(fleU020B.GetStringValue("TRANSLATED_GROUP_NBR")) != QDesign.NULL("    "));
+                        fleF099_GROUP_CLAIM_MSTR.OutPut(OutPutType.Add_Update, null, QDesign.NULL(W_COUNT.Value) == 1 & QDesign.NULL(fleU020B.GetStringValue("TRANSLATED_GROUP_NBR")) != QDesign.NULL("    "));
+                    }
                 }
 
                 Reset(ref W_B_COUNT,  fleU020B.At("BATCTRL_BATCH_NBR"));

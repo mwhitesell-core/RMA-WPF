@@ -43,7 +43,7 @@ namespace RMA_DATA
                 // Create Subfile.
                 SubFile = true;
                 SubFileName = "U997_GOOD_SRT";
-                SubFileType = SubFileType.KeepSQL;
+                SubFileType = SubFileType.Keep;
 
                 Sort = "DOC_DEPT ASC, DOC_NBR ASC, W_RAT_145_LAST_NAME ASC, W_RAT_145_FIRST_NAME ASC, RAT_145_HEALTH_OHIP_NBR ASC, RAT_145_ACCOUNT_NBR ASC";
 

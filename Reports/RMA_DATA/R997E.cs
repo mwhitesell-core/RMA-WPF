@@ -43,7 +43,7 @@ namespace RMA_DATA
                 // Create Subfile.
                 SubFile = true;
                 SubFileName = "U997_RMB_SRT";
-                SubFileType = SubFileType.KeepSQL;
+                SubFileType = SubFileType.Keep;
 
                 Sort = "DOC_DEPT ASC, DOC_NBR ASC, W_RAT_RMB_LAST_NAME ASC, RAT_RMB_FIRST_NAME ASC, RAT_RMB_HEALTH_OHIP_NBR ASC, RAT_RMB_ACCOUNT_NBR ASC";
 
@@ -81,7 +81,6 @@ namespace RMA_DATA
             strSQL.Append("DOC_INITS, ");
             strSQL.Append("DOC_OHIP_NBR, ");
             strSQL.Append("DOC_SPEC_CD, ");
-            strSQL.Append("CORE_RECORD_NUMBER, ");
             strSQL.Append("RAT_RMB_SERVICE_DATE, ");
             strSQL.Append("W_RAT_RMB_CLINIC_NBR, ");
             strSQL.Append("RAT_RMB_CLAIM_NBR, ");

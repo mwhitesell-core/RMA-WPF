@@ -49,7 +49,7 @@ public class R031A_AGEP : BaseRDLClass
 
 	public DataSet GetDataSet(string strConnection, string[] arrParameters, string strReportAssembly, bool blnDebug)
 	{
-		try
+        try
 		{
 			// Set Report Properties...
 			ReportName = REPORT_NAME;
@@ -59,7 +59,7 @@ public class R031A_AGEP : BaseRDLClass
 			// Create Subfile.
 			SubFile = true;
 			SubFileName = "R031A_AGEP";
-			SubFileType = SubFileType.Keep;
+            SubFileType = SubFileType.Keep;
 			SubFileAT = "TODO: Enter sortbreak name";
 
 			Sort = "";
@@ -129,8 +129,21 @@ public class R031A_AGEP : BaseRDLClass
 	{
 		bool blnSelected = false;
 
-		if (QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("AGE PREMIUM PAYMENT") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("ANAESTHETIC AGE PREMIUM") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("GP PSYCHOTHERAPY PREMIUM") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("AFTER HOURS AGE PREMIUM") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("RMB ANAESTHESIA AGE PREMIUM") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("GLOBAL FUNDING PREMIUM PAYMENT") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("3% GENERAL FEE PAYMENT OPTED-IN") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("3% GENERAL FEE PAYMENT WSIB") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("3% GENERAL FEE PAYMENT AUTOMATED PRM") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("PAYMENT REDUCTION-AUTOMATED PREMIUMS") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("PAYMENT REDUCTION-OPTED-IN") | QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("0.5% DISCOUNT PRIMARY CARE")) {
-			blnSelected = true;
+		if (QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("AGE PREMIUM PAYMENT") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("ANAESTHETIC AGE PREMIUM") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("GP PSYCHOTHERAPY PREMIUM") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("AFTER HOURS AGE PREMIUM") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("RMB ANAESTHESIA AGE PREMIUM") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("GLOBAL FUNDING PREMIUM PAYMENT") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("3% GENERAL FEE PAYMENT OPTED-IN") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("3% GENERAL FEE PAYMENT WSIB") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("3% GENERAL FEE PAYMENT AUTOMATED PRM") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("PAYMENT REDUCTION-AUTOMATED PREMIUMS") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("PAYMENT REDUCTION-OPTED-IN") | 
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("0.5% DISCOUNT PRIMARY CARE") |
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("HOSPITALIST PREMIUM") |
+            QDesign.NULL(rdrU030_TAPE_67_FILE.GetString("RAT_67_TRANS_MESSAGE")) == QDesign.NULL("INTERNAL MEDICINE PREMIUM") ) {
+                    blnSelected = true;
 		}
 
 		return blnSelected;

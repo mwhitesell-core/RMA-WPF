@@ -22,7 +22,7 @@ echo ""
 echo "Processing clinic 22 ..."
 Set-Location $env:pb_prod
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -30,7 +30,7 @@ echo ""
 echo "Processing clinic 23 ..."
 Set-Location $env:pb_prod\23
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -38,7 +38,7 @@ echo ""
 echo "Processing clinic 24 ..."
 Set-Location $env:pb_prod\24
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -46,7 +46,7 @@ echo ""
 echo "Processing clinic 25 ..."
 Set-Location $env:pb_prod\25
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -54,7 +54,7 @@ echo ""
 echo "Processing clinic 26 ..."
 Set-Location $env:pb_prod\26
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -62,7 +62,7 @@ echo ""
 echo "Processing clinic 30 ..."
 Set-Location $env:pb_prod\30
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -70,7 +70,7 @@ echo ""
 echo "Processing clinic 31 ..."
 Set-Location $env:pb_prod\31
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -78,7 +78,7 @@ echo ""
 echo "Processing clinic 32 ..."
 Set-Location $env:pb_prod\32
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -86,7 +86,7 @@ echo ""
 echo "Processing clinic 33 ..."
 Set-Location $env:pb_prod\33
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -94,7 +94,7 @@ echo ""
 echo "Processing clinic 34 ..."
 Set-Location $env:pb_prod\34
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -102,7 +102,7 @@ echo ""
 echo "Processing clinic 35 ..."
 Set-Location $env:pb_prod\35
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -110,7 +110,7 @@ echo ""
 echo "Processing clinic 36 ..."
 Set-Location $env:pb_prod\36
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -118,7 +118,7 @@ echo ""
 echo "Processing clinic 37 ..."
 Set-Location $env:pb_prod\37
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -126,7 +126,7 @@ echo ""
 echo "Processing clinic 41 ..."
 Set-Location $env:pb_prod\41
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -134,7 +134,7 @@ echo ""
 echo "Processing clinic 42 ..."
 Set-Location $env:pb_prod\42
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -142,7 +142,7 @@ echo ""
 echo "Processing clinic 43 ..."
 Set-Location $env:pb_prod\43
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -150,7 +150,7 @@ echo ""
 echo "Processing clinic 44 ..."
 Set-Location $env:pb_prod\44
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -158,7 +158,7 @@ echo ""
 echo "Processing clinic 45 ..."
 Set-Location $env:pb_prod\45
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -166,7 +166,7 @@ echo ""
 echo "Processing clinic 46 ..."
 Set-Location $env:pb_prod\46
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -174,7 +174,7 @@ echo ""
 echo "Processing clinic 61 ..."
 Set-Location $env:pb_prod\61
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -182,7 +182,7 @@ echo ""
 echo "Processing clinic 62 ..."
 Set-Location $env:pb_prod\62
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -190,7 +190,7 @@ echo ""
 echo "Processing clinic 63 ..."
 Set-Location $env:pb_prod\63
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -198,7 +198,7 @@ echo ""
 echo "Processing clinic 64 ..."
 Set-Location $env:pb_prod\64
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -213,7 +213,7 @@ echo ""
 echo "Processing clinic 66 ..."
 Set-Location $env:pb_prod\66
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -221,7 +221,7 @@ echo ""
 echo "Processing clinic 71 ..."
 Set-Location $env:pb_prod\71
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -229,7 +229,7 @@ echo ""
 echo "Processing clinic 72 ..."
 Set-Location $env:pb_prod\72
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -237,7 +237,7 @@ echo ""
 echo "Processing clinic 73 ..."
 Set-Location $env:pb_prod\73
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -245,7 +245,7 @@ echo ""
 echo "Processing clinic 74 ..."
 Set-Location $env:pb_prod\74
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -253,7 +253,7 @@ echo ""
 echo "Processing clinic 75 ..."
 Set-Location $env:pb_prod\75
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -261,7 +261,7 @@ echo ""
 echo "Processing clinic 78 ..."
 Set-Location $env:pb_prod\78
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -276,7 +276,7 @@ echo ""
 echo "Processing clinic 84 ..."
 Set-Location $env:pb_prod\84
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -284,7 +284,7 @@ echo ""
 echo "Processing clinic 88 ..."
 Set-Location $env:pb_prod\88
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""
@@ -292,7 +292,7 @@ echo ""
 echo "Processing clinic 96 ..."
 Set-Location $env:pb_prod\96
 Remove-Item r031a.txt
-$rcmd = $env:QUIZ+"r031a"
+$rcmd = $env:QUIZ+"r031a DISC_r031a.rf"
 Invoke-Expression $rcmd
 echo ""
 echo ""

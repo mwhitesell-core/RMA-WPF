@@ -1086,7 +1086,7 @@ public class U030B_PART2_EXTRACT_CLAIMS_1 : U030B_PART2
 
                 fleF002_CLAIMS_EXTRA.OutPut(OutPutType.Add_Update, fleU030_SORT_145_FILE.At("RAT_145_ACCOUNT_NBR"), (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)));
 
-                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PAID_AMT, fleU030_SORT_145_FILE.At("RAT_145_ACCOUNT_NBR"), (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)), SubFileType.KeepSQL, fleU030_SORT_145_FILE, "X_GROUP_NBR", "RAT_145_ACCOUNT_NBR", fleF002_CLAIMS_MSTR, "CLMHDR_DOC_DEPT",
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU030_PAID_AMT, fleU030_SORT_145_FILE.At("RAT_145_ACCOUNT_NBR"), (fleF002_CLAIMS_MSTR.Exists() & (QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 0 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 2 | QDesign.NULL(fleF002_CLAIMS_MSTR.GetDecimalValue("CLMHDR_AGENT_CD")) == 4)), SubFileType.Keep, fleU030_SORT_145_FILE, "X_GROUP_NBR", "RAT_145_ACCOUNT_NBR", fleF002_CLAIMS_MSTR, "CLMHDR_DOC_DEPT",
                 "CLMHDR_LOC", X_TOT_AMT_PAID, X_TOT_AMT_BILL, "CLMHDR_AGENT_CD");
 
              

@@ -80,13 +80,13 @@ echo "Creatingedi format of file ..."
 
 
 # ftp the file to CSU's hp computer
-echo "ftping file to CSU's hp computer ..."
-echo "HIT  `"NEWLINE`"  TO CONTINUE ..."
- $garbage = Read-Host
+#echo "ftping file to CSU's hp computer ..."
+#echo "HIT  `"NEWLINE`"  TO CONTINUE ..."
+# $garbage = Read-Host
 
-$TERM = "vt100"
-. $Env:root\etc\profile
-. $Env:root\alpha\home\rma\.profile
+#$TERM = "vt100"
+#. $Env:root\etc\profile
+#. $Env:root\alpha\home\rma\.profile
 
 # before 158 byte record: put ohiptape tapeohip;rec=-79,1,f,ascii;disc=100000
 # ftp file onto CSU's HP

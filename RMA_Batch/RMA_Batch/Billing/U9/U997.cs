@@ -25,9 +25,7 @@ using Core.Framework;
 using Core.Framework.Core.Framework;
 using Core.Windows.UI.Core.Windows;
 using System;
-using System.Data;
 using System.Data.SqlClient;
-using System.IO;
 using System.Text;
 
 
@@ -108,10 +106,10 @@ public class U997 : BaseClassControl
             EXTRACT_RECORDS_1.Dispose();
             EXTRACT_RECORDS_1 = null;
 
-            //U997_EXTRACT_RECORDS_2 EXTRACT_RECORDS_2 = new U997_EXTRACT_RECORDS_2(Name, Level);
-            //EXTRACT_RECORDS_2.Run();
-            //EXTRACT_RECORDS_2.Dispose();
-            //EXTRACT_RECORDS_2 = null;
+            U997_EXTRACT_RECORDS_2 EXTRACT_RECORDS_2 = new U997_EXTRACT_RECORDS_2(Name, Level);
+            EXTRACT_RECORDS_2.Run();
+            EXTRACT_RECORDS_2.Dispose();
+            EXTRACT_RECORDS_2 = null;
 
             return true;
 
@@ -154,96 +152,96 @@ public class U997_EXTRACT_RECORDS_1 : U997
         : base(Name, Level, true)
     {
         this.ScreenType = ScreenTypes.QTP;
-        //fleU030_TAPE_145_FILE = new SqlFileObject(this, FileTypes.Primary, 0, "SEQUENTIAL", "U030_TAPE_145_FILE", "", false, false, false, 0, "m_trnTRANS_UPDATE");
-        //fleF020_DOCTOR_MSTR = new SqlFileObject(this, FileTypes.Primary, 0, "INDEXED", "F020_DOCTOR_MSTR", "", false, false, false, 0, "m_trnTRANS_UPDATE");
-        //W_COUNT = new CoreDecimal("W_COUNT", 6, this);
-        //W_RAT_145_AMOUNT_SUB = new CoreDecimal("W_RAT_145_AMOUNT_SUB", 11, this);
-        //W_RAT_145_AMT_PAID = new CoreDecimal("W_RAT_145_AMT_PAID", 11, this);
-        //fleU997_BAD = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U997_BAD", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
-        //fleU997_GOOD = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U997_GOOD", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
-        //fleU997_TOTAL = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U997_TOTAL", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
+        fleU030_TAPE_145_FILE = new SqlFileObject(this, FileTypes.Primary, 0, "SEQUENTIAL", "U030_TAPE_145_FILE", "", false, false, false, 0, "m_trnTRANS_UPDATE");
+        fleF020_DOCTOR_MSTR = new SqlFileObject(this, FileTypes.Primary, 0, "INDEXED", "F020_DOCTOR_MSTR", "", false, false, false, 0, "m_trnTRANS_UPDATE");
+        W_COUNT = new CoreDecimal("W_COUNT", 6, this);
+        W_RAT_145_AMOUNT_SUB = new CoreDecimal("W_RAT_145_AMOUNT_SUB", 11, this);
+        W_RAT_145_AMT_PAID = new CoreDecimal("W_RAT_145_AMT_PAID", 11, this);
+        fleU997_BAD = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U997_BAD", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
+        fleU997_GOOD = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U997_GOOD", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
+        fleU997_TOTAL = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U997_TOTAL", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
 
-        //W_WRONG_FLAG.GetValue += W_WRONG_FLAG_GetValue;
-        //W_LAST_REC_FLAG.GetValue += W_LAST_REC_FLAG_GetValue;
+        W_WRONG_FLAG.GetValue += W_WRONG_FLAG_GetValue;
+        W_LAST_REC_FLAG.GetValue += W_LAST_REC_FLAG_GetValue;
 
     }
 
 
     #region "Declarations (Variables, Files and Transactions)(U997_EXTRACT_RECORDS_1)"
 
-    //private SqlFileObject fleU030_TAPE_145_FILE;
-    //private SqlFileObject fleF020_DOCTOR_MSTR;
-    //private DCharacter W_WRONG_FLAG = new DCharacter("W_WRONG_FLAG", 1);
-    //private void W_WRONG_FLAG_GetValue(ref string Value)
-    //{
+    private SqlFileObject fleU030_TAPE_145_FILE;
+    private SqlFileObject fleF020_DOCTOR_MSTR;
+    private DCharacter W_WRONG_FLAG = new DCharacter("W_WRONG_FLAG", 1);
+    private void W_WRONG_FLAG_GetValue(ref string Value)
+    {
 
-    //    try
-    //    {
-    //        string CurrentValue = string.Empty;
-    //        if ((!fleF020_DOCTOR_MSTR.Exists() | 8 > (QDesign.Length((fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR")).TrimEnd())) | String.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR"), 4, 5)), "00000") < 0 | string.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR"), 4, 5)), "99999") > 0) | (QDesign.NULL(fleU030_TAPE_145_FILE.GetDecimalValue("RAT_145_DOC_NBR")) != QDesign.NULL(fleF020_DOCTOR_MSTR.GetDecimalValue("DOC_OHIP_NBR"))))
-    //        {
-    //            CurrentValue = "Y";
-    //        }
-    //        else
-    //        {
-    //            CurrentValue = "N";
-    //        }
+        try
+        {
+            string CurrentValue = string.Empty;
+            if ((!fleF020_DOCTOR_MSTR.Exists() | 8 > (QDesign.Length((fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR")).TrimEnd())) | String.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR"), 4, 5)), "00000") < 0 | string.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR"), 4, 5)), "99999") > 0) | (QDesign.NULL(fleU030_TAPE_145_FILE.GetDecimalValue("RAT_145_DOC_NBR")) != QDesign.NULL(fleF020_DOCTOR_MSTR.GetDecimalValue("DOC_OHIP_NBR"))))
+            {
+                CurrentValue = "Y";
+            }
+            else
+            {
+                CurrentValue = "N";
+            }
 
-    //        Value = CurrentValue;
+            Value = CurrentValue;
 
-    //    }
-    //    catch (CustomApplicationException ex)
-    //    {
-    //        WriteError(ex);
-
-
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        WriteError(ex);
-
-    //    }
+        }
+        catch (CustomApplicationException ex)
+        {
+            WriteError(ex);
 
 
+        }
+        catch (Exception ex)
+        {
+            WriteError(ex);
 
-    //}
-    //private DCharacter W_LAST_REC_FLAG = new DCharacter("W_LAST_REC_FLAG", 1);
-    //private void W_LAST_REC_FLAG_GetValue(ref string Value)
-    //{
-
-    //    try
-    //    {
-    //        Value = " ";
-
-
-    //    }
-    //    catch (CustomApplicationException ex)
-    //    {
-    //        WriteError(ex);
-
-
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        WriteError(ex);
-
-    //    }
+        }
 
 
 
-    //}
-    //private CoreDecimal W_COUNT;
-    //private CoreDecimal W_RAT_145_AMOUNT_SUB;
+    }
+    private DCharacter W_LAST_REC_FLAG = new DCharacter("W_LAST_REC_FLAG", 1);
+    private void W_LAST_REC_FLAG_GetValue(ref string Value)
+    {
 
-    //private CoreDecimal W_RAT_145_AMT_PAID;
-
-    //private SqlFileObject fleU997_BAD;
-
-
-    //private SqlFileObject fleU997_GOOD;
+        try
+        {
+            Value = " ";
 
 
-    //private SqlFileObject fleU997_TOTAL;
+        }
+        catch (CustomApplicationException ex)
+        {
+            WriteError(ex);
+
+
+        }
+        catch (Exception ex)
+        {
+            WriteError(ex);
+
+        }
+
+
+
+    }
+    private CoreDecimal W_COUNT;
+    private CoreDecimal W_RAT_145_AMOUNT_SUB;
+
+    private CoreDecimal W_RAT_145_AMT_PAID;
+
+    private SqlFileObject fleU997_BAD;
+
+
+    private SqlFileObject fleU997_GOOD;
+
+
+    private SqlFileObject fleU997_TOTAL;
 
 
     #endregion
@@ -355,11 +353,11 @@ public class U997_EXTRACT_RECORDS_1 : U997
 
     private void Initialize_TRANS_UPDATE()
     {
-        //fleU030_TAPE_145_FILE.Transaction = m_trnTRANS_UPDATE;
-        //fleF020_DOCTOR_MSTR.Transaction = m_trnTRANS_UPDATE;
-        //fleU997_BAD.Transaction = m_trnTRANS_UPDATE;
-        //fleU997_GOOD.Transaction = m_trnTRANS_UPDATE;
-        //fleU997_TOTAL.Transaction = m_trnTRANS_UPDATE;
+        fleU030_TAPE_145_FILE.Transaction = m_trnTRANS_UPDATE;
+        fleF020_DOCTOR_MSTR.Transaction = m_trnTRANS_UPDATE;
+        fleU997_BAD.Transaction = m_trnTRANS_UPDATE;
+        fleU997_GOOD.Transaction = m_trnTRANS_UPDATE;
+        fleU997_TOTAL.Transaction = m_trnTRANS_UPDATE;
 
 
     }
@@ -411,11 +409,11 @@ public class U997_EXTRACT_RECORDS_1 : U997
 
         try
         {
-            //fleU030_TAPE_145_FILE.Dispose();
-            //fleF020_DOCTOR_MSTR.Dispose();
-            //fleU997_BAD.Dispose();
-            //fleU997_GOOD.Dispose();
-            //fleU997_TOTAL.Dispose();
+            fleU030_TAPE_145_FILE.Dispose();
+            fleF020_DOCTOR_MSTR.Dispose();
+            fleU997_BAD.Dispose();
+            fleU997_GOOD.Dispose();
+            fleU997_TOTAL.Dispose();
 
 
         }
@@ -446,148 +444,95 @@ public class U997_EXTRACT_RECORDS_1 : U997
 
     public void Run()
     {
-        Int64 U030_TAPE_145_FILE_COUNT = 0;
-        Int64 F020_DOCTOR_MSTR_COUNT = 0;
-        Int64 U030_TAPE_RMB_FILE_COUNT = 0;
-        Int64 F020_DOCTOR_MSTR_COUNT2 = 0;
-        Int64 U997_BAD_COUNT = 0;
-        Int64 U997_BAD_COUNT2 = 0;
-        Int64 U997_GOOD_COUNT = 0;
-        Int64 U997_TOTAL_COUNT = 0;
-        Int64 U997_RMB_GOOD_COUNT = 0;
-        DateTime START_TIME_REQUEST1;
-        DateTime END_TIME_REQUEST1;
-        DateTime START_TIME_REQUEST2;
-        DateTime END_TIME_REQUEST2;
-        string log_file = string.Empty;
 
         try
         {
             Request("EXTRACT_RECORDS_1");
 
-            log_file = Directory.GetCurrentDirectory() + "\\U997.log";
-
-            //Write output to log file
-            if (File.Exists(log_file))
+            while (fleU030_TAPE_145_FILE.QTPForMissing())
             {
-                File.Delete(log_file);
-            }
+                // --> GET U030_TAPE_145_FILE <--
 
-            using (SqlConnection conn = new SqlConnection(Common.GetSqlConnectionString()))
-            {
-                using (SqlCommand cmd = new SqlCommand("INDEXED.sp_U997", conn))
+                fleU030_TAPE_145_FILE.GetData();
+                // --> End GET U030_TAPE_145_FILE <--
+
+                while (fleF020_DOCTOR_MSTR.QTPForMissing("1"))
                 {
-                    cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.Parameters.AddWithValue("@inINPUT_PATH", Directory.GetCurrentDirectory().ToString()).Direction = ParameterDirection.Input;
-                    cmd.Parameters.Add("@outU030_TAPE_145_FILE_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outF020_DOCTOR_MSTR_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outU030_TAPE_RMB_FILE_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outF020_DOCTOR_MSTR_COUNT2", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outU997_BAD_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outU997_BAD_COUNT2", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outU997_GOOD_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outU997_TOTAL_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outU997_RMB_GOOD_COUNT", SqlDbType.BigInt).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outSTART_TIME_REQUEST1", SqlDbType.DateTime).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outEND_TIME_REQUEST1", SqlDbType.DateTime).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outSTART_TIME_REQUEST2", SqlDbType.DateTime).Direction = ParameterDirection.Output;
-                    cmd.Parameters.Add("@outEND_TIME_REQUEST2", SqlDbType.DateTime).Direction = ParameterDirection.Output;
-                    cmd.CommandTimeout = 0;
+                    // --> GET F020_DOCTOR_MSTR <--
+                    m_strWhere = new StringBuilder(" WHERE ");
+                    m_strWhere.Append(" ").Append(fleF020_DOCTOR_MSTR.ElementOwner("DOC_NBR")).Append(" = ");
+                    m_strWhere.Append(Common.StringToField((QDesign.Substring(fleU030_TAPE_145_FILE.GetStringValue("RAT_145_ACCOUNT_NBR"), 1, 3))));
 
-                    conn.Open();
-                    cmd.ExecuteNonQuery();
+                    fleF020_DOCTOR_MSTR.GetData(m_strWhere.ToString(), GetDataOptions.IsOptional);
+                    // --> End GET F020_DOCTOR_MSTR <--
 
-                    U030_TAPE_145_FILE_COUNT = (Int64)cmd.Parameters["@outU030_TAPE_145_FILE_COUNT"].Value;
-                    F020_DOCTOR_MSTR_COUNT = (Int64)cmd.Parameters["@outF020_DOCTOR_MSTR_COUNT"].Value;
-                    U030_TAPE_RMB_FILE_COUNT = (Int64)cmd.Parameters["@outU030_TAPE_RMB_FILE_COUNT"].Value;
-                    U997_BAD_COUNT = (Int64)cmd.Parameters["@outU997_BAD_COUNT"].Value;
-                    U997_BAD_COUNT2 = (Int64)cmd.Parameters["@outU997_BAD_COUNT2"].Value;
-                    U997_GOOD_COUNT = (Int64)cmd.Parameters["@outU997_GOOD_COUNT"].Value;
-                    U997_TOTAL_COUNT = (Int64)cmd.Parameters["@outU997_TOTAL_COUNT"].Value;
-                    U997_RMB_GOOD_COUNT = (Int64)cmd.Parameters["@outU997_RMB_GOOD_COUNT"].Value;
-                    START_TIME_REQUEST1 = (DateTime)cmd.Parameters["@outSTART_TIME_REQUEST1"].Value;
-                    END_TIME_REQUEST1 = (DateTime)cmd.Parameters["@outEND_TIME_REQUEST1"].Value;
-                    START_TIME_REQUEST2 = (DateTime)cmd.Parameters["@outSTART_TIME_REQUEST2"].Value;
-                    END_TIME_REQUEST2 = (DateTime)cmd.Parameters["@outEND_TIME_REQUEST2"].Value;
 
-                    StreamWriter sw = new StreamWriter(log_file, true, System.Text.Encoding.Default);
-                    sw.WriteLine("Run:     U997");
-                    sw.WriteLine("Request: EXTRACT_RECORDS          " + START_TIME_REQUEST1.ToString("dd/MM/yyyy h:mm:ss tt"));
-                    sw.WriteLine("");
-                    sw.WriteLine("");
-                    sw.WriteLine("Records read:");
-                    sw.WriteLine("  U030_TAPE_145_FILE              " + U030_TAPE_145_FILE_COUNT.ToString().PadLeft(10, ' '));
-                    sw.WriteLine("  F020_DOCTOR_MSTR                " + F020_DOCTOR_MSTR_COUNT.ToString().PadLeft(10, ' '));
-                    sw.WriteLine("");
-                    sw.WriteLine("Transactions Processed:           " + U030_TAPE_145_FILE_COUNT.ToString().PadLeft(10, ' '));
-                    sw.WriteLine("");
-                    sw.WriteLine("");
-                    sw.WriteLine("Records processed:                Added     Updated     Unchanged     Deleted");
-                    sw.WriteLine("  U997_BAD" + " ".PadLeft(29 - U997_BAD_COUNT.ToString().Trim().Length, ' ') + U997_BAD_COUNT.ToString().Trim() + " ".PadLeft(11, ' ') + "0" + " ".PadLeft(13, ' ') + "0" + " ".PadLeft(11, ' ') + "0");
-                    sw.WriteLine("  U997_GOOD" + " ".PadLeft(28 - U997_GOOD_COUNT.ToString().Trim().Length, ' ') + U997_GOOD_COUNT.ToString().Trim() + " ".PadLeft(11, ' ') + "0" + " ".PadLeft(13, ' ') + "0" + " ".PadLeft(11, ' ') + "0");
-                    sw.WriteLine("  U997_TOTAL" + " ".PadLeft(27 - U997_TOTAL_COUNT.ToString().Trim().Length, ' ') + U997_TOTAL_COUNT.ToString().Trim() + " ".PadLeft(11, ' ') + "0" + " ".PadLeft(13, ' ') + "0" + " ".PadLeft(11, ' ') + "0");
-                    sw.WriteLine("");
-                    sw.WriteLine("End Request: EXTRACT_RECORDS      " + END_TIME_REQUEST1.ToString("dd/MM/yyyy h:mm:ss tt"));
-                    sw.WriteLine("");
-                    sw.WriteLine("");
-                    sw.WriteLine("");
-                    sw.WriteLine("Run:     U997");
-                    sw.WriteLine("Request: EXTRACT_RECORDS          " + START_TIME_REQUEST2.ToString("dd/MM/yyyy h:mm:ss tt"));
-                    sw.WriteLine("");
-                    sw.WriteLine("");
-                    sw.WriteLine("Records read:");
-                    sw.WriteLine("  U030_TAPE_RMB_FILE              " + U030_TAPE_RMB_FILE_COUNT.ToString().PadLeft(10, ' '));
-                    sw.WriteLine("");
-                    sw.WriteLine("Transactions Processed:           " + U030_TAPE_RMB_FILE_COUNT.ToString().PadLeft(10, ' '));
-                    sw.WriteLine("");
-                    sw.WriteLine("");
-                    sw.WriteLine("Records processed:                Added     Updated     Unchanged     Deleted");
-                    sw.WriteLine("  U997_BAD" + " ".PadLeft(29 - U997_BAD_COUNT.ToString().Trim().Length, ' ') + U997_BAD_COUNT.ToString().Trim() + " ".PadLeft(11, ' ') + "0" + " ".PadLeft(13, ' ') + "0" + " ".PadLeft(11, ' ') + "0");
-                    sw.WriteLine("  U997_RMB_GOOD" + " ".PadLeft(24 - U997_RMB_GOOD_COUNT.ToString().Trim().Length, ' ') + U997_RMB_GOOD_COUNT.ToString().Trim() + " ".PadLeft(11, ' ') + "0" + " ".PadLeft(13, ' ') + "0" + " ".PadLeft(11, ' ') + "0");
-                    sw.WriteLine("");
-                    sw.WriteLine("End Request: EXTRACT_RECORDS      " + END_TIME_REQUEST2.ToString("dd/MM/yyyy h:mm:ss tt"));
+                    if (Transaction())
+                    {
 
-                    sw.Flush();
-                    sw.Close();
-                    sw.Dispose();
+                        Sort(W_LAST_REC_FLAG.Value, fleU030_TAPE_145_FILE.GetSortValue("RAT_145_ACCOUNT_NBR"));
+
+
+
+                    }
+
                 }
-            }
-        }
 
+            }
+
+            while (Sort(fleU030_TAPE_145_FILE, fleF020_DOCTOR_MSTR))
+            {
+                Count(ref W_COUNT, At(W_LAST_REC_FLAG) || fleU030_TAPE_145_FILE.At("RAT_145_ACCOUNT_NBR"));
+                SubTotal(ref W_RAT_145_AMOUNT_SUB, fleU030_TAPE_145_FILE.GetDecimalValue("RAT_145_AMOUNT_SUB"));
+                SubTotal(ref W_RAT_145_AMT_PAID, fleU030_TAPE_145_FILE.GetDecimalValue("RAT_145_AMT_PAID"));
+
+
+
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU997_BAD, QDesign.NULL(W_WRONG_FLAG.Value) == "Y", SubFileType.KeepSQL, fleU030_TAPE_145_FILE);
+
+
+
+
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU997_GOOD, QDesign.NULL(W_WRONG_FLAG.Value) == "N", SubFileType.KeepSQL, fleU030_TAPE_145_FILE);
+
+
+
+
+                SubFile(ref m_trnTRANS_UPDATE, ref fleU997_TOTAL, At(W_LAST_REC_FLAG), SubFileType.KeepSQL, W_COUNT, W_RAT_145_AMOUNT_SUB, W_RAT_145_AMT_PAID);
+
+
+
+            }
+
+
+
+        }
         catch (CustomApplicationException ex)
         {
-            StreamWriter sw = new StreamWriter(log_file, true, System.Text.Encoding.Default);
-            sw.WriteLine(ex.Message);
-            sw.Flush();
-            sw.Close();
-            sw.Dispose();
-
             WriteError(ex);
-        }
 
+
+        }
         catch (Exception ex)
         {
-            StreamWriter sw = new StreamWriter(log_file, true, System.Text.Encoding.Default);
-            sw.WriteLine(ex.Message);
-            sw.Flush();
-            sw.Close();
-            sw.Dispose();
-
             WriteError(ex);
-        }
 
+
+        }
         finally
         {
-            var sr = new StreamReader(log_file);
-            var stats = sr.ReadToEnd();
-            Console.WriteLine(stats);
-            sr.Dispose();
+            EndRequest("EXTRACT_RECORDS_1");
 
-            File.Delete(log_file);
         }
+
     }
 
+
+
+
     #endregion
+
+
 }
 //EXTRACT_RECORDS_1
 
@@ -621,7 +566,7 @@ public class U997_EXTRACT_RECORDS_2 : U997
         try
         {
             string CurrentValue = string.Empty;
-            if ((!fleF020_DOCTOR_MSTR.Exists() | 8 > (QDesign.Length((fleU030_TAPE_RMB_FILE.GetStringValue("RAT_RMB_ACCOUNT_NBR")).TrimEnd())) | String.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_RMB_FILE.GetStringValue("RAT_RMB_ACCOUNT_NBR"), 4, 5)), "00000") < 0 | string.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_RMB_FILE.GetStringValue("RAT_RMB_ACCOUNT_NBR"), 4, 5)) , "99999")>0) | (QDesign.NULL(fleU030_TAPE_RMB_FILE.GetDecimalValue("RAT_RMB_DOC_NBR")) != QDesign.NULL(fleF020_DOCTOR_MSTR.GetDecimalValue("DOC_OHIP_NBR"))))
+            if ((!fleF020_DOCTOR_MSTR.Exists() | 8 > (QDesign.Length((fleU030_TAPE_RMB_FILE.GetStringValue("RAT_RMB_ACCOUNT_NBR")).TrimEnd())) | String.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_RMB_FILE.GetStringValue("RAT_RMB_ACCOUNT_NBR"), 4, 5)), "00000") < 0 | string.Compare(QDesign.NULL(QDesign.Substring(fleU030_TAPE_RMB_FILE.GetStringValue("RAT_RMB_ACCOUNT_NBR"), 4, 5)), "99999") > 0) | (QDesign.NULL(fleU030_TAPE_RMB_FILE.GetDecimalValue("RAT_RMB_DOC_NBR")) != QDesign.NULL(fleF020_DOCTOR_MSTR.GetDecimalValue("DOC_OHIP_NBR"))))
             {
                 CurrentValue = "Y";
             }
@@ -879,11 +824,25 @@ public class U997_EXTRACT_RECORDS_2 : U997
 
                     if (Transaction())
                     {
-                        SubFile(ref m_trnTRANS_UPDATE, ref fleU997_BAD, QDesign.NULL(W_WRONG_FLAG.Value) == "Y", SubFileType.Keep, SubFileMode.Append, fleU030_TAPE_RMB_FILE);
-                        SubFile(ref m_trnTRANS_UPDATE, ref fleU997_RMB_GOOD, QDesign.NULL(W_WRONG_FLAG.Value) == "N", SubFileType.Keep, fleU030_TAPE_RMB_FILE);
+
+
+                        SubFile(ref m_trnTRANS_UPDATE, ref fleU997_BAD, QDesign.NULL(W_WRONG_FLAG.Value) == "Y", SubFileType.KeepSQL, fleU030_TAPE_RMB_FILE);
+
+
+
+
+                        SubFile(ref m_trnTRANS_UPDATE, ref fleU997_RMB_GOOD, QDesign.NULL(W_WRONG_FLAG.Value) == "N", SubFileType.KeepSQL, fleU030_TAPE_RMB_FILE);
+
+
+
                     }
+
                 }
+
             }
+
+
+
         }
         catch (CustomApplicationException ex)
         {

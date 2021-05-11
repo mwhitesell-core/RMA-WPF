@@ -62,12 +62,16 @@
 
 #endregion
 
+using Core.DataAccess.SqlServer;
 using Core.ExceptionManagement;
 using Core.Framework;
 using Core.Framework.Core.Framework;
 using Core.Windows.UI.Core.Windows;
 using System;
+using System.Collections;
+using System.Data;
 using System.Data.SqlClient;
+using System.IO;
 using System.Text;
 
 
@@ -201,6 +205,8 @@ public class U020A_EXTRACT_1 : U020A
         fleU020A1_C = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U020A1_C", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
         fleU020A1_D = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U020A1_D", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
         fleU020A1_E = new SqlFileObject(this, FileTypes.Primary, 0, "TEMPORARYDATA", "U020A1_E", "", false, false, false, 0, "m_trnTRANS_UPDATE", FileType.SubFile);
+        CLAIM_NBR = new CoreCharacter("CLAIM_NBR", 1000, this, Common.cEmptyString);
+        BATCH_NBR = new CoreCharacter("BATCH_NBR", 1000, this, Common.cEmptyString);
 
         BATCTRL_BATCH_STATUS_UNBALANCED.GetValue += BATCTRL_BATCH_STATUS_UNBALANCED_GetValue;
         BATCTRL_BATCH_STATUS_BALANCED.GetValue += BATCTRL_BATCH_STATUS_BALANCED_GetValue;
@@ -219,13 +225,65 @@ public class U020A_EXTRACT_1 : U020A
         W_DOC_CLINIC_NBR.GetValue += W_DOC_CLINIC_NBR_GetValue;
         TRANSLATED_GROUP_NBR.GetValue += TRANSLATED_GROUP_NBR_GetValue;
         CLMHDR_CLAIM_ID.GetValue += CLMHDR_CLAIM_ID_GetValue;
-                
+        UseStale.GetValue += UseStale_GetValue;
+        StaleName.GetValue += StaleName_GetValue;
+
         fleF001_BATCH_CONTROL_FILE.SelectIf += fleF001_BATCH_CONTROL_FILE_SelectIf;
         fleF002_CLAIMS_MSTR.SelectIf += fleF002_CLAIMS_MSTR_SelectIf;
         ICONST_DATE_PERIOD_END.GetValue += ICONST_DATE_PERIOD_END_GetValue;
     }
 
     #region "Declarations (Variables, Files and Transactions)(U020A_EXTRACT_1)"
+
+    private CoreCharacter CLAIM_NBR;
+    private Hashtable Claims;
+    private CoreCharacter BATCH_NBR;
+
+    private DCharacter UseStale = new DCharacter("UseStale", 1);
+    private void UseStale_GetValue(ref string Value)
+    {
+
+        try
+        {
+            Value = (Prompt(1) + "").ToUpper();
+
+        }
+        catch (CustomApplicationException ex)
+        {
+            WriteError(ex);
+
+
+        }
+        catch (Exception ex)
+        {
+            WriteError(ex);
+
+        }
+
+    }
+
+    private DCharacter StaleName = new DCharacter("StaleName", 200);
+    private void StaleName_GetValue(ref string Value)
+    {
+
+        try
+        {
+            Value = (Prompt(2) + "").ToUpper();
+
+        }
+        catch (CustomApplicationException ex)
+        {
+            WriteError(ex);
+
+
+        }
+        catch (Exception ex)
+        {
+            WriteError(ex);
+
+        }
+
+    }
 
     private SqlFileObject fleF001_BATCH_CONTROL_FILE;
 
@@ -236,8 +294,14 @@ public class U020A_EXTRACT_1 : U020A
         {
             StringBuilder strSQL = new StringBuilder("");
 
-            strSQL.Append(" (    ").Append(fleF001_BATCH_CONTROL_FILE.ElementOwner("BATCTRL_BATCH_STATUS")).Append(" =  ").Append(Common.StringToField(BATCTRL_BATCH_STATUS_REV_UPDATED.Value)).Append(" )");
-
+            if (UseStale.Value != "Y")
+            {
+                strSQL.Append(" (    ").Append(fleF001_BATCH_CONTROL_FILE.ElementOwner("BATCTRL_BATCH_STATUS")).Append(" =  ").Append(Common.StringToField(BATCTRL_BATCH_STATUS_REV_UPDATED.Value)).Append(" )");
+            }
+            else
+            {
+                strSQL.Append(" (    ").Append(fleF001_BATCH_CONTROL_FILE.ElementOwner("BATCTRL_BATCH_NBR")).Append(" IN  (").Append(BATCH_NBR.Value.Trim()).Append("))");
+            }
 
             SelectIfClause = strSQL.ToString();
 
@@ -267,7 +331,16 @@ public class U020A_EXTRACT_1 : U020A
         {
             StringBuilder strSQL = new StringBuilder("");
 
-            strSQL.Append(" (    ").Append(fleF002_CLAIMS_MSTR.ElementOwner("CLMHDR_ADJ_OMA_CD")).Append(" =  '0000')");
+            if (UseStale.Value != "Y")
+            {
+                strSQL.Append(" (    ").Append(fleF002_CLAIMS_MSTR.ElementOwner("CLMHDR_ADJ_OMA_CD")).Append(" =  '0000')");
+            }
+            else
+            {
+                CLAIM_NBR.Value = Claims[fleF001_BATCH_CONTROL_FILE.GetStringValue("BATCTRL_BATCH_NBR")].ToString();
+                CLAIM_NBR.Value = CLAIM_NBR.Value.Trim().Substring(0, CLAIM_NBR.Value.Trim().Length - 1);
+                strSQL.Append(" (    ").Append(fleF002_CLAIMS_MSTR.ElementOwner("CLMHDR_CLAIM_NBR")).Append(" IN  (").Append(CLAIM_NBR.Value.Trim()).Append("))");
+            }
 
 
             SelectIfClause = strSQL.ToString();
@@ -496,14 +569,14 @@ public class U020A_EXTRACT_1 : U020A
         try
         {
             string CurrentValue = string.Empty;
-            if (QDesign.NULL(fleF010_PAT_MSTR.GetDecimalValue("PAT_HEALTH_NBR")) == 0 
-                & QDesign.NULL(QDesign.ASCII(fleF010_PAT_MSTR.GetStringValue("PAT_DIRECT_ALPHA"), 3) + 
+            if (QDesign.NULL(fleF010_PAT_MSTR.GetDecimalValue("PAT_HEALTH_NBR")) == 0
+                & QDesign.NULL(QDesign.ASCII(fleF010_PAT_MSTR.GetStringValue("PAT_DIRECT_ALPHA"), 3) +
                 QDesign.ASCII(fleF010_PAT_MSTR.GetDecimalValue("PAT_DIRECT_YY"), 2) +
                 QDesign.ASCII(fleF010_PAT_MSTR.GetDecimalValue("PAT_DIRECT_MM"), 2) +
                 QDesign.ASCII(fleF010_PAT_MSTR.GetDecimalValue("PAT_DIRECT_DD"), 2) +
                 QDesign.ASCII(fleF010_PAT_MSTR.GetStringValue("PAT_DIRECT_LAST_6"), 6)) != QDesign.NULL(" "))
             {
-                CurrentValue = QDesign.ASCII(fleF010_PAT_MSTR.GetStringValue("PAT_DIRECT_ALPHA"), 3) + 
+                CurrentValue = QDesign.ASCII(fleF010_PAT_MSTR.GetStringValue("PAT_DIRECT_ALPHA"), 3) +
                     QDesign.ASCII(fleF010_PAT_MSTR.GetDecimalValue("PAT_DIRECT_YY"), 2) +
                     QDesign.ASCII(fleF010_PAT_MSTR.GetDecimalValue("PAT_DIRECT_MM"), 2) +
                     QDesign.ASCII(fleF010_PAT_MSTR.GetDecimalValue("PAT_DIRECT_DD"), 2) +
@@ -1024,6 +1097,103 @@ public class U020A_EXTRACT_1 : U020A
         {
             Request("EXTRACT_1");
 
+            if (UseStale.Value == "Y")
+            {
+                if (File.Exists(StaleName.Value.Trim()))
+                {
+
+                    var sr = new StreamReader(StaleName.Value.Trim());
+                    var line = sr.ReadLine();
+                    var missingnumbers = new StringBuilder("");
+                    Claims = new Hashtable();
+
+                    while (line != null)
+                    {
+                        if (line.Trim() != "" && line.Trim().Length == 10)
+                        {
+                            var batch_nbr = line.Substring(0, 8);
+                            var claim_nbr = line.Substring(8);
+
+                            var sql = "SELECT BATCTRL_BATCH_NBR FROM INDEXED.F001_BATCH_CONTROL_FILE WHERE BATCTRL_BATCH_NBR = '" + batch_nbr + "'";
+                            var sh1 = SqlHelper.ExecuteReader(m_trnTRANS_UPDATE, CommandType.Text, sql);
+
+                            if (sh1.Read())
+                            {
+                                sql = "select CLMHDR_BATCH_NBR from indexed.f002_claims_mstr_hdr where CLMHDR_BATCH_NBR = '" + batch_nbr +
+                                    "' and CLMHDR_CLAIM_NBR = '" + Convert.ToInt16(claim_nbr) + "'";
+                                var sh2 = SqlHelper.ExecuteReader(m_trnTRANS_UPDATE, CommandType.Text, sql);
+
+                                if (sh2.Read())
+                                {
+
+                                    if (Claims.Contains(batch_nbr))
+                                    {
+                                        CLAIM_NBR.Value = Claims[batch_nbr].ToString();
+                                        CLAIM_NBR.Value = CLAIM_NBR.Value.Trim() + "'" + Convert.ToInt16(claim_nbr) + "', ";
+                                        Claims[batch_nbr] = CLAIM_NBR.Value;
+                                    }
+                                    else
+                                    {
+                                        Claims.Add(batch_nbr, "'" + Convert.ToInt16(claim_nbr) + "', ");
+                                    }
+                                }
+                                else
+                                {
+                                    missingnumbers.Append(line).Append(" Claim Number is not in F002_CLAIMS_MSTR_HDR.").Append(Environment.NewLine);
+                                }
+
+                                sh2.Close();
+                            }
+                            else
+                            {
+                                missingnumbers.Append(line).Append(" Batch Number is not in F001_BATCTRL_CONTROL_FILE.").Append(Environment.NewLine);
+                            }
+
+                            sh1.Close();
+                        }
+                        else
+                        {
+                            missingnumbers.Append(line).Append(" Claim Number is invalid.").Append(Environment.NewLine);
+                        }
+
+                        line = sr.ReadLine();
+
+
+                    }
+                    sr.Dispose();
+
+                    foreach (DictionaryEntry c in Claims)
+                    {
+                        BATCH_NBR.Value = BATCH_NBR.Value.Trim() + "'" + c.Key + "', ";
+                    }
+
+                    if (BATCH_NBR.Value.Trim().Length > 0)
+                        BATCH_NBR.Value = BATCH_NBR.Value.Trim().Substring(0, BATCH_NBR.Value.Trim().Length - 1);
+
+                    if (missingnumbers.Length > 0)
+                    {
+                        var sw = new StreamWriter("Stale.log");
+                        sw.Write(missingnumbers);
+                        sw.Flush();
+                        sw.Dispose();
+
+                        ErrorMessage("Process halted! Invalid Claim Number(S)");
+                    }
+                }
+                else
+                {
+                    var sw = new StreamWriter("Stale.log");
+                    sw.Write("Stale file does not exist!");
+                    sw.Flush();
+                    sw.Dispose();
+
+                    ErrorMessage("Stale file does not exist!");
+
+                }
+
+
+            }
+
             while (fleF001_BATCH_CONTROL_FILE.QTPForMissing())
             {
                 // --> GET F001_BATCH_CONTROL_FILE <--
@@ -1159,7 +1329,7 @@ public class U020A_EXTRACT_1 : U020A
 
 
                 SubFile(ref m_trnTRANS_UPDATE, ref fleU020A1_C, QDesign.NULL(fleCONTRACT_DTL.GetStringValue("CONTRACT_CODE")) == "C", SubFileType.Keep, fleF001_BATCH_CONTROL_FILE, "BATCTRL_BATCH_NBR", "BATCTRL_BATCH_TYPE", "BATCTRL_CLINIC_NBR", "BATCTRL_DOC_NBR_OHIP", "BATCTRL_LOC",
-                "BATCTRL_AGENT_CD", "BATCTRL_DATE_BATCH_ENTERED", fleICONST_MSTR_REC, "ICONST_CLINIC_NBR_1_2", "ICONST_CLINIC_CYCLE_NBR", ICONST_DATE_PERIOD_END,"ICONST_DATE_PERIOD_END_YY", "ICONST_DATE_PERIOD_END_MM", "ICONST_DATE_PERIOD_END_DD", fleF002_CLAIMS_MSTR,
+                "BATCTRL_AGENT_CD", "BATCTRL_DATE_BATCH_ENTERED", fleICONST_MSTR_REC, "ICONST_CLINIC_NBR_1_2", "ICONST_CLINIC_CYCLE_NBR", ICONST_DATE_PERIOD_END, "ICONST_DATE_PERIOD_END_YY", "ICONST_DATE_PERIOD_END_MM", "ICONST_DATE_PERIOD_END_DD", fleF002_CLAIMS_MSTR,
                  "CLMHDR_BATCH_NBR", "CLMHDR_CLAIM_NBR", "CLMHDR_ADJ_OMA_CD", "CLMHDR_ADJ_OMA_SUFF", "CLMHDR_ADJ_ADJ_NBR", W_CLMHDR_HOSP,
                 W_MOH_LOCATION_CODE, "CLMHDR_DATE_ADMIT", "CLMHDR_PAT_KEY_TYPE", "CLMHDR_PAT_KEY_DATA", "CLMHDR_REFER_DOC_NBR", "CLMHDR_LOC", "CLMHDR_I_O_PAT_IND", "CLMHDR_AGENT_CD", "CLMHDR_TOT_CLAIM_AR_OMA", "CLMHDR_TOT_CLAIM_AR_OHIP", "CLMHDR_STATUS_OHIP",
                 "CLMHDR_SUB_NBR", "CLMHDR_MANUAL_REVIEW", DOC_NBR, "CLMHDR_DOC_DEPT", "CLMHDR_DOC_SPEC_CD", fleF010_PAT_MSTR, "PAT_HEALTH_NBR", "PAT_VERSION_CD", W_PAT_OHIP_MMYY, "PAT_CHART_NBR",

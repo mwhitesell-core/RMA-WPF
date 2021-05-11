@@ -124,8 +124,7 @@ namespace RMA_DATA
 
             strSQL.Append(Choose());
 
-            //rdrU997_GOOD_SRT.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
-            rdrU997_GOOD_SRT.GetDataTable = SqlHelper.ExecuteDataTable(m_cnnQUERY, CommandType.Text, strSQL.ToString());
+            rdrU997_GOOD_SRT.GetDataTable = TextHelper.ExecuteDataTable(strSQL.ToString(), ReportFunctions.m_strFlatFilePath, ReportFunctions.TextFiles);
 
             strSQL = null;
         }
@@ -201,7 +200,7 @@ namespace RMA_DATA
             try
             {
                 AddControl(ReportSection.PAGE_HEADING, "X_DOC_DEPT_NBR", DataTypes.Character, 7);
-                AddControl(ReportSection.PAGE_HEADING, "TEMPORARYDATA.U997_GOOD_SRT.DOC_DEPT", DataTypes.Character, 2);
+                AddControl(ReportSection.PAGE_HEADING, "TEMPORARYDATA.U997_GOOD_SRT.DOC_DEPT", DataTypes.Numeric, 2);
                 AddControl(ReportSection.PAGE_HEADING, "TEMPORARYDATA.U997_GOOD_SRT.DOC_NBR", DataTypes.Character, 3);
                 AddControl(ReportSection.PAGE_HEADING, "TEMPORARYDATA.U997_GOOD_SRT.DOC_NAME", DataTypes.Character, 24);
                 AddControl(ReportSection.PAGE_HEADING, "TEMPORARYDATA.U997_GOOD_SRT.DOC_INITS", DataTypes.Character, 3);
@@ -250,7 +249,7 @@ namespace RMA_DATA
                     return Common.StringToField(X_DOC_DEPT_NBR().PadRight(7, ' '));
 
                 case "TEMPORARYDATA.U997_GOOD_SRT.DOC_DEPT":
-                    return Common.StringToField(rdrU997_GOOD_SRT.GetString("DOC_DEPT").PadRight(2, ' '));
+                    return rdrU997_GOOD_SRT.GetNumber("DOC_DEPT").ToString();
 
                 case "TEMPORARYDATA.U997_GOOD_SRT.DOC_NBR":
                     return Common.StringToField(rdrU997_GOOD_SRT.GetString("DOC_NBR").PadRight(3, ' '));

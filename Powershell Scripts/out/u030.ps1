@@ -191,6 +191,10 @@ echo ""
 echo "run ra report r997.txt"
 echo ""
 
+$filein = "u030_tape_145_file.dat"
+$fileout = "u030_tape_145_file2.dat"
+&$env:cmd\lf $filein $fileout 167
+
 Remove-Item r997.ls *> $null
 echo "Running run_ra_report ..."
 &$env:cmd\run_ra_report *> r997.ls

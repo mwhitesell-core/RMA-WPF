@@ -43,6 +43,10 @@ Get-Content r997i.txt >> r997.txt
 Get-Content r997j.txt >> r997.txt
 Get-Content r997k.txt >> r997.txt
 
+$filein = "U030_TAPE_RMB_FILE.dat"
+$fileout = "U030_TAPE_RMB_FILE2.dat"
+&$env:cmd\lf $filein $fileout 167
+
 #Get-Content u030_tape_rmb_file.dat >> u030_tape_145_file.dat
 #Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat -NoNewline
 Get-Content u030_tape_rmb_file.dat | Add-Content u030_tape_145_file.dat
@@ -56,3 +60,5 @@ invoke-expression $rcmd
 
 Remove-Item u030_tape_145_file.dat *> $null
 Copy-Item u030_tape_145_file_bkp.dat u030_tape_145_file.dat
+Remove-Item u030_tape_RMB_file.dat *> $null
+Copy-Item u030_tape_RMB_file_bkp.dat u030_tape_RMB_file.dat
